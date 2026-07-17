@@ -53,31 +53,9 @@ int main(void) {
 
 static int test_information_schema_tablespaces_extensions_queries(void) {
     static const char *const tablespace_columns[] = {"TABLESPACE_NAME", "ENGINE_ATTRIBUTE"};
-    static const char *const baseline_values[] = {
-        "innodb_system",
-        NULL,
-        "innodb_temporary",
-        NULL,
-        "innodb_undo_001",
-        NULL,
-        "innodb_undo_002",
-        NULL,
-        "mysql",
-        NULL,
-        "sys/sys_config",
-        NULL,
-    };
-    static const char *const user_values[] = {
-        "app/child",
-        NULL,
-        "app/parent",
-        NULL,
-    };
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const count_two[] = {"2"};
     static const char *const table_name_column[] = {"TABLESPACE_NAME"};
-    static const char *const parent_tablespace_value[] = {"app/parent"};
     static const char *const system_table_columns[] = {
         "TABLE_NAME",
         "TABLE_TYPE",
@@ -142,10 +120,9 @@ static int test_information_schema_tablespaces_extensions_queries(void) {
                    "ORDER BY TABLESPACE_NAME",
             .column_names = tablespace_columns,
             .column_count = sizeof(tablespace_columns) / sizeof(tablespace_columns[0]),
-            .values = baseline_values,
-            .row_count = sizeof(baseline_values) / sizeof(baseline_values[0]) /
-                         (sizeof(tablespace_columns) / sizeof(tablespace_columns[0])),
-            .context = "tablespaces extensions baseline rows",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "tablespaces extensions has no fabricated baseline rows",
         }
     );
     failures += expect_query(
@@ -157,10 +134,9 @@ static int test_information_schema_tablespaces_extensions_queries(void) {
                    "ORDER BY TABLESPACE_NAME",
             .column_names = tablespace_columns,
             .column_count = sizeof(tablespace_columns) / sizeof(tablespace_columns[0]),
-            .values = user_values,
-            .row_count = sizeof(user_values) / sizeof(user_values[0]) /
-                         (sizeof(tablespace_columns) / sizeof(tablespace_columns[0])),
-            .context = "tablespaces extensions user rows",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "tablespaces extensions does not model user tablespaces",
         }
     );
     failures += expect_query(
@@ -170,9 +146,9 @@ static int test_information_schema_tablespaces_extensions_queries(void) {
                    "WHERE TABLESPACE_NAME IN ('app/parent', 'app/child')",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_two,
+            .values = count_zero,
             .row_count = 1U,
-            .context = "tablespaces extensions base table count",
+            .context = "tablespaces extensions base table count remains zero",
         }
     );
     failures += expect_query(
@@ -194,9 +170,9 @@ static int test_information_schema_tablespaces_extensions_queries(void) {
                    "WHERE TABLESPACE_NAME = 'app/parent' LIMIT 1",
             .column_names = table_name_column,
             .column_count = 1U,
-            .values = parent_tablespace_value,
-            .row_count = 1U,
-            .context = "tablespaces extensions limit",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "tablespaces extensions limit remains empty",
         }
     );
     failures += expect_query(
@@ -238,9 +214,9 @@ static int test_information_schema_tablespaces_extensions_queries(void) {
                    "WHERE TABLESPACE_NAME = 'app/parent'",
             .column_names = table_name_column,
             .column_count = 1U,
-            .values = parent_tablespace_value,
-            .row_count = 1U,
-            .context = "selected information_schema tablespaces extensions",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "selected information_schema tablespaces extensions remains empty",
         }
     );
     failures += expect_error(

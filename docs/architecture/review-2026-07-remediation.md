@@ -150,7 +150,7 @@ complete.
 
 - [ ] Produce MySQL-compatible type, flags, charset, collation, length, and
   nullability descriptors for synthetic metadata.
-- [ ] Remove positive synthetic storage/process state that MyLite cannot
+- [x] Remove positive synthetic storage/process state that MyLite cannot
   truthfully observe, or expose explicit capability provenance.
 - [x] Reuse cached combined key metadata for SHOW and INFORMATION_SCHEMA.
 - [x] Add direct exact schema/table lookup paths for COLUMNS and STATISTICS.

@@ -5,8 +5,8 @@
 This phase adds limited queryable synthetic
 `INFORMATION_SCHEMA.INNODB_DATAFILES` and
 `INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF` system views. The views expose
-MySQL 8.4.9-shaped table and column metadata plus the default InnoDB
-tablespace rows observed in a fresh MySQL 8.4.9 runtime.
+MySQL 8.4.9-shaped table and column metadata and return no rows because MyLite
+does not own InnoDB datafiles or tablespaces.
 
 The slice is metadata-only. It does not add real InnoDB tablespaces,
 file-per-table storage, InnoDB data dictionary descriptors, temporary
@@ -65,9 +65,9 @@ Observed behavior shaping this slice:
 - Supported reads leave `@@warning_count = 0`, and `ROW_COUNT()` reports `-1`
   after the `SELECT`.
 
-MySQL adds rows for ordinary persistent InnoDB user tables. MyLite does not add
-those rows in this slice because MyLite does not create physical InnoDB
-tablespace files and must not imply a per-table `.ibd` storage model.
+MySQL adds the observed default rows and rows for ordinary persistent InnoDB
+user tables. MyLite reproduces neither category because it does not create
+physical InnoDB tablespace files and must not imply an InnoDB storage model.
 
 ## Scope
 
@@ -80,7 +80,7 @@ Supported:
 - table aliases through the existing information-schema select path;
 - table metadata through `INFORMATION_SCHEMA.TABLES`;
 - column metadata through `INFORMATION_SCHEMA.COLUMNS`;
-- the observed fresh-runtime default InnoDB datafile and brief tablespace rows;
+- a stable empty row set for both views;
 - file-backed and in-memory handles with no storage mutation beyond opening
   the database.
 
@@ -105,7 +105,7 @@ Out of scope:
 - Parser/AST: unchanged. The existing information-schema `SELECT` path already
   resolves table names and aliases.
 - Analyzer/runtime: recognizes both InnoDB metadata views as supported
-  synthetic information-schema system views and appends static rows.
+  synthetic information-schema system views and returns no storage rows.
 - Catalog metadata: unchanged. No descriptor rows are introduced by this
   slice.
 - SQLite storage/VFS: unchanged. No physical SQLite table, view, extension, or
@@ -132,19 +132,9 @@ SELECT NAME, PATH, SPACE_TYPE
 ## Runtime Semantics
 
 Both views are registered in the static information-schema table registry.
-Row production emits static MySQL 8.4.9 observed default metadata:
-
-- `INNODB_DATAFILES.SPACE`: displayed space id text;
-- `INNODB_DATAFILES.PATH`: displayed datafile path text;
-- `INNODB_TABLESPACES_BRIEF.SPACE`: displayed space id text;
-- `INNODB_TABLESPACES_BRIEF.NAME`: displayed tablespace name;
-- `INNODB_TABLESPACES_BRIEF.PATH`: displayed datafile path text;
-- `INNODB_TABLESPACES_BRIEF.FLAG`: displayed flag text;
-- `INNODB_TABLESPACES_BRIEF.SPACE_TYPE`: displayed type text.
-
-The row set is independent of database contents and does not interact with
-MyLite table descriptors, `TABLESPACES_EXTENSIONS` descriptor rows, or
-physical storage.
+Direct reads return no rows. The views do not synthesize MySQL default
+tablespaces, derive rows from MyLite table descriptors, or inspect physical
+storage.
 
 ## Diagnostics
 
@@ -159,8 +149,8 @@ Successful reads introduce no warnings.
 
 ## Performance
 
-Both views emit four static rows. They do not read or write MyLite catalog
-descriptors, physical row storage, SQLite tables, or system files.
+Both views emit no rows and do not read MyLite catalog descriptors, physical
+row storage, SQLite tables, or system files.
 
 ## Tests
 
@@ -168,8 +158,7 @@ Add a focused C runtime test and a MySQL expectation script. Coverage must
 include:
 
 - wildcard column labels for both views;
-- exact ordered default row contents for the documented views;
-- default-row counts and representative predicates;
+- empty row sets and zero counts for representative predicates;
 - case-insensitive table-name lookup;
 - alias projection for representative rows;
 - `warning_count == 0` and `ROW_COUNT() == -1` after successful reads;
@@ -177,6 +166,7 @@ include:
 - `INFORMATION_SCHEMA.COLUMNS` metadata for all seven columns across both
   views;
 - file-backed read behavior and unchanged MyLite file preamble.
+- absence of false paths, identifiers, flags, and tablespace types.
 
 Verification before commit:
 

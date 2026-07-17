@@ -442,51 +442,6 @@ struct mylite_execution_catalog_mysql_system_table {
     size_t secondary_index_count;
 };
 
-struct mylite_execution_catalog_files_row {
-    const char *file_id;
-    const char *file_name;
-    const char *file_type;
-    const char *tablespace_name;
-    const char *free_extents;
-    const char *total_extents;
-    const char *initial_size;
-    const char *autoextend_size;
-    const char *data_free;
-};
-
-struct mylite_execution_catalog_innodb_tablespace_row {
-    const char *space;
-    const char *name;
-    const char *path;
-    const char *flag;
-    const char *space_type;
-};
-
-struct mylite_execution_catalog_innodb_tablespace_full_row {
-    const char *space;
-    const char *name;
-    const char *flag;
-    const char *row_format;
-    const char *page_size;
-    const char *zip_page_size;
-    const char *space_type;
-    const char *fs_block_size;
-    const char *file_size;
-    const char *allocated_size;
-    const char *autoextend_size;
-    const char *server_version;
-    const char *space_version;
-    const char *encryption;
-    const char *state;
-};
-
-struct mylite_execution_catalog_innodb_session_temp_tablespace_row {
-    const char *space;
-    const char *path;
-    const char *state;
-    const char *purpose;
-};
-
 struct mylite_execution_catalog_st_unit_of_measure_row {
     const char *unit_name;
     const char *conversion_factor;
@@ -588,22 +543,6 @@ const struct mylite_execution_catalog_builtin_schema_table_directory *mylite_exe
     const char *schema_name
 );
 
-size_t mylite_execution_catalog_information_schema_files_row_count(void);
-const struct mylite_execution_catalog_files_row *mylite_execution_catalog_information_schema_files_row_at(
-    size_t index
-);
-size_t mylite_execution_catalog_innodb_tablespace_row_count(void);
-const struct mylite_execution_catalog_innodb_tablespace_row *mylite_execution_catalog_innodb_tablespace_row_at(
-    size_t index
-);
-size_t mylite_execution_catalog_innodb_tablespace_full_row_count(void);
-const struct mylite_execution_catalog_innodb_tablespace_full_row *mylite_execution_catalog_innodb_tablespace_full_row_at(
-    size_t index
-);
-size_t mylite_execution_catalog_innodb_session_temp_tablespace_row_count(void);
-const struct mylite_execution_catalog_innodb_session_temp_tablespace_row *mylite_execution_catalog_innodb_session_temp_tablespace_row_at(
-    size_t index
-);
 size_t mylite_execution_catalog_st_unit_of_measure_row_count(void);
 const struct mylite_execution_catalog_st_unit_of_measure_row *mylite_execution_catalog_st_unit_of_measure_row_at(
     size_t index
@@ -624,8 +563,6 @@ const struct mylite_execution_catalog_builtin_sys_view *mylite_execution_catalog
     const char *view_name
 );
 
-size_t mylite_execution_catalog_builtin_tablespace_extension_name_count(void);
-const char *mylite_execution_catalog_builtin_tablespace_extension_name_at(size_t index);
 size_t mylite_execution_catalog_innodb_compressed_page_size_count(void);
 const char *mylite_execution_catalog_innodb_compressed_page_size_at(size_t index);
 size_t mylite_execution_catalog_innodb_ft_default_stopword_count(void);

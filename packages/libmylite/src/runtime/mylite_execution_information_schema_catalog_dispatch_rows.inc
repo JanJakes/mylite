@@ -34,6 +34,7 @@ static int append_information_schema_catalog_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_RESOURCE_GROUPS:
     case MYLITE_EXECUTION_CATALOG_TABLE_ROUTINES:
     case MYLITE_EXECUTION_CATALOG_TABLE_FILES:
+    case MYLITE_EXECUTION_CATALOG_TABLE_TABLESPACES_EXTENSIONS:
     case MYLITE_EXECUTION_CATALOG_TABLE_INNODB_CMP:
     case MYLITE_EXECUTION_CATALOG_TABLE_INNODB_CMP_RESET:
     case MYLITE_EXECUTION_CATALOG_TABLE_INNODB_CMPMEM:
@@ -322,7 +323,6 @@ static int append_information_schema_catalog_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SCHEMATA_EXTENSIONS:
     case MYLITE_EXECUTION_CATALOG_TABLE_TABLES:
     case MYLITE_EXECUTION_CATALOG_TABLE_TABLES_EXTENSIONS:
-    case MYLITE_EXECUTION_CATALOG_TABLE_TABLESPACES_EXTENSIONS:
     case MYLITE_EXECUTION_CATALOG_TABLE_COLUMNS:
     case MYLITE_EXECUTION_CATALOG_TABLE_COLUMNS_EXTENSIONS:
     case MYLITE_EXECUTION_CATALOG_TABLE_VIEWS:
@@ -563,13 +563,6 @@ static int append_information_schema_catalog_base_table(
         );
     case MYLITE_EXECUTION_CATALOG_TABLE_COLUMNS_EXTENSIONS:
         return append_information_schema_columns_extensions_table_rows(
-            context->database,
-            context->rows,
-            context->schema,
-            table
-        );
-    case MYLITE_EXECUTION_CATALOG_TABLE_TABLESPACES_EXTENSIONS:
-        return append_information_schema_tablespaces_extensions_table_row(
             context->database,
             context->rows,
             context->schema,

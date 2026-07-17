@@ -75,44 +75,12 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
         "SPACE",
         "PATH",
     };
-    static const char *const datafiles_rows[] = {
-        "1",
-        "./sys/sys_config.ibd",
-        "4294967279",
-        "./undo_001",
-        "4294967278",
-        "./undo_002",
-        "0",
-        "ibdata1",
-    };
     static const char *const brief_columns[] = {
         "SPACE",
         "NAME",
         "PATH",
         "FLAG",
         "SPACE_TYPE",
-    };
-    static const char *const brief_rows[] = {
-        "0",
-        "innodb_system",
-        "ibdata1",
-        "18432",
-        "System",
-        "4294967279",
-        "innodb_undo_001",
-        "./undo_001",
-        "0",
-        "Single",
-        "4294967278",
-        "innodb_undo_002",
-        "./undo_002",
-        "0",
-        "Single",
-        "1",
-        "sys/sys_config",
-        "./sys/sys_config.ibd",
-        "16417",
-        "Single",
     };
     static const char *const tablespaces_columns[] = {
         "SPACE",
@@ -131,94 +99,11 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
         "ENCRYPTION",
         "STATE",
     };
-    static const char *const tablespaces_rows[] = {
-        "4294967293",
-        "innodb_temporary",
-        "4096",
-        "Compact or Redundant",
-        "16384",
-        "0",
-        "System",
-        "4096",
-        "12582912",
-        "12582912",
-        "0",
-        "8.4.9",
-        "1",
-        "N",
-        "normal",
-        "4294967279",
-        "innodb_undo_001",
-        "0",
-        "Undo",
-        "16384",
-        "0",
-        "Undo",
-        "4096",
-        "16777216",
-        "16777216",
-        "0",
-        "8.4.9",
-        "1",
-        "N",
-        "active",
-        "4294967278",
-        "innodb_undo_002",
-        "0",
-        "Undo",
-        "16384",
-        "0",
-        "Undo",
-        "4096",
-        "16777216",
-        "16777216",
-        "0",
-        "8.4.9",
-        "1",
-        "N",
-        "active",
-        "4294967294",
-        "mysql",
-        "18432",
-        "Any",
-        "16384",
-        "0",
-        "General",
-        "4096",
-        "32505856",
-        "32509952",
-        "0",
-        "8.4.9",
-        "1",
-        "N",
-        "normal",
-        "1",
-        "sys/sys_config",
-        "16417",
-        "Dynamic",
-        "16384",
-        "0",
-        "Single",
-        "4096",
-        "114688",
-        "114688",
-        "0",
-        "8.4.9",
-        "1",
-        "N",
-        "normal",
-    };
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_four[] = {"4"};
-    static const char *const count_five[] = {"5"};
-    static const char *const count_three[] = {"3"};
-    static const char *const count_two[] = {"2"};
+    static const char *const count_zero[] = {"0"};
     static const char *const space_column[] = {"SPACE"};
-    static const char *const system_space[] = {"0"};
     static const char *const brief_name_column[] = {"NAME"};
-    static const char *const sys_config_name[] = {"sys/sys_config"};
     static const char *const tablespace_alias_columns[] = {"NAME", "FILE_SIZE", "STATE"};
-    static const char *const tablespace_alias_values[] = {"sys/sys_config", "114688", "normal"};
     static const char *const system_table_columns[] = {
         "TABLE_NAME",
         "TABLE_TYPE",
@@ -610,11 +495,10 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
             .sql = "SELECT SPACE, PATH FROM INFORMATION_SCHEMA.INNODB_DATAFILES ORDER BY PATH",
             .column_names = datafiles_columns,
             .column_count = sizeof(datafiles_columns) / sizeof(datafiles_columns[0]),
-            .values = datafiles_rows,
-            .row_count = sizeof(datafiles_rows) / sizeof(datafiles_rows[0]) /
-                         (sizeof(datafiles_columns) / sizeof(datafiles_columns[0])),
+            .values = NULL,
+            .row_count = 0U,
             .warning_count = 0U,
-            .context = "innodb datafiles rows",
+            .context = "innodb datafiles has no fabricated rows",
         }
     );
     failures += expect_query(
@@ -636,11 +520,10 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
                    "FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF ORDER BY NAME",
             .column_names = brief_columns,
             .column_count = sizeof(brief_columns) / sizeof(brief_columns[0]),
-            .values = brief_rows,
-            .row_count = sizeof(brief_rows) / sizeof(brief_rows[0]) /
-                         (sizeof(brief_columns) / sizeof(brief_columns[0])),
+            .values = NULL,
+            .row_count = 0U,
             .warning_count = 0U,
-            .context = "innodb tablespaces brief rows",
+            .context = "innodb tablespaces brief has no fabricated rows",
         }
     );
     failures += expect_query(
@@ -664,11 +547,10 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
                    "FROM INFORMATION_SCHEMA.INNODB_TABLESPACES ORDER BY NAME",
             .column_names = tablespaces_columns,
             .column_count = sizeof(tablespaces_columns) / sizeof(tablespaces_columns[0]),
-            .values = tablespaces_rows,
-            .row_count = sizeof(tablespaces_rows) / sizeof(tablespaces_rows[0]) /
-                         (sizeof(tablespaces_columns) / sizeof(tablespaces_columns[0])),
+            .values = NULL,
+            .row_count = 0U,
             .warning_count = 0U,
-            .context = "innodb tablespaces rows",
+            .context = "innodb tablespaces has no fabricated rows",
         }
     );
     failures += expect_query(
@@ -677,7 +559,7 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
             .sql = "SELECT COUNT(*) FROM information_schema.innodb_datafiles",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_four,
+            .values = count_zero,
             .row_count = 1U,
             .warning_count = 0U,
             .context = "innodb datafiles lower-case count",
@@ -689,7 +571,7 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
             .sql = "SELECT COUNT(*) FROM information_schema.innodb_tablespaces",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_five,
+            .values = count_zero,
             .row_count = 1U,
             .warning_count = 0U,
             .context = "innodb tablespaces lower-case count",
@@ -701,10 +583,10 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
             .sql = "SELECT SPACE FROM INFORMATION_SCHEMA.INNODB_DATAFILES WHERE PATH = 'ibdata1'",
             .column_names = space_column,
             .column_count = 1U,
-            .values = system_space,
-            .row_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
             .warning_count = 0U,
-            .context = "innodb datafiles system path predicate",
+            .context = "innodb datafiles system path remains empty",
         }
     );
     failures += expect_query(
@@ -714,10 +596,10 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
                    "WHERE b.SPACE = '1'",
             .column_names = brief_name_column,
             .column_count = 1U,
-            .values = sys_config_name,
-            .row_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
             .warning_count = 0U,
-            .context = "innodb tablespaces brief alias predicate",
+            .context = "innodb tablespaces brief alias remains empty",
         }
     );
     failures += expect_query(
@@ -728,10 +610,10 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
                    "WHERE t.NAME = 'sys/sys_config'",
             .column_names = tablespace_alias_columns,
             .column_count = sizeof(tablespace_alias_columns) / sizeof(tablespace_alias_columns[0]),
-            .values = tablespace_alias_values,
-            .row_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
             .warning_count = 0U,
-            .context = "innodb tablespaces alias predicate",
+            .context = "innodb tablespaces alias remains empty",
         }
     );
     failures += expect_status(
@@ -755,7 +637,7 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
             .sql = "SELECT COUNT(*) FROM INNODB_TABLESPACES_BRIEF WHERE SPACE_TYPE = 'Single'",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_three,
+            .values = count_zero,
             .row_count = 1U,
             .warning_count = 0U,
             .context = "selected information_schema innodb brief count",
@@ -767,7 +649,7 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
             .sql = "SELECT COUNT(*) FROM INNODB_TABLESPACES WHERE SPACE_TYPE = 'Undo'",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_two,
+            .values = count_zero,
             .row_count = 1U,
             .warning_count = 0U,
             .context = "selected information_schema innodb tablespaces count",
@@ -858,8 +740,7 @@ static int test_information_schema_innodb_tablespace_metadata_queries(void) {
 
 static int test_information_schema_innodb_tablespace_metadata_file_backed_safety(void) {
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_four[] = {"4"};
-    static const char *const count_five[] = {"5"};
+    static const char *const count_zero[] = {"0"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -879,7 +760,7 @@ static int test_information_schema_innodb_tablespace_metadata_file_backed_safety
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_DATAFILES",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_four,
+            .values = count_zero,
             .row_count = 1U,
             .warning_count = 0U,
             .context = "file innodb datafiles count",
@@ -891,7 +772,7 @@ static int test_information_schema_innodb_tablespace_metadata_file_backed_safety
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_five,
+            .values = count_zero,
             .row_count = 1U,
             .warning_count = 0U,
             .context = "file innodb tablespaces count",

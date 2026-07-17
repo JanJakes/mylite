@@ -103,19 +103,6 @@ static const char *const files_column_names[] = {
     "EXTRA",
 };
 
-static const char *const ibdata1_values[] = {
-    "0",        "./ibdata1", "TABLESPACE", "innodb_system",
-    "",         NULL,        NULL,         NULL,
-    NULL,       "InnoDB",    NULL,         NULL,
-    NULL,       "2",         "12",         "1048576",
-    "12582912", NULL,        "67108864",   NULL,
-    NULL,       NULL,        NULL,         NULL,
-    NULL,       NULL,        NULL,         NULL,
-    NULL,       NULL,        NULL,         "6291456",
-    NULL,       NULL,        NULL,         NULL,
-    "NORMAL",   NULL,
-};
-
 static const struct expected_information_schema_column files_columns_metadata[] = {
     {"FILE_ID", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, "bigint"},
     {"FILE_NAME",
@@ -284,8 +271,7 @@ int main(void) {
 
 static int test_information_schema_files_queries(void) {
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_six[] = {"6"};
-    static const char *const count_two[] = {"2"};
+    static const char *const count_zero[] = {"0"};
     static const char *const files_core_columns[] = {
         "FILE_ID",
         "FILE_NAME",
@@ -300,46 +286,7 @@ static int test_information_schema_files_queries(void) {
         "DATA_FREE",
         "STATUS",
     };
-    static const char *const files_core_values[] = {
-        "0",          "./ibdata1",
-        "TABLESPACE", "innodb_system",
-        "InnoDB",     "2",
-        "12",         "1048576",
-        "12582912",   "67108864",
-        "6291456",    "NORMAL",
-        "4294967293", "./ibtmp1",
-        "TEMPORARY",  "innodb_temporary",
-        "InnoDB",     "2",
-        "12",         "1048576",
-        "12582912",   "67108864",
-        "6291456",    "NORMAL",
-        "4294967294", "./mysql.ibd",
-        "TABLESPACE", "mysql",
-        "InnoDB",     "1",
-        "31",         "1048576",
-        "0",          "1048576",
-        "4194304",    "NORMAL",
-        "1",          "./sys/sys_config.ibd",
-        "TABLESPACE", "sys/sys_config",
-        "InnoDB",     "0",
-        "0",          "1048576",
-        "0",          "1048576",
-        "0",          "NORMAL",
-        "4294967279", "./undo_001",
-        "UNDO LOG",   "innodb_undo_001",
-        "InnoDB",     "2",
-        "16",         "1048576",
-        "16777216",   "16777216",
-        "6291456",    "NORMAL",
-        "4294967278", "./undo_002",
-        "UNDO LOG",   "innodb_undo_002",
-        "InnoDB",     "2",
-        "16",         "1048576",
-        "16777216",   "16777216",
-        "6291456",    "NORMAL",
-    };
     static const char *const alias_columns[] = {"FILE_NAME", "DATA_FREE"};
-    static const char *const mysql_file_values[] = {"./mysql.ibd", "4194304"};
     static const char *const system_table_columns[] = {
         "TABLE_NAME",
         "TABLE_TYPE",
@@ -376,9 +323,9 @@ static int test_information_schema_files_queries(void) {
             .sql = "SELECT * FROM INFORMATION_SCHEMA.FILES WHERE FILE_NAME = './ibdata1'",
             .column_names = files_column_names,
             .column_count = ARRAY_COUNT(files_column_names),
-            .values = ibdata1_values,
-            .row_count = 1U,
-            .context = "files ibdata1 full row",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "files does not invent ibdata1 row",
         }
     );
     failures += expect_query(
@@ -387,7 +334,7 @@ static int test_information_schema_files_queries(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.FILES",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_six,
+            .values = count_zero,
             .row_count = 1U,
             .context = "files count",
         }
@@ -398,7 +345,7 @@ static int test_information_schema_files_queries(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.files WHERE FILE_TYPE = 'UNDO LOG'",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_two,
+            .values = count_zero,
             .row_count = 1U,
             .context = "case-insensitive files undo count",
         }
@@ -411,9 +358,9 @@ static int test_information_schema_files_queries(void) {
                    "FROM INFORMATION_SCHEMA.FILES ORDER BY FILE_NAME",
             .column_names = files_core_columns,
             .column_count = ARRAY_COUNT(files_core_columns),
-            .values = files_core_values,
-            .row_count = ARRAY_COUNT(files_core_values) / ARRAY_COUNT(files_core_columns),
-            .context = "files ordered rows",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "files has no fabricated storage rows",
         }
     );
     failures += expect_query(
@@ -423,9 +370,9 @@ static int test_information_schema_files_queries(void) {
                    "WHERE f.TABLESPACE_NAME = 'mysql'",
             .column_names = alias_columns,
             .column_count = ARRAY_COUNT(alias_columns),
-            .values = mysql_file_values,
-            .row_count = 1U,
-            .context = "files alias row",
+            .values = NULL,
+            .row_count = 0U,
+            .context = "files alias query remains empty",
         }
     );
     failures += expect_statement_ok(
@@ -441,7 +388,7 @@ static int test_information_schema_files_queries(void) {
             .sql = "SELECT COUNT(*) FROM FILES WHERE ENGINE = 'InnoDB'",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_six,
+            .values = count_zero,
             .row_count = 1U,
             .context = "unqualified files count",
         }
@@ -468,9 +415,9 @@ static int test_information_schema_files_queries(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.FILES",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_six,
+            .values = count_zero,
             .row_count = 1U,
-            .context = "files remains static after table activity",
+            .context = "files remains truthful after table activity",
         }
     );
 

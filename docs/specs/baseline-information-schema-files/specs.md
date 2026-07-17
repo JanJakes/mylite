@@ -4,8 +4,8 @@
 
 This phase adds `INFORMATION_SCHEMA.FILES` as a MySQL-shaped synthetic
 information-schema system view. The view is queryable, exposes MySQL 8.4.9
-table and column metadata, and returns the six default InnoDB file rows
-observed in a fresh MySQL 8.4.9 runtime.
+table and column metadata, and returns no rows because MyLite does not own or
+manage InnoDB files.
 
 The slice is metadata-only. It does not add real InnoDB tablespace files,
 NDB Disk Data files, file-per-table storage, temporary tablespace accounting,
@@ -91,9 +91,10 @@ SQL
 ```
 
 MySQL adds rows for ordinary persistent InnoDB user tables and for other
-tablespace/file features. MyLite does not add those rows in this slice because
-MyLite does not create physical InnoDB `.ibd`, `ibdata`, `ibtmp`, undo, or NDB
-Disk Data files for user objects.
+tablespace/file features. MyLite does not reproduce either the default or user
+rows because it does not create physical InnoDB `.ibd`, `ibdata`, `ibtmp`,
+undo, or NDB Disk Data files. Returning an empty row set avoids reporting
+nonexistent files and storage state to SQL consumers.
 
 ## Scope
 
@@ -106,8 +107,8 @@ Supported:
 - table aliases, predicates, ordering, and `COUNT(*)` through the existing
   metadata query path;
 - unqualified reads while `information_schema` is the selected schema;
-- stable six-row default metadata, including after MyLite user tables and
-  indexes are created;
+- a stable empty row set, including after MyLite user tables and indexes are
+  created;
 - system metadata through `INFORMATION_SCHEMA.TABLES`,
   `INFORMATION_SCHEMA.COLUMNS`, `SHOW TABLES`, `SHOW FULL TABLES`, and
   `SHOW TABLE STATUS` via the existing built-in table directory.
@@ -130,7 +131,7 @@ Out of scope:
 - Parser/AST: unchanged. The existing information-schema `SELECT` path already
   resolves table names, aliases, identifiers, predicates, and ordering.
 - Analyzer/runtime: recognizes `FILES` as a supported information-schema
-  system view and appends static rows.
+  system view and returns no physical-storage rows.
 - Catalog metadata: unchanged. Existing table, index, and storage descriptors
   are not used to calculate file rows in this slice.
 - Storage/SQLite: unchanged. No physical SQLite table, view, extension, or
@@ -155,18 +156,9 @@ SELECT COUNT(*) FROM FILES;
 
 ## Runtime Semantics
 
-`FILES` is registered in the static information-schema table registry. Row
-production emits static MySQL 8.4.9 observed default metadata for:
-
-- the InnoDB system tablespace file;
-- the global temporary tablespace file;
-- the `mysql` general tablespace file;
-- the `sys/sys_config` file-per-table tablespace file;
-- the two default undo tablespace files.
-
-The row set is independent of database contents and does not interact with
-MyLite table descriptors, `TABLESPACES_EXTENSIONS` descriptor rows,
-`INNODB_DATAFILES`, or physical storage.
+`FILES` is registered in the static information-schema table registry. Direct
+reads return an empty row set. The view does not synthesize MySQL server files,
+derive rows from MyLite table descriptors, or inspect the host filesystem.
 
 ## Diagnostics
 
@@ -184,9 +176,8 @@ Successful reads introduce no warnings.
 Add a focused C runtime test and a MySQL expectation script. Coverage must
 include:
 
-- wildcard column labels and the representative `./ibdata1` full row;
-- exact ordered default row contents for core file columns;
-- default-row counts and representative predicates;
+- wildcard column labels with an empty result;
+- zero-row counts and representative predicates;
 - case-insensitive table-name lookup;
 - alias projection through the existing information-schema query path;
 - `warning_count == 0` and `ROW_COUNT() == -1` after successful reads;
@@ -194,7 +185,8 @@ include:
 - `INFORMATION_SCHEMA.COLUMNS` metadata for all 38 columns in the MySQL
   expectation script and representative C coverage;
 - `USE information_schema` unqualified-table reads;
-- stable six-row behavior after creating a MyLite table and secondary index.
+- stable empty behavior after creating a MyLite table and secondary index;
+- absence of false InnoDB paths, sizes, allocation state, and status rows.
 
 Verification before commit:
 

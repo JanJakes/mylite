@@ -4,9 +4,8 @@
 
 This phase adds `INFORMATION_SCHEMA.INNODB_SESSION_TEMP_TABLESPACES` as a
 queryable synthetic information-schema system view. The view exposes
-MySQL 8.4.9-shaped table and column metadata and returns a deterministic
-baseline pool of session temporary tablespace rows, including one current
-session intrinsic tablespace row keyed to MyLite's connection id.
+MySQL 8.4.9-shaped table and column metadata and returns no rows because MyLite
+does not allocate InnoDB session temporary tablespaces.
 
 The slice is metadata-only. It does not add physical InnoDB temporary
 tablespace files, user-created temporary tablespace allocation, replica
@@ -103,9 +102,8 @@ Supported:
   metadata query path;
 - unqualified `INNODB_SESSION_TEMP_TABLESPACES` reads while
   `information_schema` is the selected schema;
-- ten deterministic baseline pooled session temporary tablespace rows;
-- the active intrinsic row uses MyLite's current session connection id in
-  `ID`;
+- a stable empty row set that does not claim session temporary files or
+  allocations;
 - system metadata through `INFORMATION_SCHEMA.TABLES`,
   `INFORMATION_SCHEMA.COLUMNS`, `SHOW TABLES`, `SHOW FULL TABLES`, and
   `SHOW TABLE STATUS` via the existing built-in table directory;
@@ -129,7 +127,7 @@ Out of scope:
 - Parser/AST: unchanged. The existing information-schema `SELECT` path already
   resolves table names, aliases, identifiers, predicates, and ordering.
 - Analyzer/runtime: recognizes `INNODB_SESSION_TEMP_TABLESPACES` as a
-  supported information-schema system view and emits baseline synthetic rows.
+  supported information-schema system view and returns no storage rows.
 - Catalog metadata: unchanged. No schema, table, column, or temporary-table
   descriptors are introduced by this slice.
 - SQLite storage/VFS: unchanged. No physical SQLite table, view, extension, or
@@ -155,18 +153,13 @@ SELECT t.PATH
 ## Runtime Semantics
 
 `INNODB_SESSION_TEMP_TABLESPACES` is registered in the static
-information-schema table registry. Row production is synthetic:
+information-schema table registry:
 
 - system rows for `TABLES` and `COLUMNS` are generated from static
   descriptors;
-- direct reads emit nine inactive rows for `temp_1.ibt` through `temp_9.ibt`
-  using `ID = 0`, `SIZE = 81920`, `STATE = 'INACTIVE'`, and
-  `PURPOSE = 'NONE'`;
-- direct reads emit one active intrinsic row for `temp_10.ibt` using the
-  current MyLite connection id, `SIZE = 81920`, `STATE = 'ACTIVE'`, and
-  `PURPOSE = 'INTRINSIC'`;
-- no row is added for user-created MyLite temporary tables because MyLite does
-  not expose physical InnoDB temporary tablespace allocation;
+- direct reads return no rows because MyLite does not expose physical InnoDB
+  temporary tablespace allocation;
+- connection identifiers are not projected into invented storage rows;
 - successful reads introduce no warnings;
 - `ROW_COUNT()` after a successful `SELECT` remains the existing query value
   `-1`.
@@ -190,12 +183,12 @@ include:
 - `SHOW FULL TABLES` and `INFORMATION_SCHEMA.TABLES` metadata for the system
   view;
 - `INFORMATION_SCHEMA.COLUMNS` metadata for all six columns;
-- exact MyLite baseline rows, including current MyLite connection id on the
-  active intrinsic row;
+- empty results across independent handles and reopen;
 - `COUNT(*)`, case-insensitive table lookup, aliases, predicates, and
   unqualified reads after `USE information_schema`;
 - `@@warning_count` and `ROW_COUNT()` status after a successful read;
 - file-backed read behavior and unchanged MyLite file preamble;
+- absence of false paths, sizes, state, purpose, and connection ownership;
 - MySQL runtime evidence for the additional `ACTIVE` / `USER` row that appears
   after creating a user temporary InnoDB table.
 

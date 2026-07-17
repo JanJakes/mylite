@@ -4,8 +4,8 @@
 
 This phase adds a limited queryable synthetic
 `INFORMATION_SCHEMA.INNODB_TABLESPACES` system view. The view exposes
-MySQL 8.4.9-shaped table and column metadata plus the stable baseline
-tablespace rows observed from the local MySQL 8.4.9 runtime.
+MySQL 8.4.9-shaped table and column metadata and returns no rows because MyLite
+does not own InnoDB tablespaces.
 
 The slice is metadata-only. It does not add physical InnoDB tablespaces,
 file-per-table `.ibd` files for MyLite tables, general tablespace DDL,
@@ -101,8 +101,7 @@ Supported:
   selected schema;
 - table metadata through `INFORMATION_SCHEMA.TABLES`;
 - column metadata through `INFORMATION_SCHEMA.COLUMNS`;
-- the observed baseline built-in rows for `sys/sys_config`,
-  `innodb_undo_002`, `innodb_undo_001`, `innodb_temporary`, and `mysql`.
+- a stable empty row set that does not claim built-in or user tablespaces.
 
 Out of scope:
 
@@ -124,7 +123,7 @@ Out of scope:
 - Parser/AST: unchanged. The existing information-schema `SELECT` path already
   resolves table names, aliases, identifiers, predicates, and ordering.
 - Analyzer/runtime: recognizes `INNODB_TABLESPACES` as a supported
-  information-schema system view and emits static rows.
+  information-schema system view and returns no storage rows.
 - Catalog metadata: unchanged. MyLite table descriptors are intentionally not
   projected into this physical InnoDB tablespace view.
 - Storage/SQLite: unchanged. No physical SQLite table, view, extension, or
@@ -151,16 +150,8 @@ SELECT t.NAME, t.FILE_SIZE
 ## Runtime Semantics
 
 `INNODB_TABLESPACES` is registered in the static information-schema table
-registry. Row production emits static MySQL 8.4.9 observed baseline metadata:
-
-- `sys/sys_config`: single-table tablespace row with dynamic row format;
-- `innodb_undo_002` and `innodb_undo_001`: undo tablespace rows with active
-  state;
-- `innodb_temporary`: system temporary tablespace row;
-- `mysql`: general tablespace row.
-
-The row set is independent of database contents and does not interact with
-MyLite table descriptors, `TABLESPACES_EXTENSIONS` descriptor rows, or
+registry. Direct reads return no rows. The view does not synthesize built-in
+MySQL tablespaces, derive rows from MyLite table descriptors, or inspect
 physical storage.
 
 ## Diagnostics
@@ -182,12 +173,13 @@ expectation script. Coverage must include:
 - `SHOW FULL TABLES` and `INFORMATION_SCHEMA.TABLES` metadata for the system
   view;
 - `INFORMATION_SCHEMA.COLUMNS` metadata for all 15 columns;
-- wildcard column labels and exact baseline rows;
-- row count, case-insensitive table lookup, aliases, predicates, and
+- wildcard column labels with an empty result;
+- zero row count, case-insensitive table lookup, aliases, predicates, and
   unqualified reads after `USE information_schema`;
 - `@@warning_count` and `ROW_COUNT()` status after a successful read;
 - file-backed read behavior through the existing tablespace metadata safety
-  test.
+  test;
+- absence of false file sizes, allocation state, versions, and status rows.
 
 Verification before commit:
 

@@ -238,12 +238,6 @@ static int append_information_schema_tablespaces_extensions_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
-static int append_information_schema_tablespaces_extensions_table_row(
-    struct mylite_db *database,
-    struct information_schema_row_set *rows,
-    const struct mylite_catalog_schema_descriptor *schema,
-    const struct mylite_catalog_table_descriptor *table
-);
 static int append_information_schema_files_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -279,12 +273,6 @@ static int append_information_schema_innodb_ft_default_stopword_system_rows(
 static int append_information_schema_innodb_tablespaces_brief_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
-);
-static int copy_information_schema_tablespace_name(
-    struct mylite_db *database,
-    const struct mylite_catalog_schema_descriptor *schema,
-    const struct mylite_catalog_table_descriptor *table,
-    char **out_name
 );
 static int append_information_schema_character_sets_system_row(
     struct mylite_db *database,

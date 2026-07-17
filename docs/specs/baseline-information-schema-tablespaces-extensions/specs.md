@@ -10,10 +10,7 @@ MySQL 8.4.9 emits `NULL` for the verified engine-attribute values.
 This slice covers:
 
 - MySQL 8.4.9-shaped `TABLESPACES_EXTENSIONS` result columns;
-- fixed MySQL 8.4.9 default tablespace rows that are useful to applications
-  probing the baseline InnoDB data dictionary surface;
-- descriptor-owned MyLite persistent base-table rows named
-  `<schema>/<table>`;
+- a stable empty row set because MyLite has no InnoDB tablespaces;
 - matching `INFORMATION_SCHEMA.TABLES` and `INFORMATION_SCHEMA.COLUMNS`
   metadata for the system view.
 
@@ -74,23 +71,10 @@ and `LIMIT`.
 
 ## Semantics
 
-`TABLESPACES_EXTENSIONS` emits rows with:
-
-- `TABLESPACE_NAME` equal to the fixed baseline system tablespace name or the
-  descriptor-owned persistent base table name formatted as `<schema>/<table>`;
-- `ENGINE_ATTRIBUTE` as SQL `NULL`.
-
-The fixed baseline system rows are:
-
-- `innodb_system`;
-- `innodb_temporary`;
-- `innodb_undo_001`;
-- `innodb_undo_002`;
-- `mysql`;
-- `sys/sys_config`.
-
-Persistent MyLite base tables emit one descriptor-backed row. MyLite views do
-not emit rows. Temporary tables do not emit rows in this slice.
+`TABLESPACES_EXTENSIONS` returns no rows. It does not synthesize MySQL default
+tablespaces or map MyLite persistent tables onto fictional InnoDB tablespaces.
+This deliberately diverges from the observed MySQL row set to avoid false
+storage claims.
 
 Rows are materialized through the existing information-schema row-set pipeline.
 No natural row order is claimed; tests and users should apply explicit
@@ -113,19 +97,16 @@ Successful reads introduce no warnings.
 
 - Public API: unchanged.
 - Parser/AST: unchanged.
-- Runtime/analyzer: adds a static table definition and row builders beside the
-  existing information-schema metadata views.
-- Catalog metadata: reads schema and table descriptors through existing
-  catalog APIs.
+- Runtime/analyzer: provides a static table definition and an empty row
+  provider beside the existing information-schema metadata views.
+- Catalog metadata: no schema or table descriptors are read for this view.
 - Result builder: unchanged.
 - Storage/VFS/SQLite: unchanged. This is MyLite wrapper/translation metadata
   behavior and uses no SQLite fork hook.
 
 ## Performance
 
-System rows are a fixed small array. User rows are proportional to
-descriptor-owned persistent base tables. No user table data or SQLite system
-tables are scanned.
+The empty row provider performs no catalog or storage scans.
 
 ## Tests
 
@@ -141,10 +122,10 @@ MySQL 8.4.9 expectation coverage:
 
 MyLite C coverage:
 
-- fixed baseline system rows;
-- descriptor-owned persistent base-table rows and absence of view rows;
+- empty rows before and after creating persistent base tables and views;
 - projection, predicates, `ORDER BY`, `LIMIT`, and `COUNT(*)`;
 - selected `information_schema` resolution;
 - system-view rows in `INFORMATION_SCHEMA.TABLES`;
 - system-column rows in `INFORMATION_SCHEMA.COLUMNS`;
-- unknown-column diagnostics.
+- unknown-column diagnostics;
+- absence of false built-in and per-table tablespace claims.

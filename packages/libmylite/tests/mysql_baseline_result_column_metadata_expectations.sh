@@ -191,6 +191,55 @@ expect_contains "sys thread length" 'Length:     20' "$sys_output"
 expect_contains "sys thread flags" 'Flags:      NOT_NULL UNSIGNED NO_DEFAULT_VALUE NUM ' \
     "$sys_output"
 
+show_columns_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SHOW COLUMNS FROM meta; SHOW INDEX FROM meta;" \
+    "$DATABASE")
+
+expect_contains "show columns type field" 'Field   2:  `Type`' "$show_columns_output"
+expect_contains "show columns type" 'Type:       BLOB' "$show_columns_output"
+expect_contains "show columns type length" 'Length:     67108860' "$show_columns_output"
+expect_contains "show columns type flags" \
+    'Flags:      NOT_NULL BLOB BINARY NO_DEFAULT_VALUE ' "$show_columns_output"
+expect_contains "show index non-unique field" 'Field   2:  `Non_unique`' "$show_columns_output"
+expect_contains "show index non-unique type" 'Type:       LONG' "$show_columns_output"
+expect_contains "show index non-unique length" 'Length:     2' "$show_columns_output"
+expect_contains "show index non-unique flags" 'Flags:      NOT_NULL NUM ' "$show_columns_output"
+
+show_status_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SHOW FULL TABLES; SHOW TABLE STATUS LIKE 'meta';" \
+    "$DATABASE")
+
+expect_contains "show full tables type field" 'Field   2:  `Table_type`' "$show_status_output"
+expect_contains "show full tables type" 'Type:       STRING' "$show_status_output"
+expect_contains "show full tables length" 'Length:     44' "$show_status_output"
+expect_contains "show table status rows field" 'Field   5:  `Rows`' "$show_status_output"
+expect_contains "show table status rows type" 'Type:       LONGLONG' "$show_status_output"
+expect_contains "show table status rows flags" 'Flags:      UNSIGNED NUM ' "$show_status_output"
+
+show_diagnostics_output=$(run_mysql_type_info \
+    "SHOW PROCESSLIST; SHOW WARNINGS; SHOW COUNT(*) WARNINGS;")
+
+expect_contains "show processlist id field" 'Field   1:  `Id`' "$show_diagnostics_output"
+expect_contains "show processlist id type" 'Type:       LONGLONG' "$show_diagnostics_output"
+expect_contains "show processlist id length" 'Length:     22' "$show_diagnostics_output"
+expect_contains "show diagnostics code field" 'Field   2:  `Code`' "$show_diagnostics_output"
+expect_contains "show diagnostics code type" 'Type:       LONG' "$show_diagnostics_output"
+expect_contains "show diagnostics code length" 'Length:     5' "$show_diagnostics_output"
+expect_contains "show count warnings field" 'Field   1:  `@@session.warning_count`' \
+    "$show_diagnostics_output"
+expect_contains "show count warnings flags" 'Flags:      UNSIGNED BINARY NUM ' \
+    "$show_diagnostics_output"
+
+show_create_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SHOW VARIABLES LIKE 'autocommit'; SHOW CREATE TABLE meta;" \
+    "$DATABASE")
+
+expect_contains "show variables field" 'Field   1:  `Variable_name`' "$show_create_output"
+expect_contains "show variables length" 'Length:     256' "$show_create_output"
+expect_contains "show create field" 'Field   2:  `Create Table`' "$show_create_output"
+expect_contains "show create length" 'Length:     4096' "$show_create_output"
+expect_contains "show create decimals" 'Decimals:   31' "$show_create_output"
+
 json_value_output=$(run_mysql_type_info \
     "USE ${DATABASE}; SET NAMES utf8mb4; "\
 "SELECT JSON_VALUE('{\"a\":1}', '$.a') AS json_value;" \

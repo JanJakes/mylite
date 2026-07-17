@@ -79,7 +79,15 @@ struct expected_column_metadata {
 
 static int test_descriptor_result_column_metadata(void);
 static int test_result_column_metadata_scalar_defaults_and_misuse(void);
+static int test_show_result_column_metadata(void);
 static int setup_metadata_schema(mylite_db *database);
+static int expect_show_column_metadata(
+    mylite_db *database,
+    const char *sql,
+    size_t column_index,
+    struct expected_column_metadata expected,
+    const char *context
+);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_statement_warning_count(mylite_db *database, const char *sql, size_t warnings);
@@ -112,6 +120,7 @@ int main(void) {
 
     failures += test_descriptor_result_column_metadata();
     failures += test_result_column_metadata_scalar_defaults_and_misuse();
+    failures += test_show_result_column_metadata();
 
     return failures == 0 ? 0 : 1;
 }
@@ -1782,6 +1791,233 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
         expect_uint64(mylite_result_column_display_length(NULL, 0U), 0U, "NULL display length");
     failures += expect_uint16(mylite_result_column_decimals(NULL, 0U), 0U, "NULL decimals");
     failures += expect_int(mylite_result_column_nullable(NULL, 0U), 0, "NULL nullable");
+    return failures;
+}
+
+static int test_show_result_column_metadata(void) {
+    enum {
+        not_null_binary_no_default_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                           MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                           MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+        not_null_numeric_flags =
+            MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                        MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                        MYLITE_RESULT_COLUMN_FLAG_NUM,
+        unsigned_numeric_flags =
+            MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        unsigned_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                                        MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                        MYLITE_RESULT_COLUMN_FLAG_NUM,
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "show") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open SHOW metadata");
+    failures += setup_metadata_schema(database);
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW TABLES",
+        0U,
+        (struct expected_column_metadata){
+            .label = "Tables_in_app",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = not_null_binary_no_default_flags,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 256U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW TABLES metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW FULL TABLES",
+        1U,
+        (struct expected_column_metadata){
+            .label = "Table_type",
+            .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_ENUM | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 44U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW FULL TABLES metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW COLUMNS FROM meta",
+        1U,
+        (struct expected_column_metadata){
+            .label = "Type",
+            .type = MYLITE_RESULT_COLUMN_TYPE_BLOB,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BLOB |
+                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 67108860U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW COLUMNS metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW INDEX FROM meta",
+        1U,
+        (struct expected_column_metadata){
+            .label = "Non_unique",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONG,
+            .flags = not_null_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 2U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW INDEX metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW TABLE STATUS LIKE 'meta'",
+        4U,
+        (struct expected_column_metadata){
+            .label = "Rows",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = unsigned_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        "SHOW TABLE STATUS metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW PROCESSLIST",
+        0U,
+        (struct expected_column_metadata){
+            .label = "Id",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = not_null_binary_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 22U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW PROCESSLIST metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW WARNINGS",
+        1U,
+        (struct expected_column_metadata){
+            .label = "Code",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONG,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 5U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW WARNINGS metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW COUNT(*) WARNINGS",
+        0U,
+        (struct expected_column_metadata){
+            .label = "@@session.warning_count",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = unsigned_binary_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW COUNT WARNINGS metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW VARIABLES LIKE 'autocommit'",
+        0U,
+        (struct expected_column_metadata){
+            .label = "Variable_name",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 256U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        "SHOW VARIABLES metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW CREATE TABLE meta",
+        1U,
+        (struct expected_column_metadata){
+            .label = "Create Table",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 4096U,
+            .decimals = 31U,
+            .nullable = 0,
+        },
+        "SHOW CREATE TABLE metadata"
+    );
+    failures += expect_show_column_metadata(
+        database,
+        "SHOW ENGINES",
+        0U,
+        (struct expected_column_metadata){
+            .label = "Engine",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = 0U,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 4096U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        "SHOW fallback metadata"
+    );
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int expect_show_column_metadata(
+    mylite_db *database,
+    const char *sql,
+    size_t column_index,
+    struct expected_column_metadata expected,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures == 0) {
+        failures += expect_column_metadata(result, column_index, expected, context);
+    }
+    mylite_result_free(result);
     return failures;
 }
 

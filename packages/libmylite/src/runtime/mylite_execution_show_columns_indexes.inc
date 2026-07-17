@@ -473,19 +473,25 @@ static int append_show_columns_result_columns(
     bool full
 ) {
     const char *const *selected_result_columns = show_columns_result_columns;
+    const struct show_result_column_definition *selected_result_column_definitions =
+        show_columns_result_column_definitions;
     size_t selected_result_column_count = show_columns_result_column_count;
     int rc = MYLITE_OK;
 
     if (full) {
         selected_result_columns = show_full_columns_result_columns;
+        selected_result_column_definitions = show_full_columns_result_column_definitions;
         selected_result_column_count = show_full_columns_result_column_count;
     }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < selected_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, selected_result_columns[column_index]);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+    rc = append_show_result_columns(
+        database,
+        result,
+        selected_result_columns,
+        selected_result_column_definitions,
+        selected_result_column_count
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
     }
 
     return rc;
@@ -838,10 +844,15 @@ static int execute_show_index_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < show_index_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, show_index_result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            show_index_result_columns,
+            show_index_result_column_definitions,
+            show_index_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
@@ -985,10 +996,15 @@ static int execute_show_index_mysql_system_table_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < show_index_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, show_index_result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            show_index_result_columns,
+            show_index_result_column_definitions,
+            show_index_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }

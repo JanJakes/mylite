@@ -144,7 +144,27 @@ static int append_show_tables_result_columns(
     const char *column_name,
     bool is_full
 ) {
-    int rc = mylite_result_append_column(result, column_name);
+    static const struct show_result_column_definition table_definition = {
+        MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+        MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+        64U,
+        0U,
+        false,
+        true,
+    };
+    static const struct show_result_column_definition table_type_definition = {
+        MYLITE_RESULT_LOGICAL_TYPE_STRING,
+        MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            MYLITE_RESULT_COLUMN_FLAG_ENUM | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+        11U,
+        0U,
+        false,
+        true,
+    };
+    static const char *const table_type_label = "Table_type";
+    int rc = append_show_result_columns(database, result, &column_name, &table_definition, 1U);
+
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -153,7 +173,13 @@ static int append_show_tables_result_columns(
         return MYLITE_OK;
     }
 
-    rc = mylite_result_append_column(result, "Table_type");
+    rc = append_show_result_columns(
+        database,
+        result,
+        &table_type_label,
+        &table_type_definition,
+        1U
+    );
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }
@@ -224,11 +250,15 @@ static int execute_show_table_status_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_table_status_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, show_table_status_result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            show_table_status_result_columns,
+            show_table_status_result_column_definitions,
+            show_table_status_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }

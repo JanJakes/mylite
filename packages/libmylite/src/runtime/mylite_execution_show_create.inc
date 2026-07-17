@@ -289,7 +289,7 @@ static int append_show_create_user_embedded_root_result(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_create_user_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -360,6 +360,21 @@ static int execute_show_create_database_statement(
         "Database",
         "Create Database",
     };
+    static const struct show_result_column_definition
+        result_column_definitions[show_create_database_result_column_count] = {
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             64U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             1024U,
+             31U,
+             false,
+             true},
+        };
     struct mylite_catalog_schema_descriptor schema = {0};
     char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char *create_sql = NULL;
@@ -381,11 +396,15 @@ static int execute_show_create_database_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_create_database_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            result_column_definitions,
+            show_create_database_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
@@ -440,7 +459,7 @@ static int execute_show_engines_statement(struct mylite_db *database, mylite_res
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_engines_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -490,7 +509,7 @@ static int execute_show_engine_status_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_engine_status_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -535,7 +554,7 @@ static int execute_show_engine_logs_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_engine_status_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -608,7 +627,7 @@ static int execute_show_plugins_statement(struct mylite_db *database, mylite_res
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_plugins_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -632,6 +651,15 @@ static int execute_show_databases_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    static const struct show_result_column_definition column_definition = {
+        MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+        MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+        64U,
+        0U,
+        false,
+        true,
+    };
     const struct mylite_sql_ast_node *filter_node = child_at(statement, 0U);
     const struct mylite_sql_ast_node *like_node = NULL;
     const struct mylite_sql_ast_node *where_clause = NULL;
@@ -642,6 +670,7 @@ static int execute_show_databases_statement(
     };
     struct show_databases_context context = {0};
     char *column_name = NULL;
+    const char *column_label = NULL;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
@@ -672,7 +701,8 @@ static int execute_show_databases_statement(
         rc = validate_show_databases_where_clause(database, where_clause);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, column_name);
+        column_label = column_name;
+        rc = append_show_result_columns(database, result, &column_label, &column_definition, 1U);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -844,6 +874,21 @@ static int execute_show_create_table_from_plan(
         "Table",
         "Create Table",
     };
+    static const struct show_result_column_definition
+        result_column_definitions[show_create_table_result_column_count] = {
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             64U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             1024U,
+             31U,
+             false,
+             true},
+        };
     char *create_sql = NULL;
     const char *values[show_create_table_result_column_count] = {NULL, NULL};
     int rc = MYLITE_OK;
@@ -860,13 +905,15 @@ static int execute_show_create_table_from_plan(
         return append_show_create_view_result(database, result, plan->table.name, &plan->view);
     }
 
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_create_table_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+    rc = append_show_result_columns(
+        database,
+        result,
+        result_columns,
+        result_column_definitions,
+        show_create_table_result_column_count
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
     }
     if (rc == MYLITE_OK) {
         rc = build_show_create_table_sql(database, plan, &create_sql);
@@ -936,6 +983,33 @@ static int append_show_create_view_text_result(
         "character_set_client",
         "collation_connection",
     };
+    static const struct show_result_column_definition
+        result_column_definitions[show_create_view_result_column_count] = {
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             64U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             1024U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             64U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             64U,
+             31U,
+             false,
+             true},
+        };
     const char *values[show_create_view_result_column_count] = {
         view_name,
         show_create_sql,
@@ -944,13 +1018,15 @@ static int append_show_create_view_text_result(
     };
     int rc = MYLITE_OK;
 
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_create_view_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+    rc = append_show_result_columns(
+        database,
+        result,
+        result_columns,
+        result_column_definitions,
+        show_create_view_result_column_count
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_text_row(result, values);

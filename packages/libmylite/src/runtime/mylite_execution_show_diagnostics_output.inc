@@ -9,6 +9,28 @@ static int execute_show_warnings_statement(
         "Code",
         "Message",
     };
+    static const struct show_result_column_definition
+        result_column_definitions[show_warnings_result_column_count] = {
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             7U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_LONG,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+             5U,
+             0U,
+             false,
+             false},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             512U,
+             31U,
+             false,
+             true},
+        };
     struct planned_diagnostics_show_limit limit;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
@@ -20,11 +42,15 @@ static int execute_show_warnings_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_warnings_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            result_column_definitions,
+            show_warnings_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
@@ -46,17 +72,30 @@ static int execute_show_count_warnings_statement(
     static const char *const result_columns[show_count_warnings_result_column_count] = {
         "@@session.warning_count",
     };
+    static const struct show_result_column_definition result_column_definition = {
+        MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+        MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            MYLITE_RESULT_COLUMN_FLAG_NUM,
+        21U,
+        0U,
+        false,
+        false,
+    };
     mylite_result *result = NULL;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_count_warnings_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            &result_column_definition,
+            show_count_warnings_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
@@ -81,6 +120,28 @@ static int execute_show_errors_statement(
         "Code",
         "Message",
     };
+    static const struct show_result_column_definition
+        result_column_definitions[show_errors_result_column_count] = {
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             7U,
+             31U,
+             false,
+             true},
+            {MYLITE_RESULT_LOGICAL_TYPE_LONG,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+             5U,
+             0U,
+             false,
+             false},
+            {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+             MYLITE_RESULT_COLUMN_FLAG_NOT_NULL,
+             512U,
+             31U,
+             false,
+             true},
+        };
     struct planned_diagnostics_show_limit limit;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
@@ -92,11 +153,15 @@ static int execute_show_errors_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_errors_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            result_column_definitions,
+            show_errors_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
@@ -118,17 +183,30 @@ static int execute_show_count_errors_statement(
     static const char *const result_columns[show_count_errors_result_column_count] = {
         "@@session.error_count",
     };
+    static const struct show_result_column_definition result_column_definition = {
+        MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+        MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            MYLITE_RESULT_COLUMN_FLAG_NUM,
+        21U,
+        0U,
+        false,
+        false,
+    };
     mylite_result *result = NULL;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < show_count_errors_result_column_count;
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            &result_column_definition,
+            show_count_errors_result_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }

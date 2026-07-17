@@ -2565,6 +2565,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_update_planning_helpers.inc"
 
+#include "mylite_execution_show_result_metadata.inc"
+
 #include "mylite_execution_show_tables_helpers.inc"
 
 #include "mylite_execution_show_table_status_rows_helpers.inc"

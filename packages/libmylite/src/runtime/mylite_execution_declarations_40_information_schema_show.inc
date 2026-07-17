@@ -1,3 +1,15 @@
+static int append_show_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *label
+);
+static int append_show_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *const *labels,
+    const struct show_result_column_definition *definitions,
+    size_t column_count
+);
 static void information_schema_query_deinit(struct information_schema_query *query);
 static int execute_information_schema_query(
     struct mylite_db *database,

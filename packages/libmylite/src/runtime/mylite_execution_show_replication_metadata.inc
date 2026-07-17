@@ -28,7 +28,7 @@ static int execute_show_binary_log_status_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_binary_log_status_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -72,7 +72,7 @@ static int execute_show_binary_logs_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_binary_logs_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -130,7 +130,7 @@ static int execute_show_binlog_events_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_binlog_events_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -360,7 +360,7 @@ static int execute_show_relaylog_events_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_relaylog_events_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -509,7 +509,7 @@ static int execute_show_replica_status_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_replica_status_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -541,7 +541,7 @@ static int execute_show_replicas_statement(struct mylite_db *database, mylite_re
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_replicas_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }

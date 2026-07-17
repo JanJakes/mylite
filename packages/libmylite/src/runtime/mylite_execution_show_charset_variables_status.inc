@@ -37,7 +37,7 @@ static int execute_show_character_set_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_character_set_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -308,7 +308,7 @@ static int execute_show_collation_statement(
     for (size_t column_index = 0U;
          rc == MYLITE_OK && column_index < show_collation_result_column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
+        rc = append_show_result_column(database, result, result_columns[column_index]);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -673,6 +673,15 @@ static int execute_show_variables_statement(
     mylite_result **out_result
 ) {
     static const char *const result_columns[2] = {"Variable_name", "Value"};
+    static const struct show_result_column_definition result_column_definitions[2] = {
+        {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+         MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+         64U,
+         0U,
+         false,
+         true},
+        {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 1024U, 0U, true, true},
+    };
     const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
     const struct mylite_sql_ast_node *scope = NULL;
     const struct mylite_sql_ast_node *like_pattern = NULL;
@@ -707,11 +716,15 @@ static int execute_show_variables_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < sizeof(result_columns) / sizeof(result_columns[0]);
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            result_column_definitions,
+            sizeof(result_columns) / sizeof(result_columns[0])
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
@@ -743,6 +756,15 @@ static int execute_show_status_statement(
     mylite_result **out_result
 ) {
     static const char *const result_columns[2] = {"Variable_name", "Value"};
+    static const struct show_result_column_definition result_column_definitions[2] = {
+        {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
+         MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+         64U,
+         0U,
+         false,
+         true},
+        {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 1024U, 0U, true, true},
+    };
     const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
     const struct mylite_sql_ast_node *scope = NULL;
     const struct mylite_sql_ast_node *like_pattern = NULL;
@@ -777,11 +799,15 @@ static int execute_show_status_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < sizeof(result_columns) / sizeof(result_columns[0]);
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
+    if (rc == MYLITE_OK) {
+        rc = append_show_result_columns(
+            database,
+            result,
+            result_columns,
+            result_column_definitions,
+            sizeof(result_columns) / sizeof(result_columns[0])
+        );
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }

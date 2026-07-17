@@ -51,13 +51,13 @@ static const struct mylite_execution_catalog_mysql_system_table
           sys_ps_check_lost_instrumentation_columns,
           sizeof(sys_ps_check_lost_instrumentation_columns) /
               sizeof(sys_ps_check_lost_instrumentation_columns[0])},
-         sys_ps_check_lost_instrumentation_column_keys,
-         sys_ps_check_lost_instrumentation_column_extras,
-         sys_ps_check_lost_instrumentation_column_privileges,
-         NULL,
+         MYLITE_EXECUTION_CATALOG_ARRAY(sys_ps_check_lost_instrumentation_column_keys),
+         MYLITE_EXECUTION_CATALOG_ARRAY(sys_ps_check_lost_instrumentation_column_extras),
+         MYLITE_EXECUTION_CATALOG_ARRAY(sys_ps_check_lost_instrumentation_column_privileges),
+         MYLITE_EXECUTION_CATALOG_NO_ARRAY,
          NULL,
          0U,
-         NULL,
+         MYLITE_EXECUTION_CATALOG_NO_ARRAY,
          NULL,
          0U},
 };

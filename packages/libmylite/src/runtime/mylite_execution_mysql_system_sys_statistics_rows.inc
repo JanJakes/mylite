@@ -49,7 +49,8 @@ static int append_sys_schema_index_statistics_mysql_system_table_rows(
 ) {
     int rc = MYLITE_OK;
 
-    if (definition == NULL || definition->column_keys == NULL) {
+    if (definition == NULL || definition->column_keys == NULL ||
+        definition->column_key_count < definition->query_definition.column_count) {
         return MYLITE_OK;
     }
     if (mysql_system_table_primary_key_column_count(definition) > 0U) {
@@ -117,7 +118,12 @@ static int append_sys_schema_index_statistics_base_index_rows(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(
+        context->database,
+        table->table_id,
+        &columns,
+        &column_count
+    );
 
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(

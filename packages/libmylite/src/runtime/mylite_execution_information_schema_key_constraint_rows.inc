@@ -10,7 +10,8 @@ static int append_information_schema_key_column_usage_base_rows(
     size_t column_count = 0U;
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc =
+        mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
@@ -133,11 +134,10 @@ static int append_information_schema_key_column_usage_foreign_key_rows(
             if (emitted[index]) {
                 continue;
             }
-            if (best_index == SIZE_MAX ||
-                compare_ascii_case_insensitive_text(
-                    foreign_keys[index].foreign_key.name,
-                    foreign_keys[best_index].foreign_key.name
-                ) < 0) {
+            if (best_index == SIZE_MAX || compare_ascii_case_insensitive_text(
+                                              foreign_keys[index].foreign_key.name,
+                                              foreign_keys[best_index].foreign_key.name
+                                          ) < 0) {
                 best_index = index;
             }
         }
@@ -237,7 +237,8 @@ static int append_information_schema_key_column_usage_mysql_system_table_rows(
     int rc = MYLITE_OK;
     size_t primary_key_column_count = mysql_system_table_primary_key_column_count(definition);
 
-    if (definition == NULL || definition->column_keys == NULL) {
+    if (definition == NULL || definition->column_keys == NULL ||
+        definition->column_key_count < definition->query_definition.column_count) {
         return MYLITE_OK;
     }
 
@@ -331,7 +332,8 @@ static int append_information_schema_referential_constraints_base_rows(
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t foreign_key_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc =
+        mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(

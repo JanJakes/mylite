@@ -141,7 +141,7 @@ complete.
 - [x] Define separate reader and writer format compatibility rules.
 - [x] Test actual N and N-1 binaries against the declared minimum-reader
   contract.
-- [ ] Replace unchecked system-metadata parallel arrays with typed records or
+- [x] Replace unchecked system-metadata parallel arrays with typed records or
   generated definitions with static validation.
 - [x] Pin borrowed key metadata or give it an explicit acquisition/release
   lifetime.

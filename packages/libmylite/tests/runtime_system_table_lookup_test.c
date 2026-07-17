@@ -13,6 +13,10 @@ int main(void) {
     int failures = 0;
 
     failures += expect_true(definition_count > 0U, "system table definitions exist");
+    failures += expect_true(
+        mylite_execution_catalog_validate_system_table_definitions(),
+        "system table definitions are internally consistent"
+    );
     for (size_t index = 0U; index < definition_count; ++index) {
         const struct mylite_execution_catalog_mysql_system_table *definition =
             mylite_execution_catalog_mysql_system_table_definition_at(index);
@@ -57,7 +61,8 @@ int main(void) {
         failures += expect_true(collation != NULL, "indexed scalar collation");
         failures += expect_true(character_set != NULL, "scalar collation character set");
         failures += expect_true(
-            collation != NULL && max_bytes == (unsigned long)collation->max_bytes_per_character,
+            (bool)(collation != NULL &&
+                   max_bytes == (unsigned long)collation->max_bytes_per_character),
             "scalar collation cached width"
         );
     }

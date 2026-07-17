@@ -3,7 +3,7 @@ static const char *mysql_system_table_column_comment(
     size_t column_index
 ) {
     if (definition == NULL || definition->column_comments == NULL ||
-        column_index >= definition->query_definition.column_count) {
+        column_index >= definition->column_comment_count) {
         return "";
     }
     return definition->column_comments[column_index];
@@ -14,7 +14,7 @@ static const char *mysql_system_table_column_generation_expression(
     size_t column_index
 ) {
     if (definition == NULL || definition->column_generation_expressions == NULL ||
-        column_index >= definition->query_definition.column_count) {
+        column_index >= definition->column_generation_expression_count) {
         return "";
     }
     return definition->column_generation_expressions[column_index];
@@ -25,7 +25,8 @@ static size_t mysql_system_table_primary_key_column_count(
 ) {
     size_t count = 0U;
 
-    if (definition == NULL || definition->column_keys == NULL) {
+    if (definition == NULL || definition->column_keys == NULL ||
+        definition->column_key_count < definition->query_definition.column_count) {
         return 0U;
     }
     if (definition->primary_key_column_count > 0U) {

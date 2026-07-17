@@ -25,7 +25,8 @@ static int append_information_schema_statistics_mysql_system_table_rows(
     int rc = MYLITE_OK;
     size_t primary_key_column_count = mysql_system_table_primary_key_column_count(definition);
 
-    if (definition == NULL || definition->column_keys == NULL) {
+    if (definition == NULL || definition->column_keys == NULL ||
+        definition->column_key_count < definition->query_definition.column_count) {
         return MYLITE_OK;
     }
 

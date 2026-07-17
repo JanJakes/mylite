@@ -5,6 +5,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define MYLITE_EXECUTION_CATALOG_ARRAY(values) (values), sizeof(values) / sizeof((values)[0])
+#define MYLITE_EXECUTION_CATALOG_NO_ARRAY NULL, 0U
+
 enum mylite_execution_catalog_information_schema_table_kind {
     MYLITE_EXECUTION_CATALOG_TABLE_SCHEMATA = 0,
     MYLITE_EXECUTION_CATALOG_TABLE_TABLES = 1,
@@ -424,12 +427,17 @@ struct mylite_execution_catalog_mysql_system_table {
     const char *schema_name;
     struct mylite_execution_catalog_table_definition query_definition;
     const char *const *column_keys;
+    size_t column_key_count;
     const char *const *column_extras;
+    size_t column_extra_count;
     const char *const *column_privileges;
+    size_t column_privilege_count;
     const char *const *column_comments;
+    size_t column_comment_count;
     const size_t *primary_key_column_indexes;
     size_t primary_key_column_count;
     const char *const *column_generation_expressions;
+    size_t column_generation_expression_count;
     const struct mylite_execution_catalog_mysql_system_secondary_index *secondary_indexes;
     size_t secondary_index_count;
 };
@@ -562,6 +570,7 @@ const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catal
     const char *schema_name,
     const char *table_name
 );
+bool mylite_execution_catalog_validate_system_table_definitions(void);
 
 size_t mylite_execution_catalog_builtin_schema_count(void);
 const struct mylite_execution_catalog_builtin_schema *mylite_execution_catalog_builtin_schema_at(

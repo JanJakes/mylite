@@ -148,7 +148,7 @@ complete.
 
 ### Metadata correctness and scale
 
-- [ ] Produce MySQL-compatible type, flags, charset, collation, length, and
+- [x] Produce MySQL-compatible type, flags, charset, collation, length, and
   nullability descriptors for synthetic metadata.
 - [x] Remove positive synthetic storage/process state that MyLite cannot
   truthfully observe, or expose explicit capability provenance.

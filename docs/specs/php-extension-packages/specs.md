@@ -60,8 +60,8 @@ CTest package tests cover:
 
 - core module loading, file and memory opens, exec/query, buffered fetches,
   insert counts, error propagation, and emulated statement execution;
-- mysqli object/procedural calls, statement interpolation, insert ids, field
-  metadata, and error reporting;
+- mysqli object/procedural calls, transactional autocommit transitions,
+  statement interpolation, insert ids, field metadata, and error reporting;
 - PDO driver registration, exec/query, emulated prepared statements,
   transactions, quoting, and silent error metadata.
 

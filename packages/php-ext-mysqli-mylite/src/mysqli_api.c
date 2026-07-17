@@ -568,9 +568,7 @@ PHP_FUNCTION(mysqli_autocommit) {
     Z_PARAM_BOOL(enable)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mysql;
-    (void)enable;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_link_autocommit(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)), enable));
 }
 
 PHP_FUNCTION(mysqli_begin_transaction) {
@@ -2005,8 +2003,9 @@ PHP_METHOD(mysqli, autocommit) {
     Z_PARAM_BOOL(enable)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)enable;
-    RETURN_TRUE;
+    RETURN_BOOL(
+        mylite_mysqli_link_autocommit(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())), enable)
+    );
 }
 
 PHP_METHOD(mysqli, begin_transaction) {

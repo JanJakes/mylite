@@ -82,7 +82,7 @@ complete.
 
 ### Transaction truthfulness
 
-- [ ] Route mysqli autocommit through the core transaction state machine.
+- [x] Route mysqli autocommit through the core transaction state machine.
 - [ ] Audit adapter methods that report success while discarding arguments.
 - [ ] Check and propagate savepoint rollback, release, full rollback, and
   commit cleanup failures.

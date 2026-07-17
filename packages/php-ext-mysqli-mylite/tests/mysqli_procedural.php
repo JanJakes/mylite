@@ -18,6 +18,13 @@ expect_true(mysqli_select_db($mysqli, 'app'), 'select database');
 expect_true(mysqli_query($mysqli, 'CREATE TABLE numbers (n INT NOT NULL, label INT NOT NULL)'), 'create table');
 expect_true(mysqli_query($mysqli, 'INSERT INTO numbers VALUES (2, 20), (1, 10)'), 'insert');
 
+expect_true(mysqli_autocommit($mysqli, false), 'procedural autocommit off');
+expect_true(mysqli_query($mysqli, 'INSERT INTO numbers VALUES (3, 30)'), 'procedural pending insert');
+expect_true(mysqli_rollback($mysqli), 'procedural autocommit rollback');
+$autocommit_result = mysqli_query($mysqli, 'SELECT n FROM numbers ORDER BY n');
+expect_same([['1'], ['2']], mysqli_fetch_all($autocommit_result, MYSQLI_NUM), 'procedural rollback rows');
+expect_true(mysqli_autocommit($mysqli, true), 'procedural autocommit on');
+
 $result = mysqli_query($mysqli, 'SELECT n, label FROM numbers ORDER BY n');
 expect_same(2, mysqli_num_rows($result), 'num rows');
 expect_same(['1', 'n' => '1', '10', 'label' => '10'], mysqli_fetch_array($result, MYSQLI_BOTH), 'both row');
@@ -87,8 +94,16 @@ expect_true(
     mysqli_query($localhost_link, 'CREATE TABLE wordpress_values (id INT NOT NULL)'),
     'localhost path create table'
 );
-expect_true(mysqli_query($localhost_link, 'SET autocommit = 0;'), 'wordpress autocommit off shim');
+expect_true(mysqli_query($localhost_link, 'SET autocommit = 0;'), 'wordpress autocommit off');
 expect_same(0, mysqli_affected_rows($localhost_link), 'wordpress autocommit affected rows');
+expect_true(
+    mysqli_query($localhost_link, 'INSERT INTO wordpress_values VALUES (1)'),
+    'wordpress autocommit pending insert'
+);
+expect_true(mysqli_query($localhost_link, 'ROLLBACK;'), 'wordpress autocommit rollback');
+$wordpress_count = mysqli_query($localhost_link, 'SELECT COUNT(*) FROM wordpress_values');
+expect_same([['0']], mysqli_fetch_all($wordpress_count, MYSQLI_NUM), 'wordpress autocommit rollback count');
 expect_true(mysqli_query($localhost_link, 'START TRANSACTION;'), 'wordpress explicit transaction start');
 expect_true(mysqli_query($localhost_link, 'ROLLBACK;'), 'wordpress explicit transaction rollback');
+expect_true(mysqli_query($localhost_link, 'SET autocommit = 1;'), 'wordpress autocommit on');
 expect_true(mysqli_close($localhost_link), 'localhost path close');

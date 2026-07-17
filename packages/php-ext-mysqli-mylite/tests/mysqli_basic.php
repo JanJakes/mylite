@@ -61,6 +61,19 @@ expect_same(0, $mysqli->affected_rows, 'fast path no-op rollback affected rows')
 expect_true($mysqli->query('BEGIN WORK'), 'parser begin work still supported');
 expect_true($mysqli->query('ROLLBACK WORK'), 'parser rollback work still supported');
 
+expect_true($mysqli->autocommit(false), 'object autocommit off');
+expect_true(
+    $mysqli->query('INSERT INTO transaction_fast_path VALUES (3, 30)'),
+    'object autocommit pending insert'
+);
+expect_true($mysqli->rollback(), 'object autocommit rollback');
+$autocommitRows = $mysqli->query('SELECT id FROM transaction_fast_path ORDER BY id');
+if (!$autocommitRows instanceof mysqli_result) {
+    throw new RuntimeException('object autocommit rollback result type');
+}
+expect_same([['2']], $autocommitRows->fetch_all(MYSQLI_NUM), 'object autocommit rollback rows');
+expect_true($mysqli->autocommit(true), 'object autocommit on');
+
 $result = $mysqli->query('SELECT id, views FROM posts ORDER BY id');
 if (!$result instanceof mysqli_result) {
     throw new RuntimeException('query result type');

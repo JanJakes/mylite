@@ -1662,10 +1662,8 @@ static int information_schema_matching_row_indexes(
     const struct information_schema_row_set *rows,
     struct information_schema_row_index_set *out_indexes
 ) {
-    const struct mylite_sql_ast_node *where_clause = information_schema_statement_where_clause(
-        statement
-    );
-    bool includes_connection_control_failed_login_attempts = false;
+    const struct mylite_sql_ast_node *where_clause =
+        information_schema_statement_where_clause(statement);
     int rc = MYLITE_OK;
 
     if (out_indexes == NULL) {
@@ -1673,33 +1671,18 @@ static int information_schema_matching_row_indexes(
     }
     information_schema_row_index_set_init(out_indexes);
 
-    rc = information_schema_includes_connection_control_failed_login_attempts(
-        database,
-        statement,
-        query,
-        &includes_connection_control_failed_login_attempts
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     if (rows->row_count == 0U) {
         return MYLITE_OK;
     }
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < rows->row_count; ++row_index) {
         bool matches = true;
 
-        if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
-            information_schema_row_is_connection_control_failed_login_attempts(rows->rows[row_index]
-            ) &&
-            !includes_connection_control_failed_login_attempts) {
-            continue;
-        }
-        if (where_clause != NULL) {
+        if (where_clause != NULL && !rows->predicate_applied) {
             rc = information_schema_predicate_matches(
                 database,
                 query,
                 child_at(where_clause, 0U),
-                rows->rows[row_index],
+                (const char *const *)rows->rows[row_index],
                 &matches
             );
         }
@@ -1910,8 +1893,11 @@ static int information_schema_predicate_stack_push_binary_children(
     return MYLITE_OK;
 }
 
-static bool information_schema_row_is_connection_control_failed_login_attempts(char **row) {
-    return row != NULL &&
+static bool information_schema_row_is_connection_control_failed_login_attempts(
+    const char *const *row
+) {
+    return row != NULL && row[information_schema_tables_table_schema_column] != NULL &&
+           row[information_schema_tables_table_name_column] != NULL &&
            strcmp(row[information_schema_tables_table_schema_column], "information_schema") == 0 &&
            strcmp(
                row[information_schema_tables_table_name_column],

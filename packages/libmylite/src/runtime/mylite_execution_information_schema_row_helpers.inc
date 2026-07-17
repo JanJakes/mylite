@@ -5,8 +5,25 @@ static int append_information_schema_row(
 ) {
     char **row = NULL;
     size_t required_count = 0U;
+    bool matches = true;
     int rc = MYLITE_OK;
 
+    if (rows->exclude_connection_control_failed_login_attempts &&
+        information_schema_row_is_connection_control_failed_login_attempts(values)) {
+        return MYLITE_OK;
+    }
+    if (rows->predicate != NULL) {
+        rc = information_schema_predicate_matches(
+            database,
+            rows->query,
+            rows->predicate,
+            values,
+            &matches
+        );
+        if (rc != MYLITE_OK || !matches) {
+            return rc;
+        }
+    }
     if (rows->row_count == SIZE_MAX) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -16,14 +33,28 @@ static int append_information_schema_row(
         return MYLITE_OK;
     }
     if (rows->has_row_limit && rows->row_limit == 0U) {
-        return MYLITE_OK;
+        return MYLITE_DONE;
     }
     if (rows->has_row_limit && rows->skipped_row_count < rows->row_offset) {
         ++rows->skipped_row_count;
         return MYLITE_OK;
     }
     if (rows->has_row_limit && rows->row_count >= rows->row_limit) {
-        return MYLITE_OK;
+        return MYLITE_DONE;
+    }
+    if (rows->stream_result != NULL) {
+        rc = information_schema_append_projected_result_row(
+            database,
+            rows->query,
+            values,
+            rows->stream_buffers,
+            rows->stream_result
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        ++rows->row_count;
+        return rows->has_row_limit && rows->row_count >= rows->row_limit ? MYLITE_DONE : MYLITE_OK;
     }
     required_count = rows->row_count + 1U;
     rc = reserve_information_schema_rows(database, rows, required_count);
@@ -54,7 +85,7 @@ static int append_information_schema_row(
 
     rows->rows[rows->row_count] = row;
     rows->row_count = required_count;
-    return MYLITE_OK;
+    return rows->has_row_limit && rows->row_count >= rows->row_limit ? MYLITE_DONE : MYLITE_OK;
 }
 
 static int reserve_information_schema_rows(

@@ -661,6 +661,7 @@ static int test_information_schema_core_queries(void) {
     static const char *const single_column[] = {"COLUMN_NAME"};
     static const char *const id_value[] = {"id"};
     static const char *const alias_limit_values[] = {"id", "v", "n"};
+    static const char *const filtered_limit_offset_values[] = {"v", "n"};
     static const char *const desc_limit_values[] = {"hidden", "u"};
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_one[] = {"1"};
@@ -1003,6 +1004,18 @@ static int test_information_schema_core_queries(void) {
             .values = alias_limit_values,
             .row_count = 3U,
             .context = "alias qualified ordered limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 't' LIMIT 2 OFFSET 1",
+            .column_names = single_column,
+            .column_count = 1U,
+            .values = filtered_limit_offset_values,
+            .row_count = 2U,
+            .context = "catalog metadata filtered limit offset",
         }
     );
     failures += expect_query(

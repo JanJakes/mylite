@@ -245,8 +245,16 @@ static int execute_information_schema_query(
 ) {
     struct information_schema_row_set rows = {0};
     struct information_schema_catalog_filter filter = {0};
+    struct information_schema_result_projection_buffers stream_buffers = {0};
     mylite_result *result = NULL;
     size_t read_row_count = 0U;
+    bool stream_during_enumeration =
+        !query->is_count_star && !query->has_group && !query->has_order &&
+        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
+        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS;
+    bool skip_row_enumeration =
+        (query->limit.has_limit && query->limit.row_count == 0) ||
+        (query->is_count_star && query->limit.has_offset && query->limit.offset != 0);
     int rc = information_schema_catalog_filter_init_from_statement(
         database,
         statement,
@@ -272,17 +280,6 @@ static int execute_information_schema_query(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = build_information_schema_rows_with_filter(
-            database,
-            context,
-            statement,
-            query,
-            query->definition,
-            &filter,
-            &rows
-        );
-    }
-    if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
@@ -290,6 +287,22 @@ static int execute_information_schema_query(
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_append_result_columns(database, result, query);
+    }
+    if (rc == MYLITE_OK && stream_during_enumeration && !skip_row_enumeration) {
+        rc = information_schema_result_projection_buffers_init(database, query, &stream_buffers);
+    }
+    if (rc == MYLITE_OK && !skip_row_enumeration) {
+        rc = build_information_schema_rows_with_filter(
+            database,
+            context,
+            statement,
+            query,
+            query->definition,
+            &filter,
+            stream_during_enumeration ? result : NULL,
+            stream_during_enumeration ? &stream_buffers : NULL,
+            &rows
+        );
     }
     if (rc == MYLITE_OK && query->is_count_star) {
         rc = information_schema_append_count_result(
@@ -309,6 +322,8 @@ static int execute_information_schema_query(
             result,
             &read_row_count
         );
+    } else if (rc == MYLITE_OK && stream_during_enumeration) {
+        read_row_count = rows.row_count;
     } else if (rc == MYLITE_OK) {
         rc = information_schema_append_result_rows(
             database,
@@ -327,6 +342,7 @@ static int execute_information_schema_query(
         !(query->limit.has_limit && query->limit.row_count == 0)) {
         rc = append_information_schema_profiling_warning(database);
     }
+    information_schema_result_projection_buffers_deinit(&stream_buffers);
     information_schema_row_set_deinit(&rows);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -691,6 +707,8 @@ static int build_information_schema_rows(
         NULL,
         definition,
         NULL,
+        NULL,
+        NULL,
         out_rows
     );
 }
@@ -702,18 +720,36 @@ static int build_information_schema_rows_with_filter(
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_table_definition *definition,
     const struct information_schema_catalog_filter *filter,
+    mylite_result *stream_result,
+    struct information_schema_result_projection_buffers *stream_buffers,
     struct information_schema_row_set *out_rows
 ) {
-    int rc = MYLITE_OK;
+    int rc = information_schema_row_set_init(
+        database,
+        out_rows,
+        statement,
+        query,
+        definition,
+        stream_result,
+        stream_buffers
+    );
 
-    information_schema_row_set_init(out_rows, statement, query, definition);
-    if (definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_PROCESSLIST) {
+    if (rc == MYLITE_OK && out_rows->has_row_limit && out_rows->row_limit == 0U) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK && definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_PROCESSLIST) {
         rc = append_information_schema_processlist_system_row(database, context, out_rows);
-    } else {
+    } else if (rc == MYLITE_OK) {
         rc = append_information_schema_system_rows(database, out_rows, filter);
+    }
+    if (rc == MYLITE_DONE) {
+        return MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
         rc = append_information_schema_catalog_rows(database, out_rows, filter);
+    }
+    if (rc == MYLITE_DONE) {
+        return MYLITE_OK;
     }
     if (rc != MYLITE_OK) {
         information_schema_row_set_deinit(out_rows);
@@ -721,26 +757,48 @@ static int build_information_schema_rows_with_filter(
     return rc;
 }
 
-static void information_schema_row_set_init(
+static int information_schema_row_set_init(
+    struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
-    const struct mylite_execution_catalog_table_definition *definition
+    const struct mylite_execution_catalog_table_definition *definition,
+    mylite_result *stream_result,
+    struct information_schema_result_projection_buffers *stream_buffers
 ) {
     const struct mylite_sql_ast_node *where_clause =
         statement == NULL ? NULL : information_schema_statement_where_clause(statement);
+    bool includes_connection_control_failed_login_attempts = false;
+    int rc = MYLITE_OK;
 
     *rows = (struct information_schema_row_set){
         .definition = definition,
+        .query = query,
+        .predicate = where_clause == NULL ? NULL : child_at(where_clause, 0U),
         .required_columns = query == NULL ? NULL : query->required_columns,
+        .stream_result = stream_result,
+        .stream_buffers = stream_buffers,
     };
     if (query == NULL || definition == NULL) {
-        return;
+        return MYLITE_OK;
     }
-    rows->count_only = query->is_count_star && where_clause == NULL &&
-                       definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES;
-    if (!query->is_count_star && where_clause == NULL && !query->has_order && !query->has_group &&
-        query->limit.has_limit && definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
+    if (definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
+        rc = information_schema_includes_connection_control_failed_login_attempts(
+            database,
+            statement,
+            query,
+            &includes_connection_control_failed_login_attempts
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rows->exclude_connection_control_failed_login_attempts =
+            !includes_connection_control_failed_login_attempts;
+    }
+    rows->predicate_applied = rows->predicate != NULL;
+    rows->count_only = query->is_count_star;
+    if (!query->is_count_star && !query->has_order && !query->has_group && query->limit.has_limit &&
+        definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
         definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS) {
         uint64_t row_limit = (uint64_t)query->limit.row_count;
         uint64_t offset = query->limit.has_offset ? (uint64_t)query->limit.offset : 0U;
@@ -750,6 +808,7 @@ static void information_schema_row_set_init(
         rows->row_offset = offset > SIZE_MAX ? SIZE_MAX : (size_t)offset;
         rows->offset_applied = query->limit.has_offset;
     }
+    return MYLITE_OK;
 }
 
 static int information_schema_catalog_filter_init_from_statement(

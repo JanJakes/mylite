@@ -86,13 +86,18 @@ static int build_information_schema_rows_with_filter(
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_table_definition *definition,
     const struct information_schema_catalog_filter *filter,
+    mylite_result *stream_result,
+    struct information_schema_result_projection_buffers *stream_buffers,
     struct information_schema_row_set *out_rows
 );
-static void information_schema_row_set_init(
+static int information_schema_row_set_init(
+    struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
-    const struct mylite_execution_catalog_table_definition *definition
+    const struct mylite_execution_catalog_table_definition *definition,
+    mylite_result *stream_result,
+    struct information_schema_result_projection_buffers *stream_buffers
 );
 static void information_schema_row_set_deinit(struct information_schema_row_set *rows);
 static int append_information_schema_system_rows(
@@ -1547,7 +1552,9 @@ static int information_schema_predicate_stack_push_binary_children(
     struct scalar_arithmetic_node_stack *stack,
     const struct mylite_sql_ast_node *predicate
 );
-static bool information_schema_row_is_connection_control_failed_login_attempts(char **row);
+static bool information_schema_row_is_connection_control_failed_login_attempts(
+    const char *const *row
+);
 static int information_schema_sort_row_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1617,7 +1624,7 @@ static int information_schema_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     bool *out_matches
 );
 static void information_schema_predicate_frame_stack_deinit(
@@ -1651,20 +1658,20 @@ static int information_schema_evaluate_predicate(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     struct information_schema_truth_stack *truth_stack
 );
 static int information_schema_is_null_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 );
 static int information_schema_predicate_row_value(
     struct mylite_db *database,
     const struct information_schema_query *query,
-    char **row,
+    const char *const *row,
     size_t column_index,
     char *buffer,
     size_t buffer_size,
@@ -1682,7 +1689,7 @@ static int information_schema_comparison_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 );
 static int information_schema_comparison_predicate_value(
@@ -1747,14 +1754,14 @@ static int information_schema_between_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 );
 static int information_schema_in_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 );
 static int information_schema_compare_nonnull_value_matches(

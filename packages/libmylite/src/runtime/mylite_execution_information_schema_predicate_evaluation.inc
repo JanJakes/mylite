@@ -3,7 +3,7 @@ static int information_schema_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     bool *out_matches
 ) {
     struct information_schema_predicate_frame_stack frame_stack = {0};
@@ -234,7 +234,7 @@ static int information_schema_evaluate_predicate(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     struct information_schema_truth_stack *truth_stack
 ) {
     enum information_schema_truth_value truth = INFORMATION_SCHEMA_TRUTH_FALSE;
@@ -294,7 +294,7 @@ static int information_schema_is_null_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 ) {
     size_t column_index = 0U;
@@ -338,7 +338,7 @@ static int information_schema_is_null_predicate_matches(
 static int information_schema_predicate_row_value(
     struct mylite_db *database,
     const struct information_schema_query *query,
-    char **row,
+    const char *const *row,
     size_t column_index,
     char *buffer,
     size_t buffer_size,

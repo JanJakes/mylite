@@ -2743,7 +2743,11 @@ struct information_schema_innodb_character_type_request {
 
 struct information_schema_row_set {
     const struct mylite_execution_catalog_table_definition *definition;
+    const struct information_schema_query *query;
+    const struct mylite_sql_ast_node *predicate;
     const bool *required_columns;
+    mylite_result *stream_result;
+    struct information_schema_result_projection_buffers *stream_buffers;
     char ***rows;
     size_t row_count;
     size_t row_capacity;
@@ -2753,6 +2757,8 @@ struct information_schema_row_set {
     bool has_row_limit;
     bool offset_applied;
     bool count_only;
+    bool predicate_applied;
+    bool exclude_connection_control_failed_login_attempts;
 };
 
 struct information_schema_row_index_set {

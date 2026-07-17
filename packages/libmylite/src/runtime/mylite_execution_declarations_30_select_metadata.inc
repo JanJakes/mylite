@@ -470,6 +470,8 @@ static int build_mysql_system_table_rows(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_mysql_system_table *definition,
+    mylite_result *stream_result,
+    struct information_schema_result_projection_buffers *stream_buffers,
     struct information_schema_row_set *out_rows
 );
 static int append_mysql_system_table_system_rows(

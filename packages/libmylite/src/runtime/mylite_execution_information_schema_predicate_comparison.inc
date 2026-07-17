@@ -3,7 +3,7 @@ static int information_schema_comparison_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 ) {
     size_t column_index = 0U;
@@ -303,7 +303,7 @@ static int information_schema_between_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 ) {
     struct information_schema_predicate_value lower = {0};
@@ -431,7 +431,7 @@ static int information_schema_in_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
-    char **row,
+    const char *const *row,
     enum information_schema_truth_value *out_truth
 ) {
     const struct mylite_sql_ast_node *values = child_at(predicate_node, 1U);

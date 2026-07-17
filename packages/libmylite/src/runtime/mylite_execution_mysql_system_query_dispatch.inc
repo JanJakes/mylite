@@ -8,18 +8,38 @@ static int execute_mysql_system_table_query(
     mylite_result **out_result
 ) {
     struct information_schema_row_set rows = {0};
+    struct information_schema_result_projection_buffers stream_buffers = {0};
     mylite_result *result = NULL;
     size_t read_row_count = 0U;
-    int rc = build_mysql_system_table_rows(database, context, statement, query, definition, &rows);
+    bool stream_during_enumeration =
+        !query->is_count_star && !query->has_group && !query->has_order &&
+        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
+        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS;
+    bool skip_row_enumeration =
+        (query->limit.has_limit && query->limit.row_count == 0) ||
+        (query->is_count_star && query->limit.has_offset && query->limit.offset != 0);
+    int rc = mylite_result_create(&result);
 
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_create(&result);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_append_result_columns(database, result, query);
+    }
+    if (rc == MYLITE_OK && stream_during_enumeration && !skip_row_enumeration) {
+        rc = information_schema_result_projection_buffers_init(database, query, &stream_buffers);
+    }
+    if (rc == MYLITE_OK && !skip_row_enumeration) {
+        rc = build_mysql_system_table_rows(
+            database,
+            context,
+            statement,
+            query,
+            definition,
+            stream_during_enumeration ? result : NULL,
+            stream_during_enumeration ? &stream_buffers : NULL,
+            &rows
+        );
     }
     if (rc == MYLITE_OK && query->is_count_star) {
         rc = information_schema_append_count_result(
@@ -30,6 +50,8 @@ static int execute_mysql_system_table_query(
             result,
             &read_row_count
         );
+    } else if (rc == MYLITE_OK && stream_during_enumeration) {
+        read_row_count = rows.row_count;
     } else if (rc == MYLITE_OK) {
         rc = information_schema_append_result_rows(
             database,
@@ -40,6 +62,7 @@ static int execute_mysql_system_table_query(
             &read_row_count
         );
     }
+    information_schema_result_projection_buffers_deinit(&stream_buffers);
     information_schema_row_set_deinit(&rows);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -59,16 +82,37 @@ static int build_mysql_system_table_rows(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_mysql_system_table *definition,
+    mylite_result *stream_result,
+    struct information_schema_result_projection_buffers *stream_buffers,
     struct information_schema_row_set *out_rows
 ) {
     bool has_no_rows = mysql_system_table_definition_has_no_rows(definition);
     bool has_catalog_rows = mysql_system_table_definition_has_catalog_rows(definition);
     int rc = MYLITE_OK;
 
-    information_schema_row_set_init(out_rows, statement, query, &definition->query_definition);
-    rc = append_mysql_system_table_system_rows(database, context, definition, out_rows);
+    rc = information_schema_row_set_init(
+        database,
+        out_rows,
+        statement,
+        query,
+        &definition->query_definition,
+        stream_result,
+        stream_buffers
+    );
+    if (rc == MYLITE_OK && out_rows->has_row_limit && out_rows->row_limit == 0U) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_system_table_system_rows(database, context, definition, out_rows);
+    }
+    if (rc == MYLITE_DONE) {
+        return MYLITE_OK;
+    }
     if (rc == MYLITE_OK && !has_no_rows && has_catalog_rows) {
         rc = append_mysql_system_table_catalog_rows(database, definition, out_rows);
+    }
+    if (rc == MYLITE_DONE) {
+        return MYLITE_OK;
     }
     if (rc != MYLITE_OK) {
         information_schema_row_set_deinit(out_rows);

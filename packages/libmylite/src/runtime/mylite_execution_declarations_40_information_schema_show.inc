@@ -884,7 +884,8 @@ static int append_mysql_escaped_expression_text(
     const char *text
 );
 static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column);
-static bool column_default_is_generated_extra(const struct mylite_catalog_column_descriptor *column
+static bool column_default_is_generated_extra(
+    const struct mylite_catalog_column_descriptor *column
 );
 static int append_information_schema_columns_numeric_metadata(
     struct mylite_db *database,
@@ -2018,7 +2019,8 @@ static int execute_show_grants_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static bool show_grants_statement_targets_embedded_root(const struct mylite_sql_ast_node *statement
+static bool show_grants_statement_targets_embedded_root(
+    const struct mylite_sql_ast_node *statement
 );
 static const struct mylite_sql_ast_node *show_grants_statement_target(
     const struct mylite_sql_ast_node *statement
@@ -2180,9 +2182,7 @@ static int load_show_columns_key_metadata(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    struct primary_key_info *primary_key,
-    struct loaded_index_info **out_indexes,
-    size_t *out_index_count
+    struct loaded_table_key_metadata_reference *out_reference
 );
 static int append_show_columns_result_columns(
     struct mylite_db *database,

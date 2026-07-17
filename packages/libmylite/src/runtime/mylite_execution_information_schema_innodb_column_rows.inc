@@ -4,6 +4,7 @@ static int append_information_schema_innodb_columns_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -12,7 +13,13 @@ static int append_information_schema_innodb_columns_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     for (size_t index = 0U; rc == MYLITE_OK && index < column_count; ++index) {
         rc = append_information_schema_innodb_columns_column_row(
             database,
@@ -22,7 +29,7 @@ static int append_information_schema_innodb_columns_base_rows(
         );
     }
 
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 

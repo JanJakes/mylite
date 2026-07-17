@@ -5,6 +5,7 @@ static int append_information_schema_innodb_foreign_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t foreign_key_count = 0U;
@@ -15,7 +16,13 @@ static int append_information_schema_innodb_foreign_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(
             database,
@@ -37,7 +44,7 @@ static int append_information_schema_innodb_foreign_base_rows(
     }
 
     mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -136,6 +143,7 @@ static int append_information_schema_innodb_foreign_cols_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t foreign_key_count = 0U;
@@ -146,7 +154,13 @@ static int append_information_schema_innodb_foreign_cols_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(
             database,
@@ -167,7 +181,7 @@ static int append_information_schema_innodb_foreign_cols_base_rows(
     }
 
     mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 

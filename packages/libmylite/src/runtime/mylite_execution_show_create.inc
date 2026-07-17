@@ -36,11 +36,7 @@ static int execute_show_create_view_statement(
     mylite_result *result = NULL;
     bool missing_schema = false;
     const struct mylite_execution_catalog_builtin_sys_view *builtin_sys_view = NULL;
-    int rc = show_create_statement_targets_builtin_sys_view(
-        database,
-        statement,
-        &builtin_sys_view
-    );
+    int rc = show_create_statement_targets_builtin_sys_view(database, statement, &builtin_sys_view);
 
     if (rc == MYLITE_OK && builtin_sys_view != NULL) {
         return execute_show_create_builtin_sys_view_statement(
@@ -559,9 +555,8 @@ static int validate_show_engine_name(
     char engine_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
-    if (statement == NULL ||
-        (statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT &&
-         statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT)) {
+    if (statement == NULL || (statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT &&
+                              statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -719,11 +714,8 @@ static int plan_show_create_table(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_show_create_table){0};
-    rc = show_create_statement_targets_builtin_sys_view(
-        database,
-        statement,
-        &builtin_sys_view
-    );
+    out_plan->key_metadata = mylite_execution_loaded_table_key_metadata_reference_init();
+    rc = show_create_statement_targets_builtin_sys_view(database, statement, &builtin_sys_view);
     if (rc == MYLITE_OK && builtin_sys_view != NULL) {
         populate_builtin_sys_view_target(&out_plan->target, builtin_sys_view);
         out_plan->target_was_schema_qualified = show_create_target_was_schema_qualified(statement);
@@ -782,22 +774,26 @@ static int plan_show_create_table(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
-            &out_plan->column_count
+            &out_plan->column_count,
+            &out_plan->columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             out_plan->table.table_id,
             out_plan->columns,
             out_plan->column_count,
-            &out_plan->indexes,
-            &out_plan->index_count
+            &out_plan->key_metadata
         );
+        if (rc == MYLITE_OK) {
+            out_plan->indexes = out_plan->key_metadata.metadata->indexes;
+            out_plan->index_count = out_plan->key_metadata.metadata->index_count;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(
@@ -829,10 +825,13 @@ static void planned_show_create_table_deinit(struct planned_show_create_table *p
         return;
     }
 
-    free(plan->columns);
-    mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&plan->key_metadata);
+    mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
     mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
-    mylite_execution_loaded_check_constraint_infos_deinit(&plan->check_constraints, &plan->check_constraint_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(
+        &plan->check_constraints,
+        &plan->check_constraint_count
+    );
     *plan = (struct planned_show_create_table){0};
 }
 
@@ -1548,11 +1547,10 @@ static int append_show_create_table_foreign_keys(
             if (emitted[index]) {
                 continue;
             }
-            if (best_index == SIZE_MAX ||
-                compare_ascii_case_insensitive_text(
-                    plan->foreign_keys[index].foreign_key.name,
-                    plan->foreign_keys[best_index].foreign_key.name
-                ) < 0) {
+            if (best_index == SIZE_MAX || compare_ascii_case_insensitive_text(
+                                              plan->foreign_keys[index].foreign_key.name,
+                                              plan->foreign_keys[best_index].foreign_key.name
+                                          ) < 0) {
                 best_index = index;
             }
         }
@@ -1912,8 +1910,8 @@ static const char *show_create_table_index_display_name(
     const struct loaded_foreign_key_info *first_foreign_key = NULL;
     size_t matching_foreign_key_count = 0U;
 
-    if (plan == NULL || index == NULL ||
-        index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY || index->index.is_unique) {
+    if (plan == NULL || index == NULL || index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
+        index->index.is_unique) {
         return display_name;
     }
     for (size_t foreign_key_index = 0U; foreign_key_index < plan->foreign_key_count;
@@ -1959,10 +1957,7 @@ static bool show_create_foreign_key_name_is_generated(
     if (written < 0 || (size_t)written >= sizeof(generated_prefix)) {
         return false;
     }
-    if (!text_has_ascii_case_insensitive_prefix(
-            foreign_key->foreign_key.name,
-            generated_prefix
-        )) {
+    if (!text_has_ascii_case_insensitive_prefix(foreign_key->foreign_key.name, generated_prefix)) {
         return false;
     }
 

@@ -158,20 +158,32 @@ static int append_sys_schema_object_overview_base_table_index_groups(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
+    const struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        context->database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             context->database,
             table->table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
+        if (rc == MYLITE_OK) {
+            indexes = key_metadata.metadata->indexes;
+            index_count = key_metadata.metadata->index_count;
+        }
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
         char object_type[sizeof("INDEX (FULLTEXT)")];
@@ -195,8 +207,8 @@ static int append_sys_schema_object_overview_base_table_index_groups(
         }
     }
 
-    free(columns);
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     if (rc != MYLITE_OK &&
         mylite_diagnostics_errcode(mylite_connection_diagnostics(context->database)) == MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {

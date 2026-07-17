@@ -5,25 +5,36 @@ static int append_information_schema_table_constraints_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
+    const struct loaded_index_info *indexes = NULL;
     struct loaded_foreign_key_info *foreign_keys = NULL;
     struct loaded_check_constraint_info *check_constraints = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
     size_t check_constraint_count = 0U;
-    int rc =
-        mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             table->table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
+        if (rc == MYLITE_OK) {
+            indexes = key_metadata.metadata->indexes;
+            index_count = key_metadata.metadata->index_count;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(
@@ -78,8 +89,8 @@ static int append_information_schema_table_constraints_base_rows(
         &check_constraint_count
     );
     mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -339,23 +350,34 @@ static int append_information_schema_table_constraints_extensions_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
+    const struct loaded_index_info *indexes = NULL;
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
-    int rc =
-        mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             table->table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
+        if (rc == MYLITE_OK) {
+            indexes = key_metadata.metadata->indexes;
+            index_count = key_metadata.metadata->index_count;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(
@@ -391,8 +413,8 @@ static int append_information_schema_table_constraints_extensions_base_rows(
     }
 
     mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 

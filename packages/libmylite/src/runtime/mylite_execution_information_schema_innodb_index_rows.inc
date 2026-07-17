@@ -4,7 +4,10 @@ static int append_information_schema_innodb_indexes_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
+    const struct loaded_index_info *indexes = NULL;
     const struct loaded_index_info *clustered_index = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
@@ -15,16 +18,25 @@ static int append_information_schema_innodb_indexes_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             table->table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
+        if (rc == MYLITE_OK) {
+            indexes = key_metadata.metadata->indexes;
+            index_count = key_metadata.metadata->index_count;
+        }
     }
     if (rc == MYLITE_OK) {
         clustered_index = information_schema_innodb_clustered_index(indexes, index_count);
@@ -48,8 +60,8 @@ static int append_information_schema_innodb_indexes_base_rows(
         );
     }
 
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -250,7 +262,10 @@ static int append_information_schema_innodb_fields_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
+    const struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
     int rc = MYLITE_OK;
@@ -260,23 +275,32 @@ static int append_information_schema_innodb_fields_base_rows(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             table->table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
+        if (rc == MYLITE_OK) {
+            indexes = key_metadata.metadata->indexes;
+            index_count = key_metadata.metadata->index_count;
+        }
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
         rc = append_information_schema_innodb_fields_index_rows(database, rows, &indexes[index]);
     }
 
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 

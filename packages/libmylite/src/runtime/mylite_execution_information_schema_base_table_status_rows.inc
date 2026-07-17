@@ -475,7 +475,8 @@ static int table_status_auto_increment_display_value(
             *out_value = buffer;
         }
     } else {
-        rc = table_status_auto_increment_next_value(database, table, buffer, buffer_size, out_value);
+        rc =
+            table_status_auto_increment_next_value(database, table, buffer, buffer_size, out_value);
     }
     return rc;
 }
@@ -516,6 +517,7 @@ static int table_status_has_auto_increment(
     bool *out_has_auto_increment
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -524,14 +526,20 @@ static int table_status_has_auto_increment(
     }
     *out_has_auto_increment = false;
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         if (column_descriptor_is_auto_increment(&columns[column_index])) {
             *out_has_auto_increment = true;
             break;
         }
     }
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     if (rc != MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);

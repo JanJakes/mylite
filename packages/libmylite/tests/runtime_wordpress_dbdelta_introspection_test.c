@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdbool.h>
@@ -36,8 +38,15 @@ struct expected_query {
     const char *context;
 };
 
+struct catalog_metadata_trace {
+    size_t column_query_count;
+    size_t index_query_count;
+    size_t index_column_query_count;
+};
+
 static int test_dbdelta_introspection_persistence_and_preamble(void);
 static int test_dbdelta_introspection_independent_handles(void);
+static int test_dbdelta_introspection_reuses_cached_metadata(void);
 static int create_fixture_schema(mylite_db *database);
 static int create_wordpress_dbdelta_fixture_tables(mylite_db *database);
 static int create_wordpress_postmeta_fixture_table(mylite_db *database, int prefix_length);
@@ -72,12 +81,19 @@ static int expect_bytes(
     size_t size,
     const char *context
 );
+static int count_catalog_metadata_query(
+    unsigned int trace_kind,
+    void *context,
+    void *statement_handle,
+    void *expanded_sql
+);
 
 int main(void) {
     int failures = 0;
 
     failures += test_dbdelta_introspection_persistence_and_preamble();
     failures += test_dbdelta_introspection_independent_handles();
+    failures += test_dbdelta_introspection_reuses_cached_metadata();
 
     return failures == 0 ? 0 : 1;
 }
@@ -194,6 +210,71 @@ static int test_dbdelta_introspection_independent_handles(void) {
     remove_related_files(first_path);
     remove_related_files(second_path);
     return failures;
+}
+
+static int test_dbdelta_introspection_reuses_cached_metadata(void) {
+    char path[test_path_capacity];
+    struct catalog_metadata_trace trace = {0};
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "cached_metadata") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cached metadata fixture");
+    failures += create_fixture_schema(database);
+    failures += create_wordpress_dbdelta_fixture_tables(database);
+    failures += verify_dbdelta_introspection_metadata(database, "warm cached metadata");
+
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, SQLITE_TRACE_STMT, count_catalog_metadata_query, &trace),
+        SQLITE_OK,
+        "install cached metadata trace"
+    );
+    failures += verify_dbdelta_introspection_metadata(database, "reuse cached metadata");
+    failures += expect_size(trace.column_query_count, 0U, "cached metadata column queries");
+    failures += expect_size(trace.index_query_count, 0U, "cached metadata index queries");
+    failures +=
+        expect_size(trace.index_column_query_count, 0U, "cached metadata index column queries");
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove cached metadata trace"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int count_catalog_metadata_query(
+    unsigned int trace_kind,
+    void *context, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace callback ABI.
+    void *statement_handle,
+    void *expanded_sql
+) {
+    struct catalog_metadata_trace *trace = context;
+    sqlite3_stmt *statement = statement_handle;
+    const char *sql = statement == NULL ? NULL : sqlite3_sql(statement);
+
+    (void)expanded_sql;
+    if (trace_kind != SQLITE_TRACE_STMT || trace == NULL || sql == NULL) {
+        return 0;
+    }
+    if (strstr(sql, "FROM _mylite_catalog_columns") != NULL) {
+        ++trace->column_query_count;
+    }
+    if (strstr(sql, "FROM _mylite_catalog_indexes") != NULL) {
+        ++trace->index_query_count;
+    }
+    if (strstr(sql, "FROM _mylite_catalog_index_columns") != NULL) {
+        ++trace->index_column_query_count;
+    }
+    return 0;
 }
 
 static int create_fixture_schema(mylite_db *database) {

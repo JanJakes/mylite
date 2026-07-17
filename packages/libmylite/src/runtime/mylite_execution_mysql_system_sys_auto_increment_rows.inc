@@ -63,6 +63,7 @@ static int append_sys_schema_auto_increment_columns_table_rows(
 ) {
     struct sys_schema_auto_increment_columns_context *context = user_data;
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -74,7 +75,13 @@ static int append_sys_schema_auto_increment_columns_table_rows(
         return MYLITE_OK;
     }
 
-    rc = mylite_execution_load_table_columns(context->database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        context->database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         if (!columns[column_index].is_auto_increment) {
             continue;
@@ -85,7 +92,7 @@ static int append_sys_schema_auto_increment_columns_table_rows(
             &columns[column_index]
         );
     }
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     if (rc != MYLITE_OK &&
         mylite_diagnostics_errcode(mylite_connection_diagnostics(context->database)) == MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {

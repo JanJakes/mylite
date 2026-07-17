@@ -5,23 +5,25 @@ static int append_information_schema_columns_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
     size_t column_count = 0U;
-    size_t index_count = 0U;
-    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             table->table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
     }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
@@ -31,14 +33,13 @@ static int append_information_schema_columns_base_rows(
             schema,
             table,
             &columns[column_index],
-            &primary_key,
-            indexes,
-            index_count
+            &key_metadata.metadata->primary_key,
+            key_metadata.metadata->indexes,
+            key_metadata.metadata->index_count
         );
     }
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-    mylite_execution_primary_key_info_deinit(&primary_key);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -49,8 +50,15 @@ static int append_information_schema_st_geometry_columns_base_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     size_t column_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         rc = append_information_schema_st_geometry_columns_column_row(
@@ -61,7 +69,7 @@ static int append_information_schema_st_geometry_columns_base_rows(
             &columns[column_index]
         );
     }
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -72,8 +80,15 @@ static int append_information_schema_columns_extensions_table_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     size_t column_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         rc = append_information_schema_columns_extensions_column_row(
@@ -84,7 +99,7 @@ static int append_information_schema_columns_extensions_table_rows(
             &columns[column_index]
         );
     }
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -95,9 +110,16 @@ static int append_information_schema_columns_view_rows(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     size_t column_count = 0U;
     struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
-    int rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    int rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         rc = append_information_schema_columns_base_column_row(
@@ -112,7 +134,7 @@ static int append_information_schema_columns_view_rows(
         );
     }
     mylite_execution_primary_key_info_deinit(&primary_key);
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 
@@ -580,7 +602,12 @@ static int format_binary_blob_expression_default_display_text(
             memcpy(default_text, "X''", sizeof("X''"));
         }
     } else {
-        rc = mylite_execution_format_hex_bytes(database, (const unsigned char *)bytes, byte_count, &hex_text);
+        rc = mylite_execution_format_hex_bytes(
+            database,
+            (const unsigned char *)bytes,
+            byte_count,
+            &hex_text
+        );
         if (rc == MYLITE_OK) {
             hex_length = strlen(hex_text);
             if ((hex_length + sizeof("0x")) > default_text_size) {

@@ -15,9 +15,11 @@ static int execute_show_columns_statement(
     struct table_name_resolution target = {0};
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
     const struct mylite_execution_catalog_mysql_system_table *mysql_system_definition = NULL;
-    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
+    struct primary_key_info empty_primary_key = mylite_execution_primary_key_info_init();
     size_t column_count = 0U;
     bool missing_schema = false;
     bool mysql_system_target = false;
@@ -80,18 +82,16 @@ static int execute_show_columns_statement(
         rc = resolve_metadata_table_reference(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, table.table_id, &columns, &column_count);
+        rc = mylite_execution_acquire_table_columns(
+            database,
+            table.table_id,
+            &columns,
+            &column_count,
+            &columns_cache_entry
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = load_show_columns_key_metadata(
-            database,
-            &table,
-            columns,
-            column_count,
-            &primary_key,
-            &indexes,
-            &context.index_count
-        );
+        rc = load_show_columns_key_metadata(database, &table, columns, column_count, &key_metadata);
     }
     if (rc == MYLITE_OK) {
         rc = make_show_like_filter(database, nodes.like, &filter);
@@ -114,8 +114,11 @@ static int execute_show_columns_statement(
         context.filter = &filter;
         context.where_clause = nodes.where;
         context.table = &table;
-        context.primary_key = &primary_key;
-        context.indexes = indexes;
+        context.primary_key = key_metadata.metadata == NULL ? &empty_primary_key
+                                                            : &key_metadata.metadata->primary_key;
+        context.indexes = key_metadata.metadata == NULL ? NULL : key_metadata.metadata->indexes;
+        context.index_count =
+            key_metadata.metadata == NULL ? 0U : key_metadata.metadata->index_count;
         context.full = full;
         for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count;
              ++column_index) {
@@ -123,25 +126,24 @@ static int execute_show_columns_statement(
         }
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (rc != MYLITE_OK &&
-                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
-                       MYLITE_OK) {
+        } else if (
+            rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+        ) {
             set_runtime_error(database, "failed to build SHOW COLUMNS result");
         }
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         show_like_filter_deinit(&filter);
-        mylite_execution_primary_key_info_deinit(&primary_key);
-        mylite_execution_loaded_index_infos_deinit(&indexes, &context.index_count);
-        free(columns);
+        mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+        mylite_execution_release_table_columns(columns_cache_entry, columns);
         return rc;
     }
 
     show_like_filter_deinit(&filter);
-    mylite_execution_primary_key_info_deinit(&primary_key);
-    mylite_execution_loaded_index_infos_deinit(&indexes, &context.index_count);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -367,9 +369,10 @@ static int execute_show_columns_mysql_system_table_statement(
         );
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (rc != MYLITE_OK &&
-                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
-                       MYLITE_OK) {
+        } else if (
+            rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+        ) {
             set_runtime_error(database, "failed to build SHOW COLUMNS result");
         }
     }
@@ -448,35 +451,20 @@ static int load_show_columns_key_metadata(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    struct primary_key_info *primary_key,
-    struct loaded_index_info **out_indexes,
-    size_t *out_index_count
+    struct loaded_table_key_metadata_reference *out_reference
 ) {
-    int rc = MYLITE_OK;
-
     if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
         table->kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         return MYLITE_OK;
     }
 
-    rc = mylite_execution_load_primary_key_info(
+    return mylite_execution_acquire_table_key_metadata(
         database,
         table->table_id,
         columns,
         column_count,
-        primary_key
+        out_reference
     );
-    if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
-            database,
-            table->table_id,
-            columns,
-            column_count,
-            out_indexes,
-            out_index_count
-        );
-    }
-    return rc;
 }
 
 static int append_show_columns_result_columns(
@@ -755,8 +743,10 @@ static int evaluate_show_columns_where_frame(
             return MYLITE_ERROR;
         }
         truth = negate_show_variables_where_truth(child_truth);
-    } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-               predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
+    } else if (
+        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
+    ) {
         rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
     } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         set_unsupported_error(database, "SHOW COLUMNS WHERE does not support XOR predicates");
@@ -780,7 +770,10 @@ static int execute_show_index_statement(
     struct table_name_resolution target = {0};
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
-    struct loaded_index_info *indexes = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
+    struct loaded_table_key_metadata_reference key_metadata =
+        mylite_execution_loaded_table_key_metadata_reference_init();
+    const struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
     bool missing_schema = false;
@@ -815,17 +808,26 @@ static int execute_show_index_statement(
         rc = resolve_readable_table(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, table.table_id, &columns, &column_count);
+        rc = mylite_execution_acquire_table_columns(
+            database,
+            table.table_id,
+            &columns,
+            &column_count,
+            &columns_cache_entry
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             table.table_id,
             columns,
             column_count,
-            &indexes,
-            &index_count
+            &key_metadata
         );
+        if (rc == MYLITE_OK) {
+            indexes = key_metadata.metadata->indexes;
+            index_count = key_metadata.metadata->index_count;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = validate_show_index_where_clause(database, nodes.where);
@@ -855,13 +857,13 @@ static int execute_show_index_statement(
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
-        mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-        free(columns);
+        mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+        mylite_execution_release_table_columns(columns_cache_entry, columns);
         return rc;
     }
 
-    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
-    free(columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&key_metadata);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -994,9 +996,10 @@ static int execute_show_index_mysql_system_table_statement(
         rc = append_show_index_mysql_system_table_rows(database, result, where_clause, definition);
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (rc != MYLITE_OK &&
-                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
-                       MYLITE_OK) {
+        } else if (
+            rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+        ) {
             set_runtime_error(database, "failed to build SHOW INDEX result");
         }
     }

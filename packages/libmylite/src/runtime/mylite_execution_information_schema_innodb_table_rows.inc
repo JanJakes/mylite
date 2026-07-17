@@ -5,6 +5,7 @@ static int append_information_schema_innodb_tables_base_row(
     const struct mylite_catalog_table_descriptor *table
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_table_columns_cache_entry *columns_cache_entry = NULL;
     struct table_status_values status = {0};
     char *table_name = NULL;
     char table_id_text[integer_text_capacity];
@@ -25,7 +26,13 @@ static int append_information_schema_innodb_tables_base_row(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    rc = mylite_execution_acquire_table_columns(
+        database,
+        table->table_id,
+        &columns,
+        &column_count,
+        &columns_cache_entry
+    );
     if (rc == MYLITE_OK) {
         rc = load_table_status_row_format(database, table, &status);
     }
@@ -124,7 +131,7 @@ static int append_information_schema_innodb_tables_base_row(
     }
 
     free(table_name);
-    free(columns);
+    mylite_execution_release_table_columns(columns_cache_entry, columns);
     return rc;
 }
 

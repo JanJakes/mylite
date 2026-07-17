@@ -2385,7 +2385,9 @@ struct planned_show_create_table {
     struct mylite_catalog_view_descriptor view;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
-    struct loaded_index_info *indexes;
+    struct loaded_table_columns_cache_entry *columns_cache_entry;
+    struct loaded_table_key_metadata_reference key_metadata;
+    const struct loaded_index_info *indexes;
     size_t index_count;
     struct loaded_foreign_key_info *foreign_keys;
     size_t foreign_key_count;

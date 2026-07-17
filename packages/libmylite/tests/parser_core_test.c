@@ -1,5 +1,8 @@
 #include "parser_test_support.h"
 
+#include <stdio.h>
+#include <string.h>
+
 static int test_empty_script(void);
 static int test_use_statements(void);
 static int test_select_expression_list(void);
@@ -1268,7 +1271,14 @@ static int test_qualified_identifier_keyword_part(void) {
 }
 
 static int test_comments_are_skipped(void) {
+    static const char executable_expression_sql[] = "SELECT /*!80000 1 */ + 2;";
     struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *select_item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *left = NULL;
+    const char *left_text = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -1292,6 +1302,24 @@ static int test_comments_are_skipped(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT 1 /*!80000 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        executable_expression_sql,
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    select_item = parser_test_child_at(select_list, 0U);
+    expression = parser_test_child_at(select_item, 0U);
+    left = parser_test_child_at(expression, 0U);
+    left_text = strstr(executable_expression_sql, "1 */");
+    failures += parser_test_expect_span_text(left, "1", "executable comment absolute span text");
+    if (left == NULL || left_text == NULL ||
+        left->span.offset != (size_t)(left_text - executable_expression_sql)) {
+        fprintf(stderr, "executable comment token span is not root-relative\n");
+        ++failures;
+    }
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT 1 /*!80409 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);

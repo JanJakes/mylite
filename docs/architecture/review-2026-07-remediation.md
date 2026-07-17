@@ -47,7 +47,7 @@ complete.
 
 ### Source spans and token-aware normalization
 
-- [ ] Rebase nested executable-comment tokens and AST spans to absolute input
+- [x] Rebase nested executable-comment tokens and AST spans to absolute input
   offsets.
 - [ ] Validate every source span using overflow-safe offset/length checks.
 - [ ] Enforce executable-comment version gates for standalone and embedded

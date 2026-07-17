@@ -4,6 +4,7 @@
 #include "mylite_parser_helpers.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 static bool map_direct_lexer_token(enum mylite_sql_token_kind kind, int *out_parser_token);
@@ -271,8 +272,24 @@ static bool lexer_token_has_immediate_left_paren(
     const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token
 ) {
-    if (lexer == NULL || lexer->input == NULL || token == NULL || token->offset > lexer->offset ||
-        token->length != lexer->offset - token->offset || lexer->offset >= lexer->length) {
+    uintptr_t input_address = 0U;
+    uintptr_t token_address = 0U;
+    size_t local_offset = 0U;
+
+    if (lexer == NULL || lexer->input == NULL || token == NULL || token->text == NULL) {
+        return false;
+    }
+    input_address = (uintptr_t)lexer->input;
+    token_address = (uintptr_t)token->text;
+    if (token_address < input_address) {
+        return false;
+    }
+    local_offset = (size_t)(token_address - input_address);
+    if (local_offset > lexer->length || token->length > lexer->length - local_offset) {
+        return false;
+    }
+    if (local_offset > lexer->offset || token->length != lexer->offset - local_offset ||
+        lexer->offset >= lexer->length) {
         return false;
     }
 

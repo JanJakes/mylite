@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -63,6 +64,11 @@ static enum mylite_sql_parse_status feed_lexer_token(
     struct mylite_sql_parser_feed_context *context,
     struct mylite_sql_lexer *lexer,
     struct mylite_sql_token *token
+);
+static void rebase_token_to_root_input(
+    struct mylite_sql_token *token,
+    const char *root_input,
+    size_t root_length
 );
 static bool parse_version_comment_payload(
     const struct mylite_sql_token *token,
@@ -312,6 +318,8 @@ static enum mylite_sql_parse_status feed_lexer_tokens(
     bool feed_eof
 ) {
     struct mylite_sql_lexer lexer_stack[mylite_sql_parser_version_comment_lexer_stack_limit];
+    const char *root_input = NULL;
+    size_t root_length = 0U;
     size_t lexer_count = 1U;
 
     if (context == NULL || lexer == NULL || context->state == NULL ||
@@ -319,6 +327,8 @@ static enum mylite_sql_parse_status feed_lexer_tokens(
         return MYLITE_SQL_PARSE_MISUSE;
     }
 
+    root_input = lexer->input;
+    root_length = lexer->length;
     lexer_stack[0] = *lexer;
     for (;;) {
         struct mylite_sql_token token;
@@ -328,6 +338,7 @@ static enum mylite_sql_parse_status feed_lexer_tokens(
         if (mylite_sql_lexer_next(current_lexer, &token) != 0) {
             return MYLITE_SQL_PARSE_MISUSE;
         }
+        rebase_token_to_root_input(&token, root_input, root_length);
         if (token.kind == MYLITE_SQL_TOKEN_EOF) {
             if (lexer_count > 1U) {
                 --lexer_count;
@@ -354,6 +365,32 @@ static enum mylite_sql_parse_status feed_lexer_tokens(
             return status;
         }
     }
+}
+
+static void rebase_token_to_root_input(
+    struct mylite_sql_token *token,
+    const char *root_input,
+    size_t root_length
+) {
+    uintptr_t root_address = 0U;
+    uintptr_t token_address = 0U;
+    size_t root_offset = 0U;
+
+    if (token == NULL || token->text == NULL || root_input == NULL) {
+        return;
+    }
+
+    root_address = (uintptr_t)root_input;
+    token_address = (uintptr_t)token->text;
+    if (token_address < root_address) {
+        return;
+    }
+    root_offset = (size_t)(token_address - root_address);
+    if (root_offset > root_length || token->length > root_length - root_offset) {
+        return;
+    }
+
+    token->offset = root_offset;
 }
 
 static enum mylite_sql_parse_status feed_lexer_token(

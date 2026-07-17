@@ -675,6 +675,22 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT /*!80000 1 */ + 2", &result);
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            1U,
+            "executable comment expression column count"
+        );
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, 0U),
+            "3",
+            "executable comment expression value"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(
         database,
         "SELECT DATE_ADD(dt, INTERVAL 1 DAY) AS d_day, "

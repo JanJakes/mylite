@@ -47,6 +47,8 @@ FROM INFORMATION_SCHEMA.information_schema_table [AS] [alias]
 [WHERE metadata_predicate]
 [ORDER BY metadata_column [ASC|DESC]]
 [LIMIT row_count]
+[LIMIT offset, row_count]
+[LIMIT row_count OFFSET offset]
 ```
 
 Supported select items:
@@ -90,10 +92,16 @@ Supported ordering:
   non-`NULL` values for descending order, matching the current baseline DML
   ordering policy.
 
-Supported limits:
+Supported limits use nonnegative decimal integer literals accepted by the
+existing `SELECT` limit conversion:
 
-- `LIMIT row_count` where `row_count` is a nonnegative decimal integer literal
-  accepted by the existing `SELECT` limit conversion.
+- `LIMIT row_count`;
+- `LIMIT offset, row_count`;
+- `LIMIT row_count OFFSET offset`.
+
+The offset applies after filtering, grouping, and ordering. An offset also
+suppresses the single aggregate row from `COUNT(*)` when it is greater than
+zero.
 
 Compatibility query bridges:
 

@@ -70,9 +70,17 @@ static int build_information_schema_rows(
 static int build_information_schema_rows_with_filter(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
     const struct mylite_execution_catalog_table_definition *definition,
     const struct information_schema_catalog_filter *filter,
     struct information_schema_row_set *out_rows
+);
+static void information_schema_row_set_init(
+    struct information_schema_row_set *rows,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct mylite_execution_catalog_table_definition *definition
 );
 static void information_schema_row_set_deinit(struct information_schema_row_set *rows);
 static int append_information_schema_system_rows(

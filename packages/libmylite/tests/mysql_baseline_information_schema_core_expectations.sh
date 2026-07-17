@@ -90,6 +90,18 @@ expect_output \
 "FROM INFORMATION_SCHEMA.SCHEMATA "\
 "WHERE SCHEMA_NAME = '${DATABASE}';"
 
+expect_output \
+    "schemata limit offset" \
+    "mysql" \
+    "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "\
+"WHERE SCHEMA_NAME IN ('information_schema', 'mysql', 'performance_schema') "\
+"ORDER BY SCHEMA_NAME LIMIT 1 OFFSET 1;"
+
+expect_output \
+    "schemata count limit offset" \
+    "" \
+    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA LIMIT 1 OFFSET 1;"
+
 tables_expected=$(printf '%b' \
 "def\t${DATABASE}\tother\tBASE TABLE\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t0\tNULL\t0\t1\t1\tutf8mb4_0900_ai_ci\tNULL\n"\
 "def\t${DATABASE}\tt\tBASE TABLE\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t0\t1\t0\t1\t1\tutf8mb4_0900_ai_ci\tNULL")

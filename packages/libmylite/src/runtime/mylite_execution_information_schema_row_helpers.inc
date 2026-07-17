@@ -4,9 +4,28 @@ static int append_information_schema_row(
     const char *const *values
 ) {
     char **row = NULL;
-    size_t required_count = rows->row_count + 1U;
+    size_t required_count = 0U;
     int rc = MYLITE_OK;
 
+    if (rows->row_count == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (rows->count_only) {
+        ++rows->row_count;
+        return MYLITE_OK;
+    }
+    if (rows->has_row_limit && rows->row_limit == 0U) {
+        return MYLITE_OK;
+    }
+    if (rows->has_row_limit && rows->skipped_row_count < rows->row_offset) {
+        ++rows->skipped_row_count;
+        return MYLITE_OK;
+    }
+    if (rows->has_row_limit && rows->row_count >= rows->row_limit) {
+        return MYLITE_OK;
+    }
+    required_count = rows->row_count + 1U;
     rc = reserve_information_schema_rows(database, rows, required_count);
     if (rc != MYLITE_OK) {
         return rc;
@@ -18,7 +37,8 @@ static int append_information_schema_row(
         return MYLITE_NOMEM;
     }
     for (size_t column_index = 0U; column_index < rows->definition->column_count; ++column_index) {
-        if (values[column_index] == NULL) {
+        if ((rows->required_columns != NULL && !rows->required_columns[column_index]) ||
+            values[column_index] == NULL) {
             continue;
         }
         rc = duplicate_text(database, values[column_index], &row[column_index]);

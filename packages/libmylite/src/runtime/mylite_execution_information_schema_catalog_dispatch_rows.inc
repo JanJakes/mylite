@@ -377,6 +377,11 @@ static int try_append_information_schema_exact_catalog_table(
     if (filter == NULL || !filter->has_schema_name || !filter->has_table_name) {
         return MYLITE_OK;
     }
+    if (strlen(filter->schema_name) >= MYLITE_CATALOG_IDENTIFIER_CAPACITY ||
+        strlen(filter->table_name) >= MYLITE_CATALOG_IDENTIFIER_CAPACITY) {
+        *out_handled = true;
+        return MYLITE_OK;
+    }
 
     rc = mylite_catalog_try_read_schema_by_name(
         context->database,

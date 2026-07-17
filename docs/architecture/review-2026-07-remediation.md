@@ -156,7 +156,7 @@ complete.
 - [x] Add direct exact schema/table lookup paths for COLUMNS and STATISTICS.
 - [ ] Stream metadata rows and push down predicates, projection, aggregation,
   ordering prerequisites, and LIMIT where valid.
-- [ ] Allocate only projected values and add bounded-memory count/limit paths.
+- [x] Allocate only projected values and add bounded-memory count/limit paths.
 
 ### Collations, aggregates, and remaining semantic gaps
 

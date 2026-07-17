@@ -2743,9 +2743,16 @@ struct information_schema_innodb_character_type_request {
 
 struct information_schema_row_set {
     const struct mylite_execution_catalog_table_definition *definition;
+    const bool *required_columns;
     char ***rows;
     size_t row_count;
     size_t row_capacity;
+    size_t row_limit;
+    size_t row_offset;
+    size_t skipped_row_count;
+    bool has_row_limit;
+    bool offset_applied;
+    bool count_only;
 };
 
 struct information_schema_row_index_set {
@@ -2884,6 +2891,7 @@ enum information_schema_projection_kind {
 
 struct information_schema_query {
     const struct mylite_execution_catalog_table_definition *definition;
+    bool *required_columns;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;
     bool is_count_star;

@@ -775,21 +775,7 @@ static int information_schema_plan_limit(
     const struct mylite_sql_ast_node *limit_clause,
     struct information_schema_query *out_query
 ) {
-    out_query->limit = (struct planned_select_limit){
-        .has_limit = false,
-        .row_count = 0,
-        .has_offset = false,
-        .offset = 0,
-    };
-    if (limit_clause == NULL) {
-        return MYLITE_OK;
-    }
-    if (limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE || child_at(limit_clause, 1U) != NULL) {
-        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT supports only LIMIT row_count");
-        return MYLITE_ERROR;
-    }
-
-    return plan_delete_limit(database, limit_clause, &out_query->limit);
+    return plan_select_limit(database, limit_clause, &out_query->limit);
 }
 
 static int information_schema_resolve_source(

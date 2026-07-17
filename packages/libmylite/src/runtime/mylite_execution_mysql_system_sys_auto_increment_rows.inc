@@ -27,7 +27,7 @@ static int append_sys_schema_auto_increment_columns_system_rows(
         append_sys_schema_auto_increment_columns_schema_rows,
         &context
     );
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !rows->count_only) {
         sort_sys_schema_auto_increment_columns_default_order(rows);
     }
     return rc;

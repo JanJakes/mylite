@@ -93,7 +93,10 @@ static int information_schema_append_result_rows(
          ++output_index) {
         size_t row_index = indexes.items[output_index];
 
-        if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
+        if (query->limit.has_offset && (uint64_t)output_index < (uint64_t)query->limit.offset) {
+            continue;
+        }
+        if (query->limit.has_limit && (uint64_t)visible_count >= (uint64_t)query->limit.row_count) {
             break;
         }
         rc = information_schema_append_projected_result_row(
@@ -135,7 +138,11 @@ static int information_schema_append_streamed_result_rows(
         rc = information_schema_result_projection_buffers_init(database, query, &buffers);
     }
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < rows->row_count; ++row_index) {
-        if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
+        if (!rows->offset_applied && query->limit.has_offset &&
+            (uint64_t)row_index < (uint64_t)query->limit.offset) {
+            continue;
+        }
+        if (query->limit.has_limit && (uint64_t)visible_count >= (uint64_t)query->limit.row_count) {
             break;
         }
         rc = information_schema_append_projected_result_row(
@@ -172,6 +179,7 @@ static int information_schema_append_grouped_statistics_result_rows(
     size_t *out_read_row_count
 ) {
     struct information_schema_row_index_set indexes = {0};
+    size_t grouped_row_count = 0U;
     size_t visible_count = 0U;
     struct information_schema_result_projection_buffers buffers = {0};
     int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
@@ -212,7 +220,13 @@ static int information_schema_append_grouped_statistics_result_rows(
                )) {
             ++end_index;
         }
-        if (!query->limit.has_limit || visible_count < (size_t)query->limit.row_count) {
+        if (query->limit.has_offset &&
+            (uint64_t)grouped_row_count < (uint64_t)query->limit.offset) {
+            ++grouped_row_count;
+            start_index = end_index;
+            continue;
+        }
+        if (!query->limit.has_limit || (uint64_t)visible_count < (uint64_t)query->limit.row_count) {
             rc = information_schema_append_grouped_statistics_projected_row(
                 database,
                 query,
@@ -225,6 +239,7 @@ static int information_schema_append_grouped_statistics_result_rows(
             );
             ++visible_count;
         }
+        ++grouped_row_count;
         start_index = end_index;
     }
     information_schema_result_projection_buffers_deinit(&buffers);
@@ -1156,19 +1171,27 @@ static int information_schema_append_count_result(
     char count_text[integer_text_capacity];
     const char *values[1] = {count_text};
     struct information_schema_row_index_set indexes = {0};
+    size_t count = 0U;
     bool emits_count_row = true;
-    int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+    int rc = MYLITE_OK;
 
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
     }
-    if (query->limit.has_limit && query->limit.row_count == 0) {
+    if (rows->count_only) {
+        count = rows->row_count;
+    } else {
+        rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+        count = indexes.count;
+    }
+    if ((query->limit.has_limit && query->limit.row_count == 0) ||
+        (query->limit.has_offset && query->limit.offset != 0)) {
         emits_count_row = false;
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_format_i64(
             database,
-            (int64_t)indexes.count,
+            (int64_t)count,
             count_text,
             sizeof(count_text)
         );
@@ -1180,7 +1203,7 @@ static int information_schema_append_count_result(
         }
     }
     if (rc == MYLITE_OK && emits_count_row && out_read_row_count != NULL) {
-        *out_read_row_count = indexes.count;
+        *out_read_row_count = count;
     }
     information_schema_row_index_set_deinit(&indexes);
     return rc;

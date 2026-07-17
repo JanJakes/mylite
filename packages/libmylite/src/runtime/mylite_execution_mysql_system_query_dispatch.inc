@@ -10,7 +10,7 @@ static int execute_mysql_system_table_query(
     struct information_schema_row_set rows = {0};
     mylite_result *result = NULL;
     size_t read_row_count = 0U;
-    int rc = build_mysql_system_table_rows(database, context, definition, &rows);
+    int rc = build_mysql_system_table_rows(database, context, statement, query, definition, &rows);
 
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -56,6 +56,8 @@ static int execute_mysql_system_table_query(
 static int build_mysql_system_table_rows(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *out_rows
 ) {
@@ -63,7 +65,7 @@ static int build_mysql_system_table_rows(
     bool has_catalog_rows = mysql_system_table_definition_has_catalog_rows(definition);
     int rc = MYLITE_OK;
 
-    *out_rows = (struct information_schema_row_set){.definition = &definition->query_definition};
+    information_schema_row_set_init(out_rows, statement, query, &definition->query_definition);
     rc = append_mysql_system_table_system_rows(database, context, definition, out_rows);
     if (rc == MYLITE_OK && !has_no_rows && has_catalog_rows) {
         rc = append_mysql_system_table_catalog_rows(database, definition, out_rows);

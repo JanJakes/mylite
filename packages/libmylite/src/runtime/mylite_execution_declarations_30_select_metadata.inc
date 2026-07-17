@@ -467,6 +467,8 @@ static int execute_mysql_system_table_query(
 static int build_mysql_system_table_rows(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *out_rows
 );
@@ -1240,4 +1242,18 @@ static int resolve_information_schema_query(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct information_schema_query *out_query
+);
+static int information_schema_query_plan_materialization(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct information_schema_query *query
+);
+static int information_schema_query_require_expression_columns(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression
+);
+static void information_schema_query_require_column(
+    struct information_schema_query *query,
+    size_t column_index
 );

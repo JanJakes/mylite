@@ -19,6 +19,9 @@ comparisons, `IS [NOT] NULL`, `LIKE` string patterns, literal-list `IN`,
 `BETWEEN`, `NOT`, `AND`, `OR`, `XOR`, and parentheses. Predicate evaluation uses
 MySQL-shaped true/false/unknown filtering over MyLite-built metadata rows and
 honors the current `NO_BACKSLASH_ESCAPES` mode for admitted `LIKE` patterns.
+Supported metadata limits are `LIMIT row_count`, `LIMIT offset, row_count`, and
+`LIMIT row_count OFFSET offset` over the existing unsigned decimal literal
+range.
 There are no physical SQLite `information_schema` tables, predicate subqueries,
 explicit `ESCAPE`, arbitrary expressions, joins, privilege filtering, or full
 metadata-lock semantics.

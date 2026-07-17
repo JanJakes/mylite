@@ -97,6 +97,11 @@ static int test_information_schema_core_queries(void) {
         NULL,
         "NO",
     };
+    static const char *const schemata_limit_offset_columns[] = {"SCHEMA_NAME"};
+    static const char *const schemata_limit_offset_values[] = {
+        "information_schema",
+        "performance_schema",
+    };
     static const char *const table_columns[] = {
         "TABLE_SCHEMA",
         "TABLE_NAME",
@@ -406,6 +411,28 @@ static int test_information_schema_core_queries(void) {
             .values = with_union_values,
             .row_count = sizeof(with_union_values) / sizeof(with_union_values[0]),
             .context = "information schema WITH union bridge rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA LIMIT 2 OFFSET 1",
+            .column_names = schemata_limit_offset_columns,
+            .column_count = 1U,
+            .values = schemata_limit_offset_values,
+            .row_count = 2U,
+            .context = "metadata limit offset materialization",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA LIMIT 1 OFFSET 1",
+            .column_names = count_column,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "metadata count limit offset",
         }
     );
     failures += expect_query(

@@ -2891,6 +2891,8 @@ enum information_schema_projection_kind {
 
 struct information_schema_query {
     const struct mylite_execution_catalog_table_definition *definition;
+    const struct mylite_execution_catalog_mysql_system_table *system_table_definition;
+    const char *source_schema_name;
     bool *required_columns;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;

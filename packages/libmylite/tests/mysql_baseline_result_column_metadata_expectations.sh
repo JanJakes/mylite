@@ -139,6 +139,58 @@ expect_contains "connection collation selects utf8mb4_bin metadata" \
 expect_contains "connection collation does not imply binary flag" \
     'Flags:      MULTIPLE_KEY PART_KEY ' "$connection_collation_output"
 
+information_schema_output=$(run_mysql_type_info \
+    "SET NAMES utf8mb4; "\
+"SELECT TABLE_NAME AS n, TABLE_ROWS, TABLE_TYPE "\
+"FROM INFORMATION_SCHEMA.TABLES AS catalog_tables LIMIT 0;")
+
+expect_contains "information schema alias" 'Field   1:  `n`' "$information_schema_output"
+expect_contains "information schema alias table" 'Table:      `catalog_tables`' \
+    "$information_schema_output"
+expect_contains "information schema origin table" 'Org_table:  `TABLES`' \
+    "$information_schema_output"
+expect_contains "information schema name type" 'Type:       VAR_STRING' \
+    "$information_schema_output"
+expect_contains "information schema name length" 'Length:     256' \
+    "$information_schema_output"
+expect_contains "information schema row type" 'Type:       LONGLONG' \
+    "$information_schema_output"
+expect_contains "information schema row flags" 'Flags:      UNSIGNED BINARY NUM ' \
+    "$information_schema_output"
+expect_contains "information schema enum type" 'Type:       STRING' \
+    "$information_schema_output"
+expect_contains "information schema enum flags" \
+    'Flags:      NOT_NULL MULTIPLE_KEY BINARY ENUM NO_DEFAULT_VALUE PART_KEY ' \
+    "$information_schema_output"
+
+information_schema_count_output=$(run_mysql_type_info \
+    "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES LIMIT 0;")
+
+expect_contains "information schema count type" 'Type:       LONGLONG' \
+    "$information_schema_count_output"
+expect_contains "information schema count length" 'Length:     21' \
+    "$information_schema_count_output"
+expect_contains "information schema count flags" 'Flags:      NOT_NULL BINARY NUM ' \
+    "$information_schema_count_output"
+
+performance_schema_output=$(run_mysql_type_info \
+    "SELECT THREAD_ID FROM performance_schema.threads LIMIT 0;")
+
+expect_contains "performance schema thread type" 'Type:       LONGLONG' \
+    "$performance_schema_output"
+expect_contains "performance schema thread length" 'Length:     20' \
+    "$performance_schema_output"
+expect_contains "performance schema thread flags" \
+    'Flags:      NOT_NULL PRI_KEY UNSIGNED NO_DEFAULT_VALUE NUM PART_KEY ' \
+    "$performance_schema_output"
+
+sys_output=$(run_mysql_type_info "SELECT thd_id FROM sys.processlist LIMIT 0;")
+
+expect_contains "sys thread type" 'Type:       LONGLONG' "$sys_output"
+expect_contains "sys thread length" 'Length:     20' "$sys_output"
+expect_contains "sys thread flags" 'Flags:      NOT_NULL UNSIGNED NO_DEFAULT_VALUE NUM ' \
+    "$sys_output"
+
 json_value_output=$(run_mysql_type_info \
     "USE ${DATABASE}; SET NAMES utf8mb4; "\
 "SELECT JSON_VALUE('{\"a\":1}', '$.a') AS json_value;" \

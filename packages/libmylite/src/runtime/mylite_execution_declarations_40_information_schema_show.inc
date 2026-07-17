@@ -1242,6 +1242,64 @@ static int information_schema_append_result_columns(
     mylite_result *result,
     const struct information_schema_query *query
 );
+static int information_schema_make_result_column_descriptor(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t projection_index,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static int information_schema_make_source_column_descriptor(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t projection_index,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static int information_schema_initialize_catalog_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_execution_catalog_column_definition *column_definition,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int information_schema_copy_descriptor_text(
+    struct mylite_db *database,
+    const char *source,
+    char *destination,
+    size_t destination_size
+);
+static void information_schema_apply_connection_text_metadata(
+    const struct mylite_db *database,
+    const struct mylite_execution_catalog_column_definition *column_definition,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void information_schema_apply_temporal_precision_metadata(
+    const struct mylite_execution_catalog_column_definition *column_definition,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void information_schema_apply_system_key_flags(
+    const struct information_schema_query *query,
+    size_t column_index,
+    struct mylite_result_column_descriptor *descriptor
+);
+static bool information_schema_source_column_has_binary_numeric_flag(
+    const struct information_schema_query *query,
+    const struct mylite_result_column_descriptor *descriptor
+);
+static void information_schema_make_count_result_column_descriptor(
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static void information_schema_make_unsigned_result_column_descriptor(
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static void information_schema_make_group_concat_result_column_descriptor(
+    const struct mylite_db *database,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static void information_schema_make_logical_result_column_descriptor(
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
 static int information_schema_append_result_rows(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

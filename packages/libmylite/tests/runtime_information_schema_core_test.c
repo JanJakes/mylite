@@ -32,12 +32,41 @@ struct expected_sql_error {
     const char *message_part;
 };
 
+struct expected_column_metadata {
+    const char *label;
+    const char *schema_name;
+    const char *table_name;
+    const char *origin_schema_name;
+    const char *origin_table_name;
+    const char *origin_column_name;
+    enum mylite_result_column_type type;
+    uint32_t flag_mask;
+    uint32_t flags;
+    uint32_t charset_id;
+    uint32_t collation_id;
+    uint64_t display_length;
+    int nullable;
+};
+
+static int test_information_schema_result_metadata(void);
 static int test_information_schema_core_queries(void);
 static int test_information_schema_wordpress_bridge_queries(void);
 static int test_information_schema_doctrine_bridge_queries(void);
 static int seed_database(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int expect_result_metadata(
+    const mylite_result *result,
+    const struct expected_column_metadata *expected,
+    size_t column_count,
+    const char *context
+);
+static int expect_stmt_metadata(
+    const mylite_stmt *stmt,
+    const struct expected_column_metadata *expected,
+    size_t column_count,
+    const char *context
+);
 static int expect_error(mylite_db *database, struct expected_sql_error expected);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
@@ -52,10 +81,267 @@ static int expect_contains(const char *actual, const char *needle, const char *c
 int main(void) {
     int failures = 0;
 
+    failures += test_information_schema_result_metadata();
     failures += test_information_schema_core_queries();
     failures += test_information_schema_wordpress_bridge_queries();
     failures += test_information_schema_doctrine_bridge_queries();
     return failures == 0 ? 0 : 1;
+}
+
+static int test_information_schema_result_metadata(void) {
+    static const struct expected_column_metadata table_metadata[] = {
+        {
+            .label = "n",
+            .schema_name = "information_schema",
+            .table_name = "catalog_tables",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "TABLES",
+            .origin_column_name = "TABLE_NAME",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                         MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                     MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 0,
+        },
+        {
+            .label = "TABLE_ROWS",
+            .schema_name = "information_schema",
+            .table_name = "catalog_tables",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "TABLES",
+            .origin_column_name = "TABLE_ROWS",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                         MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 20U,
+            .nullable = 1,
+        },
+        {
+            .label = "TABLE_TYPE",
+            .schema_name = "information_schema",
+            .table_name = "catalog_tables",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "TABLES",
+            .origin_column_name = "TABLE_TYPE",
+            .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                         MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_ENUM |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_ENUM |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 44U,
+            .nullable = 0,
+        },
+    };
+    static const struct expected_column_metadata count_metadata[] = {
+        {
+            .label = "c",
+            .schema_name = "",
+            .table_name = "",
+            .origin_schema_name = "",
+            .origin_table_name = "",
+            .origin_column_name = "",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flag_mask = UINT32_MAX,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 21U,
+            .nullable = 0,
+        },
+    };
+    static const struct expected_column_metadata thread_metadata[] = {
+        {
+            .label = "THREAD_ID",
+            .schema_name = "performance_schema",
+            .table_name = "threads",
+            .origin_schema_name = "performance_schema",
+            .origin_table_name = "threads",
+            .origin_column_name = "THREAD_ID",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                         MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
+                         MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+                         MYLITE_RESULT_COLUMN_FLAG_PART_KEY |
+                         MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                     MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
+                     MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+                     MYLITE_RESULT_COLUMN_FLAG_PART_KEY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 20U,
+            .nullable = 0,
+        },
+    };
+    static const struct expected_column_metadata sys_metadata[] = {
+        {
+            .label = "thd_id",
+            .schema_name = "sys",
+            .table_name = "processlist",
+            .origin_schema_name = "sys",
+            .origin_table_name = "processlist",
+            .origin_column_name = "thd_id",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                         MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+                         MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                     MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+                     MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 20U,
+            .nullable = 0,
+        },
+    };
+    static const char table_sql[] =
+        "SELECT TABLE_NAME AS n, TABLE_ROWS, TABLE_TYPE "
+        "FROM INFORMATION_SCHEMA.TABLES AS catalog_tables WHERE TABLE_SCHEMA = 'missing'";
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = make_test_path(path, sizeof(path), "metadata");
+
+    remove_related_files(path);
+    if (failures == 0) {
+        failures += expect_int(
+            mylite_open(path, &database),
+            MYLITE_OK,
+            "open information schema metadata database"
+        );
+    }
+
+    if (failures == 0) {
+        failures += expect_int(
+            mylite_execute(database, table_sql, strlen(table_sql), &result),
+            MYLITE_OK,
+            "execute information schema result metadata"
+        );
+    }
+    if (result != NULL) {
+        failures += expect_result_metadata(
+            result,
+            table_metadata,
+            sizeof(table_metadata) / sizeof(table_metadata[0]),
+            "information schema result metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    if (failures == 0) {
+        failures += expect_int(
+            mylite_prepare(database, table_sql, strlen(table_sql), &stmt),
+            MYLITE_OK,
+            "prepare information schema cursor metadata"
+        );
+    }
+    if (stmt != NULL) {
+        failures += expect_stmt_metadata(
+            stmt,
+            table_metadata,
+            sizeof(table_metadata) / sizeof(table_metadata[0]),
+            "information schema cursor metadata"
+        );
+        failures += expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "step empty information schema metadata cursor"
+        );
+        failures += expect_int(
+            mylite_stmt_finalize(stmt),
+            MYLITE_OK,
+            "finalize information schema metadata cursor"
+        );
+        stmt = NULL;
+    }
+
+    if (failures == 0) {
+        static const char count_sql[] =
+            "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES LIMIT 0";
+
+        failures += expect_int(
+            mylite_execute(database, count_sql, strlen(count_sql), &result),
+            MYLITE_OK,
+            "execute information schema count metadata"
+        );
+    }
+    if (result != NULL) {
+        failures += expect_result_metadata(
+            result,
+            count_metadata,
+            sizeof(count_metadata) / sizeof(count_metadata[0]),
+            "information schema count metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    if (failures == 0) {
+        static const char thread_sql[] =
+            "SELECT THREAD_ID FROM performance_schema.threads LIMIT 0";
+
+        failures += expect_int(
+            mylite_execute(database, thread_sql, strlen(thread_sql), &result),
+            MYLITE_OK,
+            "execute performance schema result metadata"
+        );
+    }
+    if (result != NULL) {
+        failures += expect_result_metadata(
+            result,
+            thread_metadata,
+            sizeof(thread_metadata) / sizeof(thread_metadata[0]),
+            "performance schema result metadata"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    if (failures == 0) {
+        static const char sys_sql[] = "SELECT thd_id FROM sys.processlist LIMIT 0";
+
+        failures += expect_int(
+            mylite_execute(database, sys_sql, strlen(sys_sql), &result),
+            MYLITE_OK,
+            "execute sys result metadata"
+        );
+    }
+    if (result != NULL) {
+        failures += expect_result_metadata(
+            result,
+            sys_metadata,
+            sizeof(sys_metadata) / sizeof(sys_metadata[0]),
+            "sys result metadata"
+        );
+    }
+    mylite_result_free(result);
+    if (stmt != NULL) {
+        (void)mylite_stmt_finalize(stmt);
+    }
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
 }
 
 static int test_information_schema_core_queries(void) {
@@ -1019,6 +1305,149 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         }
     }
     mylite_result_free(result);
+    return failures;
+}
+
+static int expect_result_metadata(
+    const mylite_result *result,
+    const struct expected_column_metadata *expected,
+    size_t column_count,
+    const char *context
+) {
+    int failures = expect_size(mylite_result_column_count(result), column_count, context);
+
+    for (size_t index = 0U; index < column_count; ++index) {
+        failures += expect_text_or_null(
+            mylite_result_column_name(result, index),
+            expected[index].label,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_column_schema_name(result, index),
+            expected[index].schema_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_column_table_name(result, index),
+            expected[index].table_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_column_origin_schema_name(result, index),
+            expected[index].origin_schema_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_column_origin_table_name(result, index),
+            expected[index].origin_table_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_result_column_origin_name(result, index),
+            expected[index].origin_column_name,
+            context
+        );
+        failures += expect_int(
+            (int)mylite_result_column_type(result, index),
+            (int)expected[index].type,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)(mylite_result_column_flags(result, index) & expected[index].flag_mask),
+            (int64_t)expected[index].flags,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_charset_id(result, index),
+            (int64_t)expected[index].charset_id,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_collation_id(result, index),
+            (int64_t)expected[index].collation_id,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_display_length(result, index),
+            (int64_t)expected[index].display_length,
+            context
+        );
+        failures += expect_int(
+            mylite_result_column_nullable(result, index),
+            expected[index].nullable,
+            context
+        );
+    }
+    return failures;
+}
+
+static int expect_stmt_metadata(
+    const mylite_stmt *stmt,
+    const struct expected_column_metadata *expected,
+    size_t column_count,
+    const char *context
+) {
+    int failures = expect_size(mylite_stmt_column_count(stmt), column_count, context);
+
+    for (size_t index = 0U; index < column_count; ++index) {
+        failures +=
+            expect_text_or_null(mylite_stmt_column_name(stmt, index), expected[index].label, context);
+        failures += expect_text_or_null(
+            mylite_stmt_column_schema_name(stmt, index),
+            expected[index].schema_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_column_table_name(stmt, index),
+            expected[index].table_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_column_origin_schema_name(stmt, index),
+            expected[index].origin_schema_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_column_origin_table_name(stmt, index),
+            expected[index].origin_table_name,
+            context
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_column_origin_name(stmt, index),
+            expected[index].origin_column_name,
+            context
+        );
+        failures += expect_int(
+            (int)mylite_stmt_column_type(stmt, index),
+            (int)expected[index].type,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)(mylite_stmt_column_flags(stmt, index) & expected[index].flag_mask),
+            (int64_t)expected[index].flags,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)mylite_stmt_column_charset_id(stmt, index),
+            (int64_t)expected[index].charset_id,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)mylite_stmt_column_collation_id(stmt, index),
+            (int64_t)expected[index].collation_id,
+            context
+        );
+        failures += expect_int64(
+            (int64_t)mylite_stmt_column_display_length(stmt, index),
+            (int64_t)expected[index].display_length,
+            context
+        );
+        failures += expect_int(
+            mylite_stmt_column_nullable(stmt, index),
+            expected[index].nullable,
+            context
+        );
+    }
     return failures;
 }
 

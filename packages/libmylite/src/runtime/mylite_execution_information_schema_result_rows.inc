@@ -7,6 +7,7 @@ static int information_schema_append_result_columns(
 
     if (query->is_count_star) {
         char *column_name = NULL;
+        struct mylite_result_column_descriptor descriptor = {0};
 
         if (query->count_alias != NULL) {
             rc = copy_select_item_alias_text(database, query->count_alias, &column_name);
@@ -18,7 +19,8 @@ static int information_schema_append_result_columns(
             );
         }
         if (rc == MYLITE_OK) {
-            rc = mylite_result_append_column(result, column_name);
+            information_schema_make_count_result_column_descriptor(column_name, &descriptor);
+            rc = mylite_result_append_column_descriptor(result, &descriptor);
             if (rc != MYLITE_OK) {
                 set_nomem_error(database);
             }
@@ -29,12 +31,446 @@ static int information_schema_append_result_columns(
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < query->projection_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, query->projection_names[column_index]);
-        if (rc != MYLITE_OK) {
+        struct mylite_result_column_descriptor descriptor = {0};
+
+        rc = information_schema_make_result_column_descriptor(
+            database,
+            query,
+            column_index,
+            &descriptor
+        );
+        if (rc == MYLITE_OK) {
+            rc = mylite_result_append_column_descriptor(result, &descriptor);
+        }
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
     }
     return rc;
+}
+
+static int information_schema_make_result_column_descriptor(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t projection_index,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    const char *label = NULL;
+
+    if (database == NULL || query == NULL || out_descriptor == NULL ||
+        projection_index >= query->projection_count) {
+        return MYLITE_MISUSE;
+    }
+    label = query->projection_names[projection_index];
+    switch (query->projection_kinds[projection_index]) {
+    case INFORMATION_SCHEMA_PROJECTION_COLUMN:
+        return information_schema_make_source_column_descriptor(
+            database,
+            query,
+            projection_index,
+            out_descriptor
+        );
+    case INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION:
+        information_schema_make_unsigned_result_column_descriptor(label, out_descriptor);
+        return MYLITE_OK;
+    case INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL:
+        return make_scalar_result_column_descriptor(
+            database,
+            query->projection_expressions[projection_index],
+            label,
+            out_descriptor
+        );
+    case INFORMATION_SCHEMA_PROJECTION_GROUP_CONCAT_ORDERED_COLUMN:
+        information_schema_make_group_concat_result_column_descriptor(
+            database,
+            label,
+            out_descriptor
+        );
+        return MYLITE_OK;
+    case INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN:
+        information_schema_make_logical_result_column_descriptor(label, out_descriptor);
+        return MYLITE_OK;
+    }
+    return MYLITE_MISUSE;
+}
+
+static int information_schema_make_source_column_descriptor(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t projection_index,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    const size_t column_index = query->projection_indexes[projection_index];
+    const struct mylite_execution_catalog_column_definition *column_definition = NULL;
+    struct mylite_catalog_column_descriptor column = {0};
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
+    int rc = MYLITE_OK;
+
+    if (query->definition == NULL || column_index >= query->definition->column_count) {
+        return MYLITE_MISUSE;
+    }
+    column_definition = &query->definition->columns[column_index];
+    rc = information_schema_initialize_catalog_column_descriptor(
+        database,
+        column_definition,
+        &column
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    *out_descriptor = unknown_result_column_descriptor(query->projection_names[projection_index]);
+    out_descriptor->schema_name = query->source_schema_name == NULL ? "" : query->source_schema_name;
+    out_descriptor->table_name = query->has_alias ? query->alias : query->definition->name;
+    out_descriptor->origin_schema_name = out_descriptor->schema_name;
+    out_descriptor->origin_table_name = query->definition->name;
+    out_descriptor->origin_column_name = column_definition->name;
+    out_descriptor->nullable = column.is_nullable;
+    rc = populate_select_result_column_descriptor(
+        database,
+        NULL,
+        &column,
+        &metadata_context,
+        out_descriptor
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (information_schema_source_column_has_binary_numeric_flag(query, out_descriptor)) {
+        out_descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    information_schema_apply_connection_text_metadata(database, column_definition, out_descriptor);
+    information_schema_apply_temporal_precision_metadata(column_definition, out_descriptor);
+    information_schema_apply_system_key_flags(query, column_index, out_descriptor);
+    return MYLITE_OK;
+}
+
+static int information_schema_initialize_catalog_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_execution_catalog_column_definition *column_definition,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    const char *logical_type = NULL;
+    const char *physical_type = "TEXT";
+    bool preserve_lowercase_logical_type = false;
+    int rc = MYLITE_OK;
+
+    if (column_definition == NULL || out_column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    logical_type = column_definition->column_type == NULL ? column_definition->data_type
+                                                          : column_definition->column_type;
+    if (column_definition->column_type != NULL &&
+        strcmp(column_definition->column_type, "varchar(65535)") == 0) {
+        logical_type = "LONGTEXT";
+    }
+    if (strcmp(column_definition->data_type, "date") == 0 ||
+        strcmp(column_definition->data_type, "time") == 0 ||
+        strcmp(column_definition->data_type, "datetime") == 0 ||
+        strcmp(column_definition->data_type, "timestamp") == 0 ||
+        strcmp(column_definition->data_type, "year") == 0) {
+        logical_type = column_definition->data_type;
+    }
+    if (strcmp(column_definition->data_type, "tinyint") == 0 ||
+        strcmp(column_definition->data_type, "smallint") == 0 ||
+        strcmp(column_definition->data_type, "mediumint") == 0 ||
+        strcmp(column_definition->data_type, "int") == 0 ||
+        strcmp(column_definition->data_type, "bigint") == 0) {
+        physical_type = "INTEGER";
+    } else if (strcmp(column_definition->data_type, "float") == 0 ||
+               strcmp(column_definition->data_type, "double") == 0) {
+        physical_type = "REAL";
+    } else if (strcmp(column_definition->data_type, "binary") == 0 ||
+               strcmp(column_definition->data_type, "varbinary") == 0 ||
+               strcmp(column_definition->data_type, "tinyblob") == 0 ||
+               strcmp(column_definition->data_type, "blob") == 0 ||
+               strcmp(column_definition->data_type, "mediumblob") == 0 ||
+               strcmp(column_definition->data_type, "longblob") == 0 ||
+               strcmp(column_definition->data_type, "bit") == 0) {
+        physical_type = "BLOB";
+    } else if (strcmp(column_definition->data_type, "geometry") == 0 ||
+               strcmp(column_definition->data_type, "point") == 0 ||
+               strcmp(column_definition->data_type, "linestring") == 0 ||
+               strcmp(column_definition->data_type, "polygon") == 0 ||
+               strcmp(column_definition->data_type, "multipoint") == 0 ||
+               strcmp(column_definition->data_type, "multilinestring") == 0 ||
+               strcmp(column_definition->data_type, "multipolygon") == 0 ||
+               strcmp(column_definition->data_type, "geomcollection") == 0) {
+        physical_type = "BLOB";
+        preserve_lowercase_logical_type = true;
+    }
+    *out_column = (struct mylite_catalog_column_descriptor){
+        .is_nullable = column_definition->is_nullable != NULL &&
+                       strcmp(column_definition->is_nullable, "YES") == 0,
+        .is_visible = true,
+        .default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NONE,
+    };
+    rc = information_schema_copy_descriptor_text(
+        database,
+        column_definition->name,
+        out_column->name,
+        sizeof(out_column->name)
+    );
+    if (rc == MYLITE_OK) {
+        rc = information_schema_copy_descriptor_text(
+            database,
+            logical_type,
+            out_column->logical_type,
+            sizeof(out_column->logical_type)
+        );
+    }
+    if (!preserve_lowercase_logical_type) {
+        for (size_t index = 0U; rc == MYLITE_OK && out_column->logical_type[index] != '\0';
+             ++index) {
+            if (out_column->logical_type[index] >= 'a' && out_column->logical_type[index] <= 'z') {
+                out_column->logical_type[index] =
+                    (char)(out_column->logical_type[index] - 'a' + 'A');
+            }
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_copy_descriptor_text(
+            database,
+            physical_type,
+            out_column->physical_type,
+            sizeof(out_column->physical_type)
+        );
+    }
+    if (rc == MYLITE_OK && column_definition->character_set_name != NULL) {
+        rc = information_schema_copy_descriptor_text(
+            database,
+            column_definition->character_set_name,
+            out_column->character_set_name,
+            sizeof(out_column->character_set_name)
+        );
+    }
+    if (rc == MYLITE_OK && column_definition->collation_name != NULL) {
+        rc = information_schema_copy_descriptor_text(
+            database,
+            column_definition->collation_name,
+            out_column->collation_name,
+            sizeof(out_column->collation_name)
+        );
+    }
+    return rc;
+}
+
+static int information_schema_copy_descriptor_text(
+    struct mylite_db *database,
+    const char *source,
+    char *destination,
+    size_t destination_size
+) {
+    size_t source_size = 0U;
+
+    if (source == NULL || destination == NULL || destination_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    source_size = strlen(source);
+    if (source_size >= destination_size) {
+        set_runtime_error(database, "catalog result metadata exceeds descriptor capacity");
+        return MYLITE_ERROR;
+    }
+    memcpy(destination, source, source_size + 1U);
+    return MYLITE_OK;
+}
+
+static void information_schema_apply_connection_text_metadata(
+    const struct mylite_db *database,
+    const struct mylite_execution_catalog_column_definition *column_definition,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct mylite_sql_source_span length_span = {0};
+    struct mylite_sql_source_span octet_length_span = {0};
+    uint64_t character_count = 0U;
+    uint64_t octet_length = 0U;
+    uint64_t max_bytes_per_character = 0U;
+    uint64_t source_max_bytes_per_character = 0U;
+
+    if (database == NULL || column_definition == NULL || descriptor == NULL ||
+        column_definition->character_set_name == NULL ||
+        text_equals_ascii_case_insensitive(column_definition->character_set_name, "binary") ||
+        column_definition->character_maximum_length == NULL) {
+        return;
+    }
+    length_span = (struct mylite_sql_source_span){
+        .text = column_definition->character_maximum_length,
+        .length = strlen(column_definition->character_maximum_length),
+    };
+    if (parse_unsigned_integer_literal(&length_span, &character_count) != MYLITE_OK) {
+        return;
+    }
+    max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
+        database->session.collation_connection
+    );
+    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor->collation_id = descriptor->charset_id;
+    if (column_definition->column_type != NULL &&
+        strcmp(column_definition->column_type, "varchar(65535)") == 0 &&
+        column_definition->character_octet_length != NULL) {
+        octet_length_span = (struct mylite_sql_source_span){
+            .text = column_definition->character_octet_length,
+            .length = strlen(column_definition->character_octet_length),
+        };
+        source_max_bytes_per_character = character_set_max_bytes_per_character(
+            column_definition->character_set_name
+        );
+        if (parse_unsigned_integer_literal(&octet_length_span, &octet_length) == MYLITE_OK &&
+            source_max_bytes_per_character != 0U &&
+            octet_length <= UINT64_MAX / source_max_bytes_per_character &&
+            octet_length * source_max_bytes_per_character <=
+                UINT64_MAX / max_bytes_per_character) {
+            descriptor->display_length = result_metadata_display_length_cap(
+                octet_length * source_max_bytes_per_character * max_bytes_per_character
+            );
+            return;
+        }
+    }
+    if (character_count > UINT64_MAX / max_bytes_per_character) {
+        descriptor->display_length = UINT32_MAX;
+    } else {
+        descriptor->display_length = result_metadata_display_length_cap(
+            character_count * max_bytes_per_character
+        );
+    }
+}
+
+static void information_schema_apply_temporal_precision_metadata(
+    const struct mylite_execution_catalog_column_definition *column_definition,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct mylite_sql_source_span precision_span = {0};
+    uint64_t precision = 0U;
+
+    if (column_definition == NULL || descriptor == NULL ||
+        column_definition->datetime_precision == NULL) {
+        return;
+    }
+    precision_span = (struct mylite_sql_source_span){
+        .text = column_definition->datetime_precision,
+        .length = strlen(column_definition->datetime_precision),
+    };
+    if (parse_unsigned_integer_literal(&precision_span, &precision) != MYLITE_OK ||
+        precision > UINT16_MAX) {
+        return;
+    }
+    descriptor->decimals = (uint16_t)precision;
+    if (precision == 0U) {
+        return;
+    }
+    if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIME) {
+        descriptor->display_length = time_text_maximum_length + precision + 1U;
+    } else if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_DATETIME ||
+               descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIMESTAMP) {
+        descriptor->display_length = datetime_text_length + precision + 1U;
+    }
+}
+
+static void information_schema_apply_system_key_flags(
+    const struct information_schema_query *query,
+    size_t column_index,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const char *key = NULL;
+
+    if (query == NULL || query->system_table_definition == NULL || descriptor == NULL ||
+        column_index >= query->system_table_definition->column_key_count) {
+        return;
+    }
+    key = query->system_table_definition->column_keys[column_index];
+    if (key == NULL || key[0] == '\0') {
+        return;
+    }
+    if (strcmp(key, "PRI") == 0) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_PRI_KEY;
+    } else if (strcmp(key, "UNI") == 0) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY;
+    } else if (strcmp(key, "MUL") == 0) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_MULTIPLE_KEY;
+    }
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_PART_KEY;
+}
+
+static bool information_schema_source_column_has_binary_numeric_flag(
+    const struct information_schema_query *query,
+    const struct mylite_result_column_descriptor *descriptor
+) {
+    if (query == NULL || query->definition == NULL || query->source_schema_name == NULL ||
+        descriptor == NULL || descriptor->charset_id != mysql_collation_binary_id) {
+        return false;
+    }
+    return strcmp(query->source_schema_name, "information_schema") == 0 &&
+           strcmp(query->definition->name, "TABLES") == 0;
+}
+
+static void information_schema_make_count_result_column_descriptor(
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    *out_descriptor = unknown_result_column_descriptor(label);
+    out_descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                            MYLITE_RESULT_COLUMN_FLAG_NUM;
+    out_descriptor->charset_id = mysql_collation_binary_id;
+    out_descriptor->collation_id = mysql_collation_binary_id;
+    out_descriptor->display_length = mysql_scalar_bigint_display_length;
+    out_descriptor->nullable = false;
+}
+
+static void information_schema_make_unsigned_result_column_descriptor(
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    *out_descriptor = unknown_result_column_descriptor(label);
+    out_descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                            MYLITE_RESULT_COLUMN_FLAG_NUM;
+    out_descriptor->charset_id = mysql_collation_binary_id;
+    out_descriptor->collation_id = mysql_collation_binary_id;
+    out_descriptor->display_length = mysql_scalar_bigint_display_length;
+}
+
+static void information_schema_make_group_concat_result_column_descriptor(
+    const struct mylite_db *database,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    const uint64_t max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
+        database->session.collation_connection
+    );
+
+    *out_descriptor = unknown_result_column_descriptor(label);
+    out_descriptor->logical_type = database->session.group_concat_max_len > 512U
+                                       ? MYLITE_RESULT_LOGICAL_TYPE_BLOB
+                                       : MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    out_descriptor->charset_id = result_metadata_collation_id(
+        database->session.collation_connection
+    );
+    out_descriptor->collation_id = out_descriptor->charset_id;
+    if (database->session.group_concat_max_len > UINT64_MAX / max_bytes_per_character) {
+        out_descriptor->display_length = UINT32_MAX;
+    } else {
+        out_descriptor->display_length = result_metadata_display_length_cap(
+            database->session.group_concat_max_len * max_bytes_per_character
+        );
+    }
+    if (out_descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_BLOB) {
+        out_descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB;
+    }
+}
+
+static void information_schema_make_logical_result_column_descriptor(
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    *out_descriptor = unknown_result_column_descriptor(label);
+    out_descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM;
+    out_descriptor->charset_id = mysql_collation_binary_id;
+    out_descriptor->collation_id = mysql_collation_binary_id;
+    out_descriptor->display_length = mysql_tinyint_bool_display_length;
 }
 
 static int information_schema_append_result_rows(

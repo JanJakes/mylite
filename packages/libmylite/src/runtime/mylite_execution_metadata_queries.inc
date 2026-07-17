@@ -2776,6 +2776,8 @@ static int mysql_system_table_resolve_source(
         return MYLITE_ERROR;
     }
     out_query->definition = &definition->query_definition;
+    out_query->system_table_definition = definition;
+    out_query->source_schema_name = definition->schema_name;
     *out_definition = definition;
     if (from_table_alias_node(from_clause) != NULL) {
         rc = copy_identifier_text(

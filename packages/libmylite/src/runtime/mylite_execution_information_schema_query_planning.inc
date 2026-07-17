@@ -823,6 +823,7 @@ static int information_schema_resolve_source(
         set_unknown_information_schema_table_error(database, table_name);
         return MYLITE_ERROR;
     }
+    out_query->source_schema_name = "information_schema";
     if (from_table_index_hint_list_node(from_clause) != NULL) {
         set_unsupported_error(database, "INFORMATION_SCHEMA SELECT does not support index hints");
         return MYLITE_ERROR;

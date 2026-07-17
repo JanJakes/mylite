@@ -1,0 +1,57 @@
+#!/usr/bin/env sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+N_MINUS_ONE_REF=${MYLITE_CATALOG_N_MINUS_ONE_REF:-4a78fa132}
+CC_BIN=${CC:-cc}
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mylite-catalog-version.XXXXXX")
+OLD_SOURCE="$TEMP_DIR/n-minus-one"
+DATABASE_PATH="$TEMP_DIR/version-contract.mylite"
+
+cleanup() {
+    git -C "$ROOT_DIR" worktree remove --force "$OLD_SOURCE" >/dev/null 2>&1 || true
+    rm -rf "$TEMP_DIR"
+}
+
+fail() {
+    printf '%s\n' "verify-catalog-version-compatibility: $1" >&2
+    exit 1
+}
+
+build_probe() {
+    source_dir=$1
+    output=$2
+
+    "$CC_BIN" -std=c17 \
+        -I"$source_dir/packages/libmylite/include" \
+        -I"$source_dir/build/dev/packages/libmylite/include" \
+        "$ROOT_DIR/tools/catalog-version-probe.c" \
+        "$source_dir/build/dev/packages/libmylite/libmylite.a" \
+        "$source_dir/build/dev/third_party/sqlite/libmylite_sqlite.a" \
+        -lz -lm -o "$output"
+}
+
+trap cleanup EXIT HUP INT TERM
+
+git -C "$ROOT_DIR" cat-file -e "$N_MINUS_ONE_REF^{commit}" 2>/dev/null || \
+    fail "N-1 ref $N_MINUS_ONE_REF is not available"
+git -C "$ROOT_DIR" worktree add --detach "$OLD_SOURCE" "$N_MINUS_ONE_REF" >/dev/null
+
+(CDPATH='' cd -- "$OLD_SOURCE" && cmake --preset dev >/dev/null)
+(CDPATH='' cd -- "$OLD_SOURCE" && cmake --build --preset dev --target mylite -j2 >/dev/null)
+(CDPATH='' cd -- "$ROOT_DIR" && cmake --build --preset dev --target mylite -j2 >/dev/null)
+
+build_probe "$OLD_SOURCE" "$TEMP_DIR/n-minus-one-probe"
+build_probe "$ROOT_DIR" "$TEMP_DIR/current-probe"
+
+"$TEMP_DIR/n-minus-one-probe" "$DATABASE_PATH" || fail "N-1 could not create its catalog"
+"$TEMP_DIR/current-probe" "$DATABASE_PATH" || fail "current binary could not migrate N-1 catalog"
+
+if "$TEMP_DIR/n-minus-one-probe" "$DATABASE_PATH" >/dev/null 2>&1; then
+    fail "N-1 accepted the migrated current-writer catalog"
+fi
+
+"$TEMP_DIR/current-probe" "$DATABASE_PATH" || fail "current binary could not reopen its catalog"
+printf '%s\n' \
+    "verify-catalog-version-compatibility: N-1 create, current migration, N-1 rejection passed"

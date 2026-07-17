@@ -28,13 +28,39 @@ enum {
     catalog_test_timestamp_epoch = 1700000000,
 };
 
+typedef int (*catalog_tamper_fn)(sqlite3 *sqlite);
+
 static int test_catalog_created_in_shifted_payload_without_preamble_changes(void);
 static int test_reopen_preserves_catalog_rows_and_generation(void);
 static int test_idempotent_catalog_initialization_across_repeated_opens(void);
 static int test_independent_file_backed_handles_have_independent_catalog_state(void);
 static int test_catalog_default_text_validation(void);
 static int test_rejects_incompatible_and_incomplete_catalog_metadata(void);
+static int test_rejects_catalog_integrity_corruption(void);
 static int test_zero_initialized_catalog_cleanup(void);
+static int expect_catalog_tamper_rejected(
+    const char *name,
+    const char *const *setup_sql,
+    size_t setup_count,
+    catalog_tamper_fn tamper,
+    const char *context
+);
+static int execute_mylite_statement(mylite_db *database, const char *sql);
+static int tamper_remove_state_check(sqlite3 *sqlite);
+static int tamper_remove_schema_primary_key(sqlite3 *sqlite);
+static int tamper_remove_schema_unique_key(sqlite3 *sqlite);
+static int tamper_remove_parent_foreign_key_index(sqlite3 *sqlite);
+static int tamper_orphan_column(sqlite3 *sqlite);
+static int tamper_gap_column_ordinal(sqlite3 *sqlite);
+static int tamper_cross_index_ownership(sqlite3 *sqlite);
+static int tamper_orphan_view_source(sqlite3 *sqlite);
+static int tamper_orphan_foreign_key_parent(sqlite3 *sqlite);
+static int tamper_future_descriptor_generation(sqlite3 *sqlite);
+static int tamper_drop_physical_table(sqlite3 *sqlite);
+static int tamper_drop_physical_index(sqlite3 *sqlite);
+static int tamper_drop_physical_column(sqlite3 *sqlite);
+static int tamper_delete_catalog_column(sqlite3 *sqlite);
+static int tamper_replace_physical_index_definition(sqlite3 *sqlite);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -43,6 +69,12 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int query_catalog_table_count(sqlite3 *connection, int *out_count);
 static int query_single_int(sqlite3 *connection, const char *sql, int *out_value);
+static int query_single_text(
+    sqlite3 *connection,
+    const char *sql,
+    char *destination,
+    size_t destination_size
+);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
@@ -65,6 +97,7 @@ int main(void) {
     failures += test_independent_file_backed_handles_have_independent_catalog_state();
     failures += test_catalog_default_text_validation();
     failures += test_rejects_incompatible_and_incomplete_catalog_metadata();
+    failures += test_rejects_catalog_integrity_corruption();
     failures += test_zero_initialized_catalog_cleanup();
 
     return failures == 0 ? 0 : 1;
@@ -165,6 +198,7 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor column = {0};
     const struct mylite_catalog *catalog = NULL;
+    sqlite3 *sqlite = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "reopen") != 0) {
@@ -222,6 +256,10 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
         MYLITE_OK,
         "create column descriptor"
     );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(sqlite, "CREATE TABLE phys_items (id INTEGER NOT NULL)");
+    }
     failures += expect_int(
         mylite_catalog_update_table_name(database, table.table_id, "renamed_items"),
         MYLITE_OK,
@@ -625,6 +663,46 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     failures += expect_true(database == NULL, "bad version leaves output null");
     remove_related_files(path);
 
+    if (make_test_path(path, sizeof(path), "v36_migration") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open v36 migration file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(
+            sqlite,
+            "UPDATE _mylite_catalog_state "
+            "SET schema_version = 36, minimum_reader_schema_version = 35"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "migrate v36 catalog");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        int version = 0;
+        int minimum_reader = 0;
+
+        failures +=
+            query_single_int(sqlite, "SELECT schema_version FROM _mylite_catalog_state", &version);
+        failures += query_single_int(
+            sqlite,
+            "SELECT minimum_reader_schema_version FROM _mylite_catalog_state",
+            &minimum_reader
+        );
+        failures += expect_int(version, MYLITE_CATALOG_SCHEMA_VERSION, "migrated catalog version");
+        failures += expect_int(
+            minimum_reader,
+            MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION,
+            "migrated minimum reader"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+    remove_related_files(path);
+
     if (make_test_path(path, sizeof(path), "legacy_file_format_provenance") != 0) {
         return failures + 1;
     }
@@ -785,6 +863,371 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     remove_related_files(path);
 
     return failures;
+}
+
+static int test_rejects_catalog_integrity_corruption(void) {
+    static const char foreign_key_child_sql[] =
+        "CREATE TABLE child_table (parent_id INT, "
+        "CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent_table (id))";
+    static const char *const base_table_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE t (id INT PRIMARY KEY, value INT)",
+    };
+    static const char *const indexed_table_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE t (id INT PRIMARY KEY, value INT, KEY idx_value (value))",
+    };
+    static const char *const unindexed_table_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE t (id INT, value INT)",
+    };
+    static const char *const cross_index_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE t1 (id INT PRIMARY KEY, value INT, KEY idx_value (value))",
+        "CREATE TABLE t2 (id INT PRIMARY KEY)",
+    };
+    static const char *const view_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE source_table (id INT PRIMARY KEY)",
+        "CREATE VIEW source_view AS SELECT id FROM source_table",
+    };
+    static const char *const foreign_key_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE parent_table (id INT PRIMARY KEY)",
+        foreign_key_child_sql,
+    };
+    int failures = 0;
+
+    failures += expect_catalog_tamper_rejected(
+        "missing_state_check",
+        NULL,
+        0U,
+        tamper_remove_state_check,
+        "reject catalog state without singleton check"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_schema_pk",
+        NULL,
+        0U,
+        tamper_remove_schema_primary_key,
+        "reject catalog schema table without primary key"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_schema_unique",
+        NULL,
+        0U,
+        tamper_remove_schema_unique_key,
+        "reject catalog schema table without unique name"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_parent_fk_index",
+        NULL,
+        0U,
+        tamper_remove_parent_foreign_key_index,
+        "reject missing parent foreign-key lookup index"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "orphan_column",
+        base_table_setup,
+        sizeof(base_table_setup) / sizeof(base_table_setup[0]),
+        tamper_orphan_column,
+        "reject orphaned catalog column"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "column_ordinal_gap",
+        base_table_setup,
+        sizeof(base_table_setup) / sizeof(base_table_setup[0]),
+        tamper_gap_column_ordinal,
+        "reject catalog column ordinal gap"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "cross_index_ownership",
+        cross_index_setup,
+        sizeof(cross_index_setup) / sizeof(cross_index_setup[0]),
+        tamper_cross_index_ownership,
+        "reject cross-table catalog index part"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "orphan_view_source",
+        view_setup,
+        sizeof(view_setup) / sizeof(view_setup[0]),
+        tamper_orphan_view_source,
+        "reject orphaned catalog view source"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "orphan_fk_parent",
+        foreign_key_setup,
+        sizeof(foreign_key_setup) / sizeof(foreign_key_setup[0]),
+        tamper_orphan_foreign_key_parent,
+        "reject orphaned catalog foreign-key parent"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "future_generation",
+        base_table_setup,
+        sizeof(base_table_setup) / sizeof(base_table_setup[0]),
+        tamper_future_descriptor_generation,
+        "reject future descriptor generation"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_physical_table",
+        base_table_setup,
+        sizeof(base_table_setup) / sizeof(base_table_setup[0]),
+        tamper_drop_physical_table,
+        "reject missing physical table"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_physical_index",
+        indexed_table_setup,
+        sizeof(indexed_table_setup) / sizeof(indexed_table_setup[0]),
+        tamper_drop_physical_index,
+        "reject missing physical index"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_physical_column",
+        base_table_setup,
+        sizeof(base_table_setup) / sizeof(base_table_setup[0]),
+        tamper_drop_physical_column,
+        "reject missing physical column"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "undeclared_physical_column",
+        unindexed_table_setup,
+        sizeof(unindexed_table_setup) / sizeof(unindexed_table_setup[0]),
+        tamper_delete_catalog_column,
+        "reject undeclared physical column"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "wrong_physical_index_definition",
+        indexed_table_setup,
+        sizeof(indexed_table_setup) / sizeof(indexed_table_setup[0]),
+        tamper_replace_physical_index_definition,
+        "reject mismatched physical index definition"
+    );
+    return failures;
+}
+
+static int expect_catalog_tamper_rejected(
+    const char *name,
+    const char *const *setup_sql,
+    size_t setup_count,
+    catalog_tamper_fn tamper,
+    const char *context
+) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), name) != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog tamper file");
+    for (size_t index = 0U; failures == 0 && index < setup_count; ++index) {
+        failures += execute_mylite_statement(database, setup_sql[index]);
+    }
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (failures == 0 && sqlite != NULL) {
+        failures += tamper(sqlite);
+    }
+    mylite_close(database);
+    database = NULL;
+    if (failures == 0) {
+        failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, context);
+        failures += expect_true(database == NULL, "catalog integrity rejection leaves output null");
+    }
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int execute_mylite_statement(mylite_db *database, const char *sql) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    mylite_result_free(result);
+    if (rc != MYLITE_OK) {
+        fprintf(stderr, "MyLite setup statement failed: %s\n", sql);
+        return 1;
+    }
+    return 0;
+}
+
+static int tamper_remove_state_check(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_state RENAME TO _mylite_bad_state;"
+        "CREATE TABLE _mylite_catalog_state ("
+        "singleton_id INTEGER PRIMARY KEY, schema_version INTEGER NOT NULL, "
+        "minimum_reader_schema_version INTEGER NOT NULL, catalog_generation INTEGER NOT NULL, "
+        "created_with_file_format_version INTEGER NOT NULL);"
+        "INSERT INTO _mylite_catalog_state SELECT * FROM _mylite_bad_state;"
+        "DROP TABLE _mylite_bad_state"
+    );
+}
+
+static int tamper_remove_schema_primary_key(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_schemas RENAME TO _mylite_bad_schemas;"
+        "CREATE TABLE _mylite_catalog_schemas ("
+        "schema_id INTEGER, name TEXT NOT NULL UNIQUE, default_charset TEXT NOT NULL, "
+        "default_collation TEXT NOT NULL, descriptor_version INTEGER NOT NULL, "
+        "created_catalog_generation INTEGER NOT NULL, updated_catalog_generation INTEGER NOT NULL);"
+        "INSERT INTO _mylite_catalog_schemas SELECT * FROM _mylite_bad_schemas;"
+        "DROP TABLE _mylite_bad_schemas"
+    );
+}
+
+static int tamper_remove_schema_unique_key(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_schemas RENAME TO _mylite_bad_schemas;"
+        "CREATE TABLE _mylite_catalog_schemas ("
+        "schema_id INTEGER PRIMARY KEY, name TEXT NOT NULL, default_charset TEXT NOT NULL, "
+        "default_collation TEXT NOT NULL, descriptor_version INTEGER NOT NULL, "
+        "created_catalog_generation INTEGER NOT NULL, updated_catalog_generation INTEGER NOT NULL);"
+        "INSERT INTO _mylite_catalog_schemas SELECT * FROM _mylite_bad_schemas;"
+        "DROP TABLE _mylite_bad_schemas"
+    );
+}
+
+static int tamper_remove_parent_foreign_key_index(sqlite3 *sqlite) {
+    return execute_sql(sqlite, "DROP INDEX _mylite_catalog_foreign_keys_parent_table_id");
+}
+
+static int tamper_orphan_column(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "UPDATE _mylite_catalog_columns SET table_id = 999999 WHERE name = 'value'"
+    );
+}
+
+static int tamper_gap_column_ordinal(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "UPDATE _mylite_catalog_columns SET ordinal_position = 3 WHERE name = 'value'"
+    );
+}
+
+static int tamper_cross_index_ownership(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "UPDATE _mylite_catalog_index_columns SET table_id = "
+        "(SELECT MAX(table_id) FROM _mylite_catalog_tables) WHERE index_id = "
+        "(SELECT index_id FROM _mylite_catalog_indexes WHERE name = 'idx_value')"
+    );
+}
+
+static int tamper_orphan_view_source(sqlite3 *sqlite) {
+    return execute_sql(sqlite, "UPDATE _mylite_catalog_views SET source_table_id = 999999");
+}
+
+static int tamper_orphan_foreign_key_parent(sqlite3 *sqlite) {
+    return execute_sql(sqlite, "UPDATE _mylite_catalog_foreign_keys SET parent_table_id = 999999");
+}
+
+static int tamper_future_descriptor_generation(sqlite3 *sqlite) {
+    return execute_sql(
+        sqlite,
+        "UPDATE _mylite_catalog_tables SET updated_catalog_generation = "
+        "(SELECT catalog_generation + 1 FROM _mylite_catalog_state)"
+    );
+}
+
+static int tamper_drop_physical_table(sqlite3 *sqlite) {
+    char physical_name[sql_buffer_capacity];
+    char sql[sql_buffer_capacity];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+        physical_name,
+        sizeof(physical_name)
+    );
+    int written = snprintf(sql, sizeof(sql), "DROP TABLE \"%s\"", physical_name);
+
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_drop_physical_index(sqlite3 *sqlite) {
+    char physical_name[sql_buffer_capacity];
+    char sql[sql_buffer_capacity];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_indexes WHERE name = 'idx_value'",
+        physical_name,
+        sizeof(physical_name)
+    );
+    int written = snprintf(sql, sizeof(sql), "DROP INDEX \"%s\"", physical_name);
+
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_drop_physical_column(sqlite3 *sqlite) {
+    char physical_name[sql_buffer_capacity];
+    char sql[sql_buffer_capacity];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+        physical_name,
+        sizeof(physical_name)
+    );
+    int written = snprintf(sql, sizeof(sql), "ALTER TABLE \"%s\" DROP COLUMN value", physical_name);
+
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_delete_catalog_column(sqlite3 *sqlite) {
+    return execute_sql(sqlite, "DELETE FROM _mylite_catalog_columns WHERE name = 'value'");
+}
+
+static int tamper_replace_physical_index_definition(sqlite3 *sqlite) {
+    char index_name[sql_buffer_capacity];
+    char table_name[sql_buffer_capacity];
+    char sql[sql_buffer_capacity * 2];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_indexes WHERE name = 'idx_value'",
+        index_name,
+        sizeof(index_name)
+    );
+    int written = 0;
+
+    if (rc == 0) {
+        rc = query_single_text(
+            sqlite,
+            "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+            table_name,
+            sizeof(table_name)
+        );
+    }
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "DROP INDEX \"%s\"; CREATE INDEX \"%s\" ON \"%s\" (id)",
+        index_name,
+        index_name,
+        table_name
+    );
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
 }
 
 static int test_zero_initialized_catalog_cleanup(void) {
@@ -953,6 +1396,49 @@ static int query_single_int(sqlite3 *connection, const char *sql, int *out_value
         return 1;
     }
 
+    return 0;
+}
+
+static int query_single_text(
+    sqlite3 *connection,
+    const char *sql,
+    char *destination,
+    size_t destination_size
+) {
+    enum { sqlite_use_nul_terminated_string = -1 };
+
+    sqlite3_stmt *statement = NULL;
+    const unsigned char *value = NULL;
+    int rc = SQLITE_OK;
+    int written = 0;
+
+    if (destination == NULL || destination_size == 0U) {
+        return 1;
+    }
+    destination[0] = '\0';
+    rc = sqlite3_prepare_v2(connection, sql, sqlite_use_nul_terminated_string, &statement, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "prepare SQLite SQL \"%s\": error %d\n", sql, rc);
+        return 1;
+    }
+    rc = sqlite3_step(statement);
+    if (rc != SQLITE_ROW || sqlite3_column_type(statement, 0) != SQLITE_TEXT) {
+        fprintf(stderr, "step SQLite text SQL \"%s\": error %d\n", sql, rc);
+        (void)sqlite3_finalize(statement);
+        return 1;
+    }
+    value = sqlite3_column_text(statement, 0);
+    written =
+        snprintf(destination, destination_size, "%s", value == NULL ? "" : (const char *)value);
+    if (written < 0 || (size_t)written >= destination_size) {
+        (void)sqlite3_finalize(statement);
+        return 1;
+    }
+    rc = sqlite3_finalize(statement);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "finalize SQLite SQL \"%s\": error %d\n", sql, rc);
+        return 1;
+    }
     return 0;
 }
 

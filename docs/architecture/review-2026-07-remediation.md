@@ -135,11 +135,11 @@ complete.
 
 ### Catalog integrity and compatibility
 
-- [ ] Validate catalog table definitions, indexes, constraints, relationships,
+- [x] Validate catalog table definitions, indexes, constraints, relationships,
   ordinals, and physical-schema correspondence on open.
-- [ ] Reject missing physical tables and orphaned catalog children.
-- [ ] Define separate reader and writer format compatibility rules.
-- [ ] Test actual N and N-1 binaries against the declared minimum-reader
+- [x] Reject missing physical tables and orphaned catalog children.
+- [x] Define separate reader and writer format compatibility rules.
+- [x] Test actual N and N-1 binaries against the declared minimum-reader
   contract.
 - [ ] Replace unchecked system-metadata parallel arrays with typed records or
   generated definitions with static validation.

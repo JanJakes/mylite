@@ -36,6 +36,7 @@ enum {
     catalog_schema_version_v33 = 33U,
     catalog_schema_version_v34 = 34U,
     catalog_schema_version_v35 = 35U,
+    catalog_schema_version_v36 = 36U,
 };
 
 static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite);
@@ -73,6 +74,7 @@ static int migrate_catalog_schema_v32_to_v33(sqlite3 *sqlite);
 static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite);
 static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite);
 static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite);
+static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite);
 static void rollback_catalog_transaction(sqlite3 *sqlite);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version) {
@@ -222,6 +224,10 @@ int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v35:
         rc = migrate_catalog_schema_v35_to_v36(sqlite);
+        next_schema_version = catalog_schema_version_v36;
+        break;
+    case catalog_schema_version_v36:
+        rc = migrate_catalog_schema_v36_to_v37(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -1387,6 +1393,22 @@ static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite) {
         "BEGIN IMMEDIATE;"
         "CREATE INDEX IF NOT EXISTS _mylite_catalog_foreign_keys_parent_table_id "
         "ON _mylite_catalog_foreign_keys(parent_table_id, foreign_key_id);"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 36, minimum_reader_schema_version = 35;"
+        "COMMIT;";
+    int rc = mylite_catalog_execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
         ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ";"

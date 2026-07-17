@@ -74,6 +74,7 @@ void mylite_catalog_cache_foreign_key_roles(
 );
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
+int mylite_catalog_validate_integrity(sqlite3 *sqlite);
 int mylite_catalog_begin_generation_change(
     struct mylite_db *database,
     struct mylite_catalog_generation_change *out_change

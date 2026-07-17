@@ -9,6 +9,8 @@ static int append_information_schema_catalog_rows(
         .schema = NULL,
         .filter = filter,
     };
+    bool handled = false;
+    int rc = MYLITE_OK;
 
     if (!information_schema_catalog_filter_allows_user_catalog_rows(rows->definition, filter)) {
         return MYLITE_OK;
@@ -344,11 +346,69 @@ static int append_information_schema_catalog_rows(
         break;
     }
 
+    rc = try_append_information_schema_exact_catalog_table(&context, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     return mylite_catalog_for_each_schema(
         database,
         append_information_schema_catalog_schema,
         &context
     );
+}
+
+static int try_append_information_schema_exact_catalog_table(
+    struct information_schema_catalog_context *context,
+    bool *out_handled
+) {
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    const struct information_schema_catalog_filter *filter = NULL;
+    bool schema_found = false;
+    bool table_found = false;
+    int rc = MYLITE_OK;
+
+    if (context == NULL || context->database == NULL || context->rows == NULL ||
+        out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    filter = context->filter;
+    if (filter == NULL || !filter->has_schema_name || !filter->has_table_name) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_try_read_schema_by_name(
+        context->database,
+        filter->schema_name,
+        &schema,
+        &schema_found
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!schema_found) {
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    rc = mylite_catalog_try_read_table_by_name(
+        context->database,
+        schema.schema_id,
+        filter->table_name,
+        &table,
+        &table_found
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!table_found) {
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+
+    context->schema = &schema;
+    *out_handled = true;
+    return append_information_schema_catalog_table(&table, context);
 }
 
 static int append_information_schema_catalog_schema(

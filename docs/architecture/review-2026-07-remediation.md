@@ -153,7 +153,7 @@ complete.
 - [ ] Remove positive synthetic storage/process state that MyLite cannot
   truthfully observe, or expose explicit capability provenance.
 - [x] Reuse cached combined key metadata for SHOW and INFORMATION_SCHEMA.
-- [ ] Add direct exact schema/table lookup paths for COLUMNS and STATISTICS.
+- [x] Add direct exact schema/table lookup paths for COLUMNS and STATISTICS.
 - [ ] Stream metadata rows and push down predicates, projection, aggregation,
   ordering prerequisites, and LIMIT where valid.
 - [ ] Allocate only projected values and add bounded-memory count/limit paths.

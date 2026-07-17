@@ -101,6 +101,10 @@ static int append_information_schema_catalog_rows(
     struct information_schema_row_set *rows,
     const struct information_schema_catalog_filter *filter
 );
+static int try_append_information_schema_exact_catalog_table(
+    struct information_schema_catalog_context *context,
+    bool *out_handled
+);
 static int information_schema_catalog_filter_init_from_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

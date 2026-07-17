@@ -39,6 +39,8 @@ struct expected_query {
 };
 
 struct catalog_metadata_trace {
+    size_t schema_scan_count;
+    size_t table_scan_count;
     size_t column_query_count;
     size_t index_query_count;
     size_t index_column_query_count;
@@ -213,6 +215,7 @@ static int test_dbdelta_introspection_independent_handles(void) {
 }
 
 static int test_dbdelta_introspection_reuses_cached_metadata(void) {
+    static const char *const zero_count_values[] = {"0"};
     char path[test_path_capacity];
     struct catalog_metadata_trace trace = {0};
     mylite_db *database = NULL;
@@ -228,6 +231,17 @@ static int test_dbdelta_introspection_reuses_cached_metadata(void) {
     failures += create_fixture_schema(database);
     failures += create_wordpress_dbdelta_fixture_tables(database);
     failures += verify_dbdelta_introspection_metadata(database, "warm cached metadata");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA='WP' AND TABLE_NAME='WP_OPTIONS'",
+            .values = zero_count_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "case-sensitive exact metadata lookup",
+        }
+    );
 
     sqlite = mylite_connection_sqlite_for_test(database);
     failures += expect_int(
@@ -235,7 +249,20 @@ static int test_dbdelta_introspection_reuses_cached_metadata(void) {
         SQLITE_OK,
         "install cached metadata trace"
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA='wp' AND TABLE_NAME='missing_table'",
+            .values = zero_count_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "missing exact metadata lookup",
+        }
+    );
     failures += verify_dbdelta_introspection_metadata(database, "reuse cached metadata");
+    failures += expect_size(trace.schema_scan_count, 0U, "exact metadata schema scans");
+    failures += expect_size(trace.table_scan_count, 0U, "exact metadata table scans");
     failures += expect_size(trace.column_query_count, 0U, "cached metadata column queries");
     failures += expect_size(trace.index_query_count, 0U, "cached metadata index queries");
     failures +=
@@ -264,6 +291,12 @@ static int count_catalog_metadata_query(
     (void)expanded_sql;
     if (trace_kind != SQLITE_TRACE_STMT || trace == NULL || sql == NULL) {
         return 0;
+    }
+    if (strstr(sql, "FROM _mylite_catalog_schemas ORDER BY name") != NULL) {
+        ++trace->schema_scan_count;
+    }
+    if (strstr(sql, "FROM _mylite_catalog_tables WHERE schema_id = ?1 ORDER BY name") != NULL) {
+        ++trace->table_scan_count;
     }
     if (strstr(sql, "FROM _mylite_catalog_columns") != NULL) {
         ++trace->column_query_count;

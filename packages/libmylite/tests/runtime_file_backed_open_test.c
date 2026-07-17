@@ -5,6 +5,7 @@
 #include "storage/mylite_file_format.h"
 #include "storage/mylite_file_open.h"
 
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,9 +33,13 @@ static int test_independent_file_backed_handles_and_bootstrap_state(void);
 static int test_reopens_legacy_version_one_file(void);
 static int test_rejects_incomplete_lifecycle_files(void);
 static int test_rejects_second_opener_during_initialization(void);
+static int test_lock_byte_gap_mapping(void);
+static int test_legacy_lock_boundary_containment(void);
+static int test_journal_mode_policy(void);
 #ifndef _WIN32
 static int test_process_death_leaves_initializing_file_rejected(void);
 static int test_abort_marks_opened_identity_recovery_required(void);
+static int test_hot_journal_recovery_after_process_death(void);
 #endif
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
@@ -44,12 +49,15 @@ static int write_file_bytes(const char *path, const void *bytes, size_t size);
 static int write_file_at(const char *path, long offset, const void *bytes, size_t size);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int file_size(const char *path, long *out_size);
+static int file_exists_with_suffix(const char *path, const char *suffix);
 static int create_plain_sqlite_database(const char *path);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int query_single_int(sqlite3 *connection, const char *sql, int *out_value);
+static int query_single_text_equals(sqlite3 *connection, const char *sql, const char *expected);
 static int table_exists(sqlite3 *connection, const char *table_name, int *out_exists);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_long(long actual, long expected, const char *context);
+static int expect_int64(sqlite3_int64 actual, sqlite3_int64 expected, const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
 static int expect_true(int condition, const char *context);
 static int expect_bytes(
@@ -76,9 +84,13 @@ int main(void) {
     failures += test_reopens_legacy_version_one_file();
     failures += test_rejects_incomplete_lifecycle_files();
     failures += test_rejects_second_opener_during_initialization();
+    failures += test_lock_byte_gap_mapping();
+    failures += test_legacy_lock_boundary_containment();
+    failures += test_journal_mode_policy();
 #ifndef _WIN32
     failures += test_process_death_leaves_initializing_file_rejected();
     failures += test_abort_marks_opened_identity_recovery_required();
+    failures += test_hot_journal_recovery_after_process_death();
 #endif
 
     return failures == 0 ? 0 : 1;
@@ -455,6 +467,254 @@ static int test_rejects_second_opener_during_initialization(void) {
     return failures;
 }
 
+static int test_lock_byte_gap_mapping(void) {
+    enum {
+        crossing_size = 4,
+        maximum_page_size = 65536,
+        atomic_capabilities = SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_ATOMIC512 | SQLITE_IOCAP_ATOMIC1K |
+                              SQLITE_IOCAP_ATOMIC2K | SQLITE_IOCAP_ATOMIC4K |
+                              SQLITE_IOCAP_ATOMIC8K | SQLITE_IOCAP_ATOMIC16K |
+                              SQLITE_IOCAP_ATOMIC32K | SQLITE_IOCAP_ATOMIC64K |
+                              SQLITE_IOCAP_BATCH_ATOMIC,
+    };
+
+    static const unsigned char crossing_bytes[crossing_size] = {0x31U, 0x32U, 0x33U, 0x34U};
+    static const int page_sizes[] = {512, 1024, 2048, 4096, 8192, 16384, 32768, 65536};
+    static const unsigned char zeroes[MYLITE_FILE_SQLITE_PAYLOAD_OFFSET];
+
+    static unsigned char page[maximum_page_size];
+    static unsigned char page_readback[maximum_page_size];
+    unsigned char gap[MYLITE_FILE_SQLITE_PAYLOAD_OFFSET];
+    unsigned char readback[crossing_size];
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    sqlite3_file *main_file = NULL;
+    sqlite3_int64 logical_size = 0;
+    sqlite3_int64 mmap_size = 1024 * 1024;
+    long physical_size = 0;
+    int chunk_size = 1024 * 1024;
+    int characteristics = 0;
+    int failures = 0;
+    size_t page_index = 0U;
+
+    if (make_test_path(path, sizeof(path), "lock_gap") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create lock-gap file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += expect_int(
+            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &main_file),
+            SQLITE_OK,
+            "get lock-gap main file"
+        );
+    }
+    if (main_file != NULL) {
+        failures += expect_int(
+            main_file->pMethods->xFileControl(main_file, SQLITE_FCNTL_CHUNK_SIZE, &chunk_size),
+            SQLITE_OK,
+            "disable incompatible physical chunk sizing"
+        );
+        for (page_index = 0U; page_index < sizeof(page_sizes) / sizeof(page_sizes[0]);
+             ++page_index) {
+            int page_size = page_sizes[page_index];
+            int byte_index = 0;
+
+            for (byte_index = 0; byte_index < page_size; ++byte_index) {
+                page[byte_index] = (unsigned char)(byte_index + page_size);
+            }
+            failures += expect_int(
+                main_file->pMethods->xWrite(
+                    main_file,
+                    page,
+                    page_size,
+                    MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET - (page_size / 2)
+                ),
+                SQLITE_OK,
+                "write supported page size across logical lock split"
+            );
+            failures += expect_int(
+                main_file->pMethods->xRead(
+                    main_file,
+                    page_readback,
+                    page_size,
+                    MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET - (page_size / 2)
+                ),
+                SQLITE_OK,
+                "read supported page size across logical lock split"
+            );
+            failures += expect_bytes(
+                page_readback,
+                page,
+                (size_t)page_size,
+                "supported page-size logical readback"
+            );
+        }
+        failures += expect_int(
+            main_file->pMethods->xWrite(
+                main_file,
+                crossing_bytes,
+                crossing_size,
+                MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET - 2
+            ),
+            SQLITE_OK,
+            "write across logical lock split"
+        );
+        failures += expect_int(
+            main_file->pMethods->xRead(
+                main_file,
+                readback,
+                crossing_size,
+                MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET - 2
+            ),
+            SQLITE_OK,
+            "read across logical lock split"
+        );
+        failures += expect_bytes(
+            readback,
+            crossing_bytes,
+            sizeof(crossing_bytes),
+            "crossing logical readback"
+        );
+        failures += expect_int(
+            main_file->pMethods->xFileSize(main_file, &logical_size),
+            SQLITE_OK,
+            "read sparse logical size"
+        );
+        failures += expect_int64(
+            logical_size,
+            MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET + (maximum_page_size / 2),
+            "sparse logical size"
+        );
+        failures += expect_int(
+            main_file->pMethods->xFileControl(main_file, SQLITE_FCNTL_MMAP_SIZE, &mmap_size),
+            SQLITE_OK,
+            "disable mapped I/O"
+        );
+        failures += expect_int64(mmap_size, 0, "mapped I/O size remains zero");
+        characteristics = main_file->pMethods->xDeviceCharacteristics(main_file);
+        failures += expect_int(
+            characteristics & atomic_capabilities,
+            0,
+            "shifted VFS clears atomic-write capabilities"
+        );
+        failures += expect_true(
+            main_file->pMethods->xSectorSize(main_file) > 0 &&
+                MYLITE_FILE_SQLITE_PAYLOAD_OFFSET % main_file->pMethods->xSectorSize(main_file) ==
+                    0,
+            "shifted VFS sector size preserves physical alignment"
+        );
+    }
+    mylite_close(database);
+
+    failures += file_size(path, &physical_size);
+    failures += expect_long(
+        physical_size,
+        MYLITE_FILE_PHYSICAL_LOCK_BYTE + MYLITE_FILE_SQLITE_PAYLOAD_OFFSET +
+            (maximum_page_size / 2),
+        "sparse physical size includes lock gap"
+    );
+    failures += read_file_at(path, MYLITE_FILE_PHYSICAL_LOCK_BYTE - 2L, readback, 2U);
+    failures += expect_bytes(readback, crossing_bytes, 2U, "bytes before physical lock gap");
+    failures += read_file_at(path, MYLITE_FILE_PHYSICAL_LOCK_BYTE, gap, sizeof(gap));
+    failures += expect_bytes(gap, zeroes, sizeof(gap), "physical lock gap remains empty");
+    failures += read_file_at(
+        path,
+        MYLITE_FILE_PHYSICAL_LOCK_BYTE + MYLITE_FILE_SQLITE_PAYLOAD_OFFSET,
+        readback,
+        2U
+    );
+    failures += expect_bytes(&readback[0], &crossing_bytes[2], 2U, "bytes after physical lock gap");
+
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_legacy_lock_boundary_containment(void) {
+    static const unsigned char version_two[] = {0U, MYLITE_FILE_LIFECYCLE_FORMAT_VERSION};
+    static const unsigned char marker = 0x5aU;
+
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    sqlite3_file *main_file = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "legacy_lock_limit") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create legacy-limit file");
+    mylite_close(database);
+    database = NULL;
+    failures +=
+        write_file_at(path, MYLITE_FILE_FORMAT_VERSION_OFFSET, version_two, sizeof(version_two));
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open version-two file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += expect_int(
+            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &main_file),
+            SQLITE_OK,
+            "get legacy main file"
+        );
+    }
+    if (main_file != NULL) {
+        failures += expect_int(
+            main_file->pMethods->xWrite(main_file, &marker, 1, MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE),
+            SQLITE_FULL,
+            "reject legacy write into physical lock range"
+        );
+        failures += expect_int(
+            main_file->pMethods->xTruncate(main_file, MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE + 1),
+            SQLITE_FULL,
+            "reject legacy truncate into physical lock range"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+
+    failures += write_file_at(path, MYLITE_FILE_PHYSICAL_LOCK_BYTE, &marker, sizeof(marker));
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject oversized version-two file");
+    failures += expect_true(database == NULL, "oversized version-two output remains null");
+
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_journal_mode_policy(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "journal_policy") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open journal-policy file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_single_text_equals(sqlite, "PRAGMA journal_mode", "delete");
+        failures += query_single_text_equals(sqlite, "PRAGMA journal_mode=WAL", "delete");
+        failures += query_single_text_equals(sqlite, "PRAGMA journal_mode", "delete");
+    }
+
+    mylite_close(database);
+    failures += expect_int(file_exists_with_suffix(path, "-wal"), 0, "WAL file is not created");
+    failures +=
+        expect_int(file_exists_with_suffix(path, "-shm"), 0, "shared-memory file is not created");
+
+    remove_related_files(path);
+    return failures;
+}
+
 #ifndef _WIN32
 static int test_process_death_leaves_initializing_file_rejected(void) {
     unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -556,6 +816,96 @@ static int test_abort_marks_opened_identity_recovery_required(void) {
 
     remove_related_files(path);
     remove_related_files(owned_path);
+    return failures;
+}
+
+static int test_hot_journal_recovery_after_process_death(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    pid_t child = 0;
+    int child_status = 0;
+    int changed_rows = -1;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "hot_journal") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create recovery file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(
+            sqlite,
+            "CREATE TABLE recovery_rows(id INTEGER PRIMARY KEY, value BLOB);"
+            "WITH RECURSIVE n(value) AS ("
+            "SELECT 1 UNION ALL SELECT value + 1 FROM n WHERE value < 64"
+            ") INSERT INTO recovery_rows SELECT value, zeroblob(4096) FROM n;"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+
+    child = fork();
+    if (child == 0) {
+        mylite_db *child_database = NULL;
+        sqlite3 *child_sqlite = NULL;
+        int rc = mylite_open(path, &child_database);
+
+        if (rc == MYLITE_OK) {
+            child_sqlite = mylite_connection_sqlite_for_test(child_database);
+            rc = sqlite3_exec(
+                child_sqlite,
+                "PRAGMA cache_size=1;"
+                "PRAGMA cache_spill=ON;"
+                "BEGIN IMMEDIATE;"
+                "UPDATE recovery_rows SET value = randomblob(4096);",
+                NULL,
+                NULL,
+                NULL
+            );
+        }
+        _exit(rc == SQLITE_OK ? 0 : 1);
+    }
+    if (child < 0) {
+        fprintf(stderr, "fork recovery writer failed\n");
+        remove_related_files(path);
+        return failures + 1;
+    }
+    if (waitpid(child, &child_status, 0) != child) {
+        fprintf(stderr, "wait for recovery writer failed\n");
+        failures += 1;
+    } else {
+        failures += expect_true(WIFEXITED(child_status), "recovery writer exited");
+        if (WIFEXITED(child_status)) {
+            failures += expect_int(WEXITSTATUS(child_status), 0, "recovery writer updated rows");
+        }
+    }
+    failures += expect_int(
+        file_exists_with_suffix(path, "-journal"),
+        1,
+        "interrupted transaction leaves rollback journal"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "recover hot journal");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_single_int(
+            sqlite,
+            "SELECT count(*) FROM recovery_rows WHERE value != zeroblob(4096)",
+            &changed_rows
+        );
+    }
+    failures += expect_int(changed_rows, 0, "hot-journal rollback restores committed rows");
+    mylite_close(database);
+    failures += expect_int(
+        file_exists_with_suffix(path, "-journal"),
+        0,
+        "hot rollback journal removed after recovery"
+    );
+
+    remove_related_files(path);
     return failures;
 }
 #endif
@@ -707,6 +1057,23 @@ static int file_size(const char *path, long *out_size) {
     return failures;
 }
 
+static int file_exists_with_suffix(const char *path, const char *suffix) {
+    char related_path[test_path_capacity];
+    FILE *file = NULL;
+    int written = snprintf(related_path, sizeof(related_path), "%s%s", path, suffix);
+
+    if (written < 0 || (size_t)written >= sizeof(related_path)) {
+        return 0;
+    }
+    file = fopen(related_path, "rb");
+    if (file == NULL) {
+        return 0;
+    }
+
+    (void)fclose(file);
+    return 1;
+}
+
 static int create_plain_sqlite_database(const char *path) {
     sqlite3 *connection = NULL;
     int rc = sqlite3_open(path, &connection);
@@ -782,6 +1149,45 @@ static int query_single_int(sqlite3 *connection, const char *sql, int *out_value
     return 0;
 }
 
+static int query_single_text_equals(sqlite3 *connection, const char *sql, const char *expected) {
+    enum { sqlite_use_nul_terminated_string = -1 };
+
+    sqlite3_stmt *statement = NULL;
+    const unsigned char *actual = NULL;
+    int failures = 0;
+    int rc =
+        sqlite3_prepare_v2(connection, sql, sqlite_use_nul_terminated_string, &statement, NULL);
+
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "prepare SQLite SQL \"%s\": error %d\n", sql, rc);
+        return 1;
+    }
+    rc = sqlite3_step(statement);
+    if (rc != SQLITE_ROW) {
+        fprintf(stderr, "step SQLite SQL \"%s\": error %d\n", sql, rc);
+        (void)sqlite3_finalize(statement);
+        return 1;
+    }
+    actual = sqlite3_column_text(statement, 0);
+    if (actual == NULL || strcmp((const char *)actual, expected) != 0) {
+        fprintf(
+            stderr,
+            "SQLite SQL \"%s\": expected %s, got %s\n",
+            sql,
+            expected,
+            actual == NULL ? "NULL" : (const char *)actual
+        );
+        failures += 1;
+    }
+    rc = sqlite3_finalize(statement);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "finalize SQLite SQL \"%s\": error %d\n", sql, rc);
+        failures += 1;
+    }
+
+    return failures;
+}
+
 static int table_exists(sqlite3 *connection, const char *table_name, int *out_exists) {
     enum { sqlite_use_nul_terminated_string = -1 };
 
@@ -841,6 +1247,21 @@ static int expect_int(int actual, int expected, const char *context) {
 static int expect_long(long actual, long expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %ld, got %ld\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_int64(sqlite3_int64 actual, sqlite3_int64 expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %" PRId64 ", got %" PRId64 "\n",
+            context,
+            (int64_t)expected,
+            (int64_t)actual
+        );
         return 1;
     }
 

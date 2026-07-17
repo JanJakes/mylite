@@ -21,6 +21,7 @@ no MySQL runtime expectation fixture or compatibility-matrix change.
 - File-format layout: `docs/specs/mylite-file-format/specs.md`
 - Creation/publication lifecycle:
   `docs/specs/storage-file-initialization-lifecycle/specs.md`
+- Lock-byte mapping: `docs/specs/storage-lock-byte-mapping/specs.md`
 - SQLite bootstrap policy:
   `docs/specs/sqlite-connection-bootstrap-policy/specs.md`
 
@@ -28,7 +29,7 @@ no MySQL runtime expectation fixture or compatibility-matrix change.
 
 MyLite first asks the offset VFS to create the main database exclusively. The
 VFS translates this request into the wrapped platform VFS's real exclusive
-create flag. A successful creator writes and syncs a version-2 `initializing`
+create flag. A successful creator writes and syncs a version-3 `initializing`
 preamble through the exact underlying `sqlite3_file` before returning it to
 SQLite.
 
@@ -53,16 +54,22 @@ wrapped default VFS's `szOsFile`. Only `SQLITE_OPEN_MAIN_DB` files shift logical
 offsets. Journals, temporary files, and other auxiliary files delegate offsets
 unchanged.
 
-For a shifted main file:
+For a shifted main file below the lock split:
 
 - `xRead` and `xWrite` add 4096 after overflow checks;
 - `xTruncate` adds 4096 and cannot truncate the preamble;
 - `xFileSize` reports `max(physical_size - 4096, 0)`;
 - `SQLITE_FCNTL_SIZE_HINT` and `SQLITE_FCNTL_SIZE_LIMIT` translate logical and
   physical sizes;
-- sync, lock, unlock, reserved-lock checks, sector size, and device properties
-  delegate to the wrapped file; and
+- sync, lock, unlock, reserved-lock checks, and sector size delegate to the
+  wrapped file;
+- mapped I/O and atomic-write capabilities are disabled; and
 - lifecycle transitions write physical preamble offsets directly and sync.
+
+Version 3 inserts a second physical gap at the lock-byte boundary and splits
+crossing reads and writes. Versions 1 and 2 retain linear translation but
+cannot grow past the safe boundary. The lock-byte specification defines the
+exact mapping and size-control behavior.
 
 Path, delete, access, dynamic-loading, randomness, sleep, time, and last-error
 VFS methods delegate to the wrapped VFS. Failed `xOpen` closes any partially
@@ -91,8 +98,8 @@ resources, frees the handle, and leaves the pathname untouched.
 
 Coverage includes:
 
-- version-2 creation, shifted SQLite header, catalog initialization, and reopen;
-- legacy version-1 reopen;
+- version-3 creation, shifted SQLite header, catalog initialization, and reopen;
+- legacy version-1 and version-2 reopen;
 - invalid, empty, truncated, plain-SQLite, preamble-only, initializing, and
   recovery-required files;
 - independent handles and bootstrap state;
@@ -100,4 +107,5 @@ Coverage includes:
 - process-death rejection before lifecycle publication;
 - POSIX rename/replacement during abort, proving only the opened inode receives
   recovery state and the replacement pathname is unchanged; and
+- sparse lock-boundary mapping and legacy growth containment; and
 - Release and sanitizer execution.

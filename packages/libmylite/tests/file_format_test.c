@@ -6,6 +6,7 @@
 static int test_preamble_init_sets_format_fields(void);
 static int test_preamble_lifecycle_states(void);
 static int test_legacy_preamble_is_committed(void);
+static int test_version_two_preamble_retains_lifecycle(void);
 static int test_preamble_validate_rejects_corruption(void);
 static int test_preamble_u16_is_big_endian(void);
 static int expect_int(int actual, int expected, const char *context);
@@ -23,6 +24,7 @@ int main(void) {
     failures += test_preamble_init_sets_format_fields();
     failures += test_preamble_lifecycle_states();
     failures += test_legacy_preamble_is_committed();
+    failures += test_version_two_preamble_retains_lifecycle();
     failures += test_preamble_validate_rejects_corruption();
     failures += test_preamble_u16_is_big_endian();
 
@@ -110,6 +112,34 @@ static int test_legacy_preamble_is_committed(void) {
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INVALID,
         "legacy reserved bytes remain zero"
+    );
+
+    return failures;
+}
+
+static int test_version_two_preamble_retains_lifecycle(void) {
+    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    int failures = 0;
+
+    mylite_file_preamble_init(preamble);
+    preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET] = 0U;
+    preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET + 1U] = MYLITE_FILE_LIFECYCLE_FORMAT_VERSION;
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "version two committed lifecycle"
+    );
+    failures += expect_u16(
+        mylite_file_preamble_format_version(preamble),
+        MYLITE_FILE_LIFECYCLE_FORMAT_VERSION,
+        "version two format"
+    );
+
+    preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = MYLITE_FILE_LIFECYCLE_INITIALIZING;
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_INITIALIZING,
+        "version two initializing lifecycle"
     );
 
     return failures;

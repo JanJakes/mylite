@@ -40,7 +40,7 @@ enum mylite_file_lifecycle_state mylite_file_preamble_lifecycle_state(
                    ? MYLITE_FILE_LIFECYCLE_COMMITTED
                    : MYLITE_FILE_LIFECYCLE_INVALID;
     }
-    if (version != MYLITE_FILE_FORMAT_VERSION ||
+    if ((version < MYLITE_FILE_LIFECYCLE_FORMAT_VERSION || version > MYLITE_FILE_FORMAT_VERSION) ||
         !reserved_bytes_are_zero(preamble, MYLITE_FILE_RESERVED_OFFSET)) {
         return MYLITE_FILE_LIFECYCLE_INVALID;
     }
@@ -55,6 +55,16 @@ enum mylite_file_lifecycle_state mylite_file_preamble_lifecycle_state(
     default:
         return MYLITE_FILE_LIFECYCLE_INVALID;
     }
+}
+
+uint16_t mylite_file_preamble_format_version(
+    const unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]
+) {
+    if (mylite_file_preamble_lifecycle_state(preamble) == MYLITE_FILE_LIFECYCLE_INVALID) {
+        return 0U;
+    }
+
+    return mylite_file_preamble_get_u16(preamble, MYLITE_FILE_FORMAT_VERSION_OFFSET);
 }
 
 uint16_t mylite_file_preamble_get_u16(const unsigned char *preamble, size_t offset) {

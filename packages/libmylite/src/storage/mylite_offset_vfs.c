@@ -10,6 +10,7 @@
 struct mylite_offset_file {
     sqlite3_file base;
     sqlite3_file *inner_file;
+    uint16_t format_version;
     bool shifts_offsets;
     bool initialization_owner;
 };
@@ -73,13 +74,42 @@ static bool file_shifts_offsets(int flags);
 static int prepare_main_database_file(struct mylite_offset_file *file, bool exclusive_create);
 static int initialize_new_main_database_file(struct mylite_offset_file *file);
 static int validate_existing_main_database_file(struct mylite_offset_file *file);
+static int validate_sector_alignment(struct mylite_offset_file *file);
 static int validate_sqlite_payload_header(struct mylite_offset_file *file);
 static int transition_initialization_state(
     struct mylite_offset_file *file,
     enum mylite_file_lifecycle_state state
 );
-static bool logical_to_physical_offset(sqlite3_int64 logical, sqlite3_int64 *out_physical);
-static sqlite3_int64 logical_size_from_physical_size(sqlite3_int64 physical_size);
+static int read_shifted(
+    struct mylite_offset_file *file,
+    void *buffer,
+    int amount,
+    sqlite3_int64 logical_offset
+);
+static int write_shifted(
+    struct mylite_offset_file *file,
+    const void *buffer,
+    int amount,
+    sqlite3_int64 logical_offset
+);
+static bool logical_range_end(sqlite3_int64 offset, int amount, sqlite3_int64 *out_end);
+static bool logical_offset_to_physical(
+    const struct mylite_offset_file *file,
+    sqlite3_int64 logical,
+    sqlite3_int64 *out_physical
+);
+static bool logical_size_to_physical(
+    const struct mylite_offset_file *file,
+    sqlite3_int64 logical,
+    sqlite3_int64 *out_physical
+);
+static bool logical_size_from_physical(
+    const struct mylite_offset_file *file,
+    sqlite3_int64 physical,
+    sqlite3_int64 *out_logical
+);
+static bool format_uses_lock_gap(const struct mylite_offset_file *file);
+static int atomic_write_capability_mask(void);
 static int translate_size_file_control(
     struct mylite_offset_file *file,
     int operation,
@@ -216,35 +246,38 @@ static int offset_close(sqlite3_file *file) {
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
 static int offset_read(sqlite3_file *file, void *buffer, int amount, sqlite3_int64 offset) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
-    sqlite3_int64 physical_offset = offset;
 
-    if (offset_file->shifts_offsets && !logical_to_physical_offset(offset, &physical_offset)) {
-        return SQLITE_IOERR_READ;
+    if (offset_file->shifts_offsets) {
+        return read_shifted(offset_file, buffer, amount, offset);
     }
 
     return offset_file->inner_file->pMethods
-        ->xRead(offset_file->inner_file, buffer, amount, physical_offset);
+        ->xRead(offset_file->inner_file, buffer, amount, offset);
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
 static int offset_write(sqlite3_file *file, const void *buffer, int amount, sqlite3_int64 offset) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
-    sqlite3_int64 physical_offset = offset;
 
-    if (offset_file->shifts_offsets && !logical_to_physical_offset(offset, &physical_offset)) {
-        return SQLITE_IOERR_WRITE;
+    if (offset_file->shifts_offsets) {
+        return write_shifted(offset_file, buffer, amount, offset);
     }
 
     return offset_file->inner_file->pMethods
-        ->xWrite(offset_file->inner_file, buffer, amount, physical_offset);
+        ->xWrite(offset_file->inner_file, buffer, amount, offset);
 }
 
 static int offset_truncate(sqlite3_file *file, sqlite3_int64 size) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
     sqlite3_int64 physical_size = size;
 
-    if (offset_file->shifts_offsets && !logical_to_physical_offset(size, &physical_size)) {
-        return SQLITE_IOERR_TRUNCATE;
+    if (offset_file->shifts_offsets) {
+        if (!format_uses_lock_gap(offset_file) && size > MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE) {
+            return SQLITE_FULL;
+        }
+        if (!logical_size_to_physical(offset_file, size, &physical_size)) {
+            return SQLITE_IOERR_TRUNCATE;
+        }
     }
 
     return offset_file->inner_file->pMethods->xTruncate(offset_file->inner_file, physical_size);
@@ -266,7 +299,9 @@ static int offset_file_size(sqlite3_file *file, sqlite3_int64 *out_size) {
     }
 
     if (offset_file->shifts_offsets) {
-        *out_size = logical_size_from_physical_size(physical_size);
+        if (!logical_size_from_physical(offset_file, physical_size, out_size)) {
+            return SQLITE_IOERR_FSTAT;
+        }
     } else {
         *out_size = physical_size;
     }
@@ -298,6 +333,27 @@ static int offset_check_reserved_lock(sqlite3_file *file, int *out_reserved) {
 static int offset_file_control(sqlite3_file *file, int operation, void *argument) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
 
+    if (offset_file->shifts_offsets && operation == SQLITE_FCNTL_CHUNK_SIZE) {
+        int disabled_chunk_size = 0;
+
+        return offset_file->inner_file->pMethods
+            ->xFileControl(offset_file->inner_file, operation, &disabled_chunk_size);
+    }
+    if (offset_file->shifts_offsets && operation == SQLITE_FCNTL_MMAP_SIZE) {
+        sqlite3_int64 disabled_mmap_size = 0;
+        int rc = offset_file->inner_file->pMethods
+                     ->xFileControl(offset_file->inner_file, operation, &disabled_mmap_size);
+
+        if (argument != NULL) {
+            *(sqlite3_int64 *)argument = 0;
+        }
+        return rc == SQLITE_NOTFOUND ? SQLITE_OK : rc;
+    }
+    if (offset_file->shifts_offsets && (operation == SQLITE_FCNTL_BEGIN_ATOMIC_WRITE ||
+                                        operation == SQLITE_FCNTL_COMMIT_ATOMIC_WRITE ||
+                                        operation == SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE)) {
+        return SQLITE_NOTFOUND;
+    }
     if (offset_file->shifts_offsets &&
         (operation == SQLITE_FCNTL_SIZE_HINT || operation == SQLITE_FCNTL_SIZE_LIMIT)) {
         return translate_size_file_control(offset_file, operation, argument);
@@ -310,13 +366,23 @@ static int offset_file_control(sqlite3_file *file, int operation, void *argument
 static int offset_sector_size(sqlite3_file *file) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
 
+    if (offset_file->inner_file->pMethods->xSectorSize == NULL) {
+        return MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+    }
+
     return offset_file->inner_file->pMethods->xSectorSize(offset_file->inner_file);
 }
 
 static int offset_device_characteristics(sqlite3_file *file) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
+    int characteristics =
+        offset_file->inner_file->pMethods->xDeviceCharacteristics(offset_file->inner_file);
 
-    return offset_file->inner_file->pMethods->xDeviceCharacteristics(offset_file->inner_file);
+    if (offset_file->shifts_offsets) {
+        characteristics &= ~atomic_write_capability_mask();
+    }
+
+    return characteristics;
 }
 
 static int offset_vfs_open(
@@ -347,6 +413,9 @@ static int offset_vfs_open(
     offset_file->shifts_offsets = file_shifts_offsets(flags);
     if (offset_file->shifts_offsets) {
         rc = prepare_main_database_file(offset_file, exclusive_create);
+        if (rc == SQLITE_OK) {
+            rc = validate_sector_alignment(offset_file);
+        }
         if (rc != SQLITE_OK) {
             close_failed_inner_file(offset_file);
             return rc;
@@ -495,6 +564,7 @@ static int initialize_new_main_database_file(struct mylite_offset_file *file) {
         return SQLITE_CANTOPEN;
     }
 
+    file->format_version = MYLITE_FILE_FORMAT_VERSION;
     file->initialization_owner = true;
     mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
     rc = file->inner_file->pMethods
@@ -523,8 +593,26 @@ static int validate_existing_main_database_file(struct mylite_offset_file *file)
         mylite_file_preamble_lifecycle_state(preamble) != MYLITE_FILE_LIFECYCLE_COMMITTED) {
         return SQLITE_NOTADB;
     }
+    file->format_version = mylite_file_preamble_format_version(preamble);
+    if (!format_uses_lock_gap(file) && physical_size > MYLITE_FILE_PHYSICAL_LOCK_BYTE) {
+        return SQLITE_NOTADB;
+    }
 
     return validate_sqlite_payload_header(file);
+}
+
+static int validate_sector_alignment(struct mylite_offset_file *file) {
+    int sector_size = MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+
+    if (file->inner_file->pMethods->xSectorSize != NULL) {
+        sector_size = file->inner_file->pMethods->xSectorSize(file->inner_file);
+    }
+
+    if (sector_size <= 0 || MYLITE_FILE_SQLITE_PAYLOAD_OFFSET % sector_size != 0) {
+        return SQLITE_CANTOPEN;
+    }
+
+    return SQLITE_OK;
 }
 
 static int validate_sqlite_payload_header(struct mylite_offset_file *file) {
@@ -582,26 +670,171 @@ static int transition_initialization_state(
     return rc;
 }
 
-static bool logical_to_physical_offset(sqlite3_int64 logical, sqlite3_int64 *out_physical) {
-    const sqlite3_int64 payload_offset = MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+static int read_shifted(
+    struct mylite_offset_file *file,
+    void *buffer,
+    int amount,
+    sqlite3_int64 logical_offset
+) {
+    sqlite3_int64 logical_end = 0;
+    sqlite3_int64 physical_offset = 0;
+    int first_amount = 0;
+    int rc = SQLITE_OK;
 
-    if (logical < 0 || logical > INT64_MAX - payload_offset) {
+    if (buffer == NULL || !logical_range_end(logical_offset, amount, &logical_end)) {
+        return SQLITE_IOERR_READ;
+    }
+    if (!format_uses_lock_gap(file) && logical_end > MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE) {
+        memset(buffer, 0, (size_t)amount);
+        return SQLITE_IOERR_SHORT_READ;
+    }
+    if (!logical_offset_to_physical(file, logical_offset, &physical_offset)) {
+        return SQLITE_IOERR_READ;
+    }
+    if (!format_uses_lock_gap(file) || logical_offset >= MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET ||
+        logical_end <= MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET) {
+        return file->inner_file->pMethods->xRead(file->inner_file, buffer, amount, physical_offset);
+    }
+
+    first_amount = (int)(MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET - logical_offset);
+    rc = file->inner_file->pMethods->xRead(file->inner_file, buffer, first_amount, physical_offset);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    if (!logical_offset_to_physical(file, MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET, &physical_offset)) {
+        return SQLITE_IOERR_READ;
+    }
+
+    return file->inner_file->pMethods->xRead(
+        file->inner_file,
+        (unsigned char *)buffer + first_amount,
+        amount - first_amount,
+        physical_offset
+    );
+}
+
+static int write_shifted(
+    struct mylite_offset_file *file,
+    const void *buffer,
+    int amount,
+    sqlite3_int64 logical_offset
+) {
+    sqlite3_int64 logical_end = 0;
+    sqlite3_int64 physical_offset = 0;
+    int first_amount = 0;
+    int rc = SQLITE_OK;
+
+    if (buffer == NULL || !logical_range_end(logical_offset, amount, &logical_end)) {
+        return SQLITE_IOERR_WRITE;
+    }
+    if (!format_uses_lock_gap(file) && logical_end > MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE) {
+        return SQLITE_FULL;
+    }
+    if (!logical_offset_to_physical(file, logical_offset, &physical_offset)) {
+        return SQLITE_IOERR_WRITE;
+    }
+    if (!format_uses_lock_gap(file) || logical_offset >= MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET ||
+        logical_end <= MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET) {
+        return file->inner_file->pMethods
+            ->xWrite(file->inner_file, buffer, amount, physical_offset);
+    }
+
+    first_amount = (int)(MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET - logical_offset);
+    rc =
+        file->inner_file->pMethods->xWrite(file->inner_file, buffer, first_amount, physical_offset);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    if (!logical_offset_to_physical(file, MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET, &physical_offset)) {
+        return SQLITE_IOERR_WRITE;
+    }
+
+    return file->inner_file->pMethods->xWrite(
+        file->inner_file,
+        (const unsigned char *)buffer + first_amount,
+        amount - first_amount,
+        physical_offset
+    );
+}
+
+static bool logical_range_end(sqlite3_int64 offset, int amount, sqlite3_int64 *out_end) {
+    if (offset < 0 || amount < 0 || offset > INT64_MAX - amount) {
         return false;
     }
 
-    *out_physical = logical + payload_offset;
-
+    *out_end = offset + amount;
     return true;
 }
 
-static sqlite3_int64 logical_size_from_physical_size(sqlite3_int64 physical_size) {
-    const sqlite3_int64 payload_offset = MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+static bool logical_offset_to_physical(
+    const struct mylite_offset_file *file,
+    sqlite3_int64 logical,
+    sqlite3_int64 *out_physical
+) {
+    sqlite3_int64 physical_offset = MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
 
-    if (physical_size <= payload_offset) {
-        return 0;
+    if (format_uses_lock_gap(file) && logical >= MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET) {
+        physical_offset += MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+    }
+    if (logical < 0 || logical > INT64_MAX - physical_offset) {
+        return false;
     }
 
-    return physical_size - payload_offset;
+    *out_physical = logical + physical_offset;
+    return true;
+}
+
+static bool logical_size_to_physical(
+    const struct mylite_offset_file *file,
+    sqlite3_int64 logical,
+    sqlite3_int64 *out_physical
+) {
+    sqlite3_int64 physical_offset = MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+
+    if (format_uses_lock_gap(file) && logical > MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET) {
+        physical_offset += MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+    }
+    if (logical < 0 || logical > INT64_MAX - physical_offset) {
+        return false;
+    }
+
+    *out_physical = logical + physical_offset;
+    return true;
+}
+
+static bool logical_size_from_physical(
+    const struct mylite_offset_file *file,
+    sqlite3_int64 physical,
+    sqlite3_int64 *out_logical
+) {
+    if (physical < 0) {
+        return false;
+    }
+    if (physical <= MYLITE_FILE_SQLITE_PAYLOAD_OFFSET) {
+        *out_logical = 0;
+        return true;
+    }
+    if (!format_uses_lock_gap(file) || physical <= MYLITE_FILE_PHYSICAL_LOCK_BYTE) {
+        *out_logical = physical - MYLITE_FILE_SQLITE_PAYLOAD_OFFSET;
+        return true;
+    }
+    if (physical <= MYLITE_FILE_PHYSICAL_LOCK_BYTE + MYLITE_FILE_SQLITE_PAYLOAD_OFFSET) {
+        return false;
+    }
+
+    *out_logical = physical - (2 * MYLITE_FILE_SQLITE_PAYLOAD_OFFSET);
+    return true;
+}
+
+static bool format_uses_lock_gap(const struct mylite_offset_file *file) {
+    return file->format_version >= MYLITE_FILE_FORMAT_VERSION;
+}
+
+static int atomic_write_capability_mask(void) {
+    return SQLITE_IOCAP_ATOMIC | SQLITE_IOCAP_ATOMIC512 | SQLITE_IOCAP_ATOMIC1K |
+           SQLITE_IOCAP_ATOMIC2K | SQLITE_IOCAP_ATOMIC4K | SQLITE_IOCAP_ATOMIC8K |
+           SQLITE_IOCAP_ATOMIC16K | SQLITE_IOCAP_ATOMIC32K | SQLITE_IOCAP_ATOMIC64K |
+           SQLITE_IOCAP_BATCH_ATOMIC;
 }
 
 static int translate_size_file_control(
@@ -619,7 +852,10 @@ static int translate_size_file_control(
     }
 
     original_size = *size;
-    if (original_size >= 0 && !logical_to_physical_offset(original_size, &physical_size)) {
+    if (!format_uses_lock_gap(file) && original_size > MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE) {
+        return SQLITE_FULL;
+    }
+    if (original_size >= 0 && !logical_size_to_physical(file, original_size, &physical_size)) {
         return SQLITE_IOERR;
     }
     if (original_size >= 0) {
@@ -632,7 +868,13 @@ static int translate_size_file_control(
         return rc;
     }
 
-    *size = logical_size_from_physical_size(*size);
+    if (!logical_size_from_physical(file, *size, size)) {
+        *size = original_size;
+        return SQLITE_IOERR;
+    }
+    if (!format_uses_lock_gap(file) && *size > MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE) {
+        *size = MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE;
+    }
 
     return SQLITE_OK;
 }

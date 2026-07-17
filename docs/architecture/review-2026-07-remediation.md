@@ -103,19 +103,20 @@ complete.
   initialization recovery.
 - [x] Reject preamble-only, replaced, truncated, or mismatched files without
   silently reinitializing them.
-- [ ] Qualify hot rollback-journal/WAL recovery through the shifted VFS.
+- [x] Qualify hot rollback-journal recovery and enforce the explicit no-WAL
+  policy through the shifted VFS.
 - [ ] Add multi-process barriers, replacement/symlink tests, and VFS fault
   injection around create, open, sync, truncate, rename, and close.
 
 ### Lock-byte address mapping
 
-- [ ] Enforce a deterministic logical size limit below the first unsafe
+- [x] Enforce a deterministic logical size limit below the first unsafe
   shifted lock-byte page as immediate containment.
-- [ ] Add a SQLite extension point or revise the format so the physical
+- [x] Add a SQLite extension point or revise the format so the physical
   pending-lock page and SQLite pager reservation agree.
-- [ ] Verify all VFS offset-sensitive controls, sector/device properties, size
+- [x] Verify all VFS offset-sensitive controls, sector/device properties, size
   hints, and future mmap/shared-memory behavior.
-- [ ] Test below, at, and above the boundary on POSIX and Windows across
+- [x] Test below, at, and above the boundary on POSIX and Windows across
   supported page sizes and journal modes.
 
 ### AUTO_INCREMENT integrity

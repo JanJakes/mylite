@@ -388,6 +388,7 @@
   )
   target_link_libraries(mylite_runtime_show_processlist_introspection_test PRIVATE
     MyLite::mylite
+    Threads::Threads
   )
   target_include_directories(mylite_runtime_show_processlist_introspection_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

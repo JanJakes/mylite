@@ -4,6 +4,7 @@
 #include "storage/mylite_file_format.h"
 
 #include <inttypes.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,8 @@
 #ifdef _WIN32
 #  include <process.h>
 #else
+#  include <pthread.h>
+#  include <sched.h>
 #  include <unistd.h>
 #endif
 
@@ -32,6 +35,10 @@ enum {
     long_sql_capacity = 256,
     suffix_capacity = 16,
     mysql_error_parse = 1064,
+#ifndef _WIN32
+    processlist_worker_count = 4,
+    processlist_worker_iterations = 100,
+#endif
 };
 
 struct expected_sql_error {
@@ -51,6 +58,15 @@ struct expected_show_processlist_result {
     size_t out_connection_id_size;
 };
 
+#ifndef _WIN32
+struct processlist_worker_context {
+    mylite_db *database;
+    atomic_bool *start;
+    atomic_size_t *active_workers;
+    atomic_int *failures;
+};
+#endif
+
 static const char *const show_processlist_names[show_processlist_column_count] = {
     "Id",
     "User",
@@ -65,6 +81,15 @@ static const char *const show_processlist_names[show_processlist_column_count] =
 static int test_show_processlist_result_shape_session_info_and_preamble(void);
 static int test_show_processlist_diagnostics_and_unsupported_forms(void);
 static int test_independent_show_processlist_handles(void);
+static int test_concurrent_processlist_snapshots(void);
+#ifndef _WIN32
+static void *mutate_processlist_session(void *argument);
+static int validate_concurrent_processlist_snapshot(
+    const struct mylite_processlist_session_snapshot *sessions,
+    size_t count,
+    size_t expected_count
+);
+#endif
 static int expect_show_processlist_result(
     mylite_db *database,
     struct expected_show_processlist_result expectation
@@ -109,9 +134,168 @@ int main(void) {
     failures += test_show_processlist_result_shape_session_info_and_preamble();
     failures += test_show_processlist_diagnostics_and_unsupported_forms();
     failures += test_independent_show_processlist_handles();
+    failures += test_concurrent_processlist_snapshots();
 
     return failures == 0 ? 0 : 1;
 }
+
+static int test_concurrent_processlist_snapshots(void) {
+#ifdef _WIN32
+    return 0;
+#else
+    mylite_db *observer = NULL;
+    mylite_db *workers[processlist_worker_count] = {0};
+    pthread_t threads[processlist_worker_count];
+    struct processlist_worker_context contexts[processlist_worker_count];
+    atomic_bool start;
+    atomic_size_t active_workers;
+    atomic_int worker_failures;
+    size_t thread_count = 0U;
+    int failures = 0;
+
+    atomic_init(&start, false);
+    atomic_init(&active_workers, processlist_worker_count);
+    atomic_init(&worker_failures, 0);
+    failures += expect_int(mylite_open_memory(&observer), MYLITE_OK, "open processlist observer");
+    for (size_t index = 0U; failures == 0 && index < processlist_worker_count; ++index) {
+        failures += expect_int(
+            mylite_open_memory(&workers[index]),
+            MYLITE_OK,
+            "open processlist worker"
+        );
+        contexts[index] = (struct processlist_worker_context){
+            .database = workers[index],
+            .start = &start,
+            .active_workers = &active_workers,
+            .failures = &worker_failures,
+        };
+        if (failures == 0 && pthread_create(
+                                 &threads[index],
+                                 NULL,
+                                 mutate_processlist_session,
+                                 &contexts[index]
+                             ) != 0) {
+            fprintf(stderr, "create processlist worker thread: failed\n");
+            ++failures;
+        } else if (failures == 0) {
+            ++thread_count;
+        }
+    }
+    if (thread_count < processlist_worker_count) {
+        atomic_fetch_sub_explicit(
+            &active_workers,
+            processlist_worker_count - thread_count,
+            memory_order_relaxed
+        );
+    }
+    atomic_store_explicit(&start, true, memory_order_release);
+    if (failures == 0) {
+        do {
+            struct mylite_processlist_session_snapshot *sessions = NULL;
+            size_t count = 0U;
+            int rc = mylite_connection_collect_processlist_sessions(
+                observer,
+                &sessions,
+                &count
+            );
+
+            failures += expect_int(rc, MYLITE_OK, "collect concurrent processlist sessions");
+            if (rc == MYLITE_OK) {
+                failures += validate_concurrent_processlist_snapshot(
+                    sessions,
+                    count,
+                    processlist_worker_count + 1U
+                );
+            }
+            free(sessions);
+        } while (failures == 0 &&
+                 atomic_load_explicit(&active_workers, memory_order_acquire) != 0U);
+    }
+    for (size_t index = 0U; index < thread_count; ++index) {
+        if (pthread_join(threads[index], NULL) != 0) {
+            fprintf(stderr, "join processlist worker thread: failed\n");
+            ++failures;
+        }
+    }
+    failures += atomic_load_explicit(&worker_failures, memory_order_relaxed);
+    for (size_t index = 0U; index < processlist_worker_count; ++index) {
+        mylite_close(workers[index]);
+    }
+    mylite_close(observer);
+    return failures;
+#endif
+}
+
+#ifndef _WIN32
+static void *mutate_processlist_session(void *argument) {
+    static const char *const statements[] = {
+        "USE information_schema",
+        "SET autocommit = 0",
+        "START TRANSACTION",
+        "ROLLBACK",
+        "SET autocommit = 1",
+        "USE mysql",
+    };
+    struct processlist_worker_context *context = argument;
+    bool failed = false;
+
+    while (!atomic_load_explicit(context->start, memory_order_acquire)) {
+        sched_yield();
+    }
+    for (size_t iteration = 0U; !failed && iteration < processlist_worker_iterations; ++iteration) {
+        for (size_t index = 0U; index < sizeof(statements) / sizeof(statements[0]); ++index) {
+            if (execute_statement_ok(context->database, statements[index]) != 0) {
+                atomic_fetch_add_explicit(context->failures, 1, memory_order_relaxed);
+                failed = true;
+                break;
+            }
+        }
+    }
+    atomic_fetch_sub_explicit(context->active_workers, 1U, memory_order_release);
+    return NULL;
+}
+
+static int validate_concurrent_processlist_snapshot(
+    const struct mylite_processlist_session_snapshot *sessions,
+    size_t count,
+    size_t expected_count
+) {
+    size_t current_count = 0U;
+    int failures = expect_size(count, expected_count, "concurrent processlist session count");
+
+    for (size_t index = 0U; index < count; ++index) {
+        if (index > 0U && sessions[index - 1U].connection_id >= sessions[index].connection_id) {
+            fprintf(stderr, "concurrent processlist connection order: not strictly increasing\n");
+            ++failures;
+        }
+        if (memchr(sessions[index].selected_schema, '\0', sizeof(sessions[index].selected_schema)) ==
+                NULL ||
+            memchr(
+                sessions[index].client_user_identity,
+                '\0',
+                sizeof(sessions[index].client_user_identity)
+            ) == NULL) {
+            fprintf(stderr, "concurrent processlist text: not null terminated\n");
+            ++failures;
+        }
+        if (sessions[index].has_selected_schema &&
+            strcmp(sessions[index].selected_schema, "information_schema") != 0 &&
+            strcmp(sessions[index].selected_schema, "mysql") != 0) {
+            fprintf(stderr, "concurrent processlist schema: unexpected value\n");
+            ++failures;
+        }
+        if (!sessions[index].has_selected_schema && sessions[index].selected_schema[0] != '\0') {
+            fprintf(stderr, "concurrent processlist schema: absent schema has text\n");
+            ++failures;
+        }
+        if (sessions[index].is_current) {
+            ++current_count;
+        }
+    }
+    failures += expect_size(current_count, 1U, "concurrent processlist current session count");
+    return failures;
+}
+#endif
 
 static int test_show_processlist_result_shape_session_info_and_preamble(void) {
     char path[test_path_capacity];

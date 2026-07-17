@@ -30,6 +30,11 @@ static void sort_processlist_session_snapshots(
     struct mylite_processlist_session_snapshot *sessions,
     size_t count
 );
+static int compare_processlist_session_snapshots(const void *left, const void *right);
+static void copy_processlist_session_snapshot(
+    const struct mylite_db *database,
+    struct mylite_processlist_session_snapshot *snapshot
+);
 static void initialize_session_state(struct mylite_session_state *session);
 static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure);
 static void deinit_session_stored_procedure_local_declaration(
@@ -171,7 +176,6 @@ int mylite_connection_collect_processlist_sessions(
     sqlite3_mutex *mutex = NULL;
     struct mylite_processlist_session_snapshot *sessions = NULL;
     size_t count = 0U;
-    size_t index = 0U;
 
     if (out_sessions == NULL || out_count == NULL) {
         return MYLITE_MISUSE;
@@ -180,45 +184,59 @@ int mylite_connection_collect_processlist_sessions(
     *out_sessions = NULL;
     *out_count = 0U;
     mutex = processlist_registry_mutex();
-    if (mutex != NULL) {
-        sqlite3_mutex_enter(mutex);
-    }
+    for (;;) {
+        size_t index = 0U;
+        bool retry = false;
 
-    for (struct mylite_db *database = processlist_registry_head; database != NULL;
-         database = database->processlist_next) {
-        ++count;
-    }
-    if (count > 0U) {
-        sessions = calloc(count, sizeof(*sessions));
-        if (sessions == NULL) {
-            if (mutex != NULL) {
-                sqlite3_mutex_leave(mutex);
-            }
+        if (mutex != NULL) {
+            sqlite3_mutex_enter(mutex);
+        }
+        for (struct mylite_db *database = processlist_registry_head; database != NULL;
+             database = database->processlist_next) {
+            ++count;
+        }
+        if (mutex != NULL) {
+            sqlite3_mutex_leave(mutex);
+        }
+        if (count == 0U) {
+            break;
+        }
+        if (count > SIZE_MAX / sizeof(*sessions)) {
             return MYLITE_NOMEM;
         }
-    }
-    for (struct mylite_db *database = processlist_registry_head; database != NULL;
-         database = database->processlist_next) {
-        sessions[index].connection_id = database->session.connection_id;
-        sessions[index].has_selected_schema = database->session.has_selected_schema;
-        sessions[index].is_current = database == current;
-        sessions[index].autocommit_enabled = database->session.autocommit_enabled;
-        sessions[index].user_transaction_active = database->session.user_transaction_active;
-        copy_session_text(
-            sessions[index].selected_schema,
-            sizeof(sessions[index].selected_schema),
-            database->session.selected_schema
-        );
-        copy_session_text(
-            sessions[index].client_user_identity,
-            sizeof(sessions[index].client_user_identity),
-            database->session.client_user_identity
-        );
-        ++index;
-    }
+        sessions = calloc(count, sizeof(*sessions));
+        if (sessions == NULL) {
+            return MYLITE_NOMEM;
+        }
 
-    if (mutex != NULL) {
-        sqlite3_mutex_leave(mutex);
+        if (mutex != NULL) {
+            sqlite3_mutex_enter(mutex);
+        }
+        for (struct mylite_db *database = processlist_registry_head; database != NULL;
+             database = database->processlist_next) {
+            if (index == count) {
+                retry = true;
+                break;
+            }
+            sessions[index] = database->processlist_snapshot;
+            sessions[index].is_current = database == current;
+            ++index;
+        }
+        if (mutex != NULL) {
+            sqlite3_mutex_leave(mutex);
+        }
+        if (retry) {
+            free(sessions);
+            sessions = NULL;
+            count = 0U;
+            continue;
+        }
+        count = index;
+        if (count == 0U) {
+            free(sessions);
+            sessions = NULL;
+        }
+        break;
     }
     if (count > 1U) {
         sort_processlist_session_snapshots(sessions, count);
@@ -227,6 +245,22 @@ int mylite_connection_collect_processlist_sessions(
     *out_sessions = sessions;
     *out_count = count;
     return MYLITE_OK;
+}
+
+void mylite_connection_publish_processlist_session(struct mylite_db *database) {
+    sqlite3_mutex *mutex = NULL;
+
+    if (database == NULL) {
+        return;
+    }
+    mutex = processlist_registry_mutex();
+    if (mutex != NULL) {
+        sqlite3_mutex_enter(mutex);
+    }
+    copy_processlist_session_snapshot(database, &database->processlist_snapshot);
+    if (mutex != NULL) {
+        sqlite3_mutex_leave(mutex);
+    }
 }
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database) {
@@ -437,6 +471,7 @@ static int sqlite_status_to_mylite(int sqlite_status) {
 static void register_processlist_session(struct mylite_db *database) {
     sqlite3_mutex *mutex = processlist_registry_mutex();
 
+    copy_processlist_session_snapshot(database, &database->processlist_snapshot);
     if (mutex != NULL) {
         sqlite3_mutex_enter(mutex);
     }
@@ -475,16 +510,43 @@ static void sort_processlist_session_snapshots(
     struct mylite_processlist_session_snapshot *sessions,
     size_t count
 ) {
-    for (size_t index = 1U; index < count; ++index) {
-        struct mylite_processlist_session_snapshot session = sessions[index];
-        size_t position = index;
+    qsort(sessions, count, sizeof(*sessions), compare_processlist_session_snapshots);
+}
 
-        while (position > 0U && sessions[position - 1U].connection_id > session.connection_id) {
-            sessions[position] = sessions[position - 1U];
-            --position;
-        }
-        sessions[position] = session;
+static int compare_processlist_session_snapshots(const void *left, const void *right) {
+    const struct mylite_processlist_session_snapshot *left_session = left;
+    const struct mylite_processlist_session_snapshot *right_session = right;
+
+    if (left_session->connection_id < right_session->connection_id) {
+        return -1;
     }
+    if (left_session->connection_id > right_session->connection_id) {
+        return 1;
+    }
+    return 0;
+}
+
+static void copy_processlist_session_snapshot(
+    const struct mylite_db *database,
+    struct mylite_processlist_session_snapshot *snapshot
+) {
+    *snapshot = (struct mylite_processlist_session_snapshot){
+        .connection_id = database->session.connection_id,
+        .has_selected_schema = database->session.has_selected_schema,
+        .is_current = false,
+        .autocommit_enabled = database->session.autocommit_enabled,
+        .user_transaction_active = database->session.user_transaction_active,
+    };
+    copy_session_text(
+        snapshot->selected_schema,
+        sizeof(snapshot->selected_schema),
+        database->session.selected_schema
+    );
+    copy_session_text(
+        snapshot->client_user_identity,
+        sizeof(snapshot->client_user_identity),
+        database->session.client_user_identity
+    );
 }
 
 static void initialize_session_state(struct mylite_session_state *session) {

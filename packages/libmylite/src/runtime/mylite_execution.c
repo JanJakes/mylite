@@ -265,6 +265,7 @@ int mylite_execute(
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_record_statement(database, profile_statement_started_ns);
 #endif
+    mylite_connection_publish_processlist_session(database);
 
     return rc;
 }
@@ -368,6 +369,7 @@ int mylite_execute_transaction_control(
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_record_statement(database, profile_statement_started_ns);
 #endif
+    mylite_connection_publish_processlist_session(database);
     return rc;
 }
 

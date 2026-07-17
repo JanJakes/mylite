@@ -168,7 +168,7 @@ complete.
 - [ ] Make numeric parsing/formatting locale-independent and reject partial
   conversions consistently.
 - [ ] Define SQL PREPARE prepare-time/session-state semantics.
-- [ ] Synchronize PROCESSLIST session snapshots and replace quadratic sorting.
+- [x] Synchronize PROCESSLIST session snapshots and replace quadratic sorting.
 
 ## Phase 5: Architecture, performance, and size
 

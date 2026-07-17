@@ -359,6 +359,7 @@ struct mylite_db {
     mylite_stmt *active_cursor;
     mylite_stmt *live_statements;
     bool transaction_state_uncertain;
+    struct mylite_processlist_session_snapshot processlist_snapshot;
     struct mylite_db *processlist_next;
 };
 
@@ -371,6 +372,7 @@ int mylite_connection_collect_processlist_sessions(
     struct mylite_processlist_session_snapshot **out_sessions,
     size_t *out_count
 );
+void mylite_connection_publish_processlist_session(struct mylite_db *database);
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database);
 const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_state_for_test(

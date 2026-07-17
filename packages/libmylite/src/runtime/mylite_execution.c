@@ -16,6 +16,7 @@
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_ast_internal.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_connection_lifecycle.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
@@ -427,6 +428,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite
         return rc;
     }
 
+    register_live_statement(stmt);
     *out_stmt = stmt;
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_record_statement(database, profile_statement_started_ns);
@@ -441,9 +443,11 @@ int mylite_stmt_step(mylite_stmt *stmt) {
 #endif
     int rc = MYLITE_OK;
 
-    if (stmt == NULL || stmt->database == NULL ||
-        (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows)) {
-        return stmt != NULL && stmt->done ? MYLITE_DONE : MYLITE_MISUSE;
+    if (stmt == NULL || stmt->database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows) {
+        return stmt->done ? MYLITE_DONE : MYLITE_MISUSE;
     }
     if (stmt->done) {
         return MYLITE_DONE;
@@ -585,9 +589,15 @@ int mylite_stmt_finalize(mylite_stmt *stmt) {
     }
 #ifdef MYLITE_ENABLE_PROFILING
     profile_database = stmt->database;
-    mylite_profile_enter_api(profile_database);
-    profile_finalize_started_ns = mylite_profile_now_ns();
+    if (profile_database != NULL) {
+        mylite_profile_enter_api(profile_database);
+        profile_finalize_started_ns = mylite_profile_now_ns();
+    }
 #endif
+    if (stmt->database == NULL) {
+        destroy_cursor_statement(stmt);
+        return MYLITE_OK;
+    }
     if (stmt->sqlite_statement != NULL) {
         rc = finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
@@ -597,7 +607,9 @@ int mylite_stmt_finalize(mylite_stmt *stmt) {
     }
     destroy_cursor_statement(stmt);
 #ifdef MYLITE_ENABLE_PROFILING
-    mylite_profile_record_cursor_finalize(profile_database, profile_finalize_started_ns);
+    if (profile_database != NULL) {
+        mylite_profile_record_cursor_finalize(profile_database, profile_finalize_started_ns);
+    }
 #endif
     return rc;
 }
@@ -759,6 +771,7 @@ static int prepare_cursor_select_statement(
     if (database->session.statement_id != UINT64_MAX) {
         ++database->session.statement_id;
     }
+    stmt->statement_id = database->session.statement_id;
 
 #ifdef MYLITE_ENABLE_PROFILING
     profile_phase_started_ns = mylite_profile_now_ns();
@@ -917,8 +930,10 @@ static int prepare_cursor_select_plan(mylite_stmt *stmt) {
     }
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (rc != MYLITE_OK &&
-               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -955,67 +970,140 @@ static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
 
 static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
     struct mylite_db *database = stmt->database;
+    bool is_current_statement = stmt->statement_id == database->session.statement_id;
     int rc = commit_statement_transaction(database, &stmt->read_transaction);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (stmt->row_count > (size_t)INT64_MAX) {
-        set_runtime_error(database, "SELECT row count is out of range");
-        return MYLITE_ERROR;
-    }
     if (!exhausted) {
         stmt->found_row_count = (uint64_t)stmt->row_count;
     }
-    mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
-    rc = snapshot_current_diagnostics(database);
-    if (rc != MYLITE_OK) {
-        database->session.previous_row_count = -1;
-        return rc;
+    if (is_current_statement) {
+        if (stmt->row_count > (size_t)INT64_MAX) {
+            set_runtime_error(database, "SELECT row count is out of range");
+            return MYLITE_ERROR;
+        }
+        mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
+        rc = snapshot_current_diagnostics(database);
+        if (rc != MYLITE_OK) {
+            database->session.previous_row_count = -1;
+            return rc;
+        }
+        database->session.previous_row_count = (int64_t)stmt->row_count;
+        database->session.found_rows = stmt->found_row_count;
     }
-
-    database->session.previous_row_count = (int64_t)stmt->row_count;
-    database->session.found_rows = stmt->found_row_count;
     if (stmt->has_context) {
         (void)mylite_statement_context_end(&stmt->context, MYLITE_OK);
         mylite_statement_context_deinit(&stmt->context);
         stmt->has_context = false;
     }
-    clear_select_consumed_next_transaction_characteristics(database);
+    if (is_current_statement) {
+        clear_select_consumed_next_transaction_characteristics(database);
+    }
     if (database->active_cursor == stmt) {
         database->active_cursor = NULL;
     }
     return MYLITE_OK;
 }
 
-static void destroy_cursor_statement(mylite_stmt *stmt) {
-    if (stmt == NULL) {
+void mylite_execution_detach_connection_statements(struct mylite_db *database) {
+    if (database == NULL) {
         return;
     }
-    if (stmt->database != NULL && stmt->database->active_cursor == stmt) {
+
+    while (database->live_statements != NULL) {
+        mylite_stmt *stmt = database->live_statements;
+
+        database->live_statements = stmt->next_live_statement;
+        stmt->next_live_statement = NULL;
+        detach_cursor_statement(stmt);
+    }
+    database->active_cursor = NULL;
+}
+
+static void register_live_statement(mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->database == NULL) {
+        return;
+    }
+
+    stmt->next_live_statement = stmt->database->live_statements;
+    stmt->database->live_statements = stmt;
+}
+
+static void unregister_live_statement(mylite_stmt *stmt) {
+    mylite_stmt **current = NULL;
+
+    if (stmt == NULL || stmt->database == NULL) {
+        return;
+    }
+
+    current = &stmt->database->live_statements;
+    while (*current != NULL) {
+        if (*current == stmt) {
+            *current = stmt->next_live_statement;
+            stmt->next_live_statement = NULL;
+            return;
+        }
+        current = &(*current)->next_live_statement;
+    }
+}
+
+static void detach_cursor_statement(mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->database == NULL) {
+        return;
+    }
+
+    if (stmt->database->active_cursor == stmt) {
         stmt->database->active_cursor = NULL;
     }
+    release_cursor_statement_resources(stmt);
+    stmt->database = NULL;
+    stmt->current_row_available = false;
+    stmt->done = true;
+}
+
+static void release_cursor_statement_resources(mylite_stmt *stmt) {
     if (stmt->sqlite_statement != NULL) {
         (void)finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
+    rollback_statement_transaction(stmt->database, &stmt->read_transaction);
     free(stmt->sqlite_sql);
+    stmt->sqlite_sql = NULL;
     sqlite_result_row_storage_deinit(&stmt->row_storage);
     result_column_metadata_context_deinit(&stmt->metadata_context);
     if (stmt->has_select_plan) {
         planned_select_deinit(&stmt->select_plan);
+        stmt->has_select_plan = false;
     }
     mylite_result_free(stmt->metadata_result);
+    stmt->metadata_result = NULL;
     if (stmt->has_parse_result) {
         mylite_sql_parse_result_deinit(&stmt->parse_result);
+        stmt->has_parse_result = false;
     }
     if (stmt->has_context) {
         (void)mylite_statement_context_end(&stmt->context, MYLITE_OK);
         mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
     }
     if (stmt->has_normalized_sql) {
         mylite_execution_normalized_sql_deinit(&stmt->normalized_sql);
+        stmt->has_normalized_sql = false;
     }
-    rollback_statement_transaction(stmt->database, &stmt->read_transaction);
+}
+
+static void destroy_cursor_statement(mylite_stmt *stmt) {
+    if (stmt == NULL) {
+        return;
+    }
+    unregister_live_statement(stmt);
+    if (stmt->database != NULL) {
+        if (stmt->database->active_cursor == stmt) {
+            stmt->database->active_cursor = NULL;
+        }
+        release_cursor_statement_resources(stmt);
+    }
     free(stmt);
 }
 
@@ -1651,7 +1739,8 @@ const char *mylite_execution_temporal_constructor_function_name(
     return temporal_constructor_function_name(ast_kind);
 }
 
-bool mylite_execution_is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind
+bool mylite_execution_is_temporal_constructor_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
 ) {
     return is_temporal_constructor_function_kind(ast_kind);
 }

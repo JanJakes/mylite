@@ -88,6 +88,7 @@ MYLITE_API const char *mylite_version(void);
 
 MYLITE_API int mylite_open(const char *path, mylite_db **out_db);
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
+/* Live statements are detached and remain valid only for mylite_stmt_finalize(). */
 MYLITE_API void mylite_close(mylite_db *database);
 
 MYLITE_API int mylite_execute(

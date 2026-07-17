@@ -63,8 +63,8 @@ complete.
 
 ### Ownership and close behavior
 
-- [ ] Register live statements and cursors with their owning connection.
-- [ ] Define a fallible close contract or connection-core lifetime model and
+- [x] Register live statements and cursors with their owning connection.
+- [x] Define a fallible close contract or connection-core lifetime model and
   expose it consistently through the public ABI.
 - [ ] Make step, reset, finalize, metadata access, and adapter destruction safe
   in every close order.
@@ -75,7 +75,7 @@ complete.
 
 - [ ] Introduce one statement completion record for diagnostics, warnings,
   affected rows, insert ID, `ROW_COUNT()`, and `FOUND_ROWS()`.
-- [ ] Prevent delayed cursor exhaustion/finalization from overwriting state
+- [x] Prevent delayed cursor exhaustion/finalization from overwriting state
   produced by a later statement.
 - [ ] Replace broad cursor fallback with a typed unsupported-capability result.
 - [ ] Preserve the original diagnostic when fallback is not permitted.

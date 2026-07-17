@@ -2552,6 +2552,7 @@ struct result_column_metadata_context {
 
 struct mylite_stmt {
     struct mylite_db *database;
+    struct mylite_stmt *next_live_statement;
     struct mylite_statement_context context;
     struct mylite_sql_parse_result parse_result;
     struct mylite_execution_normalized_sql normalized_sql;
@@ -2563,6 +2564,7 @@ struct mylite_stmt {
     sqlite3_stmt *sqlite_statement;
     mylite_result *metadata_result;
     char *sqlite_sql;
+    uint64_t statement_id;
     uint64_t found_row_count;
     size_t row_count;
     size_t materialized_row_index;

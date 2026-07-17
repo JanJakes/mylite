@@ -356,11 +356,13 @@ struct mylite_db {
     bool profile_active;
 #endif
     mylite_stmt *active_cursor;
+    mylite_stmt *live_statements;
     struct mylite_db *processlist_next;
 };
 
 struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *database);
-const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
+const struct mylite_session_state *mylite_connection_session_state(
+    const struct mylite_db *database
 );
 int mylite_connection_collect_processlist_sessions(
     const struct mylite_db *current,

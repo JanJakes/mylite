@@ -101,6 +101,21 @@ returns a MyLite status code.
 
 `mylite_close(NULL)` is a no-op.
 
+The connection owns a registry of every live statement and cursor. Closing a
+connection first releases each statement's SQLite resources, statement
+transaction, cached catalog references, and connection-owned context while the
+connection is still valid. The public statement allocation remains detached so
+destruction order is safe: metadata and value accessors return their empty
+sentinel values, stepping returns `MYLITE_MISUSE`, and
+`mylite_stmt_finalize()` releases the detached allocation and returns
+`MYLITE_OK`. No other statement operation is valid after its connection closes.
+
+Each statement also records the connection statement sequence at creation. A
+cursor that is allowed to coexist with a later command must not publish
+diagnostics, `ROW_COUNT()`, or `FOUND_ROWS()` after that later command has
+started. Cursor completion may publish connection state only while its sequence
+is still current.
+
 Diagnostic accessors return handle-owned state. For `NULL` handles,
 `mylite_errcode()` returns `MYLITE_MISUSE`; `mylite_sqlstate()` returns
 `"HY000"`; `mylite_errmsg()` returns a stable static misuse message.

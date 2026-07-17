@@ -36,6 +36,8 @@ static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
 static int test_cursor_read_transaction_lifecycle(void);
+static int test_cursor_connection_close_order(void);
+static int test_materialized_cursor_does_not_overwrite_later_statement_state(void);
 static int execute_ok(mylite_db *database, const char *sql);
 static int expect_query_scalar_text(
     mylite_db *database,
@@ -69,8 +71,136 @@ int main(void) {
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_rejects_unsupported_statements();
     failures += test_cursor_read_transaction_lifecycle();
+    failures += test_cursor_connection_close_order();
+    failures += test_materialized_cursor_does_not_overwrite_later_statement_state();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_cursor_connection_close_order(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = make_test_path(path, sizeof(path), "connection_close_order");
+
+    if (failures != 0) {
+        return failures;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open streaming close-order");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL)");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1), (2)");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare streaming close-order cursor"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step before connection close");
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_MISUSE, "step detached cursor");
+    failures += expect_size(mylite_stmt_column_count(stmt), 0U, "detached cursor metadata");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize detached cursor");
+    stmt = NULL;
+    remove_related_files(path);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open materialized close-order");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
+            strlen("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare materialized close-order cursor"
+    );
+    mylite_close(database);
+    database = NULL;
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_MISUSE, "step detached materialized cursor");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize detached materialized cursor");
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_materialized_cursor_does_not_overwrite_later_statement_state(void) {
+    char path[test_path_capacity];
+    char later_error[256];
+    const struct mylite_session_state *session = NULL;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_result *result = NULL;
+    int later_error_code = MYLITE_OK;
+    int failures = make_test_path(path, sizeof(path), "stale_cursor_state");
+
+    if (failures != 0) {
+        return failures;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open stale cursor state");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL)");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'",
+            strlen("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare materialized cursor before later insert"
+    );
+    failures += execute_ok(database, "INSERT INTO items VALUES (1)");
+    session = mylite_connection_session_state(database);
+    failures += expect_int((int)session->previous_row_count, 1, "later insert row count");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize stale materialized cursor");
+    stmt = NULL;
+    session = mylite_connection_session_state(database);
+    failures += expect_int((int)session->previous_row_count, 1, "preserve later insert row count");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'",
+            strlen("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare materialized cursor before later error"
+    );
+    failures += expect_true(
+        mylite_execute(
+            database,
+            "SELECT missing_column FROM missing_table",
+            strlen("SELECT missing_column FROM missing_table"),
+            &result
+        ) != MYLITE_OK,
+        "later statement fails"
+    );
+    mylite_result_free(result);
+    later_error_code = mylite_errcode(database);
+    (void)snprintf(later_error, sizeof(later_error), "%s", mylite_errmsg(database));
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize after later error");
+    stmt = NULL;
+    failures += expect_int(mylite_errcode(database), later_error_code, "preserve later error code");
+    failures += expect_text(mylite_errmsg(database), later_error, "preserve later error message");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
 }
 
 static int test_cursor_read_transaction_lifecycle(void) {
@@ -506,8 +636,10 @@ static int test_cursor_materializes_information_schema_selects(void) {
             database,
             "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
             "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'items' AND COLUMN_NAME = 'id'",
-            strlen("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
-                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'items' AND COLUMN_NAME = 'id'"),
+            strlen(
+                "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'items' AND COLUMN_NAME = 'id'"
+            ),
             &stmt
         ),
         MYLITE_OK,

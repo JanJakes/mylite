@@ -4,9 +4,7 @@ static int execute_parsed_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static bool statement_defers_catalog_synchronization(
-    const struct mylite_sql_ast_node *statement
-);
+static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast_node *statement);
 static int reject_command_with_active_cursor(struct mylite_db *database);
 static int prepare_cursor_select_statement(
     struct mylite_db *database,
@@ -19,6 +17,10 @@ static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt);
 static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc);
 static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc);
 static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted);
+static void register_live_statement(mylite_stmt *stmt);
+static void unregister_live_statement(mylite_stmt *stmt);
+static void detach_cursor_statement(mylite_stmt *stmt);
+static void release_cursor_statement_resources(mylite_stmt *stmt);
 static void destroy_cursor_statement(mylite_stmt *stmt);
 static int set_materialized_cursor_found_row_count(mylite_stmt *stmt);
 static int set_cursor_found_row_count(mylite_stmt *stmt);

@@ -1,0 +1,8 @@
+#ifndef MYLITE_RUNTIME_MYLITE_EXECUTION_CONNECTION_LIFECYCLE_H
+#define MYLITE_RUNTIME_MYLITE_EXECUTION_CONNECTION_LIFECYCLE_H
+
+struct mylite_db;
+
+void mylite_execution_detach_connection_statements(struct mylite_db *database);
+
+#endif

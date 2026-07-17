@@ -1,5 +1,6 @@
 #include "mylite_connection.h"
 
+#include "mylite_execution_connection_lifecycle.h"
 #include "mylite_execution_sqlite_internal.h"
 #include "mylite_file_open.h"
 #include "mylite_named_locks.h"
@@ -144,7 +145,8 @@ struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *datab
     return &database->diagnostics;
 }
 
-const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
+const struct mylite_session_state *mylite_connection_session_state(
+    const struct mylite_db *database
 ) {
     if (database == NULL) {
         return NULL;
@@ -354,6 +356,7 @@ static void destroy_database_handle(struct mylite_db *database) {
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_detach(database);
 #endif
+    mylite_execution_detach_connection_statements(database);
     mylite_named_lock_release_all_for_connection(database->session.connection_id);
     unregister_processlist_session(database);
     if (database->sqlite != NULL && database->session.user_transaction_active) {

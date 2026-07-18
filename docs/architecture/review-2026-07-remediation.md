@@ -263,7 +263,11 @@ complete.
   controlled 128-expression projection fell from 9.291 ms to 1.764 ms median
   (5.3x). The nested `planned_column_aggregate` consequently fell from 183,104
   bytes to 42,560 bytes. Compile-time bounds keep expression state below 1 KiB.
-  The descriptor representation itself remains open for ordering and remaining
+  ORDER BY plans now use independently owned descriptor pointers and geometric
+  item growth, preserving planner-family lifetimes while reducing order items
+  from 15,920 bytes to 304 bytes and order state from 15,664 bytes to 56 bytes.
+  A controlled 128-key ORDER BY scenario fell from 1.651 ms to 0.998 ms median
+  (39.6%). The descriptor representation itself remains open for the remaining
   aggregate/group plan fields.
 - [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
   Column and deep key-metadata payloads now have independent 8 MiB limits in

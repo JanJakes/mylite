@@ -299,7 +299,7 @@ static bool select_distinct_order_item_is_selected(
 ) {
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         if (item->column_source_index == plan->column_source_indexes[column_index] &&
-            item->column.column_id == plan->columns[column_index]->column_id) {
+            item->column->column_id == plan->columns[column_index]->column_id) {
             return true;
         }
     }
@@ -2478,6 +2478,7 @@ static void planned_select_order_deinit(struct planned_select_order *order) {
     for (size_t item_index = 0U; item_index < order->item_count; ++item_index) {
         planned_select_order_item_deinit(&order->items[item_index]);
     }
+    free(order->column);
     free(order->items);
     memset(order, 0, sizeof(*order));
 }

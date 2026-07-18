@@ -106,7 +106,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
         session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
         !find_matching_grouped_key(
             out_plan,
-            &planned_item.column,
+            planned_item.column,
             planned_item.column_source_index,
             &group_order_index
         )) {
@@ -117,7 +117,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
                 out_plan,
                 table_columns,
                 table_column_count,
-                &planned_item.column,
+                planned_item.column,
                 planned_item.column_source_index,
                 &dependency_rc
             )) {
@@ -133,7 +133,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
                     out_plan,
                     planned_item.column_source_index
                 ),
-                &planned_item.column
+                planned_item.column
             );
             planned_select_order_item_deinit(&planned_item);
             return MYLITE_ERROR;
@@ -154,7 +154,13 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
         }
     }
 
-    rc = append_planned_grouped_order_item(out_plan, planned_item, uses_aggregate, aggregate_index);
+    rc = append_planned_grouped_order_item(
+        database,
+        out_plan,
+        planned_item,
+        uses_aggregate,
+        aggregate_index
+    );
     if (rc != MYLITE_OK) {
         planned_select_order_item_deinit(&planned_item);
     }
@@ -288,6 +294,7 @@ static int resolve_grouped_order_key(
     bool matches_alias = false;
     bool matches_unaliased_column = false;
     bool matches_aggregate_expression = false;
+    const struct mylite_catalog_column_descriptor *resolved_column = NULL;
     size_t matched_index = 0U;
     size_t order_source_index = 0U;
     int rc = find_grouped_order_projection_alias(
@@ -309,7 +316,14 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        out_item->column = out_plan->projections[matched_index].column;
+        rc = copy_planned_select_order_column(
+            database,
+            &out_plan->projections[matched_index].column,
+            &out_item->column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         out_item->column_source_index = out_plan->projections[matched_index].column_source_index;
         return MYLITE_OK;
     }
@@ -332,7 +346,14 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        out_item->column = out_plan->groups[matched_index].column;
+        rc = copy_planned_select_order_column(
+            database,
+            &out_plan->groups[matched_index].column,
+            &out_item->column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         out_item->column_source_index = out_plan->groups[matched_index].column_source_index;
         return MYLITE_OK;
     }
@@ -348,7 +369,14 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        out_item->column = out_plan->projections[matched_index].column;
+        rc = copy_planned_select_order_column(
+            database,
+            &out_plan->projections[matched_index].column,
+            &out_item->column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         out_item->column_source_index = out_plan->projections[matched_index].column_source_index;
         return MYLITE_OK;
     }
@@ -364,7 +392,14 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        out_item->column = out_plan->groups[matched_index].column;
+        rc = copy_planned_select_order_column(
+            database,
+            &out_plan->groups[matched_index].column,
+            &out_item->column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         out_item->column_source_index = out_plan->groups[matched_index].column_source_index;
         return MYLITE_OK;
     }
@@ -418,7 +453,7 @@ static int resolve_grouped_order_key(
         return rc;
     }
 
-    rc = resolve_descriptor_column_reference_with_source_index(
+    rc = resolve_descriptor_column_reference_pointer_with_source_index(
         database,
         order_key,
         source_context,
@@ -427,9 +462,12 @@ static int resolve_grouped_order_key(
         "or selected aggregate columns",
         table_columns,
         table_column_count,
-        &out_item->column,
+        &resolved_column,
         &order_source_index
     );
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_select_order_column(database, resolved_column, &out_item->column);
+    }
     if (rc == MYLITE_OK) {
         out_item->column_source_index = order_source_index;
     }
@@ -438,6 +476,7 @@ static int resolve_grouped_order_key(
 }
 
 static int append_planned_grouped_order_item(
+    struct mylite_db *database,
     struct planned_grouped_aggregate *plan,
     struct planned_select_order_item item,
     bool uses_aggregate,
@@ -445,13 +484,22 @@ static int append_planned_grouped_order_item(
 ) {
     bool *uses_aggregate_items = NULL;
     size_t *aggregate_indexes = NULL;
+    struct mylite_catalog_column_descriptor *primary_column = NULL;
     size_t item_index = plan->order.item_count;
     size_t required_count = item_index + 1U;
     int rc = MYLITE_OK;
 
+    if (item_index == 0U && !uses_aggregate && item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
+        rc = copy_planned_select_order_column(database, item.column, &primary_column);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
     uses_aggregate_items = (bool *)
         realloc(plan->order_item_uses_aggregate, required_count * sizeof(*uses_aggregate_items));
     if (uses_aggregate_items == NULL) {
+        free(primary_column);
         return MYLITE_NOMEM;
     }
     plan->order_item_uses_aggregate = uses_aggregate_items;
@@ -459,20 +507,22 @@ static int append_planned_grouped_order_item(
     aggregate_indexes = (size_t *)
         realloc(plan->order_item_aggregate_indexes, required_count * sizeof(*aggregate_indexes));
     if (aggregate_indexes == NULL) {
+        free(primary_column);
         return MYLITE_NOMEM;
     }
     plan->order_item_aggregate_indexes = aggregate_indexes;
 
     rc = append_planned_select_order_item(&plan->order, item);
     if (rc != MYLITE_OK) {
+        free(primary_column);
         return rc;
     }
     plan->order_item_uses_aggregate[item_index] = uses_aggregate;
     plan->order_item_aggregate_indexes[item_index] = aggregate_index;
     if (item_index == 0U) {
         plan->order.direction = item.direction;
-        if (item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
-            plan->order.column = item.column;
+        if (!uses_aggregate && item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
+            plan->order.column = primary_column;
             plan->order.column_source_index = item.column_source_index;
         }
         plan->order_uses_aggregate = uses_aggregate;
@@ -808,9 +858,9 @@ static bool grouped_order_select_orders_match(
         return true;
     }
     return planned_grouped_aggregate_columns_match(
-        &left->column,
+        left->column,
         left->column_source_index,
-        &right->column,
+        right->column,
         right->column_source_index
     );
 }

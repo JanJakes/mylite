@@ -606,7 +606,7 @@ static int append_group_concat_call_sql(
         if (rc == MYLITE_OK) {
             rc = append_descriptor_value_sql_for_source(
                 string,
-                &order->column,
+                order->column,
                 order->column_source_index,
                 order->qualify_column_reference
             );
@@ -666,7 +666,7 @@ static int append_group_concat_expression_call_sql(
         if (rc == MYLITE_OK) {
             rc = append_descriptor_value_sql_for_source(
                 string,
-                &order->column,
+                order->column,
                 order->column_source_index,
                 order->qualify_column_reference
             );
@@ -1620,7 +1620,7 @@ static int append_grouped_order_sql(
         } else if (rc == MYLITE_OK && item->kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
             rc = append_descriptor_value_sql_for_source(
                 string,
-                &item->column,
+                item->column,
                 item->column_source_index,
                 plan->order.qualify_column_reference
             );
@@ -4135,7 +4135,7 @@ static int append_select_order_legacy_column_sql(
 ) {
     int rc = append_descriptor_value_sql_for_source(
         string,
-        &order->column,
+        order->column,
         order->column_source_index,
         order->qualify_column_reference
     );
@@ -4196,7 +4196,7 @@ static int append_select_order_item_sql(
     } else {
         rc = append_descriptor_value_sql_for_source(
             string,
-            &item->column,
+            item->column,
             item->column_source_index,
             order->qualify_column_reference
         );

@@ -13,9 +13,8 @@ static int validate_single_table_dml_order_clause(
     }
 
     order_key = unwrap_parenthesized_expression(child_at(order_clause, 0U));
-    if (order_key != NULL &&
-        (order_key->kind == MYLITE_SQL_AST_IDENTIFIER ||
-         order_key->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+    if (order_key != NULL && (order_key->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                              order_key->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         return MYLITE_OK;
     }
 
@@ -87,7 +86,14 @@ static int plan_select_order(
     if (out_order->item_count > 0U) {
         out_order->has_order = true;
         if (out_order->items[0U].kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
-            out_order->column = out_order->items[0U].column;
+            rc = copy_planned_select_order_column(
+                database,
+                out_order->items[0U].column,
+                &out_order->column
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
             out_order->column_source_index = out_order->items[0U].column_source_index;
         }
         out_order->direction = out_order->items[0U].direction;
@@ -200,6 +206,7 @@ static int plan_select_order_ast_item(
     bool allow_rand_order,
     struct planned_select_order_item *out_item
 ) {
+    const struct mylite_catalog_column_descriptor *resolved_column = NULL;
     bool resolved_alias = false;
     int rc = MYLITE_OK;
 
@@ -259,24 +266,30 @@ static int plan_select_order_ast_item(
     }
 
     if (select_order_key_is_integer_ordinal(item_nodes.order_key)) {
-        rc = plan_select_order_ordinal(database, item_nodes.order_key, select_plan, out_item);
+        rc = plan_select_order_ordinal(
+            database,
+            item_nodes.order_key,
+            select_plan,
+            &resolved_column,
+            &out_item->column_source_index
+        );
     } else {
         rc = resolve_order_alias(
             database,
             item_nodes.order_key,
             select_plan,
-            &out_item->column,
+            &resolved_column,
             &out_item->column_source_index,
             &resolved_alias
         );
         if (rc == MYLITE_OK && !resolved_alias) {
-            rc = resolve_order_column(
+            rc = resolve_order_column_pointer(
                 database,
                 item_nodes.order_key,
                 source_context,
                 table_columns,
                 table_column_count,
-                &out_item->column,
+                &resolved_column,
                 &out_item->column_source_index
             );
         }
@@ -284,16 +297,20 @@ static int plan_select_order_ast_item(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (column_descriptor_is_set(&out_item->column)) {
+    rc = copy_planned_select_order_column(database, resolved_column, &out_item->column);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column_descriptor_is_set(out_item->column)) {
         set_unsupported_error(database, "ORDER BY does not yet support SET columns");
         return MYLITE_ERROR;
     }
-    if (select_order_column_needs_integer_validation(&out_item->column)) {
+    if (select_order_column_needs_integer_validation(out_item->column)) {
         struct integer_column_range range = {0};
 
         rc = integer_range_for_column(
             database,
-            &out_item->column,
+            out_item->column,
             "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or "
             "nonbinary string descriptor columns",
             &range
@@ -312,7 +329,8 @@ static int plan_select_order_ordinal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,
     const struct planned_select *select_plan,
-    struct planned_select_order_item *out_item
+    const struct mylite_catalog_column_descriptor **out_column,
+    size_t *out_source_index
 ) {
     size_t ordinal = 0U;
 
@@ -326,8 +344,8 @@ static int plan_select_order_ordinal(
         return MYLITE_ERROR;
     }
 
-    out_item->column = *select_plan->columns[ordinal - 1U];
-    out_item->column_source_index = select_plan->column_source_indexes[ordinal - 1U];
+    *out_column = select_plan->columns[ordinal - 1U];
+    *out_source_index = select_plan->column_source_indexes[ordinal - 1U];
     return MYLITE_OK;
 }
 
@@ -644,7 +662,29 @@ static void planned_select_order_item_deinit(struct planned_select_order_item *i
         planned_row_scalar_expression_deinit(item->expression);
         free(item->expression);
     }
+    free(item->column);
     *item = (struct planned_select_order_item){0};
+}
+
+static int copy_planned_select_order_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source,
+    struct mylite_catalog_column_descriptor **out_column
+) {
+    struct mylite_catalog_column_descriptor *copy = NULL;
+
+    if (source == NULL || out_column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    copy = malloc(sizeof(*copy));
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    *copy = *source;
+    free(*out_column);
+    *out_column = copy;
+    return MYLITE_OK;
 }
 
 static int append_planned_select_order_item(
@@ -653,18 +693,32 @@ static int append_planned_select_order_item(
 ) {
     struct planned_select_order_item *items = NULL;
     size_t required_count = 0U;
+    size_t new_capacity = 0U;
 
-    if (order->item_count >= SIZE_MAX / sizeof(*items)) {
+    if (order->item_count == SIZE_MAX) {
         return MYLITE_NOMEM;
     }
     required_count = order->item_count + 1U;
-
-    items = realloc(order->items, required_count * sizeof(*items));
-    if (items == NULL) {
-        return MYLITE_NOMEM;
+    if (required_count > order->item_capacity) {
+        new_capacity = order->item_capacity == 0U ? 4U : order->item_capacity;
+        while (new_capacity < required_count) {
+            if (new_capacity > SIZE_MAX / 2U) {
+                new_capacity = required_count;
+                break;
+            }
+            new_capacity *= 2U;
+        }
+        if (new_capacity > SIZE_MAX / sizeof(*items)) {
+            return MYLITE_NOMEM;
+        }
+        items = realloc(order->items, new_capacity * sizeof(*items));
+        if (items == NULL) {
+            return MYLITE_NOMEM;
+        }
+        order->items = items;
+        order->item_capacity = new_capacity;
     }
 
-    order->items = items;
     order->items[order->item_count] = item;
     order->item_count = required_count;
     return MYLITE_OK;
@@ -674,7 +728,7 @@ static int resolve_order_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     const struct planned_select *select_plan,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index,
     bool *out_resolved
 ) {
@@ -706,7 +760,7 @@ static int resolve_order_alias(
                 free(order_name);
                 return MYLITE_ERROR;
             }
-            *out_column = *select_plan->columns[column_index];
+            *out_column = select_plan->columns[column_index];
             if (out_source_index != NULL) {
                 *out_source_index = select_plan->column_source_indexes[column_index];
             }
@@ -729,6 +783,28 @@ static int resolve_order_column(
     size_t *out_source_index
 ) {
     return resolve_descriptor_column_reference_with_source_index(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_ORDER,
+        "ORDER BY supports only unqualified descriptor columns",
+        table_columns,
+        table_column_count,
+        out_column,
+        out_source_index
+    );
+}
+
+static int resolve_order_column_pointer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor **out_column,
+    size_t *out_source_index
+) {
+    return resolve_descriptor_column_reference_pointer_with_source_index(
         database,
         column_node,
         source_context,

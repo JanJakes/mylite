@@ -249,10 +249,7 @@ static int plan_grouped_aggregate_row_scalar_expression(
     int rc = MYLITE_OK;
 
     if (row_scalar_expression_contains_fractional_division_attempt(argument)) {
-        set_unsupported_error(
-            database,
-            "aggregate row-scalar arguments do not support / division"
-        );
+        set_unsupported_error(database, "aggregate row-scalar arguments do not support / division");
         return MYLITE_ERROR;
     }
     rc = plan_row_scalar_expression(
@@ -346,11 +343,7 @@ static int plan_grouped_column_aggregate_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    return validate_column_aggregate_descriptor_column(
-        database,
-        aggregate_function,
-        out_column
-    );
+    return validate_column_aggregate_descriptor_column(database, aggregate_function, out_column);
 }
 
 static int plan_grouped_group_concat_options(
@@ -608,6 +601,7 @@ static int plan_group_concat_order_column(
 ) {
     const struct mylite_sql_ast_node *order_clause = group_concat_order_node(function);
     const struct mylite_sql_ast_node *direction = NULL;
+    const struct mylite_catalog_column_descriptor *order_column = NULL;
     struct integer_column_range range = {0};
     int rc = MYLITE_OK;
 
@@ -628,7 +622,7 @@ static int plan_group_concat_order_column(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_descriptor_column_reference_with_source_index(
+    rc = resolve_descriptor_column_reference_pointer_with_source_index(
         database,
         child_at(order_clause, 0U),
         source_context,
@@ -636,28 +630,32 @@ static int plan_group_concat_order_column(
         "GROUP_CONCAT ORDER BY supports only one descriptor column",
         table_columns,
         table_column_count,
-        &out_order->column,
+        &order_column,
         &out_order->column_source_index
     );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (out_order->column.is_nullable) {
+    rc = copy_planned_select_order_column(database, order_column, &out_order->column);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_order->column->is_nullable) {
         set_unsupported_error(
             database,
             "GROUP_CONCAT ORDER BY supports only NOT NULL descriptor columns"
         );
         return MYLITE_ERROR;
     }
-    if (!column_descriptor_is_bit(&out_order->column) &&
-        !column_descriptor_is_year(&out_order->column) &&
-        !column_descriptor_is_date(&out_order->column) &&
-        !column_descriptor_is_time(&out_order->column) &&
-        !column_descriptor_is_datetime(&out_order->column) &&
-        !column_descriptor_is_timestamp(&out_order->column)) {
+    if (!column_descriptor_is_bit(out_order->column) &&
+        !column_descriptor_is_year(out_order->column) &&
+        !column_descriptor_is_date(out_order->column) &&
+        !column_descriptor_is_time(out_order->column) &&
+        !column_descriptor_is_datetime(out_order->column) &&
+        !column_descriptor_is_timestamp(out_order->column)) {
         rc = integer_range_for_column(
             database,
-            &out_order->column,
+            out_order->column,
             "GROUP_CONCAT ORDER BY supports only NOT NULL integer, BIT, YEAR, DATE, TIME, "
             "DATETIME, or TIMESTAMP descriptor columns",
             &range

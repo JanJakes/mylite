@@ -1670,7 +1670,8 @@ static int plan_select_order_ordinal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_key,
     const struct planned_select *select_plan,
-    struct planned_select_order_item *out_item
+    const struct mylite_catalog_column_descriptor **out_column,
+    size_t *out_source_index
 );
 static void apply_select_order_item_direction(
     const struct mylite_sql_ast_node *direction,
@@ -1719,6 +1720,11 @@ static int validate_select_order_field_expression(
     const struct planned_row_scalar_expression *expression
 );
 static void planned_select_order_item_deinit(struct planned_select_order_item *item);
+static int copy_planned_select_order_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source,
+    struct mylite_catalog_column_descriptor **out_column
+);
 static int append_planned_select_order_item(
     struct planned_select_order *order,
     struct planned_select_order_item item
@@ -1727,7 +1733,7 @@ static int resolve_order_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     const struct planned_select *select_plan,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index,
     bool *out_resolved
 );
@@ -1738,6 +1744,15 @@ static int resolve_order_column(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+);
+static int resolve_order_column_pointer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 );
 static int plan_select_limit(

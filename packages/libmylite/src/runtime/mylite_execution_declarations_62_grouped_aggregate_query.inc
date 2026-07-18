@@ -662,6 +662,7 @@ static int validate_grouped_order_row_scalar_column(
     const struct planned_row_scalar_expression *expression
 );
 static int append_planned_grouped_order_item(
+    struct mylite_db *database,
     struct planned_grouped_aggregate *plan,
     struct planned_select_order_item item,
     bool uses_aggregate,

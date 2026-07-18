@@ -1339,7 +1339,7 @@ struct row_scalar_integer_width_stack {
 struct planned_select_order_item {
     enum planned_select_order_item_kind kind;
     enum planned_select_order_direction direction;
-    struct mylite_catalog_column_descriptor column;
+    struct mylite_catalog_column_descriptor *column;
     size_t column_source_index;
     struct planned_row_scalar_expression *expression;
     char alias[select_item_alias_capacity];
@@ -1349,12 +1349,23 @@ struct planned_select_order_item {
 struct planned_select_order {
     bool has_order;
     enum planned_select_order_direction direction;
-    struct mylite_catalog_column_descriptor column;
+    struct mylite_catalog_column_descriptor *column;
     size_t column_source_index;
     bool qualify_column_reference;
     struct planned_select_order_item *items;
     size_t item_count;
+    size_t item_capacity;
 };
+
+_Static_assert(
+    sizeof(struct planned_select_order_item) <= 512U,
+    "planned ORDER BY items must retain compact column references"
+);
+
+_Static_assert(
+    sizeof(struct planned_select_order) <= 128U,
+    "planned ORDER BY state must retain compact column references"
+);
 
 struct select_order_ast_item_nodes {
     const struct mylite_sql_ast_node *order_key;

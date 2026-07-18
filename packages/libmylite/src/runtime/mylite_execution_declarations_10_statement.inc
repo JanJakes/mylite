@@ -50,7 +50,13 @@ static int prepare_statement(
     bool buffered_results,
     mylite_stmt **out_stmt
 );
-static int prepare_cursor_select_plan(mylite_stmt *stmt);
+static int prepare_cursor_select_execution(mylite_stmt *stmt);
+static int select_statement_uses_materialized_cursor_dispatch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_uses_materialized_dispatch
+);
+static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *stmt, int *out_rc);
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt);
 static int publish_buffered_statement_completion(mylite_stmt *stmt);
 static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc);

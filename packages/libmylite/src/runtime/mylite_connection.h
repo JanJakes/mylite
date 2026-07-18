@@ -364,6 +364,8 @@ struct mylite_db {
     mylite_stmt *live_statements;
     mylite_stmt *active_bound_statement;
     const struct mylite_session_prepared_statement *active_prepared_statement;
+    bool cursor_plan_attempt_active;
+    bool cursor_plan_attempt_unsupported;
     bool transaction_state_uncertain;
     struct mylite_processlist_session_snapshot processlist_snapshot;
     struct mylite_db *processlist_next;

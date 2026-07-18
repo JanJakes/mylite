@@ -6,8 +6,8 @@
 
 #include "mylite_ast.h"
 #include "mylite_catalog.h"
-#include "mylite_connection.h"
 #include "mylite_collation.h"
+#include "mylite_connection.h"
 #include "mylite_convert_tz.h"
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
@@ -689,16 +689,7 @@ static int start_cursor_execution(mylite_stmt *stmt) {
     }
     if (rc == MYLITE_OK) {
         database->active_bound_statement = stmt;
-        if (stmt->buffered_results) {
-            rc = prepare_cursor_materialized_select_statement(stmt);
-        } else {
-            rc = prepare_cursor_select_plan(stmt);
-            if (rc != MYLITE_OK && rc != MYLITE_NOMEM) {
-                clear_cursor_select_plan_resources(stmt, rc);
-                mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
-                rc = prepare_cursor_materialized_select_statement(stmt);
-            }
-        }
+        rc = prepare_cursor_select_execution(stmt);
         database->active_bound_statement = saved_active_bound_statement;
     }
     if (rc == MYLITE_OK && !stmt->has_materialized_rows) {
@@ -1444,16 +1435,7 @@ static int prepare_cursor_select_statement(
         rc = begin_read_statement_transaction(database, &stmt->read_transaction);
     }
     if (rc == MYLITE_OK) {
-        if (stmt->buffered_results) {
-            rc = prepare_cursor_materialized_select_statement(stmt);
-        } else {
-            rc = prepare_cursor_select_plan(stmt);
-            if (rc != MYLITE_OK && rc != MYLITE_NOMEM) {
-                clear_cursor_select_plan_resources(stmt, rc);
-                mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
-                rc = prepare_cursor_materialized_select_statement(stmt);
-            }
-        }
+        rc = prepare_cursor_select_execution(stmt);
     }
     if (rc == MYLITE_OK && !stmt->has_materialized_rows) {
         database->active_cursor = stmt;
@@ -1607,6 +1589,94 @@ static bool prepared_analysis_error_is_object_resolution(int error_code) {
     }
 }
 
+static int prepare_cursor_select_execution(mylite_stmt *stmt) {
+    enum cursor_plan_attempt_result plan_result = CURSOR_PLAN_ATTEMPT_FAILED;
+    bool uses_materialized_dispatch = false;
+    int rc = MYLITE_OK;
+
+    if (stmt->buffered_results) {
+        return prepare_cursor_materialized_select_statement(stmt);
+    }
+    plan_result = prepare_cursor_select_plan(stmt, &rc);
+    if (plan_result == CURSOR_PLAN_ATTEMPT_READY) {
+        return rc;
+    }
+    if (plan_result == CURSOR_PLAN_ATTEMPT_FAILED) {
+        int dispatch_rc = select_statement_uses_materialized_cursor_dispatch(
+            stmt->database,
+            stmt->statement,
+            &uses_materialized_dispatch
+        );
+
+        if (dispatch_rc != MYLITE_OK) {
+            return dispatch_rc;
+        }
+        if (!uses_materialized_dispatch) {
+            return rc;
+        }
+    }
+
+    clear_cursor_select_plan_resources(stmt, rc);
+    mylite_diagnostics_clear_condition(mylite_connection_diagnostics(stmt->database));
+    return prepare_cursor_materialized_select_statement(stmt);
+}
+
+static int select_statement_uses_materialized_cursor_dispatch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_uses_materialized_dispatch
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+    bool matches = false;
+    int rc = MYLITE_OK;
+
+    if (out_uses_materialized_dispatch == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_uses_materialized_dispatch = false;
+
+    rc = select_statement_targets_information_schema(database, statement, &matches);
+    if (rc == MYLITE_OK && !matches) {
+        rc = select_statement_targets_mysql_data_dictionary_table(
+            database,
+            statement,
+            table_name,
+            sizeof(table_name),
+            &matches
+        );
+    }
+    if (rc == MYLITE_OK && !matches) {
+        rc = select_statement_targets_absent_mysql_enterprise_table(
+            database,
+            statement,
+            table_name,
+            sizeof(table_name),
+            &matches
+        );
+    }
+    if (rc == MYLITE_OK && !matches) {
+        rc = select_statement_targets_mysql_system_table(database, statement, &matches);
+    }
+    if (rc == MYLITE_OK && !matches) {
+        rc = select_statement_targets_absent_builtin_schema_table(
+            database,
+            statement,
+            schema_name,
+            sizeof(schema_name),
+            table_name,
+            sizeof(table_name),
+            &matches
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    *out_uses_materialized_dispatch = matches;
+    return MYLITE_OK;
+}
+
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
     mylite_result *result = NULL;
     int rc = execute_select_statement_in_read_transaction(
@@ -1650,9 +1720,17 @@ static int publish_buffered_statement_completion(mylite_stmt *stmt) {
     return rc;
 }
 
-static int prepare_cursor_select_plan(mylite_stmt *stmt) {
+static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *stmt, int *out_rc) {
     struct mylite_db *database = stmt->database;
-    int rc = plan_select(database, stmt->statement, true, &stmt->select_plan);
+    bool unsupported = false;
+    int rc = MYLITE_OK;
+
+    database->cursor_plan_attempt_active = true;
+    database->cursor_plan_attempt_unsupported = false;
+    rc = plan_select(database, stmt->statement, true, &stmt->select_plan);
+    unsupported = rc != MYLITE_OK && database->cursor_plan_attempt_unsupported;
+    database->cursor_plan_attempt_active = false;
+    database->cursor_plan_attempt_unsupported = false;
 
     if (rc == MYLITE_OK) {
         stmt->has_select_plan = true;
@@ -1699,7 +1777,11 @@ static int prepare_cursor_select_plan(mylite_stmt *stmt) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
-    return rc;
+    *out_rc = rc;
+    if (rc == MYLITE_OK) {
+        return CURSOR_PLAN_ATTEMPT_READY;
+    }
+    return unsupported ? CURSOR_PLAN_ATTEMPT_UNSUPPORTED : CURSOR_PLAN_ATTEMPT_FAILED;
 }
 
 static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc) {

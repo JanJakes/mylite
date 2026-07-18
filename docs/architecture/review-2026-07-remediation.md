@@ -88,8 +88,12 @@ complete.
   affected rows, insert ID, `ROW_COUNT()`, and `FOUND_ROWS()`.
 - [x] Prevent delayed cursor exhaustion/finalization from overwriting state
   produced by a later statement.
-- [ ] Replace broad cursor fallback with a typed unsupported-capability result.
-- [ ] Preserve the original diagnostic when fallback is not permitted.
+- [x] Replace broad cursor fallback with a typed unsupported-capability result.
+- [x] Preserve the original diagnostic when fallback is not permitted. Cursor
+  planning now distinguishes ready, unsupported, and failed attempts. Only an
+  explicitly tagged planner capability gap or a recognized built-in metadata
+  dispatch may materialize; semantic, catalog, allocation, and SQLite failures
+  propagate without clearing their diagnostics.
 
 ### Transaction truthfulness
 

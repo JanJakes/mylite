@@ -2555,6 +2555,12 @@ struct result_column_metadata_context {
     bool has_single_source_metadata;
 };
 
+enum cursor_plan_attempt_result {
+    CURSOR_PLAN_ATTEMPT_READY = 0,
+    CURSOR_PLAN_ATTEMPT_UNSUPPORTED,
+    CURSOR_PLAN_ATTEMPT_FAILED,
+};
+
 enum mylite_stmt_binding_type {
     MYLITE_STMT_BINDING_UNBOUND = 0,
     MYLITE_STMT_BINDING_NULL,

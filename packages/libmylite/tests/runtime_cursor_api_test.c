@@ -1556,6 +1556,23 @@ static int test_cursor_prepare_statement_surface(void) {
     failures += expect_int(
         mylite_prepare(
             database,
+            "SELECT missing_column FROM items",
+            strlen("SELECT missing_column FROM items"),
+            &stmt
+        ),
+        MYLITE_ERROR,
+        "preserve cursor planning error"
+    );
+    failures += expect_true(stmt == NULL, "failed cursor planning statement is null");
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "Unknown column 'missing_column'",
+        "cursor planning diagnostic"
+    );
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
             "CREATE TABLE another (id INT)",
             strlen("CREATE TABLE another (id INT)"),
             &stmt

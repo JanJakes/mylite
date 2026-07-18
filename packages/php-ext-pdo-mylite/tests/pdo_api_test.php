@@ -41,12 +41,83 @@ expect_true($pdo->exec("INSERT INTO people VALUES (1, 'Ada')") === 1, 'INSERT fa
 $stmt = $pdo->prepare('INSERT INTO people VALUES (?, ?)');
 expect_true($stmt instanceof PDOStatement, 'prepare did not return PDOStatement');
 expect_true($stmt->execute([2, 'Grace']), 'prepared INSERT failed');
+expect_true($stmt->rowCount() === 1, 'prepared INSERT row count mismatch');
+expect_true($pdo->lastInsertId() === '0', 'prepared INSERT last insert ID mismatch');
 
 $stmt = $pdo->prepare('SELECT name FROM people WHERE name = ?');
 expect_true($stmt->execute(['Grace']), 'prepared SELECT failed');
 expect_true($stmt->columnCount() === 1, 'prepared SELECT column count mismatch');
 expect_true($stmt->fetch() === ['name' => 'Grace'], 'prepared SELECT row mismatch');
 expect_true($stmt->fetch() === false, 'prepared SELECT should be exhausted');
+
+$byReference = $pdo->prepare('SELECT name FROM people WHERE id = ?');
+$personId = 1;
+expect_true($byReference->bindParam(1, $personId, PDO::PARAM_INT), 'bindParam failed');
+expect_true($byReference->execute(), 'first bindParam execute failed');
+expect_true($byReference->fetchColumn() === 'Ada', 'first bindParam value mismatch');
+$personId = 2;
+expect_true($byReference->execute(), 'second bindParam execute failed');
+expect_true($byReference->fetchColumn() === 'Grace', 'second bindParam value mismatch');
+
+$named = $pdo->prepare('SELECT name FROM people WHERE id = :person_id');
+expect_true($named->bindValue(':person_id', 2, PDO::PARAM_INT), 'named bindValue failed');
+expect_true($named->execute(), 'named parameter execute failed');
+expect_true($named->fetchColumn() === 'Grace', 'named parameter value mismatch');
+
+$typed = $pdo->prepare('SELECT ? AS bool_value, ? AS int_value, ? AS null_value, ? AS text_value');
+expect_true($typed->bindValue(1, true, PDO::PARAM_BOOL), 'boolean bindValue failed');
+expect_true($typed->bindValue(2, -42, PDO::PARAM_INT), 'integer bindValue failed');
+expect_true($typed->bindValue(3, null, PDO::PARAM_NULL), 'NULL bindValue failed');
+expect_true($typed->bindValue(4, '', PDO::PARAM_STR), 'empty text bindValue failed');
+expect_true($typed->execute(), 'typed parameter execute failed');
+expect_true($typed->fetch() === [
+    'bool_value' => '1',
+    'int_value' => '-42',
+    'null_value' => null,
+    'text_value' => '',
+], 'typed parameter values mismatch');
+
+expect_true($pdo->exec(
+    'CREATE TABLE payloads (' .
+    'id INT PRIMARY KEY, text_value VARCHAR(255), blob_value BLOB, nullable_value VARCHAR(20))'
+) >= 0, 'payload table creation failed');
+expect_true($pdo->exec("SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'") >= 0, 'sql_mode setup failed');
+$hostileText = "x'); DROP TABLE people; -- \\ tail";
+$blobBytes = "a\0b'\xff";
+$blobStream = fopen('php://memory', 'r+');
+expect_true($blobStream !== false, 'LOB stream creation failed');
+expect_true(fwrite($blobStream, $blobBytes) === strlen($blobBytes), 'LOB stream write failed');
+rewind($blobStream);
+$payloadInsert = $pdo->prepare('INSERT INTO payloads VALUES (?, ?, ?, ?)');
+expect_true($payloadInsert->bindValue(1, 1, PDO::PARAM_INT), 'payload ID bind failed');
+expect_true($payloadInsert->bindValue(2, $hostileText, PDO::PARAM_STR), 'hostile text bind failed');
+expect_true($payloadInsert->bindValue(3, $blobStream, PDO::PARAM_LOB), 'LOB bind failed');
+expect_true($payloadInsert->bindValue(4, null, PDO::PARAM_NULL), 'payload NULL bind failed');
+expect_true($payloadInsert->execute(), 'payload INSERT failed');
+fclose($blobStream);
+$payload = $pdo->query('SELECT text_value, blob_value, nullable_value FROM payloads WHERE id = 1')->fetch();
+expect_true($payload === [
+    'text_value' => $hostileText,
+    'blob_value' => $blobBytes,
+    'nullable_value' => null,
+], 'binary-safe payload round trip mismatch');
+expect_true($pdo->query('SELECT COUNT(*) FROM people')->fetchColumn() === '2', 'hostile text changed schema');
+
+$tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+expect_true(in_array('people', $tables, true), 'SHOW TABLES omitted people');
+expect_true(in_array('payloads', $tables, true), 'SHOW TABLES omitted payloads');
+$preparedDdl = $pdo->prepare('CREATE TABLE prepared_table (id INT)');
+expect_true($preparedDdl->execute(), 'prepared DDL execution failed');
+expect_true(in_array('prepared_table', $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN), true), 'prepared DDL table missing');
+
+$prepareFailed = false;
+$missingStatement = null;
+try {
+    $missingStatement = $pdo->prepare('SELECT missing_column FROM missing_table');
+} catch (PDOException) {
+    $prepareFailed = true;
+}
+expect_true($prepareFailed || $missingStatement === false, 'missing table should fail at prepare time');
 
 $stream = $pdo->prepare('SELECT id, name FROM people ORDER BY id');
 expect_true($stream->execute(), 'streaming SELECT failed');

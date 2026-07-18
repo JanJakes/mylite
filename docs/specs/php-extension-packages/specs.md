@@ -20,19 +20,19 @@ headers.
 
 ## Semantics
 
-The PHP modules call `mylite_open()`, `mylite_open_memory()`, `mylite_close()`,
-and `mylite_execute()` directly. Query results are buffered into PHP objects so
-the source `mylite_result` can be released at the extension boundary.
+The PHP modules call the public `libmylite` connection, execution, result, and
+prepared-statement APIs directly. Query results are buffered into PHP objects
+or a native buffered statement according to the adapter's public contract.
 The core `mylite` module owns the linked `libmylite` runtime; the mysqli and
 PDO modules require it at load time and use its exported public ABI instead of
 embedding separate MyLite runtime copies.
 
-The current `libmylite` public ABI does not expose prepared statements. PHP
-statement objects therefore emulate positional parameter execution by rendering
-complete SQL strings and passing those strings to `mylite_execute()`. This
-keeps PHP callers usable without introducing a private prepared-statement ABI.
-It is not a substitute for eventual native prepared statement support, binary
-protocol metadata, server-side cursors, or streaming result sets.
+PHP statement objects retain a native `mylite_stmt`, bind typed values through
+the public length-aware API, and reuse the parsed statement across executions.
+Parameter values are never rendered into SQL. The core and mysqli adapters
+consume the native cursor into their buffered PHP result representation. PDO
+uses `mylite_prepare_buffered()` so unread rows do not block later commands on
+the same handle.
 
 The mysqli package intentionally provides global `mysqli`, `mysqli_result`,
 `mysqli_stmt`, and related function symbols when PHP is launched without the
@@ -49,21 +49,22 @@ entry points, and support/runtime helpers live in separate translation units
 sharing one package-private header. The split does not create public ABI; it is
 only a maintenance boundary for the replacement extension.
 
-The PDO package uses PDO's emulated placeholder path and executes the expanded
-SQL string against MyLite. It reports MyLite SQLSTATE, native error code, error
-message, affected rows, and insert ids through PDO's normal surfaces where the
-current `libmylite` result API exposes those values.
+The PDO package uses PDO's parser only to map named placeholders to native
+positional slots. Its parameter hook binds NULL, boolean, integer, text, and
+LOB values without interpolation, including embedded NUL bytes and stream LOBs.
+It reports MyLite SQLSTATE, native error code, error message, affected rows, and
+insert ids through PDO's normal surfaces.
 
 ## Tests
 
 CTest package tests cover:
 
 - core module loading, file and memory opens, exec/query, buffered fetches,
-  insert counts, error propagation, and emulated statement execution;
+  insert counts, error propagation, and native statement execution;
 - mysqli object/procedural calls, transactional autocommit transitions,
-  statement interpolation, insert ids, field metadata, and error reporting;
-- PDO driver registration, exec/query, emulated prepared statements,
-  transactions, quoting, and silent error metadata.
+  typed statement binding, insert ids, field metadata, and error reporting;
+- PDO driver registration, exec/query, typed positional and named bindings,
+  buffered statements, LOBs, transactions, quoting, and error metadata.
 
 The tests are package-local PHP scripts registered in the PHP-enabled CMake
 configurations, including the `php-ci` preset used by CI and the `php-dev`
@@ -73,7 +74,6 @@ preset used for local development.
 
 This slice does not implement:
 
-- native `libmylite` prepared statements;
 - MySQL binary protocol or mysqlnd integration;
 - full stock mysqli/PDO API parity;
 - streaming/unbuffered results;

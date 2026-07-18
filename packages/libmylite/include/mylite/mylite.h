@@ -111,6 +111,13 @@ MYLITE_API int mylite_prepare(
     size_t sql_size,
     mylite_stmt **out_stmt
 );
+/* Buffered statements release the connection before rows are consumed. */
+MYLITE_API int mylite_prepare_buffered(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    mylite_stmt **out_stmt
+);
 /* Parameter indexes are zero-based. Text and blob bindings are copied. */
 MYLITE_API size_t mylite_stmt_parameter_count(const mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_bind_null(mylite_stmt *stmt, size_t index);

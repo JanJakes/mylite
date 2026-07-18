@@ -28,10 +28,9 @@ typedef struct pdo_mylite_db_handle {
 
 typedef struct pdo_mylite_stmt {
     pdo_mylite_db_handle *handle;
-    zend_string *sql;
-    mylite_result *result;
-    size_t cursor;
-    size_t current_row;
+    mylite_stmt *native;
+    bool pending_row;
+    bool ready_for_execute;
 } pdo_mylite_stmt;
 
 static int pdo_mylite_handle_factory(pdo_dbh_t *dbh, zval *driver_options);
@@ -68,11 +67,21 @@ static int pdo_mylite_stmt_get_col(
     zval *result,
     enum pdo_param_type *type
 );
+static int pdo_mylite_stmt_param_hook(
+    pdo_stmt_t *stmt,
+    struct pdo_bound_param_data *parameter,
+    enum pdo_param_event event_type
+);
 static int pdo_mylite_stmt_cursor_closer(pdo_stmt_t *stmt);
+static int pdo_mylite_bind_parameter(
+    pdo_stmt_t *stmt,
+    pdo_mylite_stmt *statement_data,
+    struct pdo_bound_param_data *parameter
+);
 static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const char *fallback);
 static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt);
-static void pdo_mylite_stmt_release_storage(pdo_mylite_stmt *statement_data);
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result);
+static void pdo_mylite_update_statement_status(pdo_dbh_t *dbh, const mylite_stmt *statement);
 static zend_string *pdo_mylite_quote_string(const char *value, size_t length);
 static char *pdo_mylite_resolve_path(pdo_dbh_t *dbh);
 
@@ -105,7 +114,7 @@ static const struct pdo_stmt_methods pdo_mylite_stmt_methods = {
     pdo_mylite_stmt_fetch,
     pdo_mylite_stmt_describe,
     pdo_mylite_stmt_get_col,
-    NULL,
+    pdo_mylite_stmt_param_hook,
     NULL,
     NULL,
     NULL,
@@ -230,11 +239,38 @@ static bool pdo_mylite_handle_preparer(
     (void)driver_options;
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
     pdo_mylite_stmt *statement_data = ecalloc(1, sizeof(*statement_data));
+    zend_string *rewritten_sql = NULL;
+    zend_string *prepared_sql = sql;
+
     statement_data->handle = handle;
-    statement_data->sql = zend_string_copy(sql);
     stmt->driver_data = statement_data;
     stmt->methods = &pdo_mylite_stmt_methods;
-    stmt->supports_placeholders = PDO_PLACEHOLDER_NONE;
+    stmt->supports_placeholders = PDO_PLACEHOLDER_POSITIONAL;
+
+    const int rewrite_status = pdo_parse_params(stmt, sql, &rewritten_sql);
+    if (rewrite_status < 0) {
+        efree(statement_data);
+        stmt->driver_data = NULL;
+        return false;
+    }
+    if (rewrite_status > 0) {
+        prepared_sql = rewritten_sql;
+    }
+    const int status = mylite_prepare_buffered(
+        handle->db,
+        ZSTR_VAL(prepared_sql),
+        ZSTR_LEN(prepared_sql),
+        &statement_data->native
+    );
+    if (rewritten_sql != NULL) {
+        zend_string_release(rewritten_sql);
+    }
+    if (status != MYLITE_OK) {
+        pdo_mylite_error(dbh, stmt, status, "could not prepare MyLite statement");
+        efree(statement_data);
+        stmt->driver_data = NULL;
+        return false;
+    }
     return true;
 }
 
@@ -323,9 +359,9 @@ static int pdo_mylite_stmt_dtor(pdo_stmt_t *stmt) {
     if (statement_data == NULL) {
         return 1;
     }
-    pdo_mylite_stmt_release_storage(statement_data);
-    if (statement_data->sql != NULL) {
-        zend_string_release(statement_data->sql);
+    if (statement_data->native != NULL) {
+        (void)mylite_stmt_finalize(statement_data->native);
+        statement_data->native = NULL;
     }
     efree(statement_data);
     stmt->driver_data = NULL;
@@ -335,27 +371,36 @@ static int pdo_mylite_stmt_dtor(pdo_stmt_t *stmt) {
 static int pdo_mylite_stmt_execute(pdo_stmt_t *stmt) {
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
     pdo_dbh_t *dbh = stmt->dbh;
-    zend_string *sql =
-        stmt->active_query_string != NULL ? stmt->active_query_string : statement_data->sql;
+    int status = MYLITE_OK;
 
-    pdo_mylite_stmt_release_storage(statement_data);
-    statement_data->cursor = 0U;
-    statement_data->current_row = 0U;
-
-    const int status = mylite_execute(
-        statement_data->handle->db,
-        ZSTR_VAL(sql),
-        ZSTR_LEN(sql),
-        &statement_data->result
-    );
+    if (!statement_data->ready_for_execute) {
+        status = mylite_stmt_reset(statement_data->native);
+        if (status == MYLITE_OK) {
+            status = mylite_stmt_clear_bindings(statement_data->native);
+        }
+    }
+    statement_data->ready_for_execute = false;
+    statement_data->pending_row = false;
     if (status != MYLITE_OK) {
+        pdo_mylite_error(dbh, stmt, status, "could not reset MyLite statement");
+        return 0;
+    }
+
+    status = mylite_stmt_step(statement_data->native);
+    if (status != MYLITE_ROW && status != MYLITE_DONE) {
         pdo_mylite_error(dbh, stmt, status, "could not execute MyLite statement");
         return 0;
     }
+    statement_data->pending_row = status == MYLITE_ROW;
     pdo_mylite_clear_error(dbh, stmt);
-    pdo_mylite_update_status(dbh, statement_data->result);
-    php_pdo_stmt_set_column_count(stmt, (int)mylite_result_column_count(statement_data->result));
-    const int64_t affected_rows = mylite_result_affected_rows(statement_data->result);
+    pdo_mylite_update_statement_status(dbh, statement_data->native);
+    const size_t column_count = mylite_stmt_column_count(statement_data->native);
+    if (column_count > (size_t)INT_MAX) {
+        pdo_mylite_error(dbh, stmt, MYLITE_ERROR, "result set has too many columns");
+        return 0;
+    }
+    php_pdo_stmt_set_column_count(stmt, (int)column_count);
+    const int64_t affected_rows = mylite_stmt_affected_rows(statement_data->native);
     stmt->row_count = affected_rows < 0 ? 0 : (zend_long)affected_rows;
     return 1;
 }
@@ -368,22 +413,28 @@ static int pdo_mylite_stmt_fetch(
     (void)orientation;
     (void)offset;
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (statement_data->result == NULL ||
-        statement_data->cursor >= mylite_result_row_count(statement_data->result)) {
+
+    if (statement_data->pending_row) {
+        statement_data->pending_row = false;
+        return 1;
+    }
+    const int status = mylite_stmt_step(statement_data->native);
+    if (status == MYLITE_DONE) {
         return 0;
     }
-    statement_data->current_row = statement_data->cursor;
-    ++statement_data->cursor;
+    if (status != MYLITE_ROW) {
+        pdo_mylite_error(stmt->dbh, stmt, status, "could not fetch MyLite row");
+        return 0;
+    }
     return 1;
 }
 
 static int pdo_mylite_stmt_describe(pdo_stmt_t *stmt, int column) {
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (column < 0 || statement_data->result == NULL ||
-        (size_t)column >= mylite_result_column_count(statement_data->result)) {
+    if (column < 0 || (size_t)column >= mylite_stmt_column_count(statement_data->native)) {
         return 0;
     }
-    const char *name = mylite_result_column_name(statement_data->result, (size_t)column);
+    const char *name = mylite_stmt_column_name(statement_data->native, (size_t)column);
     stmt->columns[column].name =
         zend_string_init(name == NULL ? "" : name, name == NULL ? 0U : strlen(name), false);
     stmt->columns[column].maxlen = 0;
@@ -397,39 +448,149 @@ static int pdo_mylite_stmt_get_col(
     zval *result,
     enum pdo_param_type *type
 ) {
-    (void)type;
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (column < 0 || statement_data->result == NULL ||
-        (size_t)column >= mylite_result_column_count(statement_data->result)) {
+    if (column < 0 || (size_t)column >= mylite_stmt_column_count(statement_data->native)) {
         ZVAL_NULL(result);
         return 0;
     }
 
-    const void *bytes = mylite_result_value_bytes(
-        statement_data->result,
-        statement_data->current_row,
-        (size_t)column
-    );
-    if (bytes == NULL) {
+    if (mylite_stmt_value_is_null(statement_data->native, (size_t)column)) {
         ZVAL_NULL(result);
+        if (type != NULL) {
+            *type = PDO_PARAM_NULL;
+        }
     } else {
+        const void *bytes = mylite_stmt_value_bytes(statement_data->native, (size_t)column);
         ZVAL_STRINGL(
             result,
-            (const char *)bytes,
-            mylite_result_value_size(
-                statement_data->result,
-                statement_data->current_row,
-                (size_t)column
-            )
+            bytes == NULL ? "" : (const char *)bytes,
+            mylite_stmt_value_size(statement_data->native, (size_t)column)
         );
+        if (type != NULL) {
+            *type = PDO_PARAM_STR;
+        }
     }
     return 1;
 }
 
+static int pdo_mylite_stmt_param_hook(
+    pdo_stmt_t *stmt,
+    struct pdo_bound_param_data *parameter,
+    enum pdo_param_event event_type
+) {
+    pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
+
+    if (event_type == PDO_PARAM_EVT_EXEC_POST) {
+        statement_data->ready_for_execute = false;
+        return 1;
+    }
+    if (!parameter->is_param || event_type != PDO_PARAM_EVT_EXEC_PRE) {
+        return 1;
+    }
+    if (!statement_data->ready_for_execute) {
+        int status = mylite_stmt_reset(statement_data->native);
+
+        if (status == MYLITE_OK) {
+            status = mylite_stmt_clear_bindings(statement_data->native);
+        }
+        if (status != MYLITE_OK) {
+            pdo_mylite_error(stmt->dbh, stmt, status, "could not reset MyLite statement");
+            return 0;
+        }
+        statement_data->ready_for_execute = true;
+        statement_data->pending_row = false;
+    }
+    return pdo_mylite_bind_parameter(stmt, statement_data, parameter);
+}
+
 static int pdo_mylite_stmt_cursor_closer(pdo_stmt_t *stmt) {
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (statement_data != NULL) {
-        pdo_mylite_stmt_release_storage(statement_data);
+    if (statement_data == NULL || statement_data->native == NULL) {
+        return 1;
+    }
+    const int status = mylite_stmt_reset(statement_data->native);
+    statement_data->pending_row = false;
+    statement_data->ready_for_execute = false;
+    if (status != MYLITE_OK) {
+        pdo_mylite_error(stmt->dbh, stmt, status, "could not close MyLite cursor");
+        return 0;
+    }
+    return 1;
+}
+
+static int pdo_mylite_bind_parameter(
+    pdo_stmt_t *stmt,
+    pdo_mylite_stmt *statement_data,
+    struct pdo_bound_param_data *parameter
+) {
+    if (parameter->paramno < 0 ||
+        (uint64_t)parameter->paramno >= mylite_stmt_parameter_count(statement_data->native)) {
+        pdo_mylite_error(stmt->dbh, stmt, MYLITE_MISUSE, "invalid MyLite parameter index");
+        return 0;
+    }
+
+    zval *value = &parameter->parameter;
+    const size_t index = (size_t)parameter->paramno;
+    const enum pdo_param_type type = PDO_PARAM_TYPE(parameter->param_type);
+    int status = MYLITE_OK;
+
+    ZVAL_DEREF(value);
+    if (Z_TYPE_P(value) == IS_NULL || type == PDO_PARAM_NULL) {
+        status = mylite_stmt_bind_null(statement_data->native, index);
+    } else {
+        switch (type) {
+        case PDO_PARAM_BOOL:
+            status = mylite_stmt_bind_int64(statement_data->native, index, zend_is_true(value));
+            break;
+        case PDO_PARAM_INT:
+            status = mylite_stmt_bind_int64(statement_data->native, index, zval_get_long(value));
+            break;
+        case PDO_PARAM_LOB: {
+            zend_string *bytes = NULL;
+
+            if (Z_TYPE_P(value) == IS_RESOURCE) {
+                php_stream *stream = NULL;
+                php_stream_from_zval_no_verify(stream, value);
+                if (stream != NULL) {
+                    bytes = php_stream_copy_to_mem(stream, PHP_STREAM_COPY_ALL, false);
+                }
+            } else {
+                bytes = zval_get_string(value);
+            }
+            if (bytes == NULL) {
+                pdo_mylite_error(stmt->dbh, stmt, MYLITE_ERROR, "could not read LOB parameter");
+                return 0;
+            }
+            status = mylite_stmt_bind_blob(
+                statement_data->native,
+                index,
+                ZSTR_VAL(bytes),
+                ZSTR_LEN(bytes)
+            );
+            zend_string_release(bytes);
+            break;
+        }
+        case PDO_PARAM_STR:
+        default: {
+            zend_string *text = zval_get_string(value);
+
+            if (UNEXPECTED(EG(exception) != NULL)) {
+                return 0;
+            }
+            status = mylite_stmt_bind_text(
+                statement_data->native,
+                index,
+                ZSTR_VAL(text),
+                ZSTR_LEN(text)
+            );
+            zend_string_release(text);
+            break;
+        }
+        }
+    }
+    if (status != MYLITE_OK) {
+        pdo_mylite_error(stmt->dbh, stmt, status, "could not bind MyLite parameter");
+        return 0;
     }
     return 1;
 }
@@ -485,17 +646,16 @@ static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt) {
     }
 }
 
-static void pdo_mylite_stmt_release_storage(pdo_mylite_stmt *statement_data) {
-    if (statement_data->result != NULL) {
-        mylite_result_free(statement_data->result);
-        statement_data->result = NULL;
-    }
-}
-
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result) {
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
     zend_string_release(handle->last_insert_id);
     handle->last_insert_id = zend_u64_to_str(mylite_result_insert_id(result));
+}
+
+static void pdo_mylite_update_statement_status(pdo_dbh_t *dbh, const mylite_stmt *statement) {
+    pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
+    zend_string_release(handle->last_insert_id);
+    handle->last_insert_id = zend_u64_to_str(mylite_stmt_insert_id(statement));
 }
 
 static zend_string *pdo_mylite_quote_string(const char *value, size_t length) {

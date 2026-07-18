@@ -2607,6 +2607,8 @@ struct mylite_stmt {
     bool has_normalized_sql;
     bool has_select_plan;
     bool has_materialized_rows;
+    bool buffered_results;
+    bool completion_published;
     bool returns_rows;
     bool analyzing_unbound_parameters;
     bool sqlite_statement_is_cached;

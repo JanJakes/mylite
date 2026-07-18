@@ -66,6 +66,12 @@ The existing opaque `mylite_stmt` becomes the prepared and cursor handle. The
 following operations are added:
 
 ```c
+int mylite_prepare_buffered(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    mylite_stmt **out_stmt
+);
 size_t mylite_stmt_parameter_count(const mylite_stmt *stmt);
 int mylite_stmt_bind_null(mylite_stmt *stmt, size_t index);
 int mylite_stmt_bind_int64(mylite_stmt *stmt, size_t index, int64_t value);
@@ -111,6 +117,13 @@ result rows or `MYLITE_DONE` after completion. Non-row statements return
 `MYLITE_DONE` after one execution; affected rows and insert ID remain available
 until reset or the next execution.
 
+`mylite_prepare_buffered()` has the same binding and execution contract as
+`mylite_prepare()`, but materializes the complete result when execution begins,
+before `mylite_stmt_step()` returns the first row. This releases the
+connection's read transaction and publishes statement status so adapters with
+buffered-result semantics can issue another command while rows remain unread.
+The retained AST and bindings are still reused on later executions.
+
 ## PHP adapters
 
 ### Core MyLite extension
@@ -134,9 +147,9 @@ DML status comes from the same native statement completion record.
 The driver advertises positional placeholders and binds through the native
 handle. It preserves the distinction between text and binary parameter types,
 honors by-value versus by-reference parameter behavior, and uses the native
-cursor rather than an emulated active query string. Named-placeholder support
-remains outside this slice unless PDO rewrites names to positional slots without
-rendering values.
+buffered statement path rather than an emulated active query string. PDO's own
+placeholder parser rewrites named markers to positional slots without rendering
+values.
 
 ## Parser and AST
 

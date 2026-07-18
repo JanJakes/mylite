@@ -30,9 +30,12 @@ static int copy_active_stmt_parameter_cell(
 );
 static bool prepared_statement_kind_is_supported(const struct mylite_sql_ast_node *statement);
 static bool prepared_statement_returns_rows(const struct mylite_sql_ast_node *statement);
+static bool prepared_statement_requires_object_validation(
+    const struct mylite_sql_ast_node *statement
+);
 static int validate_prepared_statement_objects(mylite_stmt *stmt);
 static bool prepared_analysis_error_is_object_resolution(int error_code);
-static int execute_prepared_non_row_statement(mylite_stmt *stmt);
+static int execute_prepared_materialized_statement(mylite_stmt *stmt);
 static void release_stmt_bindings(mylite_stmt *stmt);
 static int prepare_cursor_select_statement(
     struct mylite_db *database,
@@ -40,8 +43,16 @@ static int prepare_cursor_select_statement(
     size_t sql_size,
     mylite_stmt *stmt
 );
+static int prepare_statement(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    bool buffered_results,
+    mylite_stmt **out_stmt
+);
 static int prepare_cursor_select_plan(mylite_stmt *stmt);
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt);
+static int publish_buffered_statement_completion(mylite_stmt *stmt);
 static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc);
 static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc);
 static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted);

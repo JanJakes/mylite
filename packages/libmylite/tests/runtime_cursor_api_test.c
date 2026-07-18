@@ -39,8 +39,9 @@ static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_reset_and_value_nullability(void);
 static int test_native_prepared_scalar_bindings(void);
 static int test_native_prepared_dml_bindings(void);
+static int test_buffered_prepared_statement_releases_connection(void);
 static int test_cursor_materializes_information_schema_selects(void);
-static int test_cursor_prepare_rejects_unsupported_statements(void);
+static int test_cursor_prepare_statement_surface(void);
 static int test_cursor_read_transaction_lifecycle(void);
 static int test_cursor_connection_close_order(void);
 static int test_materialized_cursor_does_not_overwrite_later_statement_state(void);
@@ -79,8 +80,9 @@ int main(void) {
     failures += test_cursor_reset_and_value_nullability();
     failures += test_native_prepared_scalar_bindings();
     failures += test_native_prepared_dml_bindings();
+    failures += test_buffered_prepared_statement_releases_connection();
     failures += test_cursor_materializes_information_schema_selects();
-    failures += test_cursor_prepare_rejects_unsupported_statements();
+    failures += test_cursor_prepare_statement_surface();
     failures += test_cursor_read_transaction_lifecycle();
     failures += test_cursor_connection_close_order();
     failures += test_materialized_cursor_does_not_overwrite_later_statement_state();
@@ -1225,6 +1227,57 @@ static int test_native_prepared_dml_bindings(void) {
     return failures;
 }
 
+static int test_buffered_prepared_statement_releases_connection(void) {
+    char path[test_path_capacity];
+    const struct mylite_session_state *session = NULL;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "buffered_prepared") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open buffered prepared");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, name VARCHAR(20))");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1, 'alpha'), (2, 'beta')");
+    failures += expect_int(
+        mylite_prepare_buffered(
+            database,
+            "SELECT name FROM items WHERE id >= ? ORDER BY id",
+            strlen("SELECT name FROM items WHERE id >= ? ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare buffered parameter query"
+    );
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 1), MYLITE_OK, "bind buffered id");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "buffered first row");
+    failures += expect_cursor_text(stmt, 0U, "alpha", "buffered first value");
+    session = mylite_connection_session_state(database);
+    failures += expect_int((int)session->previous_row_count, -1, "publish buffered row count");
+    failures += execute_ok(database, "INSERT INTO items VALUES (3, 'gamma')");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "buffered unread row");
+    failures += expect_cursor_text(stmt, 0U, "beta", "buffered unread value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "buffered result done");
+    session = mylite_connection_session_state(database);
+    failures +=
+        expect_int((int)session->previous_row_count, 1, "preserve later statement row count");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset buffered statement");
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 3), MYLITE_OK, "rebind buffered id");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecuted buffered row");
+    failures += expect_cursor_text(stmt, 0U, "gamma", "reexecuted buffered value");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize buffered statement");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_cursor_materializes_information_schema_selects(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -1301,7 +1354,7 @@ static int test_cursor_materializes_information_schema_selects(void) {
     return failures;
 }
 
-static int test_cursor_prepare_rejects_unsupported_statements(void) {
+static int test_cursor_prepare_statement_surface(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -1324,12 +1377,42 @@ static int test_cursor_prepare_rejects_unsupported_statements(void) {
             strlen("CREATE TABLE another (id INT)"),
             &stmt
         ),
-        MYLITE_ERROR,
-        "prepare rejects unsupported DDL"
+        MYLITE_OK,
+        "prepare DDL"
     );
-    failures += expect_true(stmt == NULL, "failed prepare leaves null statement");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute prepared DDL");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize prepared DDL");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare_buffered(database, "SHOW TABLES", strlen("SHOW TABLES"), &stmt),
+        MYLITE_OK,
+        "prepare SHOW"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "prepared SHOW first row");
+    failures += expect_cursor_text(stmt, 0U, "another", "prepared SHOW first table");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "prepared SHOW second row");
+    failures += expect_cursor_text(stmt, 0U, "items", "prepared SHOW second table");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "prepared SHOW done");
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset prepared SHOW");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecute prepared SHOW");
+    failures += expect_cursor_text(stmt, 0U, "another", "reexecuted prepared SHOW table");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize prepared SHOW");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "PREPARE nested FROM 'SELECT 1'",
+            strlen("PREPARE nested FROM 'SELECT 1'"),
+            &stmt
+        ),
+        MYLITE_ERROR,
+        "prepare rejects nested PREPARE"
+    );
+    failures += expect_true(stmt == NULL, "nested prepare leaves null statement");
     failures +=
-        expect_contains(mylite_errmsg(database), "not supported", "failed prepare diagnostic");
+        expect_contains(mylite_errmsg(database), "not supported", "nested prepare diagnostic");
 
     failures += expect_int(
         mylite_prepare(

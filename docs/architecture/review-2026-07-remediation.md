@@ -38,7 +38,7 @@ complete.
 - [x] Migrate the core PHP statement API to native binding.
 - [x] Migrate the mysqli statement API to native binding and the cursor result
   path.
-- [ ] Migrate PDO to native binding while preserving PDO type and lifetime
+- [x] Migrate PDO to native binding while preserving PDO type and lifetime
   semantics.
 - [ ] Cover markers in strings, identifiers, ordinary comments, executable
   comments, binary data, embedded NULs, all relevant SQL modes, repeated

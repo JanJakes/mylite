@@ -8,7 +8,7 @@
 - [x] Implement generation-safe reprepare and repeated execution.
 - [x] Migrate the core PHP extension.
 - [x] Migrate the mysqli replacement.
-- [ ] Migrate the PDO driver.
+- [x] Migrate the PDO driver.
 - [ ] Add core, PHP, sanitizer, and performance coverage.
 - [ ] Update public API and compatibility documentation.
 - [ ] Run complete core, PHP, application, and MySQL verification.

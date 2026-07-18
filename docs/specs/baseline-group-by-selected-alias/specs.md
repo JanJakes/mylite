@@ -190,7 +190,7 @@ semantics apply:
 - integer and ASCII nonbinary string group keys use the current type-specific
   grouping and ordering rules;
 - `NULL` key tuples form one group;
-- string keys use MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation in
+- string keys use MyLite's registered limited Unicode `utf8mb4_0900_ai_ci` collation in
   generated grouping and ordering expressions;
 - selected descriptor columns remain legal when they are grouped or determined
   by the complete grouped primary key of their own source;

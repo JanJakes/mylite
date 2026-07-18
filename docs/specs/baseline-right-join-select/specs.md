@@ -228,7 +228,7 @@ The admitted `ON` condition:
   columns;
 - uses ordinary SQL three-valued equality semantics, so `NULL = NULL` is not
   true;
-- uses MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation for admitted
+- uses MyLite's registered limited Unicode `utf8mb4_0900_ai_ci` collation for admitted
   string-family values;
 - rejects mixed-type and unsupported-type column-to-column comparisons with the
   same deterministic unsupported diagnostic as the left-join path.
@@ -303,7 +303,7 @@ Add or extend fast C tests under `packages/libmylite/tests/` for:
 - `SELECT *` column order and duplicate labels;
 - `WHERE left_column IS NULL` after null extension;
 - default, `ASC`, `DESC`, `LIMIT 0`, exact, and oversized limits;
-- string equality using the existing registered ASCII collation;
+- string equality using the existing registered limited Unicode collation;
 - source index hints, aliases, schema-qualified sources and columns, and
   temporary-table shadowing;
 - ambiguous/unknown selected, `ON`, `WHERE`, and `ORDER BY` diagnostics;

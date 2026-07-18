@@ -13,8 +13,9 @@ operands that most often appear in the MySQL parser corpus:
 - scalar string literals and supported `CONVERT(... USING charset)` operands
   in those contexts.
 
-The runtime target is MySQL 8.4.9 behavior for ASCII data under collations that
-MyLite already models as scalar metadata, plus the additional frequent
+The runtime target is MySQL 8.4.9 behavior for the shared limited Unicode 0900
+collation subset and ASCII data under legacy collations that MyLite already
+models as scalar metadata, plus the additional frequent
 `utf8mb4_0900_as_cs`, `utf8mb4_0900_as_ci`, `latin1_general_ci`,
 `latin1_general_cs`, `latin1_german1_ci`, and `latin1_german2_ci` names.
 
@@ -33,25 +34,27 @@ MyLite already models as scalar metadata, plus the additional frequent
 
 MySQL treats an explicit `COLLATE` clause as the strongest collation source for
 comparison resolution. For this baseline MyLite supports that behavior for the
-current ASCII-compatible row-scalar envelope:
+current row-scalar envelope:
 
 - unknown collation names return MySQL-style `1273 / HY000`;
 - a known collation whose character set does not match the operand character
   set returns MySQL-style `1253 / 42000`;
-- case-insensitive collations use MyLite's registered ASCII
-  `utf8mb4_0900_ai_ci` SQLite collation;
+- case-insensitive 0900 collations use MyLite's shared UTF-8 service with the
+  selected accent-sensitivity level;
 - binary collations use SQLite `BINARY`;
-- case-sensitive collations use MyLite's registered ASCII
-  `utf8mb4_0900_as_cs` SQLite collation with case-insensitive primary order
-  and lower-before-upper case ordering for ASCII text;
+- case-sensitive collations use MyLite's registered `utf8mb4_0900_as_cs`
+  SQLite collation with Unicode case weights and lower-before-upper ordering;
 - explicit collation on the left or right side overrides the default string-key
   collation that MyLite appends for uncollated string expressions.
 
-The implementation is intentionally ASCII-scoped. It does not implement full
-Unicode weight strings, accent sensitivity, locale-specific ordering, pad-space
-or no-pad trailing-space differences, or general coercibility resolution between
-two incompatible explicit collations beyond the validation needed for this
-operand envelope.
+The implementation is intentionally narrower than UCA 9.0. It covers Unicode
+case folding, common compatibility expansions, common Latin-1 canonical accent
+equivalence, 0900 case/accent sensitivity, deterministic invalid-byte ordering,
+and NO PAD trailing spaces. It does not implement complete Unicode weight
+strings, contractions, locale-specific ordering, general PAD SPACE execution,
+or general coercibility resolution between two incompatible explicit
+collations beyond the validation needed for this operand envelope. `LIKE`
+retains its separately documented ASCII behavior.
 
 ## Grammar
 
@@ -93,6 +96,9 @@ Focused tests cover:
   `COLLATE` forms;
 - runtime equality and `LIKE` behavior for `utf8mb4_0900_ai_ci` and
   `utf8mb4_0900_as_cs`;
+- Unicode case/accent sensitivity, precomposed/decomposed common Latin-1
+  accents, accent position, grouping, and unique-key behavior for supported
+  0900 collations;
 - runtime `latin1` converted literal comparison against a `latin1` column;
 - MySQL-shaped diagnostics for invalid charset/collation combinations and
   unknown collation names;
@@ -101,6 +107,7 @@ Focused tests cover:
 ## Deferred behavior
 
 This slice does not add expression-level `COLLATE` to grouping, distinct,
-aggregate arguments, window definitions, DML assignments, arbitrary expression
-trees, `REGEXP` pattern collation semantics, non-ASCII collation parity, or
-full coercibility conflict diagnostics.
+aggregate arguments outside the documented `GROUP_CONCAT(DISTINCT)` path,
+window definitions, DML assignments, arbitrary expression trees, `REGEXP`
+pattern collation semantics, complete UCA 9.0 collation parity, or full
+coercibility conflict diagnostics.

@@ -311,7 +311,7 @@ Execution:
   admitted `LIMIT 0` may lower to a constant false predicate.
 - `IN` subqueries lower to `outer_descriptor_value IN (SELECT
   inner_descriptor_value FROM inner_physical AS _mylite_s1 ...)`.
-- String-family membership values and predicates use MyLite's registered ASCII
+- String-family membership values and predicates use MyLite's registered limited Unicode
   `utf8mb4_0900_ai_ci` collation in the same places as the baseline
   `SELECT ... IN (subquery)` slice.
 - Assignment conversion, non-strict/`IGNORE` handling, duplicate-key checks,
@@ -366,7 +366,7 @@ Cover:
   existing integer correlation subset;
 - schema-qualified update targets and inner sources;
 - `ORDER BY ... LIMIT` over a subquery-filtered update;
-- string-family `IN` subquery filtering with the registered ASCII collation;
+- string-family `IN` subquery filtering with the registered limited Unicode collation;
 - same-target table subquery rejection with `1093 / HY000`;
 - unknown inner source/column diagnostics and unsupported inner clauses;
 - persistence after close/reopen and `.mylite` preamble preservation;

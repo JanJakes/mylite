@@ -131,7 +131,7 @@ This feature must not implement:
 - ordering for descriptor families that are still unsupported for one-key
   ordering, including decimal, approximate, `ENUM`, `SET`, JSON, and binary
   string order keys outside `BIT`;
-- non-ASCII or full Unicode collation parity for string sorting;
+- complete UCA 9.0 collation parity for string sorting;
 - optimizer-index selection, filesort emulation, materialized temp tables, or
   MyLite-side row sorting; or
 - SQLite fork patches, custom SQLite virtual tables, or new public API.

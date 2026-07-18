@@ -109,7 +109,7 @@ This feature must not implement:
   SQLite pass-through beyond the existing no-key replace grammar;
 - cascades, triggers, generated columns, privileges, statement-based
   replication semantics, or client changed-column protocol metadata;
-- non-ASCII string key values beyond the current MyLite key restriction;
+- complete UCA 9.0 string-key semantics beyond the current shared collation subset;
 - new SQLite fork patches.
 
 ## Ownership Boundary

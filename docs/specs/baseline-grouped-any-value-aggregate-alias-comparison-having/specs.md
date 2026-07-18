@@ -95,7 +95,7 @@ MyLite lowers grouped `ANY_VALUE(column)` to the resolved physical descriptor
 column in the grouped `SELECT` list. The grouped `HAVING` planner resolves the
 selected alias to that aggregate result and converts the right-hand literal
 against the selected `ANY_VALUE()` argument descriptor. String operands are
-emitted through MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation helper
+emitted through MyLite's registered limited Unicode `utf8mb4_0900_ai_ci` collation helper
 for the admitted comparison subset.
 
 No SQLite fork hook is required.

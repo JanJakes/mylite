@@ -109,7 +109,7 @@ This slice does not add:
   right-hand expressions;
 - `BETWEEN`, `IN`, `LIKE`, `REGEXP`, boolean composition, or bare truth tests
   in grouped `HAVING`;
-- full Unicode collation parity beyond MyLite's current registered ASCII
+- full Unicode collation parity beyond MyLite's current registered limited Unicode
   `utf8mb4_0900_ai_ci` subset;
 - aggregate result string comparisons beyond the existing `ANY_VALUE()` alias
   comparison slice; or

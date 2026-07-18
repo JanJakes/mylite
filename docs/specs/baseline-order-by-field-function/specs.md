@@ -242,7 +242,7 @@ Execution:
   columns.
 - Storage/VFS/file format: unchanged. `.mylite` preamble and shifted SQLite
   payload invariants are preserved.
-- SQLite: use generated standard SQLite `CASE` plus MyLite's registered ASCII
+- SQLite: use generated standard SQLite `CASE` plus MyLite's registered limited Unicode
   string collation. No SQLite fork patch is required.
 
 ## Diagnostics

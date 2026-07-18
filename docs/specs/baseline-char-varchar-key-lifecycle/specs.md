@@ -12,14 +12,14 @@ and `DROP PRIMARY KEY`, `ALTER TABLE ... DROP INDEX`, duplicate-key DML
 handling, `SHOW` / `INFORMATION_SCHEMA` metadata, and file-backed `.mylite`
 storage.
 
-This is not full MySQL string collation support. MyLite admits only
-ASCII-valued non-`NULL` string key values in this first slice, then enforces
-MySQL-compatible ASCII equality for the fixed `utf8mb4_0900_ai_ci` baseline:
-case-insensitive letters, significant trailing spaces for `VARCHAR`, and the
-already canonicalized default-mode trailing-space behavior for `CHAR`. Broader
-Unicode collation weights, non-ASCII key values, prefix indexes, composite
-string keys, standalone index DDL, and `ALTER TABLE ADD UNIQUE` are handled by
-separate slices.
+This is not full MySQL string collation support. MyLite admits valid UTF-8
+non-`NULL` string key values and enforces its shared limited
+`utf8mb4_0900_ai_ci` semantics: Unicode case folding, common compatibility
+expansions, canonical common Latin-1 accent equivalence, significant trailing spaces for
+`VARCHAR`, and the already canonicalized default-mode trailing-space behavior
+for `CHAR`. Complete UCA 9.0 and locale tailoring remain deferred; prefix
+indexes, composite string keys, standalone index DDL, and
+`ALTER TABLE ADD UNIQUE` are handled by separate slices.
 
 ## Sources
 
@@ -180,9 +180,7 @@ Supported:
 
 Deferred:
 
-- non-ASCII string key values, including values whose MySQL
-  `utf8mb4_0900_ai_ci` equality depends on Unicode accent/case/weight rules;
-- full Unicode Collation Algorithm weight tables;
+- complete Unicode Collation Algorithm 9.0 weight tables and locale tailoring;
 - composite primary keys containing any string key part;
 - composite unique string indexes;
 - standalone `CREATE [UNIQUE] INDEX`, standalone `DROP INDEX`, and
@@ -218,8 +216,8 @@ Deferred:
 - Analyzer/planner: resolves key definitions against MyLite descriptors,
   validates key shape, validates descriptor length and string-key value
   support, applies existing string value conversion, and builds descriptor
-  plans. Unsupported non-ASCII key values are rejected before SQLite mutation
-  or duplicate lookup.
+  plans. Invalid UTF-8 key values are rejected before SQLite mutation or
+  duplicate lookup.
 - Catalog: existing index descriptors remain authoritative. String primary
   keys use `kind = PRIMARY`, `is_unique = 1`; string unique keys use
   `kind = SECONDARY`, `is_unique = 1`. Index-column descriptors preserve
@@ -344,11 +342,10 @@ After conversion, MyLite applies the string-key support gate:
 - any byte with the high bit set is rejected with a deterministic MyLite
   unsupported diagnostic before physical mutation.
 
-This ASCII gate is deliberate. MySQL 8.4.9 `utf8mb4_0900_ai_ci` treats many
-non-ASCII strings as equal to ASCII or other Unicode strings. Raw SQLite text
-comparison would over-admit duplicates, and MyLite should not claim support
-until it owns the needed Unicode collation weights or another equivalent
-strategy.
+The generated physical key uses MyLite's registered shared collation rather
+than raw SQLite text comparison. This prevents bytewise SQLite equality from
+over-admitting duplicates for the Unicode equivalences in the supported
+subset, without claiming complete UCA 9.0 behavior.
 
 For admitted ASCII key values, MyLite implements:
 
@@ -403,9 +400,8 @@ descriptor key expressions with the same collation annotation. This prevents a
 table containing existing `'a'` and `'A'` rows from acquiring a string primary
 key.
 
-No SQLite fork patch is required. If later full Unicode collation support is
-too expensive through SQLite callbacks or causes unavoidable index overhead,
-that later decision must be specified separately.
+No SQLite fork patch is required. Complete UCA 9.0 support remains a separate
+design decision if its table or callback cost is justified by measured use.
 
 ## DML Semantics
 
@@ -422,7 +418,7 @@ Supported:
   a duplicate string primary or unique key;
 - no-op string-key assignments report affected rows through the existing
   changed-row semantics;
-- unsupported non-ASCII key values fail before SQLite mutation and before
+- invalid UTF-8 key values fail before SQLite mutation and before
   duplicate-key demotion.
 
 Deferred:
@@ -491,8 +487,7 @@ Use MySQL-compatible diagnostics where MySQL behavior is in scope:
   `1048 / 23000`;
 - omitted no-default primary/unique `NOT NULL` string key value: existing
   `1364 / HY000`;
-- unsupported non-ASCII string key value: deterministic MyLite unsupported
-  diagnostic;
+- invalid UTF-8 string key value: deterministic MyLite unsupported diagnostic;
 - unsupported key shape, prefix, expression, qualified key part, and
   unsupported standalone or alter index DDL forms: existing parse or
   unsupported diagnostics;
@@ -540,8 +535,8 @@ Cover:
 - nullable unique multiple `NULL`s;
 - empty string as a real unique key value;
 - `INSERT`, `INSERT SET`, `INSERT IGNORE`, and `UPDATE` duplicate handling;
-- non-ASCII string key values rejected deterministically in MyLite, with
-  MySQL expectation coverage documenting broader upstream behavior;
+- Unicode case/accent/canonical-equivalence duplicates and invalid UTF-8 string
+  key values, with MySQL expectation coverage documenting the supported subset;
 - missing default schema, unknown schema, unknown table, reserved names,
   unknown assignment/key columns, duplicate key names, duplicate primary-key
   definitions, nullable primary-key parts, and no-default DML diagnostics;
@@ -566,7 +561,7 @@ Run:
 3. `packages/libmylite/tests/mysql_baseline_char_varchar_key_lifecycle_expectations.sh`
 4. `cmake --workflow --preset check`
 
-Review the final diff for MySQL behavior, ASCII collation correctness,
-explicit non-ASCII scope control, descriptor authority, generated SQLite SQL
+Review the final diff for MySQL behavior, supported Unicode collation
+correctness and explicit full-UCA scope control, descriptor authority, generated SQLite SQL
 quoting/collation annotations, duplicate diagnostics, metadata accuracy,
 file-format safety, performance, cleanup on failure, and compatibility docs.

@@ -49,8 +49,8 @@ This phase supports:
   keys already supported by earlier phases.
 - Single-column `CHAR` / `VARCHAR` primary keys already supported by earlier
   phases.
-- ASCII-valued string key participation through MyLite's current
-  `utf8mb4_0900_ai_ci` subset.
+- Valid UTF-8 string key participation through MyLite's shared limited
+  `utf8mb4_0900_ai_ci` service.
 - Descriptor-driven rendering in `SHOW CREATE TABLE`, `SHOW COLUMNS`,
   `SHOW INDEX`, `CREATE TABLE ... LIKE`, and limited
   `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.STATISTICS`,
@@ -67,7 +67,7 @@ This phase intentionally defers:
 - Primary-key prefix parts such as `PRIMARY KEY (name(10))`, even though MySQL
   accepts them for compatible string types.
 - Unique prefix parts and composite unique string indexes.
-- Non-ASCII string key values and full Unicode collation weights.
+- Complete UCA 9.0 collation weights and locale tailoring.
 - `TEXT`, `BLOB`, binary-string, approximate-number, temporal, `DECIMAL`, `BIT`,
   JSON, spatial, generated, or expression primary-key parts beyond already
   supported integer and `CHAR` / `VARCHAR` descriptors.
@@ -169,15 +169,15 @@ MySQL-shaped `1171 / 42000` diagnostic. During `ALTER TABLE ... ADD PRIMARY
 KEY`, existing `NULL` values in any key part fail with `1138 / 22004` before
 catalog or physical index mutation.
 
-String key values use MyLite's current ASCII-only subset for primary and unique
-keys:
+String key values use MyLite's shared limited UTF-8 collation service for
+primary and unique keys:
 
 - ASCII text without embedded `NUL` is admitted.
 - Non-ASCII text and embedded `NUL` in string key values are rejected before
   mutation with the existing deterministic MyLite string-key diagnostic.
-- MyLite registers its fixed `utf8mb4_0900_ai_ci` SQLite collation callback for
-  string key parts. It is sufficient for current ASCII case-insensitive key
-  comparisons and does not claim full Unicode collation equivalence.
+- MyLite registers its `utf8mb4_0900_ai_ci` SQLite collation callback for string
+  key parts. It covers the documented Unicode case/accent/canonical-equivalence
+  subset and does not claim complete UCA 9.0 equivalence.
 
 The aggregate key length must fit the current InnoDB-compatible 3072-byte
 budget. MyLite computes the descriptor key-byte budget before creating or
@@ -294,4 +294,3 @@ Tests must cover:
   and independent file-backed handles for keys containing string parts.
 - Existing primary-key, unique-index, nonunique-index, string type, insert,
   update, metadata, file-format, and workflow tests still pass.
-

@@ -100,8 +100,8 @@ Supported:
 - full-column key parts for the existing full unique-key descriptor subset;
 - prefix key parts on `CHAR`, `VARCHAR`, and baseline `TEXT` family descriptors;
 - positive decimal integer prefix lengths without sign;
-- ASCII-valued non-`NULL` string key values using MyLite's fixed ASCII subset of
-  `utf8mb4_0900_ai_ci`;
+- valid UTF-8 non-`NULL` string key values using MyLite's shared limited
+  `utf8mb4_0900_ai_ci` service;
 - duplicate `NULL` values whenever any key part is `NULL`;
 - duplicate enforcement for current `INSERT ... VALUES`, `INSERT ... SET`,
   `INSERT IGNORE`, and single-assignment `UPDATE`;
@@ -115,7 +115,7 @@ Deferred:
 
 - primary prefix indexes;
 - binary string or BLOB prefix unique indexes;
-- non-ASCII unique string key values and full Unicode collation weights;
+- complete UCA 9.0 collation weights and locale tailoring;
 - descending, functional, expression, table-qualified, ordinal, invisible,
   optioned, commented, parser, fulltext, spatial, algorithm, lock, partition,
   foreign-key, trigger, cascade, privilege, optimizer, and redundant-index
@@ -205,7 +205,7 @@ Key-part validation:
 - `TEXT` family prefixes must fit the type-family byte limit and aggregate key
   envelope;
 - full-column `TEXT` unique key parts remain rejected with `1170 / 42000`;
-- non-ASCII or embedded-NUL string key values fail with the existing
+- invalid UTF-8 or embedded-NUL string key values fail with the existing
   string-key unsupported diagnostic before row or catalog mutation.
 
 Duplicate semantics:
@@ -273,7 +273,7 @@ This phase reuses existing diagnostics for:
   `TEXT` family unique key parts are accepted only by the documented WordPress
   bridge;
 - duplicate populated prefix tuples: `1062 / 23000`;
-- unsupported non-ASCII string key values: existing MyLite-specific
+- invalid UTF-8 string key values: existing MyLite-specific
   unsupported diagnostic;
 - unsupported future object kinds, allocation failures, public API misuse, and
   physical SQLite failures through existing runtime diagnostics.
@@ -302,5 +302,5 @@ Implementation tests must cover:
 `COMPATIBILITY.md`, `docs/compatibility/sql-table-ddl.md`, and
 `docs/compatibility/sql-indexes-constraints.md` should describe this as limited
 composite unique prefix support. They must not claim primary prefix indexes,
-binary prefix unique indexes, full Unicode collation parity, optimizer
+binary prefix unique indexes, complete UCA 9.0 collation parity, optimizer
 behavior, full `ON DUPLICATE KEY UPDATE`, or general index-option support.

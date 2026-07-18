@@ -229,7 +229,7 @@ prefix, except for the relaxed-mode weekly archive shape, which may include
 one selected `DATE_FORMAT(post_date, '%Y-%m-%d')` row-scalar projection before
 the aggregate.
 
-String group keys use MyLite's registered ASCII `utf8mb4_0900_ai_ci`
+String group keys use MyLite's registered limited Unicode `utf8mb4_0900_ai_ci`
 collation in generated grouping and grouped ordering expressions. Integer keys
 use stored integer values. `NULL` values form one group per equal key tuple.
 No result row order is promised without an admitted `ORDER BY`.

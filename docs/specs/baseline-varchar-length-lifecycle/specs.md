@@ -127,7 +127,7 @@ This feature must not implement:
 - InnoDB page-local row-size enforcement beyond the MySQL 65,535-byte row
   envelope for the current descriptor set;
 - wider `VARCHAR` primary keys, unique keys, secondary indexes, prefix keys,
-  descending keys, composite string keys, non-ASCII key collation behavior, or
+  descending keys, composite string keys, complete UCA 9.0 key collation behavior, or
   full 3072-byte InnoDB key-length semantics;
 - warning-producing string default or row-value truncation;
 - larger catalog default storage for very long literal defaults;

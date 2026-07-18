@@ -14,9 +14,9 @@ CREATE UNIQUE INDEX u_v ON t (v(3))
 The slice reuses MyLite's descriptor-owned unique indexes, prefix key-part
 descriptors, ASCII `utf8mb4_0900_ai_ci` collation callback, generated SQLite
 expression indexes, and current duplicate-key DML handling. It is deliberately
-single-part only. Composite unique indexes, primary prefix indexes, binary
-prefix indexes, non-ASCII string key values, and full Unicode collation remain
-separate features.
+single-part only. Composite unique indexes, primary prefix indexes, and binary
+prefix indexes remain separate features; complete UCA 9.0 collation remains
+outside this slice.
 
 ## Sources
 
@@ -114,8 +114,8 @@ Supported:
 - one unqualified key part only;
 - positive decimal integer prefix lengths without sign;
 - prefix parts on `CHAR`, `VARCHAR`, and baseline `TEXT` family descriptors;
-- ASCII-valued non-`NULL` string key values using MyLite's fixed ASCII subset
-  of `utf8mb4_0900_ai_ci`;
+- valid UTF-8 non-`NULL` string key values using MyLite's shared limited
+  `utf8mb4_0900_ai_ci` service;
 - duplicate `NULL` values;
 - prefix duplicate enforcement for current `INSERT ... VALUES`,
   `INSERT ... SET`, `INSERT IGNORE`, single-assignment `UPDATE`, and the
@@ -133,7 +133,7 @@ Deferred:
 - primary prefix indexes;
 - full-column `TEXT` unique indexes;
 - composite unique indexes, including composite unique prefix indexes;
-- non-ASCII unique string key values and full Unicode collation weights;
+- complete UCA 9.0 collation weights and locale tailoring;
 - binary string and BLOB prefix unique indexes;
 - descending, functional, expression, table-qualified, ordinal, invisible,
   optioned, commented, parser, fulltext, spatial, algorithm, lock, partition,
@@ -217,7 +217,7 @@ Key-part validation:
 - `TEXT` family prefixes must fit the type-family byte limit and the aggregate
   key envelope;
 - full-column `TEXT` unique indexes remain rejected with `1170 / 42000`;
-- non-ASCII or embedded-NUL string key values fail with MyLite's existing
+- invalid UTF-8 or embedded-NUL string key values fail with MyLite's existing
   string-key unsupported diagnostic before the statement mutates rows or
   catalog descriptors.
 
@@ -228,7 +228,7 @@ Duplicate semantics:
   compare equal under MyLite's ASCII `utf8mb4_0900_ai_ci` collation.
 - Duplicate diagnostics format the prefix value, not the complete source
   value, truncate the composed duplicate-entry text to the MySQL 8.4.9
-  observed 64-byte display envelope for this ASCII-only slice, and use the
+  observed 64-byte display envelope for this supported slice, and use the
   existing `Duplicate entry 'value' for key 'table.index'` shape.
 - Existing rows are checked before `ALTER TABLE ... ADD UNIQUE` and
   `CREATE UNIQUE INDEX` mutate catalog descriptors.

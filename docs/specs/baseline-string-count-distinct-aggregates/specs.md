@@ -89,7 +89,7 @@ Integer `COUNT(DISTINCT column)` lowering remains unchanged.
 
 This slice did not add:
 
-- full Unicode collation parity beyond MyLite's current registered ASCII
+- full Unicode collation parity beyond MyLite's current registered limited Unicode
   `utf8mb4_0900_ai_ci` approximation;
 - explicit per-expression `COLLATE` handling inside `COUNT(DISTINCT ...)`;
 - multiple distinct expressions;

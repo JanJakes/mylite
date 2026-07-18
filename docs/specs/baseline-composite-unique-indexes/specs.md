@@ -134,7 +134,7 @@ Deferred:
   spatial, or multi-valued key parts;
 - binary string, `BIT`, `ENUM`, `SET`, `JSON`, approximate numeric, and
   unsupported future descriptors as unique key parts;
-- non-ASCII string key values and full Unicode collation parity;
+- complete UCA 9.0 string-key semantics and locale tailoring;
 - composite unique keys as parent keys for foreign keys;
 - composite unique conflict handling in `INSERT ... ON DUPLICATE KEY UPDATE`;
 - optimizer/index-use guarantees.
@@ -311,7 +311,7 @@ The implementation must produce deterministic diagnostics for:
 - unknown key columns;
 - duplicate key-part columns;
 - unsupported descriptor type;
-- `CHAR(0)` / `VARCHAR(0)` unique key parts and non-ASCII string key values;
+- `CHAR(0)` / `VARCHAR(0)` unique key parts and invalid UTF-8 string key values;
 - composite unique prefix key parts;
 - descending, functional, table-qualified, or expression key parts;
 - duplicate existing tuples during `CREATE UNIQUE INDEX` and

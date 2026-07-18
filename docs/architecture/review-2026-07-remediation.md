@@ -160,10 +160,10 @@ complete.
 
 ### Collations, aggregates, and remaining semantic gaps
 
-- [ ] Implement one shared character-set/collation service for comparison,
+- [x] Implement one shared character-set/collation service for comparison,
   equality, ordering, DISTINCT, grouping, indexes, and aggregates.
-- [ ] Correct UTF-8 case/accent behavior for supported MySQL collations.
-- [ ] Make `GROUP_CONCAT(DISTINCT)` use collation-aware equality and replace
+- [x] Correct UTF-8 case/accent behavior for supported MySQL collations.
+- [x] Make `GROUP_CONCAT(DISTINCT)` use collation-aware equality and replace
   quadratic duplicate detection.
 - [ ] Make numeric parsing/formatting locale-independent and reject partial
   conversions consistently.

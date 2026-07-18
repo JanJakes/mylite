@@ -108,7 +108,7 @@ This slice does not add:
   source envelope;
 - aggregate expressions that appear only in `HAVING`;
 - executable aggregate windows;
-- full Unicode collation parity beyond MyLite's current registered ASCII
+- full Unicode collation parity beyond MyLite's current registered limited Unicode
   collation approximation.
 
 Unsupported forms continue to return deterministic MyLite diagnostics from the

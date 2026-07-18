@@ -107,7 +107,7 @@ This slice does not add:
 - new row-scalar expression families beyond the existing aggregate-argument
   envelope;
 - executable distinct expression aggregate windows;
-- full Unicode collation parity beyond MyLite's current registered ASCII
+- full Unicode collation parity beyond MyLite's current registered limited Unicode
   collation approximation.
 
 Unsupported forms continue to return deterministic MyLite diagnostics from the

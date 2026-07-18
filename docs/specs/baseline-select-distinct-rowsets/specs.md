@@ -179,7 +179,7 @@ Execution:
 1. Generate SQLite SQL from descriptors and stable physical table names.
 2. Emit `SELECT DISTINCT` and the descriptor projection list. For nonbinary
    string columns, append `COLLATE "utf8mb4_0900_ai_ci"` to the projected
-   expression so SQLite duplicate elimination uses MyLite's registered ASCII
+   expression so SQLite duplicate elimination uses MyLite's registered limited Unicode
    collation instead of bytewise equality.
 3. Quote every generated SQLite identifier.
 4. Bind predicate, ordering helper, and limit values through existing prepared

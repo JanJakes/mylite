@@ -182,7 +182,7 @@ The predicate planner:
 6. Emits generated SQLite `WHERE` SQL using the existing row-scalar expression
    SQL generator and bound parameters.
 
-String-valued substring comparisons append MyLite's registered ASCII
+String-valued substring comparisons append MyLite's registered limited Unicode
 `utf8mb4_0900_ai_ci` collation to the generated left-hand expression before the
 comparison operator. This preserves the current MySQL-compatible ASCII
 case-insensitive behavior for supported string predicate literals. Length

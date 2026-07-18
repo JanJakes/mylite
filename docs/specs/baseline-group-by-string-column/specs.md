@@ -77,7 +77,7 @@ The implementation must add:
 - MyLite descriptor-driven resolution for selected group column, `GROUP BY`
   column, source-qualified variants, optional aliases, optional `WHERE`,
   optional supported `HAVING`, optional `ORDER BY`, and optional `LIMIT`;
-- MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation on generated SQLite
+- MyLite's registered limited Unicode `utf8mb4_0900_ai_ci` collation on generated SQLite
   grouping keys and existing grouped-order keys for string group columns;
 - result readback for `NULL` and NUL-free valid UTF-8 string group values;
 - preservation of existing grouped aggregate behavior for integer group keys;
@@ -190,7 +190,7 @@ Runtime validation, not grammar, limits the admitted descriptor type.
 For supported string descriptor group keys:
 
 - `NULL` values form one group.
-- Non-`NULL` values are grouped with MyLite's registered ASCII
+- Non-`NULL` values are grouped with MyLite's registered limited Unicode
   `utf8mb4_0900_ai_ci` collation.
 - ASCII case variants group together. Non-ASCII collation weights are not
   claimed in this slice.

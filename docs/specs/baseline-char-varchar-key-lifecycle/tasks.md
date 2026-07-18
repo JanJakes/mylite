@@ -23,7 +23,7 @@
   existing integer primary-key behavior and rejecting string composite keys.
 - [x] Admit create-time single-column `CHAR` / `VARCHAR` unique-index
   descriptors.
-- [x] Reject `CHAR(0)` / `VARCHAR(0)` key parts and non-ASCII string key
+- [x] Reject `CHAR(0)` / `VARCHAR(0)` key parts and invalid UTF-8 string key
   values deterministically.
 - [x] Generate physical SQLite primary/unique indexes and duplicate-probe SQL
   from descriptors with string-key collation annotations.

@@ -239,7 +239,7 @@ For explicit inner/cartesian chains, MyLite plans each edge in source order:
   predicate.
 - If an edge omits `ON`, SQLite produces the cartesian product for that edge.
 - `NULL = NULL` does not match for admitted equality joins.
-- Supported string join keys use MyLite's registered ASCII
+- Supported string join keys use MyLite's registered limited Unicode
   `utf8mb4_0900_ai_ci` SQLite collation, matching the current two-source join
   slice.
 

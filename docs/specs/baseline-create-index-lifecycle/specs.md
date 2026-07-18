@@ -115,8 +115,8 @@ Supported:
 - unique-index duplicate validation over existing rows before committing
   descriptor mutation;
 - nullable unique indexes permitting multiple `NULL` values;
-- ASCII-valued `CHAR` / `VARCHAR` unique key values using the fixed MyLite
-  `utf8mb4_0900_ai_ci` ASCII collation behavior;
+- valid UTF-8 `CHAR` / `VARCHAR` unique key values using MyLite's shared limited
+  `utf8mb4_0900_ai_ci` collation behavior;
 - descriptor-backed `SHOW COLUMNS`, `SHOW CREATE TABLE`, `SHOW INDEX`,
   `CREATE TABLE ... LIKE`, DML, `ALTER TABLE ... DROP INDEX|KEY`,
   `ALTER TABLE ... DROP PRIMARY KEY` auto-increment key checks, and limited
@@ -142,7 +142,7 @@ Deferred:
   engine attributes, algorithms, locks, and partitions;
 - broad text/blob key-part behavior beyond the later prefix, ordering, comment,
   and WordPress full-text-family bridge slices;
-- non-ASCII string key values and full Unicode collation weights;
+- complete UCA 9.0 collation weights and locale tailoring;
 - optimizer/index-use guarantees beyond creating a physical SQLite index that
   SQLite may use.
 
@@ -255,8 +255,8 @@ metadata:
 - non-`NULL` key values are grouped by the same physical expression used in
   generated unique indexes;
 - `CHAR` / `VARCHAR` key expressions include the MyLite
-  `utf8mb4_0900_ai_ci` ASCII collation annotation;
-- non-ASCII string key values fail with the existing MyLite unsupported
+  `utf8mb4_0900_ai_ci` collation annotation;
+- invalid UTF-8 string key values fail with the existing MyLite unsupported
   diagnostic before descriptor mutation;
 - the first duplicate group in physical row order is reported with
   `1062 / 23000` and the message shape
@@ -317,7 +317,7 @@ Required diagnostics for this slice:
 - BLOB-family key without prefix: `1170 / 42000`;
 - `CHAR(0)` / `VARCHAR(0)` key part: `1167 / 42000`;
 - existing duplicate rows for unique indexes: `1062 / 23000`;
-- non-ASCII string unique key values: existing MyLite unsupported diagnostic;
+- invalid UTF-8 string unique key values: existing MyLite unsupported diagnostic;
 - physical SQLite failures: mapped through existing internal/physical-row
   diagnostic policy after catalog rollback;
 - allocation failures: existing `MYLITE_NOMEM` diagnostic behavior.

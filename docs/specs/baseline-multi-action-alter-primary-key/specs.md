@@ -126,7 +126,7 @@ Deferred:
 - trailing multi-action `ALGORITHM` / `LOCK` option lists;
 - `ADD CONSTRAINT name PRIMARY KEY (...)` if not already covered by the
   single-action primary-key grammar;
-- primary prefix parts, non-ASCII string key values, expression key parts,
+- primary prefix parts, complete UCA 9.0 string-key semantics, expression key parts,
   table-qualified key parts, generated invisible primary keys, and
   auto-increment conversion;
 - `DROP CONSTRAINT`, `DROP INDEX PRIMARY`, and standalone primary-key drops

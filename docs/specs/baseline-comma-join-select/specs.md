@@ -229,7 +229,7 @@ The admitted same-scope column equality predicate:
   string-family columns;
 - uses normal SQL three-valued equality semantics, so `NULL = NULL` is not
   true;
-- uses MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation for admitted
+- uses MyLite's registered limited Unicode `utf8mb4_0900_ai_ci` collation for admitted
   string-family values;
 - rejects mixed-type, unsupported-type, and non-`=` column-to-column predicates
   with deterministic MyLite unsupported diagnostics.

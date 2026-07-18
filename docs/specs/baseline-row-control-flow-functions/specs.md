@@ -373,7 +373,7 @@ Function semantics:
   SQL mode decision already used by MyLite row predicates.
 - `IFNULL()` and `COALESCE()` use the first non-`NULL` admitted argument.
 - `NULLIF()` compares the two admitted arguments. When the planned argument
-  domain is nonbinary text, comparison uses MyLite's registered ASCII
+  domain is nonbinary text, comparison uses MyLite's registered limited Unicode
   `utf8mb4_0900_ai_ci` SQLite collation; integer-family comparisons use SQLite
   numeric equality over the stored integer values. Mixed unsupported domains
   are rejected.

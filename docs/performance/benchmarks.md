@@ -122,6 +122,12 @@ Use this preset to locate phase and call-count gaps, then confirm absolute
 performance with the normal `ci` Release build because instrumentation adds
 clock overhead.
 
+`runtime.group_concat_distinct_1024` measures the collation-aware DISTINCT
+aggregate path with 1,024 unique string values. It is a focused scaling
+scenario for duplicate-key construction and hash-table growth; use the normal
+Release build for comparisons because allocator and instrumentation choices
+materially affect this workload.
+
 ## WordPress MySQL Server-Test Query CSV
 
 The WordPress SQLite integration project publishes a MySQL server-test query

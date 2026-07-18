@@ -5,7 +5,7 @@
 - [x] Add MySQL-runtime expectation artifact.
 - [x] Extend the shared descriptor predicate planner for admitted string columns.
 - [x] Emit generated SQLite predicates with descriptor identifiers, bound values,
-  and MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation.
+  and MyLite's registered limited Unicode `utf8mb4_0900_ai_ci` collation.
 - [x] Add fast runtime C tests for `SELECT`, `UPDATE`, `DELETE`, diagnostics,
   and cleanup behavior.
 - [x] Update compatibility docs for the exact supported subset.

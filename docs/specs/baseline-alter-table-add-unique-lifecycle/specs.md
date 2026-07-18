@@ -137,7 +137,7 @@ Supported:
   - integer-family and integer aliases, including `BOOL` / `BOOLEAN`;
   - exact `DECIMAL` / `NUMERIC` / `FIXED`;
   - canonical `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
-  - ASCII-valued `CHAR(1..255)` and `VARCHAR(1..255)` full columns;
+  - valid UTF-8 `CHAR(1..255)` and `VARCHAR(1..255)` full columns;
   - full-column `TEXT` family parts through the documented WordPress bridge;
   - supported `CHAR`, `VARCHAR`, and bare `TEXT` family prefix parts;
 - nullable and `NOT NULL` key target columns;
@@ -171,7 +171,7 @@ Deferred:
   foreign keys, cascades, triggers, privileges, and implicit-commit emulation;
 - broad text/blob key-part behavior beyond the documented full text-family
   bridge and prefix slices;
-- non-ASCII string key values and full collation-aware comparison;
+- complete UCA 9.0 collation-aware comparison and locale tailoring;
 - warnings for redundant duplicate unique indexes that MySQL accepts but marks
   with a warning;
 - optimizer/index-use guarantees beyond creating a physical SQLite unique index
@@ -338,9 +338,9 @@ created:
   values are allowed;
 - non-`NULL` duplicate key values fail with `1062 / 23000` using the target
   table name, resolved unique-index name, and formatted duplicate key tuple;
-- supported string key values must be ASCII so MyLite's current
-  `utf8mb4_0900_ai_ci` compatibility collation remains deterministic;
-- non-ASCII values in supported string key columns fail with the existing
+- supported string key values must be valid UTF-8 and use MyLite's shared
+  limited `utf8mb4_0900_ai_ci` compatibility collation;
+- invalid UTF-8 values in supported string key columns fail with the existing
   MyLite string-key diagnostic;
 - `CHAR` duplicate validation uses stored `CHAR` canonicalization, and
   `VARCHAR` validation preserves no-pad trailing-space behavior in the current
@@ -522,7 +522,7 @@ and `ALTER TABLE ... ADD CONSTRAINT [symbol] UNIQUE [INDEX|KEY] [name]
 (key_part[, ...])` subset.
 
 Do not claim full `ADD UNIQUE`, separate unique-constraint descriptors,
-functional keys, non-ASCII string keys, index options, visibility, algorithms,
+functional keys, complete UCA 9.0 string-key semantics, index options, visibility, algorithms,
 locks, temporary tables, views, foreign keys, privileges, full collation
 behavior, or optimizer guarantees.
 

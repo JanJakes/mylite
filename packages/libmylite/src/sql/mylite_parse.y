@@ -8157,9 +8157,6 @@ predicate_in_value(A) ::= SYSTEM_VARIABLE(T). {
 predicate_in_value(A) ::= user_variable(T). {
     A = T;
 }
-predicate_in_value(A) ::= qualified_identifier(V). {
-    A = V;
-}
 predicate_in_value(A) ::= predicate_row_scalar_expression(V). {
     A = V;
 }
@@ -8190,9 +8187,6 @@ predicate_range_value(A) ::= SYSTEM_VARIABLE(T). {
 }
 predicate_range_value(A) ::= user_variable(T). {
     A = T;
-}
-predicate_range_value(A) ::= qualified_identifier(V). {
-    A = V;
 }
 predicate_range_value(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
         COMMA expression(D) RPAREN(R). {

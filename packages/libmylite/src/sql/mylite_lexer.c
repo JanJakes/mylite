@@ -2275,6 +2275,7 @@ static void set_token(
     out_token->keyword_flags = 0U;
     out_token->keyword_index = (unsigned int)-1;
     out_token->text = lexer->input == NULL ? NULL : &lexer->input[start.offset];
+    out_token->span_text = NULL;
     out_token->length = lexer->offset - start.offset;
     out_token->offset = start.offset;
     out_token->source_length = lexer->length;

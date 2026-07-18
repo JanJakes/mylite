@@ -67,7 +67,7 @@ struct mylite_sql_source_span mylite_sql_parser_span_from_token(const struct myl
     }
 
     return (struct mylite_sql_source_span){
-        .text = token->text,
+        .text = token->span_text == NULL ? token->text : token->span_text,
         .length = token->length,
         .offset = token->offset,
         .source_length = token->source_length,

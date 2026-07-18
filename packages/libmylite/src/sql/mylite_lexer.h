@@ -94,6 +94,7 @@ struct mylite_sql_token {
     unsigned int keyword_flags;
     unsigned int keyword_index;
     const char *text;
+    const char *span_text;
     size_t length;
     size_t offset;
     size_t source_length;

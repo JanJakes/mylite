@@ -54,7 +54,7 @@ complete.
 - [x] Validate every source span using overflow-safe offset/length checks.
 - [x] Enforce executable-comment version gates for standalone and embedded
   forms.
-- [ ] Replace SQL-sensitive raw substring rewriting with token- or AST-aware
+- [x] Replace SQL-sensitive raw substring rewriting with token- or AST-aware
   transformations.
 - [x] Prevent SET rewrites inside strings, identifiers, and comments.
 - [x] Preserve user-visible expression text instead of internal helper names.

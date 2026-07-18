@@ -523,6 +523,7 @@ static int evaluate_scalar_arithmetic_operand(
         if (rc == MYLITE_OK) {
             rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
         }
+        session_scalar_cell_deinit(&cell);
         return rc;
     }
     if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
@@ -530,6 +531,7 @@ static int evaluate_scalar_arithmetic_operand(
         if (rc == MYLITE_OK) {
             rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
         }
+        session_scalar_cell_deinit(&cell);
         return rc;
     }
     if (generic_sys_function_kind(expression, &sys_function_kind)) {
@@ -569,6 +571,7 @@ static int evaluate_scalar_arithmetic_operand(
     if (rc == MYLITE_OK) {
         rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
     }
+    session_scalar_cell_deinit(&cell);
     return rc;
 }
 

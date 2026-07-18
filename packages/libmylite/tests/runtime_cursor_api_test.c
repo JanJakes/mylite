@@ -965,8 +965,12 @@ static int test_native_prepared_scalar_bindings(void) {
     failures += expect_int(
         mylite_prepare(
             database,
-            "SELECT '?' AS string_marker, 1 AS `?`, ? AS bound_value /* ? */ -- ?\n",
-            strlen("SELECT '?' AS string_marker, 1 AS `?`, ? AS bound_value /* ? */ -- ?\n"),
+            "SELECT '?' AS string_marker, \"?\" AS double_string_marker, "
+            "1 AS `?`, ? AS bound_value /* ? */ -- ?\n",
+            strlen(
+                "SELECT '?' AS string_marker, \"?\" AS double_string_marker, "
+                "1 AS `?`, ? AS bound_value /* ? */ -- ?\n"
+            ),
             &stmt
         ),
         MYLITE_OK,
@@ -978,9 +982,30 @@ static int test_native_prepared_scalar_bindings(void) {
         expect_int(mylite_stmt_bind_int64(stmt, 0U, 31), MYLITE_OK, "bind classified marker");
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "classified marker row");
     failures += expect_cursor_text(stmt, 0U, "?", "quoted string marker value");
-    failures += expect_cursor_text(stmt, 1U, "1", "quoted identifier marker value");
-    failures += expect_cursor_text(stmt, 2U, "31", "classified bound marker value");
+    failures += expect_cursor_text(stmt, 1U, "?", "double-quoted string marker value");
+    failures += expect_cursor_text(stmt, 2U, "1", "quoted identifier marker value");
+    failures += expect_cursor_text(stmt, 3U, "31", "classified bound marker value");
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize classified markers");
+    stmt = NULL;
+
+    failures += execute_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT 1 AS \"?\", ? AS bound_value",
+            strlen("SELECT 1 AS \"?\", ? AS bound_value"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native ANSI_QUOTES marker classification"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 1U, "ANSI_QUOTES marker count");
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 0U, 32), MYLITE_OK, "bind ANSI_QUOTES marker");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "ANSI_QUOTES marker row");
+    failures += expect_cursor_text(stmt, 0U, "1", "ANSI_QUOTES identifier marker value");
+    failures += expect_cursor_text(stmt, 1U, "32", "ANSI_QUOTES bound marker value");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize ANSI_QUOTES markers");
     stmt = NULL;
 
     failures += expect_int(

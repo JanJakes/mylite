@@ -42,10 +42,14 @@ complete.
   semantics.
 - [x] Migrate SQL `PREPARE`/`EXECUTE` to a retained native statement with typed,
   length-aware user-variable binding and no execute-time SQL reconstruction.
-- [ ] Cover markers in strings, identifiers, ordinary comments, executable
+- [x] Cover markers in strings, identifiers, ordinary comments, executable
   comments, binary data, embedded NULs, all relevant SQL modes, repeated
   execution, schema invalidation, and prepare-time versus execute-time errors.
-- [ ] Re-run the `NO_BACKSLASH_ESCAPES` injection probes through all adapters.
+- [x] Re-run the `NO_BACKSLASH_ESCAPES` injection probes through all adapters.
+  Native coverage distinguishes default double-quoted strings from
+  `ANSI_QUOTES` identifiers and verifies active executable-comment markers;
+  core PHP, mysqli, and PDO each preserve hostile text as data while the schema
+  and existing rows remain unchanged.
 
 ### Source spans and token-aware normalization
 

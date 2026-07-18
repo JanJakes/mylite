@@ -830,20 +830,6 @@ static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast
     return false;
 }
 
-static int snapshot_current_diagnostics(struct mylite_db *database) {
-    int rc = MYLITE_OK;
-
-    if (database == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    rc = mylite_diagnostics_replace(&database->previous_diagnostics, &database->diagnostics);
-    if (rc != MYLITE_OK) {
-        set_nomem_error(database);
-    }
-    return rc;
-}
-
 static int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,

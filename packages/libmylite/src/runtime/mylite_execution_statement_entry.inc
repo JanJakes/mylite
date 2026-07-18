@@ -1,55 +1,105 @@
-static int finish_failed_statement(struct mylite_db *database, int rc, mylite_result **out_result) {
-    int snapshot_rc = MYLITE_OK;
+static int finish_failed_statement(
+    struct mylite_db *database,
+    struct mylite_statement_completion *completion,
+    int rc,
+    mylite_result **out_result
+) {
+    struct mylite_statement_completion local_completion;
+    struct mylite_statement_completion *target = completion;
+    bool owns_completion = false;
+    int completion_rc = MYLITE_OK;
 
-    database->session.previous_row_count = -1;
     set_internal_error_if_clear(database, rc, "statement execution failed");
     mylite_result_free(*out_result);
     *out_result = NULL;
 
-    snapshot_rc = snapshot_current_diagnostics(database);
-    return snapshot_rc == MYLITE_OK ? rc : snapshot_rc;
+    if (target == NULL) {
+        mylite_statement_completion_init(&local_completion);
+        target = &local_completion;
+        owns_completion = true;
+    }
+    completion_rc = mylite_statement_completion_capture(
+        target,
+        database,
+        rc,
+        -1,
+        -1,
+        database->session.found_rows,
+        0U,
+        false,
+        false
+    );
+    if (completion_rc == MYLITE_OK) {
+        completion_rc = mylite_statement_completion_publish(target, database);
+    }
+    if (completion_rc != MYLITE_OK) {
+        set_nomem_error(database);
+        mylite_statement_completion_publish_failure_fallback(database);
+    }
+    if (owns_completion) {
+        mylite_statement_completion_deinit(target);
+    }
+    return completion_rc == MYLITE_OK ? rc : completion_rc;
 }
 
 static int finish_completed_statement(
     struct mylite_db *database,
+    struct mylite_statement_completion *completion,
     bool completed_statement_is_select,
     int64_t completed_row_count,
     bool preserve_diagnostics_snapshot,
     mylite_result **out_result
 ) {
+    struct mylite_statement_completion local_completion;
+    struct mylite_statement_completion *target = completion;
+    uint64_t found_rows = database->session.found_rows;
+    int64_t affected_rows = *out_result == NULL ? -1 : mylite_result_affected_rows(*out_result);
+    uint64_t insert_id = *out_result == NULL ? 0U : mylite_result_insert_id(*out_result);
+    bool owns_completion = false;
     int rc = MYLITE_OK;
 
     if (!preserve_diagnostics_snapshot) {
         mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
-        rc = snapshot_current_diagnostics(database);
+    }
+    if (completed_statement_is_select && *out_result != NULL) {
+        if (mylite_result_has_found_row_count(*out_result)) {
+            found_rows = mylite_result_found_row_count(*out_result);
+        } else {
+            found_rows = (uint64_t)mylite_result_row_count(*out_result);
+        }
+    }
+    if (target == NULL) {
+        mylite_statement_completion_init(&local_completion);
+        target = &local_completion;
+        owns_completion = true;
+    }
+    rc = mylite_statement_completion_capture(
+        target,
+        database,
+        MYLITE_OK,
+        completed_row_count,
+        affected_rows,
+        found_rows,
+        insert_id,
+        completed_statement_is_select,
+        preserve_diagnostics_snapshot
+    );
+    if (rc == MYLITE_OK && *out_result != NULL) {
+        mylite_result_set_warning_count(*out_result, target->warning_count);
+        rc = mylite_statement_completion_publish(target, database);
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_statement_completion_publish(target, database);
     }
     if (rc != MYLITE_OK) {
-        database->session.previous_row_count = -1;
+        set_nomem_error(database);
+        mylite_statement_completion_publish_failure_fallback(database);
         mylite_result_free(*out_result);
         *out_result = NULL;
-        return rc;
     }
-
-    database->session.previous_row_count = completed_row_count;
-    update_found_rows_for_completed_statement(database, completed_statement_is_select, *out_result);
-    return MYLITE_OK;
-}
-
-static void update_found_rows_for_completed_statement(
-    struct mylite_db *database,
-    bool completed_statement_is_select,
-    const mylite_result *result
-) {
-    if (database == NULL || !completed_statement_is_select || result == NULL) {
-        return;
+    if (owns_completion) {
+        mylite_statement_completion_deinit(target);
     }
-
-    if (mylite_result_has_found_row_count(result)) {
-        database->session.found_rows = mylite_result_found_row_count(result);
-        return;
-    }
-
-    database->session.found_rows = (uint64_t)mylite_result_row_count(result);
+    return rc;
 }
 
 static bool statement_result_is_select(
@@ -235,9 +285,7 @@ static int execute_parsed_statement(
     return execute_non_prepared_statement(database, context, statement, out_result);
 }
 
-static bool statement_defers_catalog_synchronization(
-    const struct mylite_sql_ast_node *statement
-) {
+static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *source = NULL;
 
     if (statement == NULL) {

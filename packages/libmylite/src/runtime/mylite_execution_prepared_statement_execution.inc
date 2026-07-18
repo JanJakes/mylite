@@ -343,9 +343,8 @@ static int execute_expanded_prepared_statement_sql(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = sql_size,
-            .modes = prepared == NULL
-                         ? lexer_modes_for_session_sql_mode(&database->session)
-                         : prepared->lexer_modes,
+            .modes = prepared == NULL ? lexer_modes_for_session_sql_mode(&database->session)
+                                      : prepared->lexer_modes,
         },
         &parse_result
     ));
@@ -389,10 +388,8 @@ static int execute_expanded_prepared_statement_sql(
                     sizeof(dropped_schema),
                     database
                 ) == MYLITE_OK) {
-                saved_selected_schema_is_drop_target = text_equals_ascii_case_insensitive(
-                    saved_selected_schema,
-                    dropped_schema
-                );
+                saved_selected_schema_is_drop_target =
+                    text_equals_ascii_case_insensitive(saved_selected_schema, dropped_schema);
             }
             database->session.has_selected_schema = prepared->has_selected_schema;
             (void)snprintf(
@@ -415,7 +412,8 @@ static int execute_expanded_prepared_statement_sql(
         }
         if (prepared != NULL) {
             database->session.has_selected_schema =
-                saved_has_selected_schema && !(rc == MYLITE_OK && saved_selected_schema_is_drop_target);
+                saved_has_selected_schema &&
+                !(rc == MYLITE_OK && saved_selected_schema_is_drop_target);
             if (database->session.has_selected_schema) {
                 (void)snprintf(
                     database->session.selected_schema,
@@ -437,10 +435,11 @@ static int execute_expanded_prepared_statement_sql(
 
     mylite_sql_parse_result_deinit(&parse_result);
     if (rc != MYLITE_OK) {
-        rc = finish_failed_statement(database, rc, out_result);
+        rc = finish_failed_statement(database, NULL, rc, out_result);
     } else {
         rc = finish_completed_statement(
             database,
+            NULL,
             completed_statement_is_select,
             completed_row_count,
             preserve_diagnostics_snapshot,

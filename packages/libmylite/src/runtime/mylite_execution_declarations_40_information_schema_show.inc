@@ -2558,9 +2558,15 @@ static int finish_parse_failure(
     const struct mylite_sql_parse_result *parse_result,
     int parse_rc
 );
-static int finish_failed_statement(struct mylite_db *database, int rc, mylite_result **out_result);
+static int finish_failed_statement(
+    struct mylite_db *database,
+    struct mylite_statement_completion *completion,
+    int rc,
+    mylite_result **out_result
+);
 static int finish_completed_statement(
     struct mylite_db *database,
+    struct mylite_statement_completion *completion,
     bool completed_statement_is_select,
     int64_t completed_row_count,
     bool preserve_diagnostics_snapshot,

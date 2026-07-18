@@ -84,7 +84,7 @@ complete.
 
 ### Statement completion and diagnostics
 
-- [ ] Introduce one statement completion record for diagnostics, warnings,
+- [x] Introduce one statement completion record for diagnostics, warnings,
   affected rows, insert ID, `ROW_COUNT()`, and `FOUND_ROWS()`.
 - [x] Prevent delayed cursor exhaustion/finalization from overwriting state
   produced by a later statement.
@@ -93,7 +93,13 @@ complete.
   planning now distinguishes ready, unsupported, and failed attempts. Only an
   explicitly tagged planner capability gap or a recognized built-in metadata
   dispatch may materialize; semantic, catalog, allocation, and SQLite failures
-  propagate without clearing their diagnostics.
+  propagate without clearing their diagnostics. Direct, native prepared,
+  streaming, buffered, materialized, failed, and parse-failed statements now
+  capture one owned completion record and publish it through a single
+  publish-once boundary. Stale materialized cursors cannot replace a later
+  statement's row count, found rows, warnings, or error snapshot. The focused
+  runtime and all PHP adapter suites pass, including cursor and diagnostics
+  coverage under ASan+UBSan.
 
 ### Transaction truthfulness
 

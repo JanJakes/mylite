@@ -1,14 +1,8 @@
-static void update_found_rows_for_completed_statement(
-    struct mylite_db *database,
-    bool completed_statement_is_select,
-    const mylite_result *result
-);
 static bool statement_result_is_select(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 );
 static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement);
-static int snapshot_current_diagnostics(struct mylite_db *database);
 static int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,
@@ -369,7 +363,8 @@ static bool table_option_value_is_default(const struct mylite_sql_ast_node *valu
 static bool create_table_storage_statistics_option_is_valid(
     const struct mylite_sql_ast_node *table_option
 );
-static bool create_table_placeholder_option_is_valid(const struct mylite_sql_ast_node *table_option
+static bool create_table_placeholder_option_is_valid(
+    const struct mylite_sql_ast_node *table_option
 );
 static int validate_create_table_storage_statistics_combination(
     struct mylite_db *database,
@@ -1059,7 +1054,8 @@ static int validate_hash_index_key_part_order(
 static bool secondary_index_part_has_explicit_direction(const struct mylite_sql_ast_node *part);
 static bool index_option_nodes_have_type_option(struct index_option_nodes nodes);
 static bool index_option_list_has_type_option(const struct mylite_sql_ast_node *option_list);
-static size_t planned_create_table_hash_index_warning_count(const struct planned_create_table *plan
+static size_t planned_create_table_hash_index_warning_count(
+    const struct planned_create_table *plan
 );
 static int reserve_hash_index_warnings(struct mylite_db *database, size_t additional_count);
 static int append_hash_index_warnings(struct mylite_db *database, size_t warning_count);
@@ -1928,7 +1924,8 @@ static int validate_alter_table_convert_character_set_columns(
     struct mylite_db *database,
     const struct planned_alter_table_convert_character_set *plan
 );
-static bool table_charset_option_is_default_keyword(const struct mylite_sql_ast_node *charset_option
+static bool table_charset_option_is_default_keyword(
+    const struct mylite_sql_ast_node *charset_option
 );
 static bool alter_table_convert_column_participates(
     const struct mylite_catalog_column_descriptor *column
@@ -2169,7 +2166,8 @@ static bool modify_column_name_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
-static void planned_alter_table_modify_column_deinit(struct planned_alter_table_modify_column *plan
+static void planned_alter_table_modify_column_deinit(
+    struct planned_alter_table_modify_column *plan
 );
 static int alter_table_modify_column_from_plan(
     struct mylite_db *database,

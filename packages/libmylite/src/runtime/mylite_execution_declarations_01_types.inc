@@ -2589,6 +2589,7 @@ struct mylite_stmt {
     struct mylite_db *database;
     struct mylite_stmt *next_live_statement;
     struct mylite_statement_context context;
+    struct mylite_statement_completion completion;
     struct mylite_sql_parse_result parse_result;
     struct mylite_execution_normalized_sql normalized_sql;
     const struct mylite_sql_ast_node *statement;
@@ -2602,9 +2603,6 @@ struct mylite_stmt {
     struct mylite_stmt_binding *bindings;
     char *sqlite_sql;
     uint64_t statement_id;
-    uint64_t found_row_count;
-    uint64_t insert_id;
-    int64_t affected_rows;
     size_t parameter_count;
     size_t row_count;
     size_t materialized_row_index;
@@ -2615,7 +2613,6 @@ struct mylite_stmt {
     bool has_select_plan;
     bool has_materialized_rows;
     bool buffered_results;
-    bool completion_published;
     bool returns_rows;
     bool analyzing_unbound_parameters;
     bool sqlite_statement_is_cached;

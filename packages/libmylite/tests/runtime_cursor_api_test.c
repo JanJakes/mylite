@@ -233,6 +233,48 @@ static int test_materialized_cursor_does_not_overwrite_later_statement_state(voi
     session = mylite_connection_session_state(database);
     failures += expect_int((int)session->previous_row_count, 1, "preserve later insert row count");
 
+    failures += execute_ok(database, "INSERT INTO items VALUES (2), (3)");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'",
+            strlen("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare materialized cursor before later found rows"
+    );
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "SELECT SQL_CALC_FOUND_ROWS id FROM items ORDER BY id LIMIT 1",
+            strlen("SELECT SQL_CALC_FOUND_ROWS id FROM items ORDER BY id LIMIT 1"),
+            &result
+        ),
+        MYLITE_OK,
+        "execute later found rows statement"
+    );
+    failures += expect_size(mylite_result_warning_count(result), 1U, "later warning count");
+    mylite_result_free(result);
+    result = NULL;
+    session = mylite_connection_session_state(database);
+    failures += expect_uint64(session->found_rows, 3U, "later found rows state");
+    failures += expect_size(
+        mylite_diagnostics_warning_total_count(&database->previous_diagnostics),
+        1U,
+        "later warning snapshot"
+    );
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize after later found rows");
+    stmt = NULL;
+    session = mylite_connection_session_state(database);
+    failures += expect_uint64(session->found_rows, 3U, "preserve later found rows state");
+    failures += expect_size(
+        mylite_diagnostics_warning_total_count(&database->previous_diagnostics),
+        1U,
+        "preserve later warning snapshot"
+    );
+
     failures += expect_int(
         mylite_prepare(
             database,

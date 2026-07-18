@@ -1965,10 +1965,22 @@ struct row_scalar_integer_arithmetic_bind_stack {
     size_t capacity;
 };
 
+struct planned_result_column_shape {
+    enum mylite_result_logical_type logical_type;
+    uint32_t flags;
+    uint32_t charset_id;
+    uint32_t collation_id;
+    uint64_t display_length;
+    uint16_t decimals;
+    bool nullable;
+};
+
 struct planned_row_scalar_select_item {
     struct planned_row_scalar_expression expression;
-    const struct mylite_sql_ast_node *source_expression;
-    const struct mylite_sql_ast_node *alias;
+    char *result_label;
+    struct planned_result_column_shape source_result_shape;
+    bool has_alias;
+    bool has_source_result_shape;
     bool is_exists_expression;
     struct planned_exists_subquery exists_subquery;
 };

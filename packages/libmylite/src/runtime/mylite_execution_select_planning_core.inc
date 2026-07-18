@@ -1709,16 +1709,14 @@ static int make_derived_row_scalar_source_column(
         return MYLITE_ERROR;
     }
 
-    if (item->alias != NULL) {
-        if (item->alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            set_unsupported_error(
-                database,
-                "joined source derived row-scalar tables support only identifier output aliases"
-            );
+    if (item->has_alias) {
+        size_t alias_size = strlen(item->result_label);
+
+        if (alias_size >= sizeof(out_column->name)) {
+            set_identifier_too_long_error(database, "alias");
             return MYLITE_ERROR;
         }
-        rc =
-            copy_identifier_text(item->alias, out_column->name, sizeof(out_column->name), database);
+        memcpy(out_column->name, item->result_label, alias_size + 1U);
     } else if (item->expression.kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         set_unsupported_error(
             database,
@@ -3277,26 +3275,18 @@ static int plan_row_scalar_select_order_alias_item(
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < select_plan->item_count;
          ++item_index) {
         const struct planned_row_scalar_select_item *select_item = &select_plan->items[item_index];
-        char *alias_text = NULL;
-
-        if (select_item->alias == NULL) {
+        if (!select_item->has_alias) {
             continue;
         }
-        rc = copy_select_item_alias_text(database, select_item->alias, &alias_text);
-        if (rc != MYLITE_OK) {
-            break;
-        }
-        if (text_equals_ascii_case_insensitive(alias_text, order_name)) {
+        if (text_equals_ascii_case_insensitive(select_item->result_label, order_name)) {
             if (found) {
-                free(alias_text);
                 set_ambiguous_order_column_error(database, order_name);
                 rc = MYLITE_ERROR;
                 break;
             }
-            snprintf(item.alias, sizeof(item.alias), "%s", alias_text);
+            snprintf(item.alias, sizeof(item.alias), "%s", select_item->result_label);
             found = true;
         }
-        free(alias_text);
     }
     free(order_name);
     if (rc != MYLITE_OK || !found) {
@@ -3451,18 +3441,11 @@ static int plan_row_scalar_select_tableless_order_alias_item(
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < select_plan->item_count;
          ++item_index) {
         const struct planned_row_scalar_select_item *select_item = &select_plan->items[item_index];
-        char *alias_text = NULL;
-
-        if (select_item->alias == NULL) {
+        if (!select_item->has_alias) {
             continue;
         }
-        rc = copy_select_item_alias_text(database, select_item->alias, &alias_text);
-        if (rc != MYLITE_OK) {
-            break;
-        }
-        if (text_equals_ascii_case_insensitive(alias_text, order_name)) {
-            snprintf(item.alias, sizeof(item.alias), "%s", alias_text);
-            free(alias_text);
+        if (text_equals_ascii_case_insensitive(select_item->result_label, order_name)) {
+            snprintf(item.alias, sizeof(item.alias), "%s", select_item->result_label);
             apply_select_order_item_direction(item_nodes.direction, &item);
             rc = append_planned_select_order_item(out_order, item);
             if (rc != MYLITE_OK) {
@@ -3471,7 +3454,6 @@ static int plan_row_scalar_select_tableless_order_alias_item(
             *out_handled = rc == MYLITE_OK;
             break;
         }
-        free(alias_text);
     }
     if (rc == MYLITE_OK && !*out_handled) {
         set_unknown_order_column_error(database, order_name);

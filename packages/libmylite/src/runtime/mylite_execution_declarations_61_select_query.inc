@@ -678,7 +678,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
 );
 static int populate_row_scalar_source_result_column_descriptor(
     struct mylite_db *database,
-    const struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
     struct mylite_result_column_descriptor *descriptor
 );
 static int populate_row_scalar_special_source_result_column_descriptor(
@@ -818,11 +818,6 @@ static int populate_row_scalar_date_interval_second_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
-);
-static int copy_row_scalar_result_column_name(
-    struct mylite_db *database,
-    const struct planned_row_scalar_select_item *item,
-    char **out_name
 );
 static int set_row_scalar_select_found_row_count(
     struct mylite_db *database,

@@ -597,31 +597,16 @@ static int append_select_source_alias(struct mylite_dynamic_string *string, size
 
 static int append_row_scalar_select_identifier_alias_sql(
     struct mylite_dynamic_string *string,
-    const struct mylite_sql_ast_node *alias
+    const char *alias
 ) {
-    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    const char *source = NULL;
-    size_t source_size = 0U;
     int rc = MYLITE_OK;
 
-    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+    if (alias == NULL || alias[0] == '\0') {
         return MYLITE_ERROR;
     }
-    source = alias->span.text;
-    source_size = alias->span.length;
-    if (source == NULL || source_size == 0U) {
-        return MYLITE_ERROR;
-    }
-    if (source[0] == '`' || source[0] == '"') {
-        rc = copy_quoted_identifier_text(source, source_size, identifier, sizeof(identifier));
-    } else {
-        rc = copy_unquoted_identifier_text(source, source_size, identifier, sizeof(identifier));
-    }
+    rc = mylite_dynamic_string_append(string, " AS ");
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, identifier);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, alias);
     }
     return rc;
 }
@@ -654,10 +639,10 @@ static int append_row_scalar_select_query_sql(
                 next_parameter
             );
         }
-        if (rc == MYLITE_OK && plan->items[item_index].alias != NULL) {
+        if (rc == MYLITE_OK && plan->items[item_index].has_alias) {
             rc = append_row_scalar_select_identifier_alias_sql(
                 string,
-                plan->items[item_index].alias
+                plan->items[item_index].result_label
             );
         }
     }

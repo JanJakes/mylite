@@ -1110,27 +1110,23 @@ static int append_row_scalar_result_column(
     const struct result_column_metadata_context *metadata_context,
     const struct planned_row_scalar_select_item *item
 ) {
-    char *column_name = NULL;
     struct mylite_result_column_descriptor descriptor;
-    int rc = copy_row_scalar_result_column_name(database, item, &column_name);
+    int rc = MYLITE_OK;
 
-    if (rc == MYLITE_OK) {
-        rc = make_row_scalar_result_column_descriptor(
-            database,
-            plan,
-            metadata_context,
-            item,
-            column_name,
-            &descriptor
-        );
-    }
+    rc = make_row_scalar_result_column_descriptor(
+        database,
+        plan,
+        metadata_context,
+        item,
+        item == NULL ? NULL : item->result_label,
+        &descriptor
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_column_descriptor(result, &descriptor);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
     }
-    free(column_name);
 
     return rc;
 }
@@ -1175,10 +1171,15 @@ static int make_row_scalar_result_column_descriptor(
         return MYLITE_OK;
     }
 
-    int rc = populate_row_scalar_source_result_column_descriptor(database, item, out_descriptor);
-
-    if (rc != MYLITE_OK || row_scalar_descriptor_has_known_type(out_descriptor)) {
-        return rc;
+    if (item->has_source_result_shape) {
+        out_descriptor->logical_type = item->source_result_shape.logical_type;
+        out_descriptor->flags = item->source_result_shape.flags;
+        out_descriptor->charset_id = item->source_result_shape.charset_id;
+        out_descriptor->collation_id = item->source_result_shape.collation_id;
+        out_descriptor->display_length = item->source_result_shape.display_length;
+        out_descriptor->decimals = item->source_result_shape.decimals;
+        out_descriptor->nullable = item->source_result_shape.nullable;
+        return MYLITE_OK;
     }
 
     return populate_row_scalar_expression_result_column_descriptor(
@@ -1228,17 +1229,17 @@ static int make_row_scalar_column_result_column_descriptor(
 
 static int populate_row_scalar_source_result_column_descriptor(
     struct mylite_db *database,
-    const struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
     struct mylite_result_column_descriptor *descriptor
 ) {
     const struct mylite_sql_ast_node *expression = NULL;
     int rc = MYLITE_OK;
 
-    if (database == NULL || item == NULL || descriptor == NULL) {
+    if (database == NULL || descriptor == NULL) {
         return MYLITE_MISUSE;
     }
 
-    expression = unwrap_parenthesized_expression(item->source_expression);
+    expression = unwrap_parenthesized_expression(source_expression);
     if (expression == NULL) {
         return MYLITE_OK;
     }
@@ -3206,35 +3207,6 @@ static int populate_row_scalar_date_interval_second_result_column_descriptor(
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
     }
-}
-
-static int copy_row_scalar_result_column_name(
-    struct mylite_db *database,
-    const struct planned_row_scalar_select_item *item,
-    char **out_name
-) {
-    const struct mylite_sql_ast_node *source_expression = NULL;
-
-    if (out_name == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_name = NULL;
-    if (item == NULL) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    source_expression = unwrap_parenthesized_expression(item->source_expression);
-    if (item->alias != NULL) {
-        return copy_select_item_alias_text(database, item->alias, out_name);
-    }
-    if (source_expression != NULL && source_expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {
-        return copy_scalar_projection_column_name(database, item->source_expression, out_name);
-    }
-    if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-        return duplicate_text(database, item->expression.column->name, out_name);
-    }
-
-    return copy_scalar_projection_column_name(database, item->source_expression, out_name);
 }
 
 static int set_row_scalar_select_found_row_count(

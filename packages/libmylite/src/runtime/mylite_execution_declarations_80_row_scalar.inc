@@ -22,6 +22,8 @@ static int plan_row_scalar_exists_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count
@@ -31,6 +33,8 @@ static int plan_row_scalar_information_schema_exists_select_item(
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item,
     const struct mylite_sql_ast_node *predicate,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias,
     bool *out_handled
 );
 static int information_schema_exists_subquery_matches(
@@ -62,7 +66,15 @@ static int append_row_scalar_column_select_item(
 static int append_planned_row_scalar_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
-    struct planned_row_scalar_select_item *item
+    struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias
+);
+static int finalize_planned_row_scalar_select_item(
+    struct mylite_db *database,
+    struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias
 );
 static int reserve_planned_row_scalar_select_items(
     struct mylite_db *database,

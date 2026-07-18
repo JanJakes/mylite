@@ -64,11 +64,13 @@ static int append_row_scalar_select_item(
         return MYLITE_ERROR;
     }
 
-    item.source_expression = child_at(select_item, 0U);
-    item.alias = child_at(select_item, 1U);
-    source_expression = unwrap_parenthesized_expression(item.source_expression);
-    if (item.source_expression != NULL && item.source_expression->kind == MYLITE_SQL_AST_WILDCARD) {
-        if (item.alias != NULL) {
+    source_expression = child_at(select_item, 0U);
+    const struct mylite_sql_ast_node *alias = child_at(select_item, 1U);
+    const struct mylite_sql_ast_node *unwrapped_expression =
+        unwrap_parenthesized_expression(source_expression);
+
+    if (source_expression != NULL && source_expression->kind == MYLITE_SQL_AST_WILDCARD) {
+        if (alias != NULL) {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
         }
@@ -80,26 +82,28 @@ static int append_row_scalar_select_item(
             table_column_count
         );
     }
-    if (item.source_expression != NULL &&
-        item.source_expression->kind == MYLITE_SQL_AST_QUALIFIED_WILDCARD) {
-        if (item.alias != NULL) {
+    if (source_expression != NULL && source_expression->kind == MYLITE_SQL_AST_QUALIFIED_WILDCARD) {
+        if (alias != NULL) {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
         }
         return append_row_scalar_qualified_wildcard_select_items(
             database,
             plan,
-            item.source_expression,
+            source_expression,
             source_context,
             table_columns,
             table_column_count
         );
     }
-    if (source_expression != NULL && source_expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) {
+    if (unwrapped_expression != NULL &&
+        unwrapped_expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) {
         return plan_row_scalar_exists_select_item(
             database,
             plan,
             &item,
+            source_expression,
+            alias,
             source_context,
             table_columns,
             table_column_count
@@ -108,7 +112,7 @@ static int append_row_scalar_select_item(
 
     rc = plan_row_scalar_expression_with_window_definitions(
         database,
-        item.source_expression,
+        source_expression,
         plan->has_source,
         source_context,
         table,
@@ -122,13 +126,15 @@ static int append_row_scalar_select_item(
         return rc;
     }
 
-    return append_planned_row_scalar_select_item(database, plan, &item);
+    return append_planned_row_scalar_select_item(database, plan, &item, source_expression, alias);
 }
 
 static int plan_row_scalar_exists_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count
@@ -142,7 +148,7 @@ static int plan_row_scalar_exists_select_item(
         return MYLITE_MISUSE;
     }
 
-    predicate = unwrap_parenthesized_expression(item->source_expression);
+    predicate = unwrap_parenthesized_expression(source_expression);
     if (predicate == NULL || predicate->kind != MYLITE_SQL_AST_EXISTS_PREDICATE) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -160,6 +166,8 @@ static int plan_row_scalar_exists_select_item(
         plan,
         item,
         predicate,
+        source_expression,
+        alias,
         &handled
     );
     if (rc != MYLITE_OK || handled) {
@@ -179,7 +187,7 @@ static int plan_row_scalar_exists_select_item(
         &item->exists_subquery
     );
     if (rc == MYLITE_OK) {
-        rc = append_planned_row_scalar_select_item(database, plan, item);
+        rc = append_planned_row_scalar_select_item(database, plan, item, source_expression, alias);
     }
     if (rc != MYLITE_OK) {
         planned_row_scalar_select_item_deinit(item);
@@ -193,6 +201,8 @@ static int plan_row_scalar_information_schema_exists_select_item(
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item,
     const struct mylite_sql_ast_node *predicate,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias,
     bool *out_handled
 ) {
     const struct mylite_sql_ast_node *statement = NULL;
@@ -240,7 +250,7 @@ static int plan_row_scalar_information_schema_exists_select_item(
             .is_text = false,
             .integer = matches ? 1 : 0,
         };
-        rc = append_planned_row_scalar_select_item(database, plan, item);
+        rc = append_planned_row_scalar_select_item(database, plan, item, source_expression, alias);
     }
     if (rc != MYLITE_OK) {
         planned_row_scalar_select_item_deinit(item);
@@ -439,19 +449,27 @@ static int append_row_scalar_column_select_item(
     item.expression.column_has_source_index = plan->source_count != 0U;
     item.expression.column_source_index = source_index;
 
-    return append_planned_row_scalar_select_item(database, plan, &item);
+    return append_planned_row_scalar_select_item(database, plan, &item, NULL, NULL);
 }
 
 static int append_planned_row_scalar_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
-    struct planned_row_scalar_select_item *item
+    struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias
 ) {
     size_t required_count = 0U;
     int rc = MYLITE_OK;
 
     if (plan == NULL || item == NULL) {
         return MYLITE_MISUSE;
+    }
+
+    rc = finalize_planned_row_scalar_select_item(database, item, source_expression, alias);
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_select_item_deinit(item);
+        return rc;
     }
 
     if (plan->item_count == SIZE_MAX) {
@@ -469,6 +487,71 @@ static int append_planned_row_scalar_select_item(
     plan->items[plan->item_count] = *item;
     plan->item_count = required_count;
 
+    return MYLITE_OK;
+}
+
+static int finalize_planned_row_scalar_select_item(
+    struct mylite_db *database,
+    struct planned_row_scalar_select_item *item,
+    const struct mylite_sql_ast_node *source_expression,
+    const struct mylite_sql_ast_node *alias
+) {
+    const struct mylite_sql_ast_node *unwrapped_expression =
+        unwrap_parenthesized_expression(source_expression);
+    struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor(NULL);
+    char *label = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || item == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (alias != NULL) {
+        rc = copy_select_item_alias_text(database, alias, &label);
+        if (rc == MYLITE_OK) {
+            item->has_alias = true;
+        }
+    } else if (
+        unwrapped_expression != NULL &&
+        unwrapped_expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION
+    ) {
+        rc = copy_scalar_projection_column_name(database, source_expression, &label);
+    } else if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        rc = duplicate_text(database, item->expression.column->name, &label);
+    } else if (source_expression != NULL) {
+        rc = copy_scalar_projection_column_name(database, source_expression, &label);
+    } else {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        free(label);
+        return rc;
+    }
+    item->result_label = label;
+
+    if (source_expression == NULL ||
+        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
+        item->is_exists_expression) {
+        return MYLITE_OK;
+    }
+    rc = populate_row_scalar_source_result_column_descriptor(
+        database,
+        source_expression,
+        &descriptor
+    );
+    if (rc != MYLITE_OK || !row_scalar_descriptor_has_known_type(&descriptor)) {
+        return rc;
+    }
+    item->source_result_shape = (struct planned_result_column_shape){
+        .logical_type = descriptor.logical_type,
+        .flags = descriptor.flags,
+        .charset_id = descriptor.charset_id,
+        .collation_id = descriptor.collation_id,
+        .display_length = descriptor.display_length,
+        .decimals = descriptor.decimals,
+        .nullable = descriptor.nullable,
+    };
+    item->has_source_result_shape = true;
     return MYLITE_OK;
 }
 
@@ -516,6 +599,7 @@ static void planned_row_scalar_select_item_deinit(struct planned_row_scalar_sele
     }
 
     planned_row_scalar_expression_deinit(&item->expression);
+    free(item->result_label);
     if (item->is_exists_expression) {
         planned_exists_subquery_deinit(&item->exists_subquery);
     }

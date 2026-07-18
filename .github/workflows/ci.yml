@@ -137,6 +137,8 @@ jobs:
             preset: tsan
           - name: allocator-fault-injection
             preset: fault-injection
+          - name: fuzz-smoke
+            preset: fuzz
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -144,7 +146,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang ninja-build
+          sudo apt-get install -y clang libclang-rt-dev ninja-build
 
       - name: Configure
         env:

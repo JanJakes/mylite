@@ -10,3 +10,7 @@ if(BUILD_TESTING)
   include("${CMAKE_CURRENT_LIST_DIR}/cmake/LibMyLiteTestRegistrationsRuntimeLifecycle.cmake")
   include("${CMAKE_CURRENT_LIST_DIR}/cmake/LibMyLiteTestProperties.cmake")
 endif()
+
+if(MYLITE_BUILD_FUZZERS)
+  include("${CMAKE_CURRENT_LIST_DIR}/cmake/LibMyLiteFuzzTargets.cmake")
+endif()

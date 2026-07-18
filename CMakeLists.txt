@@ -28,6 +28,7 @@ option(MYLITE_ENABLE_LTO "Enable supported interprocedural optimization" OFF)
 option(MYLITE_ENABLE_SECTION_GC "Enable function/data sections and linker dead stripping" OFF)
 option(MYLITE_ENABLE_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(MYLITE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(MYLITE_BUILD_FUZZERS "Build Clang libFuzzer qualification targets" OFF)
 option(
   MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS
   "Enable thread-local allocator failpoints for qualification tests"
@@ -36,6 +37,18 @@ option(
 
 if(MYLITE_ENABLE_ASAN_UBSAN AND MYLITE_ENABLE_TSAN)
   message(FATAL_ERROR "MYLITE_ENABLE_ASAN_UBSAN and MYLITE_ENABLE_TSAN are mutually exclusive")
+endif()
+
+if(MYLITE_BUILD_FUZZERS AND NOT MYLITE_ENABLE_ASAN_UBSAN)
+  message(FATAL_ERROR "Fuzz targets require MYLITE_ENABLE_ASAN_UBSAN")
+endif()
+
+if(MYLITE_BUILD_FUZZERS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  message(FATAL_ERROR "MyLite fuzz targets require Clang libFuzzer")
+endif()
+
+if(MYLITE_BUILD_FUZZERS AND NOT BUILD_TESTING)
+  message(FATAL_ERROR "MyLite fuzz targets require BUILD_TESTING")
 endif()
 
 if(MYLITE_ENABLE_PROFILING AND MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS)

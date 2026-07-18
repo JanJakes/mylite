@@ -382,18 +382,25 @@ complete.
 
 ## Phase 6: Release qualification
 
-- [ ] Add assertion-enabled Debug jobs and representative Release jobs.
+- [x] Add assertion-enabled Debug jobs and representative Release jobs. The
+  684-test Debug suite passes locally and CI retains the four-platform Release
+  matrix alongside a dedicated Clang Debug job.
 - [ ] Add reproducible ASan+UBSan presets and run the complete core suite. The
   preset and focused prepared-statement qualification are complete; the full
   suite remains to be run in CI.
 - [ ] Add focused LSan and deterministic TSan concurrency tiers. Leak detection
   and a labeled two-test TSan tier pass locally; remaining sleep-based test
   coordination and CI coverage remain open.
-- [ ] Add first-party fuzz targets for the lexer/parser, normalizer, JSON,
-  geometry, preamble, and catalog inputs.
+- [x] Add first-party fuzz targets for the lexer/parser, normalizer, JSON,
+  geometry, preamble, and catalog inputs. Six Clang libFuzzer targets run under
+  ASan+UBSan with copied seed corpora and deterministic bounded smoke budgets;
+  the local tier passes 51,000 in-memory mutations and 1,000 database opens.
 - [ ] Add model-based DDL/DML, metamorphic rollback/reopen, multi-process crash,
   and power-failure/fault-injection tests.
-- [ ] Add CTest labels, timeouts, resource controls, and failure artifacts.
+- [x] Add CTest labels, timeouts, resource controls, and failure artifacts.
+  Every native test has a bounded timeout and functional label, concurrency
+  tests retain serial resource controls, and all native CI configurations
+  publish JUnit results on success or failure.
 - [ ] Create stable compatibility claim IDs and enforce
   claim-to-spec-to-MySQL-fixture-to-native-test-to-CI mappings.
 - [ ] Run changed MySQL fixtures on pull requests and all 792 scripts in

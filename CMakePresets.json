@@ -121,6 +121,15 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS": "ON"
       }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "Clang libFuzzer smoke qualification",
+      "inherits": "asan-ubsan",
+      "binaryDir": "${sourceDir}/build/fuzz",
+      "cacheVariables": {
+        "MYLITE_BUILD_FUZZERS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -171,6 +180,13 @@
     {
       "name": "fault-injection",
       "configurePreset": "fault-injection"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz",
+      "targets": [
+        "mylite_fuzzers"
+      ]
     },
     {
       "name": "format",
@@ -273,6 +289,22 @@
       },
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz",
+      "filter": {
+        "include": {
+          "label": "fuzz"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1:strict_string_checks=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
       }
     }
   ],

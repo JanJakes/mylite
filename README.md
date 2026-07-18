@@ -153,7 +153,14 @@ ctest --preset asan-ubsan
 cmake --preset tsan
 cmake --build --preset tsan
 ctest --preset tsan
+
+cmake --preset fuzz
+cmake --build --preset fuzz
+ctest --preset fuzz
 ```
+
+The fuzz preset requires Clang with the matching compiler-rt libFuzzer and
+sanitizer runtimes.
 
 Run all local checks:
 

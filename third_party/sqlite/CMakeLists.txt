@@ -26,6 +26,10 @@ set_target_properties(mylite_sqlite PROPERTIES
   C_STANDARD 17
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF
-  C_VISIBILITY_PRESET hidden
   POSITION_INDEPENDENT_CODE ON
 )
+if(MYLITE_ENABLE_COVERAGE)
+  set_target_properties(mylite_sqlite PROPERTIES C_VISIBILITY_PRESET default)
+else()
+  set_target_properties(mylite_sqlite PROPERTIES C_VISIBILITY_PRESET hidden)
+endif()

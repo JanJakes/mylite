@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_BUILD = ROOT / "build/coverage"
+DEFAULT_THRESHOLDS = ROOT / "tools/coverage-thresholds.tsv"
+METRICS = ("lines", "functions", "branches")
+
+
+def fail(message):
+    print("generate-coverage-report: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def find_llvm_tool(name):
+    for candidate in (name, name + "-20", name + "-19", name + "-18"):
+        path = shutil.which(candidate)
+        if path is not None:
+            return path
+    raise RuntimeError("{} is required".format(name))
+
+
+def find_library(build_dir):
+    candidates = sorted(
+        path
+        for path in (build_dir / "packages/libmylite").glob("libmylite.so*")
+        if path.is_file() and not path.is_symlink()
+    )
+    if len(candidates) != 1:
+        raise RuntimeError("expected one versioned libmylite shared library, found {}".format(
+            len(candidates)
+        ))
+    return candidates[0]
+
+
+def read_thresholds(path):
+    thresholds = {}
+    with path.open(encoding="utf-8") as threshold_file:
+        header = threshold_file.readline().rstrip("\n").split("\t")
+        expected = ["module", "path_prefix", "min_lines", "min_functions", "min_branches"]
+        if header != expected:
+            raise RuntimeError("unexpected coverage threshold header")
+        for line_number, line in enumerate(threshold_file, 2):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != len(expected):
+                raise RuntimeError("invalid threshold row at line {}".format(line_number))
+            module, path_prefix, *minimums = fields
+            if module in thresholds:
+                raise RuntimeError("duplicate coverage module {}".format(module))
+            thresholds[module] = {
+                "path_prefix": path_prefix,
+                "minimums": dict(zip(METRICS, (float(value) for value in minimums))),
+            }
+    if not thresholds:
+        raise RuntimeError("coverage threshold manifest is empty")
+    return thresholds
+
+
+def merge_profiles(build_dir, llvm_profdata):
+    profiles = sorted((build_dir / "profiles").glob("*.profraw"))
+    if not profiles:
+        raise RuntimeError("no raw profiles found below {}".format(build_dir / "profiles"))
+    output = build_dir / "coverage.profdata"
+    subprocess.run(
+        [llvm_profdata, "merge", "-sparse", *(str(path) for path in profiles), "-o", str(output)],
+        check=True,
+    )
+    return output
+
+
+def export_coverage(library, profile, llvm_cov):
+    result = subprocess.run(
+        [llvm_cov, "export", str(library), "-instr-profile", str(profile)],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def aggregate_modules(coverage, thresholds):
+    modules = {
+        name: {
+            "path_prefix": values["path_prefix"],
+            "minimums": values["minimums"],
+            "totals": {metric: {"count": 0, "covered": 0} for metric in METRICS},
+            "files": 0,
+        }
+        for name, values in thresholds.items()
+    }
+    for file_record in coverage["data"][0]["files"]:
+        filename = Path(file_record["filename"])
+        try:
+            relative = filename.resolve().relative_to(ROOT).as_posix()
+        except ValueError:
+            continue
+        for module in modules.values():
+            if not relative.startswith(module["path_prefix"]):
+                continue
+            module["files"] += 1
+            summary = file_record["summary"]
+            for metric in METRICS:
+                module["totals"][metric]["count"] += summary[metric]["count"]
+                module["totals"][metric]["covered"] += summary[metric]["covered"]
+            break
+    for module in modules.values():
+        for metric in METRICS:
+            total = module["totals"][metric]
+            count = total["count"]
+            total["percent"] = 100.0 if count == 0 else 100.0 * total["covered"] / count
+    return modules
+
+
+def write_reports(build_dir, modules, llvm_cov, library, profile):
+    report_dir = build_dir / "coverage-report"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    summary = {"modules": modules}
+    (report_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    lines = ["module\tfiles\tlines\tfunctions\tbranches"]
+    for name, module in modules.items():
+        values = ["{:.2f}%".format(module["totals"][metric]["percent"]) for metric in METRICS]
+        lines.append("{}\t{}\t{}".format(name, module["files"], "\t".join(values)))
+    (report_dir / "summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    subprocess.run(
+        [
+            llvm_cov,
+            "show",
+            str(library),
+            "-instr-profile",
+            str(profile),
+            "-format=html",
+            "-show-branches=count",
+            "-output-dir",
+            str(report_dir / "html"),
+            "-ignore-filename-regex",
+            "(^|/)(third_party|build)/",
+        ],
+        check=True,
+    )
+    return report_dir
+
+
+def check_thresholds(modules):
+    failures = []
+    for name, module in modules.items():
+        if module["files"] == 0:
+            failures.append("{} has no instrumented files".format(name))
+            continue
+        for metric in METRICS:
+            actual = module["totals"][metric]["percent"]
+            minimum = module["minimums"][metric]
+            if actual + 1e-9 < minimum:
+                failures.append(
+                    "{} {} coverage {:.2f}% is below {:.2f}%".format(
+                        name, metric, actual, minimum
+                    )
+                )
+    return failures
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD)
+    parser.add_argument("--thresholds", type=Path, default=DEFAULT_THRESHOLDS)
+    options = parser.parse_args()
+
+    try:
+        llvm_profdata = find_llvm_tool("llvm-profdata")
+        llvm_cov = find_llvm_tool("llvm-cov")
+        thresholds = read_thresholds(options.thresholds)
+        library = find_library(options.build_dir)
+        profile = merge_profiles(options.build_dir, llvm_profdata)
+        coverage = export_coverage(library, profile, llvm_cov)
+        modules = aggregate_modules(coverage, thresholds)
+        report_dir = write_reports(options.build_dir, modules, llvm_cov, library, profile)
+        failures = check_thresholds(modules)
+    except (KeyError, OSError, RuntimeError, subprocess.CalledProcessError, ValueError) as error:
+        return fail(str(error))
+
+    print((report_dir / "summary.txt").read_text(encoding="utf-8"), end="")
+    if failures:
+        for failure in failures:
+            print("generate-coverage-report: {}".format(failure), file=sys.stderr)
+        return 1
+    print("generate-coverage-report: coverage thresholds passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

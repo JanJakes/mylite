@@ -5,10 +5,12 @@ function(mylite_configure_c_target target)
     target_compile_definitions("${target}" PRIVATE _DEFAULT_SOURCE)
   endif()
 
-  set_target_properties("${target}" PROPERTIES
-    C_EXTENSIONS OFF
-    C_VISIBILITY_PRESET hidden
-  )
+  set_target_properties("${target}" PROPERTIES C_EXTENSIONS OFF)
+  if(MYLITE_ENABLE_COVERAGE)
+    set_target_properties("${target}" PROPERTIES C_VISIBILITY_PRESET default)
+  else()
+    set_target_properties("${target}" PROPERTIES C_VISIBILITY_PRESET hidden)
+  endif()
 
   if(WIN32)
     target_compile_definitions("${target}" PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -46,10 +48,29 @@ function(mylite_configure_c_target target)
       -fno-sanitize-recover=all
     )
     mylite_configure_sanitizer_link_options("${target}" -fsanitize=thread)
+  elseif(MYLITE_ENABLE_COVERAGE)
+    if(target STREQUAL "mylite")
+      target_compile_options("${target}" PRIVATE
+        -fprofile-instr-generate
+        -fcoverage-mapping
+      )
+      mylite_configure_coverage_link_options("${target}")
+    endif()
   endif()
 
   if(MYLITE_ENABLE_SECTION_GC)
     mylite_configure_section_gc("${target}")
+  endif()
+endfunction()
+
+function(mylite_configure_coverage_link_options target)
+  get_target_property(target_type "${target}" TYPE)
+  if(target_type STREQUAL "STATIC_LIBRARY"
+     OR target_type STREQUAL "OBJECT_LIBRARY"
+     OR target_type STREQUAL "INTERFACE_LIBRARY")
+    target_link_options("${target}" INTERFACE -fprofile-instr-generate)
+  else()
+    target_link_options("${target}" PRIVATE -fprofile-instr-generate)
   endif()
 endfunction()
 

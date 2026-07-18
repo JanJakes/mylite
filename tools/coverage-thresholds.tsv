@@ -1,0 +1,4 @@
+module	path_prefix	min_lines	min_functions	min_branches
+runtime	packages/libmylite/src/runtime/	80.0	97.5	67.0
+sql	packages/libmylite/src/sql/	80.5	97.5	61.0
+storage	packages/libmylite/src/storage/	80.5	91.0	67.0

@@ -417,7 +417,11 @@ complete.
   plus fixtures mapped from changed specs and native tests. A reusable
   scheduled/manual workflow runs the complete sorted corpus in eight isolated
   MySQL 8.4.9 shards and is callable by the release workflow.
-- [ ] Add coverage reports with ratcheted module thresholds.
+- [x] Add coverage reports with ratcheted module thresholds. The complete
+  685-test Clang run records process-isolated profiles and reports runtime at
+  80.19/97.81/67.49%, SQL at 81.05/97.75/61.56%, and storage at
+  81.04/91.55/67.46% for lines/functions/branches. CI enforces nearby nonzero
+  module ratchets and retains the HTML, JSON, text, and CTest evidence.
 - [ ] Add stable-runner benchmark history and statistically tolerant
   regression checks.
 - [ ] Pin mutable CI/container/tool inputs and add a formal reproducible release

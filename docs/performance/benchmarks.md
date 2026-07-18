@@ -88,6 +88,26 @@ CPU and allocator cost, or point `TMPDIR` at a block-backed filesystem to retain
 journal and synchronization latency in the measurement. Record the filesystem
 type with benchmark results; the two modes are not directly comparable.
 
+## Source Coverage
+
+The Clang coverage preset runs the complete native suite and records one raw
+profile per test process:
+
+```sh
+CC=clang cmake --preset coverage
+cmake --build --preset coverage
+mkdir -p build/coverage/profiles
+ctest --preset coverage --output-on-failure
+tools/generate-coverage-report
+```
+
+The report is written below `build/coverage/coverage-report`. Its text and JSON
+summaries aggregate line, function, and branch coverage for the runtime, SQL
+frontend, and storage modules. `tools/coverage-thresholds.tsv` contains the
+checked module ratchets; a missing module or a regression below any threshold
+fails report generation. Coverage uses a nonshipping shared build so white-box
+tests exercise the same instrumented MyLite and bundled SQLite objects.
+
 ## Runtime Phase Profiling
 
 An opt-in Release preset adds phase counters without affecting production

@@ -28,6 +28,7 @@ option(MYLITE_ENABLE_LTO "Enable supported interprocedural optimization" OFF)
 option(MYLITE_ENABLE_SECTION_GC "Enable function/data sections and linker dead stripping" OFF)
 option(MYLITE_ENABLE_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(MYLITE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(MYLITE_ENABLE_COVERAGE "Enable LLVM source coverage instrumentation" OFF)
 option(MYLITE_BUILD_FUZZERS "Build Clang libFuzzer qualification targets" OFF)
 option(
   MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS
@@ -35,8 +36,17 @@ option(
   OFF
 )
 
-if(MYLITE_ENABLE_ASAN_UBSAN AND MYLITE_ENABLE_TSAN)
-  message(FATAL_ERROR "MYLITE_ENABLE_ASAN_UBSAN and MYLITE_ENABLE_TSAN are mutually exclusive")
+set(mylite_instrumentation_mode_count 0)
+foreach(mylite_instrumentation_mode
+    MYLITE_ENABLE_ASAN_UBSAN
+    MYLITE_ENABLE_TSAN
+    MYLITE_ENABLE_COVERAGE)
+  if(${mylite_instrumentation_mode})
+    math(EXPR mylite_instrumentation_mode_count "${mylite_instrumentation_mode_count} + 1")
+  endif()
+endforeach()
+if(mylite_instrumentation_mode_count GREATER 1)
+  message(FATAL_ERROR "MyLite sanitizer and coverage modes are mutually exclusive")
 endif()
 
 if(MYLITE_BUILD_FUZZERS AND NOT MYLITE_ENABLE_ASAN_UBSAN)
@@ -45,6 +55,10 @@ endif()
 
 if(MYLITE_BUILD_FUZZERS AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
   message(FATAL_ERROR "MyLite fuzz targets require Clang libFuzzer")
+endif()
+
+if(MYLITE_ENABLE_COVERAGE AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  message(FATAL_ERROR "MyLite coverage qualification requires Clang")
 endif()
 
 if(MYLITE_BUILD_FUZZERS AND NOT BUILD_TESTING)

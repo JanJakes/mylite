@@ -93,6 +93,16 @@
       }
     },
     {
+      "name": "coverage",
+      "displayName": "Clang source coverage qualification",
+      "inherits": "debug-ci",
+      "binaryDir": "${sourceDir}/build/coverage",
+      "cacheVariables": {
+        "BUILD_SHARED_LIBS": "ON",
+        "MYLITE_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
       "name": "asan-ubsan",
       "displayName": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
       "inherits": "dev",
@@ -168,6 +178,10 @@
     {
       "name": "perf-profile",
       "configurePreset": "perf-profile"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
     },
     {
       "name": "asan-ubsan",
@@ -251,6 +265,16 @@
       "configurePreset": "perf-profile",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "LLVM_PROFILE_FILE": "${sourceDir}/build/coverage/profiles/%p-%m.profraw"
       }
     },
     {

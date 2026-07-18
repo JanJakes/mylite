@@ -4,6 +4,29 @@
 
 #include "mysqli_extension.h"
 
+static bool mylite_mysqli_begin_transaction_with_flags(
+    mylite_mysqli_link *link,
+    zend_long flags,
+    const char *name,
+    size_t name_length
+);
+static bool mylite_mysqli_complete_transaction_with_flags(
+    mylite_mysqli_link *link,
+    const char *command,
+    zend_long flags,
+    const char *name,
+    size_t name_length
+);
+static void mylite_mysqli_fetch_custom_object(
+    mylite_mysqli_result *result,
+    const char *class_name,
+    size_t class_name_length,
+    zval *constructor_args,
+    zval *out_object
+);
+static bool mylite_mysqli_reject_link_feature(mylite_mysqli_link *link, const char *message);
+static bool mylite_mysqli_reject_stmt_feature(mylite_mysqli_stmt *stmt, const char *message);
+
 PHP_FUNCTION(mysqli_connect) {
     char *host = NULL;
     char *username = NULL;
@@ -33,9 +56,6 @@ PHP_FUNCTION(mysqli_connect) {
     (void)username_length;
     (void)password;
     (void)password_length;
-    (void)port;
-    (void)port_is_null;
-
     object_init_ex(return_value, mylite_mysqli_link_ce);
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(return_value));
     if (!mylite_mysqli_connect_link(
@@ -45,7 +65,10 @@ PHP_FUNCTION(mysqli_connect) {
             database,
             database_length,
             socket,
-            socket_length
+            socket_length,
+            port,
+            port_is_null,
+            0
         )) {
         zval_ptr_dtor(return_value);
         RETURN_FALSE;
@@ -89,10 +112,6 @@ PHP_FUNCTION(mysqli_real_connect) {
     (void)username_length;
     (void)password;
     (void)password_length;
-    (void)port;
-    (void)port_is_null;
-    (void)flags;
-
     RETURN_BOOL(mylite_mysqli_connect_link(
         mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
         host,
@@ -100,7 +119,10 @@ PHP_FUNCTION(mysqli_real_connect) {
         database,
         database_length,
         socket,
-        socket_length
+        socket_length,
+        port,
+        port_is_null,
+        flags
     ));
 }
 
@@ -177,8 +199,10 @@ PHP_FUNCTION(mysqli_store_result) {
     Z_PARAM_LONG(mode)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mode;
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (mode != 0 && mode != MYLITE_MYSQLI_STORE_RESULT_COPY_DATA) {
+        RETURN_BOOL(mylite_mysqli_reject_link_feature(link, "unknown mysqli store-result mode"));
+    }
     if (mylite_mysqli_link_store_result(link, &result)) {
         ZVAL_COPY_VALUE(return_value, &result);
         return;
@@ -558,13 +582,11 @@ PHP_FUNCTION(mysqli_begin_transaction) {
     Z_PARAM_STRING_OR_NULL(name, name_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)flags;
-    (void)name;
-    (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(
+    RETURN_BOOL(mylite_mysqli_begin_transaction_with_flags(
         mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
-        "START TRANSACTION",
-        strlen("START TRANSACTION")
+        flags,
+        name,
+        name_length
     ));
 }
 
@@ -581,13 +603,12 @@ PHP_FUNCTION(mysqli_commit) {
     Z_PARAM_STRING_OR_NULL(name, name_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)flags;
-    (void)name;
-    (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(
+    RETURN_BOOL(mylite_mysqli_complete_transaction_with_flags(
         mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
         "COMMIT",
-        strlen("COMMIT")
+        flags,
+        name,
+        name_length
     ));
 }
 
@@ -604,13 +625,12 @@ PHP_FUNCTION(mysqli_rollback) {
     Z_PARAM_STRING_OR_NULL(name, name_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)flags;
-    (void)name;
-    (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(
+    RETURN_BOOL(mylite_mysqli_complete_transaction_with_flags(
         mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
         "ROLLBACK",
-        strlen("ROLLBACK")
+        flags,
+        name,
+        name_length
     ));
 }
 
@@ -712,10 +732,12 @@ PHP_FUNCTION(mysqli_options) {
     Z_PARAM_ZVAL(value)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mysql;
     (void)option;
     (void)value;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        "mysqli connection options are not supported by the embedded driver"
+    ));
 }
 
 PHP_FUNCTION(mysqli_set_opt) {
@@ -744,7 +766,6 @@ PHP_FUNCTION(mysqli_ssl_set) {
     Z_PARAM_STRING_OR_NULL(cipher_algos, cipher_algos_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mysql;
     (void)key;
     (void)key_length;
     (void)certificate;
@@ -755,7 +776,10 @@ PHP_FUNCTION(mysqli_ssl_set) {
     (void)ca_path_length;
     (void)cipher_algos;
     (void)cipher_algos_length;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        "TLS configuration is not supported by the embedded driver"
+    ));
 }
 
 PHP_FUNCTION(mysqli_stat) {
@@ -799,7 +823,10 @@ PHP_FUNCTION(mysqli_dump_debug_info) {
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        "server debug information is not supported by the embedded driver"
+    ));
 }
 
 PHP_FUNCTION(mysqli_debug) {
@@ -812,7 +839,7 @@ PHP_FUNCTION(mysqli_debug) {
 
     (void)options;
     (void)options_length;
-    RETURN_TRUE;
+    RETURN_FALSE;
 }
 
 PHP_FUNCTION(mysqli_refresh) {
@@ -1045,8 +1072,6 @@ PHP_FUNCTION(mysqli_fetch_object) {
     char *class_name = NULL;
     size_t class_name_length = 0U;
     zval *constructor_args = NULL;
-    zval row;
-    zend_class_entry *class_entry = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 3)
     Z_PARAM_OBJECT_OF_CLASS(result_zval, mylite_mysqli_result_ce)
@@ -1055,37 +1080,13 @@ PHP_FUNCTION(mysqli_fetch_object) {
     Z_PARAM_ARRAY(constructor_args)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)constructor_args;
-    if (class_name == NULL) {
-        mylite_mysqli_result_fetch_object(
-            mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
-            return_value
-        );
-        return;
-    }
-    mylite_mysqli_result_fetch(
+    mylite_mysqli_fetch_custom_object(
         mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
-        MYLITE_MYSQLI_ASSOC,
-        &row
+        class_name,
+        class_name_length,
+        constructor_args,
+        return_value
     );
-    if (Z_TYPE(row) != IS_ARRAY) {
-        ZVAL_COPY_VALUE(return_value, &row);
-        return;
-    }
-
-    {
-        zend_string *lookup_name = zend_string_init(class_name, class_name_length, false);
-
-        class_entry = zend_lookup_class(lookup_name);
-        zend_string_release(lookup_name);
-    }
-    if (class_entry == NULL) {
-        zval_ptr_dtor(&row);
-        RETURN_FALSE;
-    }
-    object_init_ex(return_value, class_entry);
-    zend_hash_copy(Z_OBJPROP_P(return_value), Z_ARRVAL(row), zval_add_ref);
-    zval_ptr_dtor(&row);
 }
 
 PHP_FUNCTION(mysqli_fetch_column) {
@@ -1509,7 +1510,10 @@ PHP_FUNCTION(mysqli_stmt_attr_get) {
     ZEND_PARSE_PARAMETERS_END();
 
     (void)attribute;
-    RETURN_LONG(0);
+    RETURN_BOOL(mylite_mysqli_reject_stmt_feature(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)),
+        "mysqli statement attributes are not supported by the embedded driver"
+    ));
 }
 
 PHP_FUNCTION(mysqli_stmt_attr_set) {
@@ -1525,7 +1529,10 @@ PHP_FUNCTION(mysqli_stmt_attr_set) {
 
     (void)attribute;
     (void)value;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_stmt_feature(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)),
+        "mysqli statement attributes are not supported by the embedded driver"
+    ));
 }
 
 PHP_FUNCTION(mysqli_stmt_send_long_data) {
@@ -1716,9 +1723,6 @@ PHP_METHOD(mysqli, __construct) {
         (void)username_length;
         (void)password;
         (void)password_length;
-        (void)port;
-        (void)port_is_null;
-
         (void)mylite_mysqli_connect_link(
             mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
             host,
@@ -1726,7 +1730,10 @@ PHP_METHOD(mysqli, __construct) {
             database,
             database_length,
             socket,
-            socket_length
+            socket_length,
+            port,
+            port_is_null,
+            0
         );
     }
 }
@@ -1764,9 +1771,6 @@ PHP_METHOD(mysqli, connect) {
     (void)username_length;
     (void)password;
     (void)password_length;
-    (void)port;
-    (void)port_is_null;
-
     RETURN_BOOL(mylite_mysqli_connect_link(
         mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
         host,
@@ -1774,7 +1778,10 @@ PHP_METHOD(mysqli, connect) {
         database,
         database_length,
         socket,
-        socket_length
+        socket_length,
+        port,
+        port_is_null,
+        0
     ));
 }
 
@@ -1813,9 +1820,6 @@ PHP_METHOD(mysqli, real_connect) {
     (void)username_length;
     (void)password;
     (void)password_length;
-    (void)port;
-    (void)port_is_null;
-    (void)flags;
     RETURN_BOOL(mylite_mysqli_connect_link(
         mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
         host,
@@ -1823,7 +1827,10 @@ PHP_METHOD(mysqli, real_connect) {
         database,
         database_length,
         socket,
-        socket_length
+        socket_length,
+        port,
+        port_is_null,
+        flags
     ));
 }
 
@@ -1893,8 +1900,16 @@ PHP_METHOD(mysqli, real_query) {
 PHP_METHOD(mysqli, store_result) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
     zval result;
+    zend_long mode = 0;
 
-    ZEND_PARSE_PARAMETERS_NONE();
+    ZEND_PARSE_PARAMETERS_START(0, 1)
+    Z_PARAM_OPTIONAL
+    Z_PARAM_LONG(mode)
+    ZEND_PARSE_PARAMETERS_END();
+
+    if (mode != 0 && mode != MYLITE_MYSQLI_STORE_RESULT_COPY_DATA) {
+        RETURN_BOOL(mylite_mysqli_reject_link_feature(link, "unknown mysqli store-result mode"));
+    }
     if (mylite_mysqli_link_store_result(link, &result)) {
         ZVAL_COPY_VALUE(return_value, &result);
         return;
@@ -1973,13 +1988,11 @@ PHP_METHOD(mysqli, begin_transaction) {
     Z_PARAM_STRING_OR_NULL(name, name_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)flags;
-    (void)name;
-    (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(
+    RETURN_BOOL(mylite_mysqli_begin_transaction_with_flags(
         mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
-        "START TRANSACTION",
-        strlen("START TRANSACTION")
+        flags,
+        name,
+        name_length
     ));
 }
 
@@ -1994,13 +2007,12 @@ PHP_METHOD(mysqli, commit) {
     Z_PARAM_STRING_OR_NULL(name, name_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)flags;
-    (void)name;
-    (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(
+    RETURN_BOOL(mylite_mysqli_complete_transaction_with_flags(
         mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
         "COMMIT",
-        strlen("COMMIT")
+        flags,
+        name,
+        name_length
     ));
 }
 
@@ -2015,13 +2027,12 @@ PHP_METHOD(mysqli, rollback) {
     Z_PARAM_STRING_OR_NULL(name, name_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)flags;
-    (void)name;
-    (void)name_length;
-    RETURN_BOOL(mylite_mysqli_link_real_query(
+    RETURN_BOOL(mylite_mysqli_complete_transaction_with_flags(
         mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
         "ROLLBACK",
-        strlen("ROLLBACK")
+        flags,
+        name,
+        name_length
     ));
 }
 
@@ -2302,7 +2313,10 @@ PHP_METHOD(mysqli, options) {
 
     (void)option;
     (void)value;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "mysqli connection options are not supported by the embedded driver"
+    ));
 }
 
 PHP_METHOD(mysqli, set_opt) {
@@ -2316,7 +2330,10 @@ PHP_METHOD(mysqli, set_opt) {
 
     (void)option;
     (void)value;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "mysqli connection options are not supported by the embedded driver"
+    ));
 }
 
 PHP_METHOD(mysqli, ssl_set) {
@@ -2349,7 +2366,10 @@ PHP_METHOD(mysqli, ssl_set) {
     (void)ca_path_length;
     (void)cipher_algos;
     (void)cipher_algos_length;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "TLS configuration is not supported by the embedded driver"
+    ));
 }
 
 PHP_METHOD(mysqli, stat) {
@@ -2364,7 +2384,10 @@ PHP_METHOD(mysqli, thread_safe) {
 
 PHP_METHOD(mysqli, dump_debug_info) {
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_link_feature(
+        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        "server debug information is not supported by the embedded driver"
+    ));
 }
 
 PHP_METHOD(mysqli, debug) {
@@ -2377,7 +2400,7 @@ PHP_METHOD(mysqli, debug) {
 
     (void)options;
     (void)options_length;
-    RETURN_TRUE;
+    RETURN_FALSE;
 }
 
 PHP_METHOD(mysqli, refresh) {
@@ -2488,8 +2511,6 @@ PHP_METHOD(mysqli_result, fetch_object) {
     char *class_name = NULL;
     size_t class_name_length = 0U;
     zval *constructor_args = NULL;
-    zval row;
-    zend_class_entry *class_entry = NULL;
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(ZEND_THIS));
 
     ZEND_PARSE_PARAMETERS_START(0, 2)
@@ -2498,30 +2519,13 @@ PHP_METHOD(mysqli_result, fetch_object) {
     Z_PARAM_ARRAY(constructor_args)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)constructor_args;
-    if (class_name == NULL) {
-        mylite_mysqli_result_fetch_object(result, return_value);
-        return;
-    }
-    mylite_mysqli_result_fetch(result, MYLITE_MYSQLI_ASSOC, &row);
-    if (Z_TYPE(row) != IS_ARRAY) {
-        ZVAL_COPY_VALUE(return_value, &row);
-        return;
-    }
-
-    {
-        zend_string *lookup_name = zend_string_init(class_name, class_name_length, false);
-
-        class_entry = zend_lookup_class(lookup_name);
-        zend_string_release(lookup_name);
-    }
-    if (class_entry == NULL) {
-        zval_ptr_dtor(&row);
-        RETURN_FALSE;
-    }
-    object_init_ex(return_value, class_entry);
-    zend_hash_copy(Z_OBJPROP_P(return_value), Z_ARRVAL(row), zval_add_ref);
-    zval_ptr_dtor(&row);
+    mylite_mysqli_fetch_custom_object(
+        result,
+        class_name,
+        class_name_length,
+        constructor_args,
+        return_value
+    );
 }
 
 PHP_METHOD(mysqli_result, fetch_column) {
@@ -2841,7 +2845,10 @@ PHP_METHOD(mysqli_stmt, attr_get) {
     ZEND_PARSE_PARAMETERS_END();
 
     (void)attribute;
-    RETURN_LONG(0);
+    RETURN_BOOL(mylite_mysqli_reject_stmt_feature(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())),
+        "mysqli statement attributes are not supported by the embedded driver"
+    ));
 }
 
 PHP_METHOD(mysqli_stmt, attr_set) {
@@ -2855,7 +2862,10 @@ PHP_METHOD(mysqli_stmt, attr_set) {
 
     (void)attribute;
     (void)value;
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_reject_stmt_feature(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())),
+        "mysqli statement attributes are not supported by the embedded driver"
+    ));
 }
 
 PHP_METHOD(mysqli_stmt, send_long_data) {
@@ -2894,6 +2904,202 @@ PHP_METHOD(mysqli_stmt, next_result) {
 PHP_METHOD(mysqli_stmt, num_rows) {
     ZEND_PARSE_PARAMETERS_NONE();
     RETURN_LONG(mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()))->num_rows);
+}
+
+static void mylite_mysqli_fetch_custom_object(
+    mylite_mysqli_result *result,
+    const char *class_name,
+    size_t class_name_length,
+    zval *constructor_args,
+    zval *out_object
+) {
+    zend_class_entry *class_entry = NULL;
+    zval row;
+
+    if (class_name == NULL) {
+        mylite_mysqli_result_fetch_object(result, out_object);
+        return;
+    }
+    mylite_mysqli_result_fetch(result, MYLITE_MYSQLI_ASSOC, &row);
+    if (Z_TYPE(row) != IS_ARRAY) {
+        ZVAL_COPY_VALUE(out_object, &row);
+        return;
+    }
+
+    {
+        zend_string *lookup_name = zend_string_init(class_name, class_name_length, false);
+
+        class_entry = zend_lookup_class(lookup_name);
+        zend_string_release(lookup_name);
+    }
+    if (class_entry == NULL) {
+        zval_ptr_dtor(&row);
+        ZVAL_FALSE(out_object);
+        return;
+    }
+    object_init_ex(out_object, class_entry);
+    if (EG(exception) != NULL) {
+        zval_ptr_dtor(&row);
+        return;
+    }
+    {
+        zend_string *property_name = NULL;
+        zval *property_value = NULL;
+
+        ZEND_HASH_FOREACH_STR_KEY_VAL(Z_ARRVAL(row), property_name, property_value) {
+            if (property_name != NULL) {
+                zend_update_property(
+                    class_entry,
+                    Z_OBJ_P(out_object),
+                    ZSTR_VAL(property_name),
+                    ZSTR_LEN(property_name),
+                    property_value
+                );
+                if (EG(exception) != NULL) {
+                    break;
+                }
+            }
+        }
+        ZEND_HASH_FOREACH_END();
+    }
+    zval_ptr_dtor(&row);
+    if (EG(exception) != NULL) {
+        return;
+    }
+
+    if (class_entry->constructor == NULL) {
+        if (constructor_args != NULL &&
+            zend_hash_num_elements(Z_ARRVAL_P(constructor_args)) != 0U) {
+            zend_throw_error(
+                NULL,
+                "Class %s does not have a constructor",
+                ZSTR_VAL(class_entry->name)
+            );
+        }
+        return;
+    }
+
+    {
+        zval constructor_result;
+
+        ZVAL_UNDEF(&constructor_result);
+        zend_call_known_function(
+            class_entry->constructor,
+            Z_OBJ_P(out_object),
+            class_entry,
+            &constructor_result,
+            0U,
+            NULL,
+            constructor_args == NULL ? NULL : Z_ARRVAL_P(constructor_args)
+        );
+        if (!Z_ISUNDEF(constructor_result)) {
+            zval_ptr_dtor(&constructor_result);
+        }
+    }
+}
+
+static bool mylite_mysqli_begin_transaction_with_flags(
+    mylite_mysqli_link *link,
+    zend_long flags,
+    const char *name,
+    size_t name_length
+) {
+    const zend_long allowed_flags = MYLITE_MYSQLI_TRANS_START_WITH_CONSISTENT_SNAPSHOT |
+                                    MYLITE_MYSQLI_TRANS_START_READ_WRITE |
+                                    MYLITE_MYSQLI_TRANS_START_READ_ONLY;
+    const bool read_write = (flags & MYLITE_MYSQLI_TRANS_START_READ_WRITE) != 0;
+    const bool read_only = (flags & MYLITE_MYSQLI_TRANS_START_READ_ONLY) != 0;
+    bool has_characteristic = false;
+    bool ok = false;
+    smart_str sql = {0};
+
+    if (flags < 0 || (flags & ~allowed_flags) != 0 || (read_write && read_only)) {
+        return mylite_mysqli_reject_link_feature(
+            link,
+            "unsupported or conflicting mysqli transaction start flags"
+        );
+    }
+    if (name != NULL && name_length != 0U) {
+        return mylite_mysqli_reject_link_feature(
+            link,
+            "named mysqli transactions are not supported by the embedded driver"
+        );
+    }
+
+    smart_str_appends(&sql, "START TRANSACTION");
+    if ((flags & MYLITE_MYSQLI_TRANS_START_WITH_CONSISTENT_SNAPSHOT) != 0) {
+        smart_str_appends(&sql, " WITH CONSISTENT SNAPSHOT");
+        has_characteristic = true;
+    }
+    if (read_write || read_only) {
+        smart_str_appends(&sql, has_characteristic ? ", " : " ");
+        smart_str_appends(&sql, read_only ? "READ ONLY" : "READ WRITE");
+    }
+    smart_str_0(&sql);
+    ok = mylite_mysqli_link_real_query(link, ZSTR_VAL(sql.s), ZSTR_LEN(sql.s));
+    zend_string_release(sql.s);
+    return ok;
+}
+
+static bool mylite_mysqli_complete_transaction_with_flags(
+    mylite_mysqli_link *link,
+    const char *command,
+    zend_long flags,
+    const char *name,
+    size_t name_length
+) {
+    const zend_long allowed_flags =
+        MYLITE_MYSQLI_TRANS_COR_AND_CHAIN | MYLITE_MYSQLI_TRANS_COR_AND_NO_CHAIN |
+        MYLITE_MYSQLI_TRANS_COR_RELEASE | MYLITE_MYSQLI_TRANS_COR_NO_RELEASE;
+    const bool chain = (flags & MYLITE_MYSQLI_TRANS_COR_AND_CHAIN) != 0;
+    const bool no_chain = (flags & MYLITE_MYSQLI_TRANS_COR_AND_NO_CHAIN) != 0;
+    bool ok = false;
+    smart_str sql = {0};
+
+    if (flags < 0 || (flags & ~allowed_flags) != 0 || (chain && no_chain)) {
+        return mylite_mysqli_reject_link_feature(
+            link,
+            "unsupported or conflicting mysqli transaction completion flags"
+        );
+    }
+    if ((flags & MYLITE_MYSQLI_TRANS_COR_RELEASE) != 0) {
+        return mylite_mysqli_reject_link_feature(
+            link,
+            "MYSQLI_TRANS_COR_RELEASE is not supported by the embedded driver"
+        );
+    }
+    if (name != NULL && name_length != 0U) {
+        return mylite_mysqli_reject_link_feature(
+            link,
+            "named mysqli transactions are not supported by the embedded driver"
+        );
+    }
+
+    smart_str_appends(&sql, command);
+    if (chain) {
+        smart_str_appends(&sql, " AND CHAIN");
+    } else if (no_chain) {
+        smart_str_appends(&sql, " AND NO CHAIN");
+    }
+    if ((flags & MYLITE_MYSQLI_TRANS_COR_NO_RELEASE) != 0) {
+        smart_str_appends(&sql, " NO RELEASE");
+    }
+    smart_str_0(&sql);
+    ok = mylite_mysqli_link_real_query(link, ZSTR_VAL(sql.s), ZSTR_LEN(sql.s));
+    zend_string_release(sql.s);
+    return ok;
+}
+
+static bool mylite_mysqli_reject_link_feature(mylite_mysqli_link *link, const char *message) {
+    mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_UNSUPPORTED, "42000", message);
+    mylite_mysqli_report_link_error(link);
+    return false;
+}
+
+static bool mylite_mysqli_reject_stmt_feature(mylite_mysqli_stmt *stmt, const char *message) {
+    mylite_mysqli_set_stmt_error(stmt, MYLITE_MYSQLI_ERROR_UNSUPPORTED, "42000", message);
+    mylite_mysqli_report_stmt_error(stmt);
+    return false;
 }
 
 PHP_METHOD(mysqli_warning, __construct) {

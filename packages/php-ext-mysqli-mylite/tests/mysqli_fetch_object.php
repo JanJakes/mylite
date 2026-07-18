@@ -6,6 +6,18 @@ final class MyliteFetchObjectRow
 {
 }
 
+final class MyliteFetchConstructedRow
+{
+    public string $id;
+    public string $label;
+    public string $summary;
+
+    public function __construct(string $prefix, int $suffix)
+    {
+        $this->summary = $prefix . ':' . $this->label . ':' . $suffix;
+    }
+}
+
 $mysqli = open_mylite_mysqli();
 expect_true(
     $mysqli->query('CREATE TABLE object_rows (id INT NOT NULL, label VARCHAR(20) NOT NULL)'),
@@ -73,6 +85,31 @@ expect_same(
     ['id' => '2', 'label' => 'second'],
     get_object_vars($procedural_custom_row),
     'procedural custom properties'
+);
+
+$constructed = $mysqli->query('SELECT id, label FROM object_rows WHERE id = 1');
+if (!$constructed instanceof mysqli_result) {
+    throw new RuntimeException('method constructed object result type');
+}
+$constructedRow = $constructed->fetch_object(MyliteFetchConstructedRow::class, ['row', 7]);
+expect_same('row:first:7', $constructedRow->summary, 'method constructor arguments and ordering');
+
+$proceduralConstructed = mysqli_query(
+    $mysqli,
+    'SELECT id, label FROM object_rows WHERE id = 2'
+);
+if (!$proceduralConstructed instanceof mysqli_result) {
+    throw new RuntimeException('procedural constructed object result type');
+}
+$proceduralConstructedRow = mysqli_fetch_object(
+    $proceduralConstructed,
+    MyliteFetchConstructedRow::class,
+    ['suffix' => 9, 'prefix' => 'named']
+);
+expect_same(
+    'named:second:9',
+    $proceduralConstructedRow->summary,
+    'procedural named constructor arguments and ordering'
 );
 
 $stream = $mysqli->query('SELECT id, label FROM object_rows ORDER BY id', MYSQLI_USE_RESULT);

@@ -43,6 +43,13 @@ expect_true($stmt instanceof PDOStatement, 'prepare did not return PDOStatement'
 expect_true($stmt->execute([2, 'Grace']), 'prepared INSERT failed');
 expect_true($stmt->rowCount() === 1, 'prepared INSERT row count mismatch');
 expect_true($pdo->lastInsertId() === '0', 'prepared INSERT last insert ID mismatch');
+$namedInsertIdRejected = false;
+try {
+    $namedInsertIdRejected = $pdo->lastInsertId('sequence_name') === false;
+} catch (PDOException) {
+    $namedInsertIdRejected = true;
+}
+expect_true($namedInsertIdRejected, 'named insert-ID sequence must be rejected');
 
 $stmt = $pdo->prepare('SELECT name FROM people WHERE name = ?');
 expect_true($stmt->execute(['Grace']), 'prepared SELECT failed');
@@ -126,6 +133,32 @@ expect_true($stream->fetch(PDO::FETCH_NUM) === ['1', 'Ada'], 'streaming SELECT f
 expect_true($stream->closeCursor(), 'streaming SELECT closeCursor failed');
 expect_true($stream->execute(), 'streaming SELECT re-execute failed');
 expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '1', 'name' => 'Ada'], 'streaming SELECT re-execute row mismatch');
+
+$scrollPrepareRejected = false;
+try {
+    $scrollPrepareRejected = $pdo->prepare(
+        'SELECT id FROM people ORDER BY id',
+        [PDO::ATTR_CURSOR => PDO::CURSOR_SCROLL]
+    ) === false;
+} catch (PDOException) {
+    $scrollPrepareRejected = true;
+}
+expect_true($scrollPrepareRejected, 'scrollable cursor option must be rejected');
+
+$orientationStatement = $pdo->prepare('SELECT id FROM people ORDER BY id');
+expect_true($orientationStatement->execute(), 'orientation statement execute failed');
+$orientationRejected = false;
+try {
+    $orientationRejected =
+        $orientationStatement->fetch(PDO::FETCH_ASSOC, PDO::FETCH_ORI_ABS, 1) === false;
+} catch (PDOException) {
+    $orientationRejected = true;
+}
+expect_true($orientationRejected, 'absolute fetch orientation must be rejected');
+expect_true(
+    $orientationStatement->fetch(PDO::FETCH_ASSOC) === ['id' => '1'],
+    'rejected orientation must not consume the pending row'
+);
 
 expect_true($pdo->beginTransaction(), 'beginTransaction failed');
 expect_true($pdo->exec("INSERT INTO people VALUES (3, 'Katherine')") === 1, 'transaction INSERT failed');

@@ -22,6 +22,7 @@
 #define MYLITE_MYSQLI_BOTH 3
 #define MYLITE_MYSQLI_STORE_RESULT 0
 #define MYLITE_MYSQLI_USE_RESULT 1
+#define MYLITE_MYSQLI_STORE_RESULT_COPY_DATA 16
 #define MYLITE_MYSQLI_REPORT_OFF 0
 #define MYLITE_MYSQLI_REPORT_ERROR 1
 #define MYLITE_MYSQLI_REPORT_STRICT 2
@@ -85,6 +86,16 @@ enum mylite_mysqli_error_code {
     MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE = 1153,
     MYLITE_MYSQLI_ERROR_UNSUPPORTED = 1235,
     MYLITE_MYSQLI_ERROR_EXEC = 1105,
+};
+
+enum mylite_mysqli_transaction_flag {
+    MYLITE_MYSQLI_TRANS_START_WITH_CONSISTENT_SNAPSHOT = 1,
+    MYLITE_MYSQLI_TRANS_START_READ_WRITE = 2,
+    MYLITE_MYSQLI_TRANS_START_READ_ONLY = 4,
+    MYLITE_MYSQLI_TRANS_COR_AND_CHAIN = 1,
+    MYLITE_MYSQLI_TRANS_COR_AND_NO_CHAIN = 2,
+    MYLITE_MYSQLI_TRANS_COR_RELEASE = 4,
+    MYLITE_MYSQLI_TRANS_COR_NO_RELEASE = 8,
 };
 
 typedef struct {
@@ -222,7 +233,10 @@ bool mylite_mysqli_connect_link(
     const char *database,
     size_t database_length,
     const char *socket,
-    size_t socket_length
+    size_t socket_length,
+    zend_long port,
+    bool port_is_null,
+    zend_long flags
 );
 void mylite_mysqli_close_link(mylite_mysqli_link *link);
 bool mylite_mysqli_link_query(

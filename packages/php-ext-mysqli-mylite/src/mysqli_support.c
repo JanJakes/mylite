@@ -316,7 +316,10 @@ bool mylite_mysqli_connect_link(
     const char *database,
     size_t database_length,
     const char *socket,
-    size_t socket_length
+    size_t socket_length,
+    zend_long port,
+    bool port_is_null,
+    zend_long flags
 ) {
     bool memory = false;
     bool use_database = false;
@@ -333,6 +336,17 @@ bool mylite_mysqli_connect_link(
     int status = MYLITE_OK;
 
     mylite_mysqli_clear_error(link);
+    if ((!port_is_null && port != 0) || flags != 0) {
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_UNSUPPORTED,
+            "42000",
+            "network ports and client flags are not supported by the embedded driver"
+        );
+        mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
     if (path == NULL) {
         mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
         mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
@@ -409,6 +423,16 @@ bool mylite_mysqli_link_query(
     zend_long result_mode,
     zval *out_result
 ) {
+    if (result_mode != MYLITE_MYSQLI_STORE_RESULT && result_mode != MYLITE_MYSQLI_USE_RESULT) {
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_UNSUPPORTED,
+            "42000",
+            "asynchronous and unknown mysqli query result modes are not supported"
+        );
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
     const bool use_cursor = result_mode == MYLITE_MYSQLI_USE_RESULT &&
                             mylite_mysqli_sql_may_stream_select(sql, sql_length);
     const bool use_buffered_cursor = result_mode == MYLITE_MYSQLI_STORE_RESULT &&

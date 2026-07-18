@@ -104,14 +104,23 @@ complete.
 ### Transaction truthfulness
 
 - [x] Route mysqli autocommit through the core transaction state machine.
-- [ ] Audit adapter methods that report success while discarding arguments.
+- [x] Audit adapter methods that report success while discarding arguments.
 - [x] Check and propagate savepoint rollback, release, full rollback, and
   commit cleanup failures.
 - [x] Preserve the primary error and append cleanup context.
 - [x] Poison handles whose atomicity or transaction state cannot be proven and
   reject further SQL until close.
 - [x] Add autocommit transition, DDL, savepoint, error, close, and injected
-  rollback/commit failure coverage.
+  rollback/commit failure coverage. mysqli transaction start, chain, no-chain,
+  and no-release flags now lower to supported MyLite SQL; conflicting flags,
+  release, names, network ports, client flags, asynchronous modes, connection
+  options, TLS/debug controls, and statement attributes return explicit
+  unsupported diagnostics instead of false success. Both store-result wrappers
+  validate their advertised mode, and custom-object fetching invokes
+  constructors with populated row properties and positional or named
+  arguments. PDO rejects scroll cursors, non-next fetch orientations, offsets,
+  and named insert-ID sequences. The complete eight-test PHP adapter matrix
+  passes.
 
 ## Phase 3: Storage and generated identities
 

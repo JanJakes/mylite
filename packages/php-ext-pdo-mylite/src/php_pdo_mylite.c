@@ -236,11 +236,21 @@ static bool pdo_mylite_handle_preparer(
     pdo_stmt_t *stmt,
     zval *driver_options
 ) {
-    (void)driver_options;
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
     pdo_mylite_stmt *statement_data = ecalloc(1, sizeof(*statement_data));
     zend_string *rewritten_sql = NULL;
     zend_string *prepared_sql = sql;
+
+    if (pdo_attr_lval(driver_options, PDO_ATTR_CURSOR, PDO_CURSOR_FWDONLY) != PDO_CURSOR_FWDONLY) {
+        pdo_mylite_error(
+            dbh,
+            NULL,
+            MYLITE_MISUSE,
+            "scrollable cursors are not supported by the MyLite PDO driver"
+        );
+        efree(statement_data);
+        return false;
+    }
 
     statement_data->handle = handle;
     stmt->driver_data = statement_data;
@@ -324,8 +334,17 @@ static bool pdo_mylite_handle_rollback(pdo_dbh_t *dbh) {
 }
 
 static zend_string *pdo_mylite_last_insert_id(pdo_dbh_t *dbh, const zend_string *name) {
-    (void)name;
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
+
+    if (name != NULL && ZSTR_LEN(name) != 0U) {
+        pdo_mylite_error(
+            dbh,
+            NULL,
+            MYLITE_MISUSE,
+            "named insert-ID sequences are not supported by the MyLite PDO driver"
+        );
+        return NULL;
+    }
     return zend_string_copy(handle->last_insert_id);
 }
 
@@ -410,9 +429,17 @@ static int pdo_mylite_stmt_fetch(
     enum pdo_fetch_orientation orientation,
     zend_long offset
 ) {
-    (void)orientation;
-    (void)offset;
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
+
+    if (orientation != PDO_FETCH_ORI_NEXT || offset != 0) {
+        pdo_mylite_error(
+            stmt->dbh,
+            stmt,
+            MYLITE_MISUSE,
+            "fetch orientation is not supported by the MyLite PDO driver"
+        );
+        return 0;
+    }
 
     if (statement_data->pending_row) {
         statement_data->pending_row = false;

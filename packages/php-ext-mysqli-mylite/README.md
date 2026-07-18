@@ -18,3 +18,17 @@ php -n \
   -d extension=build/php-dev/packages/php-ext-mysqli-mylite/mysqli.so \
   script.php
 ```
+
+## Embedded contracts
+
+MyLite has no network or authentication layer. Username and password arguments
+therefore select the documented fixed embedded identity rather than an account,
+while a nonzero network port, client flags, TLS settings, debug controls, and
+connection or statement options return `false` with error `1235` and SQLSTATE
+`42000`.
+
+Transaction start, read-only/read-write, consistent-snapshot, chain, no-chain,
+and no-release flags are routed through MyLite's transaction state machine.
+Release and named transaction requests are rejected explicitly. Query and
+store-result mode arguments are validated; asynchronous query mode is not
+supported.

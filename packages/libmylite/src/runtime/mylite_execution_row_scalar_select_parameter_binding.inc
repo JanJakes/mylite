@@ -1,7 +1,11 @@
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan) {
     int parameter_index = 1;
+    int rc = bind_select_parameters_at(statement, plan, &parameter_index);
 
-    return bind_select_parameters_at(statement, plan, &parameter_index);
+    if (rc == MYLITE_OK) {
+        rc = validate_sqlite_parameter_count(statement, parameter_index - 1);
+    }
+    return rc;
 }
 
 static int bind_compound_select_parameters_at(

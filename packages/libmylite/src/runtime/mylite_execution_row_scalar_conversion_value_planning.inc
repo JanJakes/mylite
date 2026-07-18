@@ -86,7 +86,8 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_PARAMETER) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
     if (generic_rejected_native_function_name(expression)) {
@@ -1903,6 +1904,10 @@ static int plan_row_scalar_literal_value(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_PARAMETER) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        return copy_active_stmt_parameter_value(database, literal, &out_expression->value);
+    }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(database, "row-scalar SELECT supports only scalar literals");
         return MYLITE_ERROR;

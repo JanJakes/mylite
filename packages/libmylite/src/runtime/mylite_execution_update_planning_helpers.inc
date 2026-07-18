@@ -3116,6 +3116,22 @@ static int convert_limit_integer_literal(
     uint64_t magnitude = 0U;
     int rc = MYLITE_OK;
 
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARAMETER) {
+        struct planned_value value = {0};
+
+        rc = copy_active_stmt_parameter_value(database, value_node, &value);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (value.is_null || value.is_text || value.is_blob || value.is_real || value.integer < 0) {
+            planned_value_deinit(&value);
+            set_limit_out_of_range_error(database);
+            return MYLITE_ERROR;
+        }
+        *out_value = value.integer;
+        planned_value_deinit(&value);
+        return MYLITE_OK;
+    }
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
         set_unsupported_error(database, "LIMIT supports only unsigned decimal integer literals");

@@ -28,13 +28,13 @@ complete.
 
 ### Typed statement binding
 
-- [ ] Specify typed parameter slots, bind lifetime, rebinding, reset, and
+- [x] Specify typed parameter slots, bind lifetime, rebinding, reset, and
   schema/session invalidation for `mylite_stmt`.
-- [ ] Add public NULL, signed integer, unsigned integer, floating-point, text,
+- [x] Add public NULL, signed integer, unsigned integer, floating-point, text,
   and blob binding APIs with length-aware values.
-- [ ] Make lowered plans carry parameter descriptors and verify generated
+- [x] Make lowered plans carry parameter descriptors and verify generated
   placeholder count and order against SQLite.
-- [ ] Parse and prepare at prepare time; execute without reconstructing SQL.
+- [x] Parse and prepare at prepare time; execute without reconstructing SQL.
 - [ ] Migrate the core PHP statement API to native binding.
 - [ ] Migrate the mysqli statement API to native binding and the cursor result
   path.

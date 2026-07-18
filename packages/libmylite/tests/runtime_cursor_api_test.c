@@ -36,6 +36,9 @@ static int test_cursor_select_streams_rows_and_metadata(void);
 static int test_cursor_keeps_borrowed_metadata_across_invalidation(void);
 static int test_key_metadata_cache_uses_lru_replacement(void);
 static int test_cursor_reuses_finalized_select_statements(void);
+static int test_cursor_reset_and_value_nullability(void);
+static int test_native_prepared_scalar_bindings(void);
+static int test_native_prepared_dml_bindings(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
 static int test_cursor_read_transaction_lifecycle(void);
@@ -73,6 +76,9 @@ int main(void) {
     failures += test_cursor_keeps_borrowed_metadata_across_invalidation();
     failures += test_key_metadata_cache_uses_lru_replacement();
     failures += test_cursor_reuses_finalized_select_statements();
+    failures += test_cursor_reset_and_value_nullability();
+    failures += test_native_prepared_scalar_bindings();
+    failures += test_native_prepared_dml_bindings();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_rejects_unsupported_statements();
     failures += test_cursor_read_transaction_lifecycle();
@@ -764,6 +770,461 @@ static int test_cursor_reuses_finalized_select_statements(void) {
     return failures;
 }
 
+static int test_cursor_reset_and_value_nullability(void) {
+    char path[test_path_capacity];
+    static const char query[] = "SELECT nullable_value, empty_value FROM items";
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "reset_nullability") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open reset file");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE items (nullable_value VARCHAR(8), empty_value VARCHAR(8))"
+    );
+    failures += execute_ok(database, "INSERT INTO items VALUES (NULL, '')");
+    failures += expect_int(
+        mylite_prepare(database, query, strlen(query), &stmt),
+        MYLITE_OK,
+        "prepare reset cursor"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 0U, "reset parameter count");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == -1, "reset affected rows default");
+    failures += expect_uint64(mylite_stmt_insert_id(stmt), 0U, "reset insert id default");
+    failures +=
+        expect_int(mylite_stmt_bind_null(stmt, 0U), MYLITE_MISUSE, "reject nonexistent parameter");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reset first row");
+    failures += expect_true(mylite_stmt_value_is_null(stmt, 0U), "cursor NULL value");
+    failures += expect_true(!mylite_stmt_value_is_null(stmt, 1U), "cursor empty value is not NULL");
+    failures += expect_size(mylite_stmt_value_size(stmt, 1U), 0U, "cursor empty value size");
+    failures +=
+        expect_true(mylite_stmt_value_bytes(stmt, 1U) != NULL, "cursor empty value has storage");
+    failures += expect_int(
+        mylite_stmt_clear_bindings(stmt),
+        MYLITE_MISUSE,
+        "reject clearing bindings while row is active"
+    );
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset active cursor");
+    failures += expect_true(mylite_stmt_value_is_null(stmt, 0U), "reset clears current row");
+    failures += expect_int(mylite_stmt_clear_bindings(stmt), MYLITE_OK, "clear zero bindings");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reset repeated row");
+    failures += expect_true(mylite_stmt_value_is_null(stmt, 0U), "repeated cursor NULL value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "reset repeated done");
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset exhausted cursor");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "exhausted reset row");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize reset cursor");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_execute(database, query, strlen(query), &result),
+        MYLITE_OK,
+        "materialize nullable result"
+    );
+    failures += expect_true(mylite_result_value_is_null(result, 0U, 0U), "result NULL value");
+    failures +=
+        expect_true(!mylite_result_value_is_null(result, 0U, 1U), "result empty value is not NULL");
+    failures +=
+        expect_size(mylite_result_value_size(result, 0U, 1U), 0U, "result empty value size");
+    failures += expect_true(
+        mylite_result_value_bytes(result, 0U, 1U) != NULL,
+        "result empty value has storage"
+    );
+
+    mylite_result_free(result);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_native_prepared_scalar_bindings(void) {
+    char path[test_path_capacity];
+    static const unsigned char blob[] = {'a', 0U, 'b', '\'', '-', '-'};
+    static const char injection_text[] = "x' OR 1=1 /*";
+    mylite_db *database = NULL;
+    mylite_db *other_database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "native_bindings") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open native bindings file");
+    failures += execute_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, name VARCHAR(20))");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1, 'alpha'), (2, 'beta')");
+    failures += expect_int(
+        mylite_prepare(database, "SELECT ? AS value", strlen("SELECT ? AS value"), &stmt),
+        MYLITE_OK,
+        "prepare native scalar parameter"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 1U, "native parameter count");
+    failures += expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_MISUSE,
+        "native missing binding fails before execution"
+    );
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 0U, -42), MYLITE_OK, "bind native signed integer");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native signed integer row");
+    failures += expect_cursor_text(stmt, 0U, "-42", "native signed integer value");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 7),
+        MYLITE_MISUSE,
+        "reject native rebind while row is active"
+    );
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native text binding");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, injection_text, strlen(injection_text)),
+        MYLITE_OK,
+        "bind native injection text"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native injection text row");
+    failures += expect_cursor_text(stmt, 0U, injection_text, "native injection text value");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native blob binding");
+    failures += expect_int(
+        mylite_stmt_bind_blob(stmt, 0U, blob, sizeof(blob)),
+        MYLITE_OK,
+        "bind native embedded NUL blob"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native blob row");
+    failures += expect_true(!mylite_stmt_value_is_null(stmt, 0U), "native blob is not NULL");
+    failures += expect_size(mylite_stmt_value_size(stmt, 0U), sizeof(blob), "native blob size");
+    failures += expect_true(
+        mylite_stmt_value_bytes(stmt, 0U) != NULL &&
+            memcmp(mylite_stmt_value_bytes(stmt, 0U), blob, sizeof(blob)) == 0,
+        "native blob bytes"
+    );
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native NULL binding");
+    failures += expect_int(mylite_stmt_bind_null(stmt, 0U), MYLITE_OK, "bind native NULL");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native NULL row");
+    failures += expect_true(mylite_stmt_value_is_null(stmt, 0U), "native NULL value");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native unsigned binding");
+    failures += expect_int(
+        mylite_stmt_bind_uint64(stmt, 0U, UINT64_MAX),
+        MYLITE_OK,
+        "bind native maximum unsigned integer"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native unsigned row");
+    failures +=
+        expect_cursor_text(stmt, 0U, "18446744073709551615", "native maximum unsigned value");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native double binding");
+    failures +=
+        expect_int(mylite_stmt_bind_double(stmt, 0U, 1.25), MYLITE_OK, "bind native double");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native double row");
+    failures += expect_cursor_text(stmt, 0U, "1.25", "native double value");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native empty text");
+    failures +=
+        expect_int(mylite_stmt_bind_text(stmt, 0U, NULL, 0U), MYLITE_OK, "bind native empty text");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native empty text row");
+    failures += expect_true(!mylite_stmt_value_is_null(stmt, 0U), "native empty text is not NULL");
+    failures += expect_size(mylite_stmt_value_size(stmt, 0U), 0U, "native empty text size");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native cleared binding");
+    failures += expect_int(mylite_stmt_clear_bindings(stmt), MYLITE_OK, "clear native binding");
+    failures += expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_MISUSE,
+        "cleared native binding fails before execution"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "bad", 3U),
+        MYLITE_MISUSE,
+        "reject native binding index"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_blob(stmt, 0U, NULL, 1U),
+        MYLITE_MISUSE,
+        "reject native nonempty NULL blob pointer"
+    );
+
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native binding");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT name FROM items WHERE id = ? ORDER BY id LIMIT ? OFFSET ?",
+            strlen("SELECT name FROM items WHERE id = ? ORDER BY id LIMIT ? OFFSET ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native table query"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 3U, "native table parameter count");
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 2), MYLITE_OK, "bind native row id");
+    failures += expect_int(mylite_stmt_bind_uint64(stmt, 1U, 1U), MYLITE_OK, "bind native limit");
+    failures += expect_int(mylite_stmt_bind_uint64(stmt, 2U, 0U), MYLITE_OK, "bind native offset");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native table row");
+    failures += expect_cursor_text(stmt, 0U, "beta", "native table value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "native table done");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native table query");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT ? AS a_value, ? AS b_value",
+            strlen("SELECT ? AS a_value, ? AS b_value"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native parameter order query"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 2U, "native ordered parameters");
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 0U, 11), MYLITE_OK, "bind native first slot");
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 1U, 22), MYLITE_OK, "bind native second slot");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native ordered parameter row");
+    failures += expect_cursor_text(stmt, 0U, "11", "native first parameter order");
+    failures += expect_cursor_text(stmt, 1U, "22", "native second parameter order");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "native ordered parameter done");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native order query");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT name FROM items WHERE id = ?",
+            strlen("SELECT name FROM items WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native schema-reprepare query"
+    );
+    failures += expect_int(mylite_open(path, &other_database), MYLITE_OK, "open native DDL handle");
+    failures += execute_ok(other_database, "USE app");
+    failures += execute_ok(other_database, "ALTER TABLE items ADD COLUMN note VARCHAR(20)");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 2),
+        MYLITE_OK,
+        "bind native query after compatible DDL"
+    );
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native query reparses plan after DDL");
+    failures += expect_cursor_text(stmt, 0U, "beta", "native query value after compatible DDL");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "native query done after DDL");
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native query before rename");
+    failures += execute_ok(other_database, "ALTER TABLE items RENAME COLUMN name TO label");
+    failures += expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ERROR,
+        "native query reports incompatible schema change"
+    );
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "Unknown column",
+        "native reprepare schema diagnostic"
+    );
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset failed native reprepare");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native reprepare query");
+    mylite_close(other_database);
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_native_prepared_dml_bindings(void) {
+    char path[test_path_capacity];
+    static const unsigned char first_payload[] = {'a', 0U, 'b'};
+    static const char injection_text[] = "x' OR 1=1 /*";
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "native_dml_bindings") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open native DML file");
+    failures += execute_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE items (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+        "name VARCHAR(64) NOT NULL, payload VARBINARY(64))"
+    );
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "INSERT INTO items (name, payload) VALUES (?, ?)",
+            strlen("INSERT INTO items (name, payload) VALUES (?, ?)"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native INSERT"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 2U, "native INSERT parameters");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, injection_text, strlen(injection_text)),
+        MYLITE_OK,
+        "bind native INSERT text"
+    );
+    failures += expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_MISUSE,
+        "native INSERT rejects missing payload before execution"
+    );
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT COUNT(*) FROM items",
+            .expected = "0",
+            .context = "missing native INSERT binding has no side effects",
+        }
+    );
+    failures += expect_int(
+        mylite_stmt_bind_blob(stmt, 1U, first_payload, sizeof(first_payload)),
+        MYLITE_OK,
+        "bind native INSERT blob"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native INSERT");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == 1, "native INSERT affected rows");
+    failures += expect_uint64(mylite_stmt_insert_id(stmt), 1U, "native INSERT id");
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT COUNT(*) FROM items WHERE name = 'x'' OR 1=1 /*'",
+            .expected = "1",
+            .context = "native INSERT text remains data",
+        }
+    );
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT HEX(payload) FROM items WHERE id = 1",
+            .expected = "610062",
+            .context = "native INSERT preserves embedded NUL",
+        }
+    );
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native INSERT");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "second", strlen("second")),
+        MYLITE_OK,
+        "rebind native INSERT text"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_blob(stmt, 1U, NULL, 0U),
+        MYLITE_OK,
+        "rebind native INSERT empty blob"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "repeat native INSERT");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == 1, "repeated INSERT affected rows");
+    failures += expect_uint64(mylite_stmt_insert_id(stmt), 2U, "repeated INSERT id");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native INSERT");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "INSERT INTO items (id, name) VALUES (?, ?)",
+            strlen("INSERT INTO items (id, name) VALUES (?, ?)"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native constraint INSERT"
+    );
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 2), MYLITE_OK, "bind duplicate id");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "duplicate", strlen("duplicate")),
+        MYLITE_OK,
+        "bind duplicate row value"
+    );
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_ERROR, "native INSERT reports constraint error");
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset failed native INSERT");
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 5), MYLITE_OK, "rebind recovered id");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "recovered", strlen("recovered")),
+        MYLITE_OK,
+        "rebind recovered row value"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute recovered native INSERT");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == 1, "recovered INSERT affected rows");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize constraint INSERT");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "UPDATE items SET name = ? WHERE id = ?",
+            strlen("UPDATE items SET name = ? WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native UPDATE"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "changed", strlen("changed")),
+        MYLITE_OK,
+        "bind native UPDATE value"
+    );
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 1U, 2), MYLITE_OK, "bind native UPDATE id");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native UPDATE");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == 1, "native UPDATE affected rows");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native UPDATE");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "DELETE FROM items WHERE id = ?",
+            strlen("DELETE FROM items WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native DELETE"
+    );
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 1), MYLITE_OK, "bind native DELETE id");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native DELETE");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == 1, "native DELETE affected rows");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native DELETE");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "INSERT INTO items (name) VALUES ('constant')",
+            strlen("INSERT INTO items (name) VALUES ('constant')"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare zero-parameter INSERT"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute zero-parameter INSERT");
+    failures +=
+        expect_true(mylite_stmt_affected_rows(stmt) == 1, "zero-parameter INSERT affected rows");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize zero-parameter INSERT");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_cursor_materializes_information_schema_selects(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -859,15 +1320,43 @@ static int test_cursor_prepare_rejects_unsupported_statements(void) {
     failures += expect_int(
         mylite_prepare(
             database,
-            "INSERT INTO items VALUES (1)",
-            strlen("INSERT INTO items VALUES (1)"),
+            "CREATE TABLE another (id INT)",
+            strlen("CREATE TABLE another (id INT)"),
             &stmt
         ),
         MYLITE_ERROR,
-        "cursor rejects insert"
+        "prepare rejects unsupported DDL"
     );
     failures += expect_true(stmt == NULL, "failed prepare leaves null statement");
-    failures += expect_contains(mylite_errmsg(database), "SELECT", "failed prepare diagnostic");
+    failures +=
+        expect_contains(mylite_errmsg(database), "not supported", "failed prepare diagnostic");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT ? FROM missing_items",
+            strlen("SELECT ? FROM missing_items"),
+            &stmt
+        ),
+        MYLITE_ERROR,
+        "prepared parameter resolves table at prepare time"
+    );
+    failures += expect_true(stmt == NULL, "missing prepared table leaves null statement");
+    failures += expect_contains(mylite_errmsg(database), "doesn't exist", "missing prepared table");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT missing_column FROM items WHERE id = ?",
+            strlen("SELECT missing_column FROM items WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_ERROR,
+        "prepared parameter resolves column at prepare time"
+    );
+    failures += expect_true(stmt == NULL, "missing prepared column leaves null statement");
+    failures +=
+        expect_contains(mylite_errmsg(database), "Unknown column", "missing prepared column");
 
     failures += expect_int(
         mylite_prepare(database, NULL, 0U, &stmt),

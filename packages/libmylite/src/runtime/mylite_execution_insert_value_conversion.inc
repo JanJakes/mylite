@@ -132,6 +132,26 @@ static int convert_dml_constant_scalar_value(
     }
     *out_handled = false;
     value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARAMETER && database != NULL &&
+        database->active_bound_statement != NULL &&
+        database->active_bound_statement->analyzing_unbound_parameters) {
+        *out_handled = true;
+        planned_value_deinit(out_value);
+        *out_value = (struct planned_value){
+            .is_text = column_descriptor_is_char(column) || column_descriptor_is_varchar(column) ||
+                       column_descriptor_is_text_family(column) ||
+                       column_descriptor_is_json(column) || column_descriptor_is_date(column) ||
+                       column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+                       column_descriptor_is_timestamp(column) ||
+                       column_descriptor_is_decimal(column),
+            .is_blob = column_descriptor_is_binary_string_family(column) ||
+                       column_descriptor_is_spatial(column),
+            .is_real = column_descriptor_is_approximate(column),
+            .is_external_parameter = true,
+            .external_parameter_index = mylite_sql_ast_node_parameter_index(value_node),
+        };
+        return MYLITE_OK;
+    }
     if (!dml_value_is_constant_scalar_expression(value_node, allow_constant_arithmetic)) {
         return MYLITE_OK;
     }
@@ -161,6 +181,10 @@ static int convert_dml_constant_scalar_value(
             out_value
         );
     }
+    if (rc == MYLITE_OK && value_node->kind == MYLITE_SQL_AST_PARAMETER) {
+        out_value->is_external_parameter = true;
+        out_value->external_parameter_index = mylite_sql_ast_node_parameter_index(value_node);
+    }
 
     session_scalar_cell_deinit(&cell);
     return rc;
@@ -181,6 +205,7 @@ static bool dml_value_is_constant_scalar_expression(
         return true;
     }
     switch (value_node->kind) {
+    case MYLITE_SQL_AST_PARAMETER:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
     case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
@@ -824,7 +849,8 @@ static int convert_insert_value(
     );
 }
 
-static bool insert_value_is_unix_timestamp_arithmetic(const struct mylite_sql_ast_node *value_node
+static bool insert_value_is_unix_timestamp_arithmetic(
+    const struct mylite_sql_ast_node *value_node
 ) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;
@@ -1189,7 +1215,8 @@ static int format_insert_unix_timestamp_integer_text(
     return MYLITE_OK;
 }
 
-static bool insert_unix_timestamp_now_node_is_admitted(const struct mylite_sql_ast_node *value_node
+static bool insert_unix_timestamp_now_node_is_admitted(
+    const struct mylite_sql_ast_node *value_node
 ) {
     value_node = unwrap_parenthesized_expression(value_node);
     return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION &&

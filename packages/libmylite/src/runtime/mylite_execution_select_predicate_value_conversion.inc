@@ -376,6 +376,9 @@ static int convert_predicate_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 ) {
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARAMETER) {
+        return copy_active_stmt_parameter_value(database, value_node, out_value);
+    }
     if (column_descriptor_is_string_family(column)) {
         return convert_predicate_string_literal(database, value_node, out_value);
     }

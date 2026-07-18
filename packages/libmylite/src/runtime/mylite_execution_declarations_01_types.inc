@@ -812,10 +812,12 @@ struct planned_value {
     bool is_text;
     bool is_blob;
     bool is_real;
+    bool is_external_parameter;
     int64_t integer;
     double real;
     char *text;
     size_t text_length;
+    size_t external_parameter_index;
 };
 
 enum integer_expression_default_text_work_item_kind {
@@ -2553,6 +2555,30 @@ struct result_column_metadata_context {
     bool has_single_source_metadata;
 };
 
+enum mylite_stmt_binding_type {
+    MYLITE_STMT_BINDING_UNBOUND = 0,
+    MYLITE_STMT_BINDING_NULL,
+    MYLITE_STMT_BINDING_INT64,
+    MYLITE_STMT_BINDING_UINT64,
+    MYLITE_STMT_BINDING_DOUBLE,
+    MYLITE_STMT_BINDING_TEXT,
+    MYLITE_STMT_BINDING_BLOB,
+};
+
+struct mylite_stmt_binding {
+    enum mylite_stmt_binding_type type;
+
+    union {
+        int64_t int64_value;
+        uint64_t uint64_value;
+        double double_value;
+    } scalar;
+
+    unsigned char *bytes;
+    size_t size;
+    size_t capacity;
+};
+
 struct mylite_stmt {
     struct mylite_db *database;
     struct mylite_stmt *next_live_statement;
@@ -2566,9 +2592,13 @@ struct mylite_stmt {
     struct mylite_statement_transaction read_transaction;
     sqlite3_stmt *sqlite_statement;
     mylite_result *metadata_result;
+    struct mylite_stmt_binding *bindings;
     char *sqlite_sql;
     uint64_t statement_id;
     uint64_t found_row_count;
+    uint64_t insert_id;
+    int64_t affected_rows;
+    size_t parameter_count;
     size_t row_count;
     size_t materialized_row_index;
     size_t current_materialized_row;
@@ -2577,6 +2607,8 @@ struct mylite_stmt {
     bool has_normalized_sql;
     bool has_select_plan;
     bool has_materialized_rows;
+    bool returns_rows;
+    bool analyzing_unbound_parameters;
     bool sqlite_statement_is_cached;
     bool current_row_available;
     bool done;

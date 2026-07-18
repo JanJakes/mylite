@@ -1101,6 +1101,9 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     } else {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
+    if (rc == MYLITE_OK) {
+        rc = validate_sqlite_parameter_count(statement, parameter_index - 1);
+    }
     return rc;
 }
 
@@ -1166,8 +1169,14 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
          !plan->assignment_value.is_null)
     ) {
         rc = bind_update_changed_condition_parameter(statement, parameter_index, plan);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
     }
 
+    if (rc == MYLITE_OK) {
+        rc = validate_sqlite_parameter_count(statement, parameter_index - 1);
+    }
     return rc;
 }
 
@@ -1398,24 +1407,28 @@ static int bind_planned_value_parameter(
     if (value->is_null) {
         sqlite_rc = sqlite3_bind_null(statement, parameter_index);
     } else if (value->is_text) {
+        static const char empty_text[] = "";
+
         if (value->text_length > (size_t)INT_MAX) {
             return MYLITE_ERROR;
         }
         sqlite_rc = sqlite3_bind_text(
             statement,
             parameter_index,
-            value->text,
+            value->text_length == 0U ? empty_text : value->text,
             (int)value->text_length,
             SQLITE_TRANSIENT
         );
     } else if (value->is_blob) {
+        static const char empty_blob[] = "";
+
         if (value->text_length > (size_t)INT_MAX) {
             return MYLITE_ERROR;
         }
         sqlite_rc = sqlite3_bind_blob(
             statement,
             parameter_index,
-            value->text,
+            value->text_length == 0U ? empty_blob : value->text,
             (int)value->text_length,
             SQLITE_TRANSIENT
         );
@@ -1428,6 +1441,14 @@ static int bind_planned_value_parameter(
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
 
+    return MYLITE_OK;
+}
+
+static int validate_sqlite_parameter_count(sqlite3_stmt *statement, int bound_parameter_count) {
+    if (statement == NULL || bound_parameter_count < 0 ||
+        sqlite3_bind_parameter_count(statement) != bound_parameter_count) {
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 

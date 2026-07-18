@@ -7,6 +7,33 @@ static int execute_parsed_statement(
 static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast_node *statement);
 static int reject_poisoned_connection(struct mylite_db *database);
 static int reject_command_with_active_cursor(struct mylite_db *database);
+static int validate_stmt_binding_index(mylite_stmt *stmt, size_t index);
+static int bind_stmt_bytes(
+    mylite_stmt *stmt,
+    size_t index,
+    enum mylite_stmt_binding_type type,
+    const void *value,
+    size_t value_size
+);
+static int reset_cursor_execution(mylite_stmt *stmt);
+static int start_cursor_execution(mylite_stmt *stmt);
+static int validate_stmt_bindings_complete(mylite_stmt *stmt);
+static int copy_active_stmt_parameter_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *parameter,
+    struct planned_value *out_value
+);
+static int copy_active_stmt_parameter_cell(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *parameter,
+    struct session_scalar_cell *out_cell
+);
+static bool prepared_statement_kind_is_supported(const struct mylite_sql_ast_node *statement);
+static bool prepared_statement_returns_rows(const struct mylite_sql_ast_node *statement);
+static int validate_prepared_statement_objects(mylite_stmt *stmt);
+static bool prepared_analysis_error_is_object_resolution(int error_code);
+static int execute_prepared_non_row_statement(mylite_stmt *stmt);
+static void release_stmt_bindings(mylite_stmt *stmt);
 static int prepare_cursor_select_statement(
     struct mylite_db *database,
     const char *sql,

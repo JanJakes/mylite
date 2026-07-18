@@ -999,7 +999,9 @@ static bool select_item_is_literal_projection(const struct mylite_sql_ast_node *
     }
 
     expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
-    return expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL;
+    return expression != NULL &&
+           (expression->kind == MYLITE_SQL_AST_LITERAL ||
+            expression->kind == MYLITE_SQL_AST_PARAMETER);
 }
 
 static int prepare_joined_select_plan(

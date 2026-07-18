@@ -423,6 +423,7 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite
         return MYLITE_NOMEM;
     }
     stmt->metadata_context = result_column_metadata_context_init();
+    stmt->affected_rows = -1;
     rc = prepare_cursor_select_statement(database, sql, sql_size, stmt);
     if (rc != MYLITE_OK) {
         destroy_cursor_statement(stmt);
@@ -440,6 +441,469 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite
     return MYLITE_OK;
 }
 
+size_t mylite_stmt_parameter_count(const mylite_stmt *stmt) {
+    return stmt == NULL ? 0U : stmt->parameter_count;
+}
+
+int mylite_stmt_bind_null(mylite_stmt *stmt, size_t index) {
+    int rc = validate_stmt_binding_index(stmt, index);
+
+    if (rc == MYLITE_OK) {
+        stmt->bindings[index].type = MYLITE_STMT_BINDING_NULL;
+        stmt->bindings[index].size = 0U;
+    }
+    return rc;
+}
+
+int mylite_stmt_bind_int64(mylite_stmt *stmt, size_t index, int64_t value) {
+    int rc = validate_stmt_binding_index(stmt, index);
+
+    if (rc == MYLITE_OK) {
+        stmt->bindings[index].type = MYLITE_STMT_BINDING_INT64;
+        stmt->bindings[index].scalar.int64_value = value;
+        stmt->bindings[index].size = 0U;
+    }
+    return rc;
+}
+
+int mylite_stmt_bind_uint64(mylite_stmt *stmt, size_t index, uint64_t value) {
+    int rc = validate_stmt_binding_index(stmt, index);
+
+    if (rc == MYLITE_OK) {
+        stmt->bindings[index].type = MYLITE_STMT_BINDING_UINT64;
+        stmt->bindings[index].scalar.uint64_value = value;
+        stmt->bindings[index].size = 0U;
+    }
+    return rc;
+}
+
+int mylite_stmt_bind_double(mylite_stmt *stmt, size_t index, double value) {
+    int rc = validate_stmt_binding_index(stmt, index);
+
+    if (rc == MYLITE_OK) {
+        stmt->bindings[index].type = MYLITE_STMT_BINDING_DOUBLE;
+        stmt->bindings[index].scalar.double_value = value;
+        stmt->bindings[index].size = 0U;
+    }
+    return rc;
+}
+
+int mylite_stmt_bind_text(mylite_stmt *stmt, size_t index, const char *value, size_t value_size) {
+    return bind_stmt_bytes(stmt, index, MYLITE_STMT_BINDING_TEXT, value, value_size);
+}
+
+int mylite_stmt_bind_blob(mylite_stmt *stmt, size_t index, const void *value, size_t value_size) {
+    return bind_stmt_bytes(stmt, index, MYLITE_STMT_BINDING_BLOB, value, value_size);
+}
+
+int mylite_stmt_clear_bindings(mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->database == NULL || stmt->current_row_available) {
+        if (stmt != NULL && stmt->database != NULL) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(stmt->database),
+                MYLITE_MISUSE,
+                "HY000",
+                mylite_diagnostics_misuse_message()
+            );
+        }
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
+        stmt->bindings[index].type = MYLITE_STMT_BINDING_UNBOUND;
+        stmt->bindings[index].size = 0U;
+    }
+    return MYLITE_OK;
+}
+
+int mylite_stmt_reset(mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stmt->database->active_cursor != NULL && stmt->database->active_cursor != stmt) {
+        return reject_command_with_active_cursor(stmt->database);
+    }
+    return reset_cursor_execution(stmt);
+}
+
+int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt) {
+    return stmt == NULL ? -1 : stmt->affected_rows;
+}
+
+uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt) {
+    return stmt == NULL ? 0U : stmt->insert_id;
+}
+
+static int validate_stmt_binding_index(mylite_stmt *stmt, size_t index) {
+    if (stmt == NULL || stmt->database == NULL || stmt->current_row_available ||
+        index >= stmt->parameter_count) {
+        if (stmt != NULL && stmt->database != NULL) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(stmt->database),
+                MYLITE_MISUSE,
+                "HY000",
+                mylite_diagnostics_misuse_message()
+            );
+        }
+        return MYLITE_MISUSE;
+    }
+    return MYLITE_OK;
+}
+
+static int bind_stmt_bytes(
+    mylite_stmt *stmt,
+    size_t index,
+    enum mylite_stmt_binding_type type,
+    const void *value,
+    size_t value_size
+) {
+    struct mylite_stmt_binding *binding = NULL;
+    unsigned char *bytes = NULL;
+    int rc = validate_stmt_binding_index(stmt, index);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value == NULL && value_size != 0U) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(stmt->database),
+            MYLITE_MISUSE,
+            "HY000",
+            mylite_diagnostics_misuse_message()
+        );
+        return MYLITE_MISUSE;
+    }
+
+    binding = &stmt->bindings[index];
+    if (value_size > binding->capacity) {
+        bytes = malloc(value_size);
+        if (bytes == NULL) {
+            set_nomem_error(stmt->database);
+            return MYLITE_NOMEM;
+        }
+        if (value_size != 0U) {
+            memcpy(bytes, value, value_size);
+        }
+        free(binding->bytes);
+        binding->bytes = bytes;
+        binding->capacity = value_size;
+    } else if (value_size != 0U) {
+        memmove(binding->bytes, value, value_size);
+    }
+    binding->type = type;
+    binding->size = value_size;
+    return MYLITE_OK;
+}
+
+static int reset_cursor_execution(mylite_stmt *stmt) {
+    struct mylite_db *database = stmt->database;
+    int rc = reject_poisoned_connection(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (stmt->sqlite_statement != NULL) {
+        rc = finish_cursor_sqlite_statement(stmt, MYLITE_OK);
+    }
+    rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
+    if (database->active_cursor == stmt) {
+        database->active_cursor = NULL;
+    }
+    if (stmt->has_context) {
+        (void)mylite_statement_context_end(&stmt->context, rc);
+        mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
+    }
+    clear_cursor_select_plan_resources(stmt, rc);
+    stmt->row_count = 0U;
+    stmt->found_row_count = 0U;
+    stmt->materialized_row_index = 0U;
+    stmt->current_materialized_row = 0U;
+    stmt->affected_rows = -1;
+    stmt->insert_id = 0U;
+    stmt->current_row_available = false;
+    stmt->done = false;
+    return rc;
+}
+
+static int start_cursor_execution(mylite_stmt *stmt) {
+    struct mylite_db *database = stmt->database;
+    mylite_stmt *saved_active_bound_statement = database->active_bound_statement;
+    int rc = validate_stmt_bindings_complete(stmt);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (rc == MYLITE_OK && database->session.statement_id != UINT64_MAX) {
+        ++database->session.statement_id;
+    }
+    if (rc == MYLITE_OK) {
+        stmt->statement_id = database->session.statement_id;
+        mylite_statement_context_init(&stmt->context);
+        rc = mylite_statement_context_begin(
+            &stmt->context,
+            database,
+            stmt->normalized_sql.sql,
+            stmt->normalized_sql.sql_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        stmt->has_context = true;
+        mylite_statement_context_set_previous_row_count(
+            &stmt->context,
+            database->session.previous_row_count
+        );
+        mylite_statement_context_set_previous_found_rows(
+            &stmt->context,
+            database->session.found_rows
+        );
+        database->session.active_statement_time =
+            (int64_t)mylite_statement_context_time(&stmt->context);
+        if (!stmt->returns_rows) {
+            return execute_prepared_non_row_statement(stmt);
+        }
+        rc = prepare_statement_transaction_boundary(database, stmt->statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = begin_read_statement_transaction(database, &stmt->read_transaction);
+    }
+    if (rc == MYLITE_OK) {
+        database->active_bound_statement = stmt;
+        rc = prepare_cursor_select_plan(stmt);
+        if (rc != MYLITE_OK && rc != MYLITE_NOMEM) {
+            clear_cursor_select_plan_resources(stmt, rc);
+            mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
+            rc = prepare_cursor_materialized_select_statement(stmt);
+        }
+        database->active_bound_statement = saved_active_bound_statement;
+    }
+    if (rc == MYLITE_OK && !stmt->has_materialized_rows) {
+        database->active_cursor = stmt;
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result *result = NULL;
+
+        rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
+        rc = finish_failed_statement(database, rc, &result);
+        if (stmt->has_context) {
+            (void)mylite_statement_context_end(&stmt->context, rc);
+            mylite_statement_context_deinit(&stmt->context);
+            stmt->has_context = false;
+        }
+        stmt->done = true;
+    }
+    return rc;
+}
+
+static int execute_prepared_non_row_statement(mylite_stmt *stmt) {
+    struct mylite_db *database = stmt->database;
+    mylite_stmt *saved_active_bound_statement = database->active_bound_statement;
+    mylite_result *result = NULL;
+    int64_t completed_row_count = -1;
+    bool preserve_diagnostics_snapshot = false;
+    int rc = MYLITE_OK;
+
+    database->active_bound_statement = stmt;
+    rc = execute_parsed_statement(database, &stmt->context, stmt->statement, &result);
+    database->active_bound_statement = saved_active_bound_statement;
+    if (rc == MYLITE_OK) {
+        stmt->affected_rows = mylite_result_affected_rows(result);
+        stmt->insert_id = mylite_result_insert_id(result);
+        completed_row_count = row_count_for_completed_statement(stmt->statement, result);
+        preserve_diagnostics_snapshot = statement_preserves_diagnostics_snapshot(stmt->statement);
+        rc = finish_completed_statement(
+            database,
+            false,
+            completed_row_count,
+            preserve_diagnostics_snapshot,
+            &result
+        );
+    } else {
+        rc = finish_failed_statement(database, rc, &result);
+    }
+    mylite_result_free(result);
+    if (stmt->has_context) {
+        (void)mylite_statement_context_end(&stmt->context, rc);
+        mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
+    }
+    stmt->done = true;
+    mylite_connection_publish_processlist_session(database);
+    return rc;
+}
+
+static int validate_stmt_bindings_complete(mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
+        if (stmt->bindings[index].type == MYLITE_STMT_BINDING_UNBOUND) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(stmt->database),
+                MYLITE_MISUSE,
+                "HY000",
+                "No data supplied for one or more prepared statement parameters"
+            );
+            return MYLITE_MISUSE;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int copy_active_stmt_parameter_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *parameter,
+    struct planned_value *out_value
+) {
+    const struct mylite_stmt_binding *binding = NULL;
+    size_t index = 0U;
+
+    if (database == NULL || parameter == NULL || out_value == NULL ||
+        parameter->kind != MYLITE_SQL_AST_PARAMETER || database->active_bound_statement == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct planned_value){0};
+    index = mylite_sql_ast_node_parameter_index(parameter);
+    if (index >= database->active_bound_statement->parameter_count) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    binding = &database->active_bound_statement->bindings[index];
+    out_value->is_external_parameter = true;
+    out_value->external_parameter_index = index;
+    if (binding->type == MYLITE_STMT_BINDING_UNBOUND &&
+        database->active_bound_statement->analyzing_unbound_parameters) {
+        return MYLITE_OK;
+    }
+    switch (binding->type) {
+    case MYLITE_STMT_BINDING_NULL:
+        out_value->is_null = true;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_INT64:
+        out_value->integer = binding->scalar.int64_value;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_UINT64:
+        if (binding->scalar.uint64_value <= (uint64_t)INT64_MAX) {
+            out_value->integer = (int64_t)binding->scalar.uint64_value;
+            return MYLITE_OK;
+        }
+        {
+            char text[32];
+            int written = snprintf(text, sizeof(text), "%" PRIu64, binding->scalar.uint64_value);
+
+            if (written <= 0 || (size_t)written >= sizeof(text)) {
+                return MYLITE_ERROR;
+            }
+            out_value->text = malloc((size_t)written);
+            if (out_value->text == NULL) {
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            memcpy(out_value->text, text, (size_t)written);
+            out_value->is_text = true;
+            out_value->text_length = (size_t)written;
+            return MYLITE_OK;
+        }
+    case MYLITE_STMT_BINDING_DOUBLE:
+        out_value->is_real = true;
+        out_value->real = binding->scalar.double_value;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_TEXT:
+    case MYLITE_STMT_BINDING_BLOB:
+        if (binding->size != 0U) {
+            out_value->text = malloc(binding->size);
+            if (out_value->text == NULL) {
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            memcpy(out_value->text, binding->bytes, binding->size);
+        }
+        out_value->is_text = binding->type == MYLITE_STMT_BINDING_TEXT;
+        out_value->is_blob = binding->type == MYLITE_STMT_BINDING_BLOB;
+        out_value->text_length = binding->size;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_UNBOUND:
+        break;
+    }
+
+    return MYLITE_MISUSE;
+}
+
+static int copy_active_stmt_parameter_cell(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *parameter,
+    struct session_scalar_cell *out_cell
+) {
+    static const char empty_value[] = "";
+    const struct mylite_stmt_binding *binding = NULL;
+    size_t index = 0U;
+    int written = 0;
+
+    if (database == NULL || parameter == NULL || out_cell == NULL ||
+        parameter->kind != MYLITE_SQL_AST_PARAMETER || database->active_bound_statement == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    index = mylite_sql_ast_node_parameter_index(parameter);
+    if (index >= database->active_bound_statement->parameter_count) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    binding = &database->active_bound_statement->bindings[index];
+    if (binding->type == MYLITE_STMT_BINDING_UNBOUND &&
+        database->active_bound_statement->analyzing_unbound_parameters) {
+        out_cell->value = "0";
+        return MYLITE_OK;
+    }
+    switch (binding->type) {
+    case MYLITE_STMT_BINDING_NULL:
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_INT64:
+        written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRId64,
+            binding->scalar.int64_value
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_UINT64:
+        written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            binding->scalar.uint64_value
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_DOUBLE:
+        if (mylite_execution_format_double_text(
+                database,
+                binding->scalar.double_value,
+                "prepared statement parameter",
+                out_cell->double_text,
+                sizeof(out_cell->double_text)
+            ) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->double_text;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_TEXT:
+    case MYLITE_STMT_BINDING_BLOB:
+        out_cell->value = binding->size == 0U ? empty_value : (const char *)binding->bytes;
+        out_cell->value_size = binding->size;
+        out_cell->has_value_size = true;
+        return MYLITE_OK;
+    case MYLITE_STMT_BINDING_UNBOUND:
+        break;
+    }
+    return MYLITE_MISUSE;
+}
+
 int mylite_stmt_step(mylite_stmt *stmt) {
     int sqlite_rc = SQLITE_OK;
 #ifdef MYLITE_ENABLE_PROFILING
@@ -455,7 +919,13 @@ int mylite_stmt_step(mylite_stmt *stmt) {
         return rc;
     }
     if (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows) {
-        return stmt->done ? MYLITE_DONE : MYLITE_MISUSE;
+        if (stmt->done) {
+            return MYLITE_DONE;
+        }
+        rc = start_cursor_execution(stmt);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
     if (stmt->done) {
         return MYLITE_DONE;
@@ -723,6 +1193,21 @@ int mylite_stmt_column_nullable(const mylite_stmt *stmt, size_t column_index) {
     return mylite_result_column_nullable(stmt->metadata_result, column_index);
 }
 
+int mylite_stmt_value_is_null(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || !stmt->current_row_available ||
+        column_index >= mylite_stmt_column_count(stmt)) {
+        return 1;
+    }
+    if (stmt->has_materialized_rows) {
+        return mylite_result_value_is_null(
+            stmt->metadata_result,
+            stmt->current_materialized_row,
+            column_index
+        );
+    }
+    return stmt->row_storage.values[column_index].is_null ? 1 : 0;
+}
+
 const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index) {
     return (const char *)mylite_stmt_value_bytes(stmt, column_index);
 }
@@ -819,6 +1304,7 @@ static int prepare_cursor_select_statement(
             .input = stmt->normalized_sql.sql,
             .length = stmt->normalized_sql.sql_size,
             .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .allow_parameters = true,
         },
         &stmt->parse_result
     ));
@@ -836,16 +1322,40 @@ static int prepare_cursor_select_statement(
 
     rc = script_statement_count(stmt->parse_result.root, &statement_count);
     if (rc == MYLITE_OK && statement_count != 1U) {
-        set_unsupported_error(database, "cursor prepare supports exactly one SELECT statement");
+        set_unsupported_error(database, "prepare supports exactly one statement");
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         stmt->statement = child_at(stmt->parse_result.root, 0U);
-        if (stmt->statement == NULL || stmt->statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
-            select_statement_into_list(stmt->statement) != NULL) {
-            set_unsupported_error(database, "cursor prepare supports only SELECT statements");
+        if (!prepared_statement_kind_is_supported(stmt->statement)) {
+            set_unsupported_error(database, "statement type is not supported by prepare");
             rc = MYLITE_ERROR;
+        } else {
+            stmt->returns_rows = prepared_statement_returns_rows(stmt->statement);
         }
+    }
+    if (rc == MYLITE_OK && stmt->parse_result.parameter_count != 0U) {
+        if (stmt->parse_result.parameter_count > SIZE_MAX / sizeof(*stmt->bindings)) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        } else {
+            stmt->bindings = calloc(stmt->parse_result.parameter_count, sizeof(*stmt->bindings));
+            if (stmt->bindings == NULL) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            } else {
+                stmt->parameter_count = stmt->parse_result.parameter_count;
+            }
+        }
+    }
+    if (rc == MYLITE_OK && (stmt->parameter_count != 0U || !stmt->returns_rows)) {
+        rc = validate_prepared_statement_objects(stmt);
+    }
+    if (rc == MYLITE_OK && (stmt->parameter_count != 0U || !stmt->returns_rows)) {
+        (void)mylite_statement_context_end(&stmt->context, MYLITE_OK);
+        mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
+        return MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
         database->session.active_statement_time =
@@ -876,6 +1386,131 @@ static int prepare_cursor_select_statement(
         stmt->has_context = false;
     }
     return rc;
+}
+
+static bool prepared_statement_kind_is_supported(const struct mylite_sql_ast_node *statement) {
+    if (statement == NULL) {
+        return false;
+    }
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+        return select_statement_into_list(statement) == NULL;
+    case MYLITE_SQL_AST_INSERT_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool prepared_statement_returns_rows(const struct mylite_sql_ast_node *statement) {
+    return statement != NULL && statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT;
+}
+
+static int validate_prepared_statement_objects(mylite_stmt *stmt) {
+    struct mylite_db *database = stmt->database;
+    mylite_stmt *saved_active_bound_statement = database->active_bound_statement;
+    int rc = begin_read_statement_transaction(database, &stmt->read_transaction);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    stmt->analyzing_unbound_parameters = true;
+    database->active_bound_statement = stmt;
+    switch (stmt->statement->kind) {
+    case MYLITE_SQL_AST_SELECT_STATEMENT: {
+        struct planned_select plan = {0};
+
+        rc = plan_select(database, stmt->statement, true, &plan);
+        planned_select_deinit(&plan);
+        break;
+    }
+    case MYLITE_SQL_AST_INSERT_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT: {
+        struct planned_insert plan = {0};
+
+        rc = plan_insert(database, stmt->statement, &plan);
+        planned_insert_deinit(&plan);
+        break;
+    }
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT: {
+        struct planned_insert plan = {0};
+
+        rc = plan_insert_set(database, stmt->statement, &plan);
+        planned_insert_deinit(&plan);
+        break;
+    }
+    case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT: {
+        struct planned_insert_select plan = {0};
+
+        rc = plan_insert_select(database, stmt->statement, &plan);
+        planned_insert_select_deinit(&plan);
+        break;
+    }
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT: {
+        struct planned_delete plan = {0};
+
+        rc = plan_delete(database, stmt->statement, &plan);
+        planned_delete_deinit(&plan);
+        break;
+    }
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT: {
+        struct planned_update plan = {0};
+
+        rc = plan_update(database, stmt->statement, &plan);
+        planned_update_deinit(&plan);
+        break;
+    }
+    default:
+        rc = MYLITE_ERROR;
+        break;
+    }
+    database->active_bound_statement = saved_active_bound_statement;
+    stmt->analyzing_unbound_parameters = false;
+
+    if (rc == MYLITE_OK) {
+        rc = commit_statement_transaction(database, &stmt->read_transaction);
+    } else {
+        int error_code = mylite_diagnostics_errcode(mylite_connection_diagnostics(database));
+
+        rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
+        if (rc != MYLITE_NOMEM && stmt->returns_rows &&
+            !prepared_analysis_error_is_object_resolution(error_code)) {
+            mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
+            rc = MYLITE_OK;
+        }
+    }
+    return rc;
+}
+
+static bool prepared_analysis_error_is_object_resolution(int error_code) {
+    switch (error_code) {
+    case mysql_error_no_database_selected:
+    case mysql_error_unknown_database:
+    case mysql_error_unknown_table:
+    case mysql_error_unknown_table_in_schema:
+    case mysql_error_table_does_not_exist:
+    case mysql_error_unknown_column:
+    case mysql_error_key_column_does_not_exist:
+    case mysql_error_column_ambiguous:
+    case mysql_error_not_unique_table_alias:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
@@ -972,6 +1607,7 @@ static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
     }
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
+    stmt->has_materialized_rows = false;
     result_column_metadata_context_deinit(&stmt->metadata_context);
     stmt->metadata_context = result_column_metadata_context_init();
 }
@@ -1125,6 +1761,19 @@ static void release_cursor_statement_resources(mylite_stmt *stmt) {
         mylite_execution_normalized_sql_deinit(&stmt->normalized_sql);
         stmt->has_normalized_sql = false;
     }
+    release_stmt_bindings(stmt);
+}
+
+static void release_stmt_bindings(mylite_stmt *stmt) {
+    if (stmt == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
+        free(stmt->bindings[index].bytes);
+    }
+    free(stmt->bindings);
+    stmt->bindings = NULL;
+    stmt->parameter_count = 0U;
 }
 
 static void destroy_cursor_statement(mylite_stmt *stmt) {

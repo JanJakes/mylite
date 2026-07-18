@@ -13,6 +13,8 @@ static int session_scalar_value(
     }
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_PARAMETER:
+        return copy_active_stmt_parameter_cell(database, expression, out_cell);
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
         if (database->session.has_selected_schema) {

@@ -144,6 +144,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
         }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             ((expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) ||
+             (expression != NULL && expression->kind == MYLITE_SQL_AST_PARAMETER) ||
              generic_function_name_equals(expression, "VALUES") ||
              (has_row_source &&
               row_scalar_expression_is_context_expression_attempt(expression, false)) ||

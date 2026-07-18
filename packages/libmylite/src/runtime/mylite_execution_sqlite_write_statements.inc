@@ -24,7 +24,7 @@ static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert 
         ++bind_index;
     }
 
-    return MYLITE_OK;
+    return validate_sqlite_parameter_count(statement, bind_index - 1);
 }
 
 static int step_insert_row(sqlite3_stmt *statement, int *out_sqlite_rc) {

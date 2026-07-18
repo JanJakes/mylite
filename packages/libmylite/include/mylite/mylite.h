@@ -111,6 +111,29 @@ MYLITE_API int mylite_prepare(
     size_t sql_size,
     mylite_stmt **out_stmt
 );
+/* Parameter indexes are zero-based. Text and blob bindings are copied. */
+MYLITE_API size_t mylite_stmt_parameter_count(const mylite_stmt *stmt);
+MYLITE_API int mylite_stmt_bind_null(mylite_stmt *stmt, size_t index);
+MYLITE_API int mylite_stmt_bind_int64(mylite_stmt *stmt, size_t index, int64_t value);
+MYLITE_API int mylite_stmt_bind_uint64(mylite_stmt *stmt, size_t index, uint64_t value);
+MYLITE_API int mylite_stmt_bind_double(mylite_stmt *stmt, size_t index, double value);
+MYLITE_API int mylite_stmt_bind_text(
+    mylite_stmt *stmt,
+    size_t index,
+    const char *value,
+    size_t value_size
+);
+MYLITE_API int mylite_stmt_bind_blob(
+    mylite_stmt *stmt,
+    size_t index,
+    const void *value,
+    size_t value_size
+);
+MYLITE_API int mylite_stmt_clear_bindings(mylite_stmt *stmt);
+/* Reset preserves bindings and makes a completed or failed statement executable again. */
+MYLITE_API int mylite_stmt_reset(mylite_stmt *stmt);
+MYLITE_API int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt);
+MYLITE_API uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_step(mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_finalize(mylite_stmt *stmt);
 MYLITE_API size_t mylite_stmt_column_count(const mylite_stmt *stmt);
@@ -136,6 +159,8 @@ MYLITE_API uint32_t mylite_stmt_column_collation_id(const mylite_stmt *stmt, siz
 MYLITE_API uint64_t mylite_stmt_column_display_length(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API uint16_t mylite_stmt_column_decimals(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API int mylite_stmt_column_nullable(const mylite_stmt *stmt, size_t column_index);
+/* Value pointers remain valid until the next step, reset, or finalize. */
+MYLITE_API int mylite_stmt_value_is_null(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API const void *mylite_stmt_value_bytes(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API size_t mylite_stmt_value_size(const mylite_stmt *stmt, size_t column_index);
@@ -178,6 +203,12 @@ MYLITE_API uint16_t mylite_result_column_decimals(const mylite_result *result, s
 MYLITE_API int mylite_result_column_nullable(const mylite_result *result, size_t column_index);
 MYLITE_API size_t mylite_result_row_count(const mylite_result *result);
 MYLITE_API const char *mylite_result_value_text(
+    const mylite_result *result,
+    size_t row_index,
+    size_t column_index
+);
+/* Result value pointers remain valid until mylite_result_free(). */
+MYLITE_API int mylite_result_value_is_null(
     const mylite_result *result,
     size_t row_index,
     size_t column_index

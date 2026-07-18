@@ -1104,6 +1104,7 @@ static int bind_planned_value_parameter(
     int parameter_index,
     const struct planned_value *value
 );
+static int validate_sqlite_parameter_count(sqlite3_stmt *statement, int bound_parameter_count);
 static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value);
 static int bind_text_parameter(sqlite3_stmt *statement, int parameter_index, const char *value);
 static int append_selected_sqlite_row(

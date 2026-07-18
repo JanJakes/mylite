@@ -414,6 +414,18 @@ const char *mylite_result_value_text(
     return result->values[(row_index * result->column_count) + column_index];
 }
 
+int mylite_result_value_is_null(
+    const mylite_result *result,
+    size_t row_index,
+    size_t column_index
+) {
+    if (result == NULL || row_index >= result->row_count || column_index >= result->column_count) {
+        return 1;
+    }
+
+    return result->values[(row_index * result->column_count) + column_index] == NULL ? 1 : 0;
+}
+
 const void *mylite_result_value_bytes(
     const mylite_result *result,
     size_t row_index,

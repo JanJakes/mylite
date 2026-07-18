@@ -38,6 +38,7 @@ static int test_key_metadata_cache_uses_lru_replacement(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_reset_and_value_nullability(void);
 static int test_native_prepared_scalar_bindings(void);
+static int test_native_prepared_owns_sql_text(void);
 static int test_native_prepared_dml_bindings(void);
 static int test_buffered_prepared_statement_releases_connection(void);
 static int test_cursor_materializes_information_schema_selects(void);
@@ -79,6 +80,7 @@ int main(void) {
     failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_reset_and_value_nullability();
     failures += test_native_prepared_scalar_bindings();
+    failures += test_native_prepared_owns_sql_text();
     failures += test_native_prepared_dml_bindings();
     failures += test_buffered_prepared_statement_releases_connection();
     failures += test_cursor_materializes_information_schema_selects();
@@ -1040,6 +1042,51 @@ static int test_native_prepared_scalar_bindings(void) {
     failures +=
         expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native reprepare query");
     mylite_close(other_database);
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_native_prepared_owns_sql_text(void) {
+    char path[test_path_capacity];
+    static const char prepared_sql[] = "SELECT ? AS retained_value";
+    char *caller_sql = NULL;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "native_sql_lifetime") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open SQL lifetime file");
+    caller_sql = malloc(sizeof(prepared_sql));
+    if (caller_sql == NULL) {
+        mylite_close(database);
+        remove_related_files(path);
+        return failures + 1;
+    }
+    memcpy(caller_sql, prepared_sql, sizeof(prepared_sql));
+    failures += expect_int(
+        mylite_prepare(database, caller_sql, sizeof(prepared_sql) - 1U, &stmt),
+        MYLITE_OK,
+        "prepare from caller-owned SQL"
+    );
+    memset(caller_sql, 'x', sizeof(prepared_sql) - 1U);
+    free(caller_sql);
+    caller_sql = NULL;
+
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 17), MYLITE_OK, "bind retained SQL");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "execute retained SQL");
+    failures += expect_cursor_text(stmt, 0U, "17", "retained SQL result");
+    failures += expect_text(
+        mylite_stmt_column_name(stmt, 0U),
+        "retained_value",
+        "retained SQL column name"
+    );
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize retained SQL");
 
     mylite_close(database);
     remove_related_files(path);

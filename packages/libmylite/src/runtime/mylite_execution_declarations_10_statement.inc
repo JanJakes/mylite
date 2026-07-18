@@ -540,13 +540,31 @@ static int validate_prepared_statement_sql(
     unsigned int lexer_modes,
     size_t *out_parameter_count
 );
-static int build_prepared_statement_sql(
+static int execute_session_prepared_statement(
     struct mylite_db *database,
-    const char *sql,
-    size_t sql_size,
-    unsigned int lexer_modes,
+    struct mylite_session_prepared_statement *prepared,
     const struct mylite_sql_ast_node *using_list,
-    struct prepared_statement_expanded_sql *out_sql
+    mylite_result **out_result
+);
+static int bind_execute_parameters(
+    struct mylite_db *database,
+    mylite_stmt *statement,
+    const struct mylite_sql_ast_node *using_list
+);
+static int bind_execute_user_variable(
+    struct mylite_db *database,
+    mylite_stmt *statement,
+    size_t parameter_index,
+    const struct mylite_sql_ast_node *variable
+);
+static int bind_execute_integer_user_variable(
+    mylite_stmt *statement,
+    size_t parameter_index,
+    const struct mylite_session_user_variable *variable
+);
+static int transfer_executed_prepared_statement_result(
+    mylite_stmt *statement,
+    mylite_result **out_result
 );
 static int execute_expanded_prepared_statement_sql(
     struct mylite_db *database,
@@ -554,12 +572,6 @@ static int execute_expanded_prepared_statement_sql(
     size_t sql_size,
     const struct mylite_session_prepared_statement *prepared,
     mylite_result **out_result
-);
-static int append_execute_parameter_sql(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    unsigned int lexer_modes,
-    const struct mylite_sql_ast_node *variable
 );
 static int append_execute_string_literal(
     struct mylite_dynamic_string *string,

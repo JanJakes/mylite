@@ -96,8 +96,7 @@ static int validate_prepared_statement_sql(
     unsigned int lexer_modes,
     size_t *out_parameter_count
 ) {
-    struct mylite_sql_parse_result parse_result;
-    struct prepared_statement_expanded_sql normalized_sql = {0};
+    struct mylite_sql_parse_result parse_result = {0};
     const struct mylite_sql_ast_node *prepared_statement = NULL;
     size_t statement_count = 0U;
     int rc = MYLITE_OK;
@@ -107,33 +106,21 @@ static int validate_prepared_statement_sql(
     }
     *out_parameter_count = 0U;
 
-    rc = build_prepared_statement_sql(
-        database,
-        sql,
-        sql_size,
-        lexer_modes,
-        NULL,
-        &normalized_sql
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    *out_parameter_count = normalized_sql.parameter_count;
-
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
-            .input = normalized_sql.text,
-            .length = normalized_sql.text_size,
+            .input = sql,
+            .length = sql_size,
             .modes = lexer_modes,
+            .allow_parameters = true,
         },
         &parse_result
     ));
     if (rc != MYLITE_OK) {
         rc = finish_parse_failure(database, &parse_result, rc);
         mylite_sql_parse_result_deinit(&parse_result);
-        free(normalized_sql.text);
         return rc;
     }
+    *out_parameter_count = parse_result.parameter_count;
 
     rc = script_statement_count(parse_result.root, &statement_count);
     if (rc == MYLITE_OK && statement_count != 1U) {
@@ -149,123 +136,7 @@ static int validate_prepared_statement_sql(
     }
 
     mylite_sql_parse_result_deinit(&parse_result);
-    free(normalized_sql.text);
     return rc;
-}
-
-static int build_prepared_statement_sql(
-    struct mylite_db *database,
-    const char *sql,
-    size_t sql_size,
-    unsigned int lexer_modes,
-    const struct mylite_sql_ast_node *using_list,
-    struct prepared_statement_expanded_sql *out_sql
-) {
-    struct mylite_sql_lexer lexer;
-    struct mylite_sql_token token;
-    struct mylite_dynamic_string output;
-    size_t cursor = 0U;
-    size_t parameter_index = 0U;
-    int rc = MYLITE_OK;
-
-    if (sql == NULL || out_sql == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_sql = (struct prepared_statement_expanded_sql){0};
-
-    mylite_dynamic_string_init(&output);
-    mylite_sql_lexer_init(
-        &lexer,
-        (struct mylite_sql_lexer_config){
-            .input = sql,
-            .length = sql_size,
-            .modes = lexer_modes,
-        }
-    );
-
-    for (;;) {
-        if (mylite_sql_lexer_next(&lexer, &token) != 0) {
-            set_parse_error(database, NULL);
-            rc = MYLITE_ERROR;
-            break;
-        }
-        if (token.kind == MYLITE_SQL_TOKEN_EOF) {
-            break;
-        }
-        if (token.kind == MYLITE_SQL_TOKEN_ERROR) {
-            struct mylite_sql_parse_result parse_result = {0};
-
-            parse_result.error_token = token;
-            set_parse_error(database, &parse_result);
-            rc = MYLITE_ERROR;
-            break;
-        }
-        if (token.kind != MYLITE_SQL_TOKEN_PARAMETER) {
-            continue;
-        }
-
-        rc = mylite_dynamic_string_append_bytes(&output, &sql[cursor], token.offset - cursor);
-        if (rc == MYLITE_OK) {
-            if (using_list == NULL) {
-                rc = mylite_dynamic_string_append(&output, "NULL");
-            } else {
-                rc = append_execute_parameter_sql(
-                    database,
-                    &output,
-                    lexer_modes,
-                    child_at(using_list, parameter_index)
-                );
-            }
-        }
-        if (rc != MYLITE_OK) {
-            break;
-        }
-        cursor = token.offset + token.length;
-        ++parameter_index;
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_bytes(&output, &sql[cursor], sql_size - cursor);
-    }
-    if (rc == MYLITE_OK) {
-        out_sql->text_size = output.length;
-        out_sql->parameter_count = parameter_index;
-        out_sql->text = mylite_dynamic_string_take(&output);
-    }
-    if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
-    }
-
-    mylite_dynamic_string_deinit(&output);
-    return rc;
-}
-
-static int append_execute_parameter_sql(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    unsigned int lexer_modes,
-    const struct mylite_sql_ast_node *variable
-) {
-    char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
-    struct mylite_session_user_variable *value = NULL;
-    int rc = copy_user_variable_name(database, variable, name, sizeof(name), true);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-
-    value = find_session_user_variable(&database->session, name);
-    if (value == NULL || value->is_null || value->value == NULL) {
-        return mylite_dynamic_string_append(string, "NULL");
-    }
-    if (value->value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER &&
-        text_is_decimal_integer_literal(value->value, value->value_size)) {
-        return mylite_dynamic_string_append_bytes(string, value->value, value->value_size);
-    }
-    if (value->value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL) {
-        return mylite_dynamic_string_append_bytes(string, value->value, value->value_size);
-    }
-
-    return append_execute_string_literal(string, lexer_modes, value->value, value->value_size);
 }
 
 static int append_execute_string_literal(
@@ -370,7 +241,7 @@ static void deinit_session_prepared_statement(struct mylite_session_prepared_sta
         return;
     }
 
-    free(statement->sql);
+    (void)mylite_stmt_finalize(statement->statement);
     *statement = (struct mylite_session_prepared_statement){0};
 }
 

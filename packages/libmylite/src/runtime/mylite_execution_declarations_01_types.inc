@@ -2592,6 +2592,7 @@ struct mylite_stmt {
     struct mylite_statement_transaction read_transaction;
     sqlite3_stmt *sqlite_statement;
     mylite_result *metadata_result;
+    mylite_result *completed_result;
     struct mylite_stmt_binding *bindings;
     char *sqlite_sql;
     uint64_t statement_id;
@@ -3116,12 +3117,6 @@ struct string_bitmask_scalar_text_argument {
     struct mylite_string_bitmask_slice slice;
     struct session_scalar_cell cell;
     char *owned_text;
-};
-
-struct prepared_statement_expanded_sql {
-    char *text;
-    size_t text_size;
-    size_t parameter_count;
 };
 
 enum scalar_integer_cast_target {

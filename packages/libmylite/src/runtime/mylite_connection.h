@@ -144,9 +144,7 @@ struct mylite_session_system_variable_override {
 
 struct mylite_session_prepared_statement {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    char *sql;
-    size_t sql_size;
-    size_t parameter_count;
+    mylite_stmt *statement;
     unsigned int lexer_modes;
     bool has_selected_schema;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];

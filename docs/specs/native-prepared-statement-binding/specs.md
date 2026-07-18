@@ -280,6 +280,7 @@ SQLite fork. Schema-generation invalidation remains MyLite-owned.
 
 ## Compatibility status
 
-Until every adapter uses this API and the injection regression passes, native
-prepared binding remains partial and the PHP prepared-statement surfaces must
-not be described as safe drop-in replacements.
+Core PHP, mysqli, PDO, and SQL-level `PREPARE`/`EXECUTE` use this API. Release
+qualification, sanitizer coverage, benchmark baselines, and ABI/size review are
+tracked separately and remain required before closing the broader remediation
+chapter.

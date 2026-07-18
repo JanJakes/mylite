@@ -6,11 +6,11 @@ existing `mylite_execute()` path: `PREPARE`, `EXECUTE`, and
 WordPress-style compatibility where SQL text is prepared inside a session and
 then executed with user-variable values.
 
-This is not the binary prepared-statement protocol, a general parameter system,
-or a new query planner. Prepared statements are handle-local runtime state.
-After marker substitution, execution reuses the same parser, analyzer, catalog,
-descriptor, result, statement-context, storage, and SQLite paths as ordinary
-SQL text.
+This is not the binary prepared-statement protocol or a new query planner.
+Prepared statements are handle-local runtime state. `PREPARE` parses the SQL
+template once into MyLite's native statement representation; `EXECUTE` binds
+user-variable values to typed slots and reuses the retained AST, analyzer,
+catalog, descriptor, result, statement-context, storage, and SQLite paths.
 
 ## Sources
 
@@ -105,19 +105,19 @@ same parser path MySQL exposes.
 
 ### Parameter Markers
 
-The prepared SQL text may contain `?` markers where the current MyLite parser
-can validate the statement after replacing markers with `NULL`. Markers inside
-string literals, quoted identifiers, comments, or hint comments are ordinary
-text and do not count as parameter markers.
+The prepared SQL text may contain `?` markers where the prepared-only MyLite
+grammar admits value expressions. Markers inside string literals, quoted
+identifiers, comments, or hint comments are ordinary text and do not count as
+parameter markers. Direct SQL keeps parameters disabled and still rejects `?`.
 
 `EXECUTE ... USING` binds only user variables. Uninitialized variables and
-`NULL` variables bind as SQL `NULL`. Integer and boolean user variables bind as
-decimal integer literals. Fixed-decimal user variables bind as decimal source
-text. String user variables bind as single-quoted string literals with
-MyLite-owned escaping. The bound SQL is then parsed and dispatched through the
-same internal statement execution path as direct SQL text, so descriptor
-resolution, catalog authority, SQLite identifier quoting, parameter binding
-inside physical plans, result metadata, diagnostics, warning counts, and
+`NULL` variables bind as SQL NULL. Signed and unsigned integer values use native
+integer slots when representable. Fixed-decimal and string values bind through
+length-aware value storage, preserving embedded NUL bytes and ensuring quotes,
+comment delimiters, and operators remain data under every SQL mode. Execution
+does not reconstruct, normalize, lex, or parse the SQL template again.
+Descriptor resolution, catalog authority, SQLite identifier quoting, physical
+parameter binding, result metadata, diagnostics, warning counts, and
 affected-row behavior remain owned by existing statement implementations.
 
 This slice deliberately does not admit parameter markers outside prepared SQL,
@@ -127,7 +127,7 @@ or identifier/keyword/table-name markers.
 ### Unsupported Prepared Content
 
 The inner prepared statement may be any currently supported single MyLite SQL
-statement after marker replacement, except `PREPARE`, `EXECUTE`, and
+statement that admits native preparation, except `PREPARE`, `EXECUTE`, and
 `DEALLOCATE PREPARE` / `DROP PREPARE`, which return the verified unsupported
 prepared-command diagnostic.
 
@@ -160,31 +160,29 @@ deallocate_prepare_statement ::= DEALLOCATE PREPARE identifier.
 deallocate_prepare_statement ::= DROP PREPARE identifier.
 ```
 
-`PARAMETER` tokens remain unmapped in ordinary parser input. They are handled
-only by the prepared-statement runtime scanner while validating and expanding a
-prepared SQL string.
+`PARAMETER` tokens remain unmapped in ordinary parser input. Prepared parsing
+maps them to indexed parameter AST nodes in lexical order.
 
 ## Architecture
 
 - Public API: no ABI or public-header change. SQL prepared statements are used
   through `mylite_execute()`.
 - Statement context: outer `PREPARE`, `EXECUTE`, and deallocation statements
-  use normal statement-context diagnostics and row-count snapshots. `EXECUTE`
-  creates an inner statement context for the expanded SQL and exposes the inner
-  result object without recursively entering the public API.
+  use normal statement-context diagnostics and row-count snapshots. Native
+  execution creates the inner statement context and transfers its buffered
+  result object without reparsing or recursively entering the public API.
 - Lexer/parser/AST: parser adds lifecycle AST nodes but does not make `?`
   valid in direct SQL.
 - Runtime session state: owns a growable vector of prepared statement entries
-  containing source SQL, marker count, lexer modes, default database, and
-  connection character-set/collation context, plus a small user-variable
-  value-kind tag needed for safe marker rendering. Entries are zero-init safe
-  and freed on close.
+  containing an owned native statement handle plus lexer modes, default
+  database, and connection character-set/collation context. Entries are
+  zero-init safe and finalize their statement on deallocation or connection
+  close.
 - Analyzer/planner: no separate prepared-statement planner is introduced.
-  Prepare-time validation parses a marker-normalized SQL string and stores the
-  original source plus immutable prepare context. Execute-time expansion uses
-  the captured lexer mode, and the existing analyzer/planner resolves the
-  expanded SQL under statement-effective schema and collation accessors without
-  changing observable session-variable values.
+  Prepare parses indexed parameters and retains the owned normalized SQL and
+  AST. The existing analyzer/planner resolves each execution under the captured
+  statement-effective schema and collation accessors without changing
+  observable session-variable values.
 - Catalog/storage/VFS: no catalog rows, descriptor versions, generation
   counters, SQLite schema text, `.mylite` preamble, or shifted SQLite payload
   invariants change.
@@ -210,7 +208,7 @@ The slice covers these diagnostics:
 - `1243 / HY000` for unknown statement handlers during `EXECUTE` or
   deallocation;
 - `1295 / HY000` for preparing prepared-statement lifecycle commands;
-- existing diagnostics from the executed statement after marker expansion;
+- existing diagnostics from the executed statement after parameter binding;
 - allocation failures as `MYLITE_NOMEM`;
 - public API misuse remains unchanged.
 
@@ -246,8 +244,5 @@ snapshot path.
 - No direct SQL parameters outside `PREPARE`/`EXECUTE`.
 - No persistent prepared statements.
 - No prepared lifecycle commands inside prepared SQL.
-- No additional SQL statement compatibility beyond whatever the expanded SQL
+- No additional SQL statement compatibility beyond whatever the prepared SQL
   already supports directly.
-- No typed SQL-level parameter descriptors; marker values are still rendered as
-  SQL literals before parsing, subject to the documented value-kind and binary
-  limitations.

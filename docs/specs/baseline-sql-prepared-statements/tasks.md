@@ -8,14 +8,14 @@
 - [x] Add parser/AST support for `PREPARE`, `EXECUTE`, and
   `DEALLOCATE PREPARE` / `DROP PREPARE`.
 - [x] Add handle-local prepared statement storage with zero-init-safe cleanup.
-- [x] Preserve enough user-variable value kind to render `EXECUTE ... USING`
-  parameters safely.
-- [x] Add marker counting, prepare-time validation, and execute-time expansion
-  without admitting direct `?` SQL.
+- [x] Preserve user-variable value kinds and bind `EXECUTE ... USING` through
+  native length-aware parameter slots without interpreting value bytes as SQL.
+- [x] Parse and count prepared-only markers without admitting direct `?` SQL.
 - [x] Capture prepare-time lexer, default-database, character-set, and collation
   context while preserving execute-time parameter values, session-variable
   readback, and runtime validation modes.
-- [x] Route expanded execution through existing statement execution semantics.
+- [x] Retain the native statement and route bound execution through existing
+  statement semantics without normalization, lexing, or parsing.
 - [x] Add MySQL-runtime expectation script.
 - [x] Add parser/runtime C tests and CMake registration.
 - [x] Update compatibility docs for the exact supported subset.

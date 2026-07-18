@@ -752,6 +752,9 @@ static int execute_prepared_materialized_statement(mylite_stmt *stmt) {
         stmt->has_materialized_rows = true;
         stmt->completion_published = true;
         result = NULL;
+    } else if (rc == MYLITE_OK) {
+        stmt->completed_result = result;
+        result = NULL;
     }
     mylite_result_free(result);
     if (stmt->has_context) {
@@ -1320,6 +1323,23 @@ static int prepare_cursor_select_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (stmt->normalized_sql.owned_sql == NULL) {
+        char *owned_sql = NULL;
+
+        if (stmt->normalized_sql.sql_size == SIZE_MAX) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        owned_sql = malloc(stmt->normalized_sql.sql_size + 1U);
+        if (owned_sql == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(owned_sql, stmt->normalized_sql.sql, stmt->normalized_sql.sql_size);
+        owned_sql[stmt->normalized_sql.sql_size] = '\0';
+        stmt->normalized_sql.sql = owned_sql;
+        stmt->normalized_sql.owned_sql = owned_sql;
+    }
     stmt->has_normalized_sql = true;
 
     mylite_statement_context_init(&stmt->context);
@@ -1694,6 +1714,8 @@ static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
     }
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
+    mylite_result_free(stmt->completed_result);
+    stmt->completed_result = NULL;
     stmt->has_materialized_rows = false;
     stmt->completion_published = false;
     result_column_metadata_context_deinit(&stmt->metadata_context);
@@ -1836,6 +1858,8 @@ static void release_cursor_statement_resources(mylite_stmt *stmt) {
     }
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
+    mylite_result_free(stmt->completed_result);
+    stmt->completed_result = NULL;
     if (stmt->has_parse_result) {
         mylite_sql_parse_result_deinit(&stmt->parse_result);
         stmt->has_parse_result = false;

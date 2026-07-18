@@ -452,7 +452,7 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.system_variable_override_count = 0U;
     database->session.system_variable_override_capacity = 0U;
     for (size_t index = 0U; index < database->session.prepared_statement_count; ++index) {
-        free(database->session.prepared_statements[index].sql);
+        (void)mylite_stmt_finalize(database->session.prepared_statements[index].statement);
     }
     free(database->session.prepared_statements);
     database->session.prepared_statements = NULL;

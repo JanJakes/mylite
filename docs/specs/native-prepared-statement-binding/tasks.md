@@ -9,7 +9,8 @@
 - [x] Migrate the core PHP extension.
 - [x] Migrate the mysqli replacement.
 - [x] Migrate the PDO driver.
+- [x] Migrate SQL-level `PREPARE`/`EXECUTE` to retained native statements.
 - [ ] Add core, PHP, sanitizer, and performance coverage.
-- [ ] Update public API and compatibility documentation.
+- [x] Update public API and compatibility documentation.
 - [ ] Run complete core, PHP, application, and MySQL verification.
 - [ ] Review ABI, ownership, diagnostics, performance, and binary size.

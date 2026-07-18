@@ -40,6 +40,8 @@ complete.
   path.
 - [x] Migrate PDO to native binding while preserving PDO type and lifetime
   semantics.
+- [x] Migrate SQL `PREPARE`/`EXECUTE` to a retained native statement with typed,
+  length-aware user-variable binding and no execute-time SQL reconstruction.
 - [ ] Cover markers in strings, identifiers, ordinary comments, executable
   comments, binary data, embedded NULs, all relevant SQL modes, repeated
   execution, schema invalidation, and prepare-time versus execute-time errors.

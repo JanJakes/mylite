@@ -171,6 +171,7 @@ static int test_prepared_statement_lifecycle(void) {
 
 static int test_prepared_statement_source_variables_and_dml(void) {
     char path[test_path_capacity];
+    static const unsigned char binary_parameter[] = {'a', 0U, 'b'};
     static const char *const updated_columns[] = {"id", "v"};
     static const char *const updated_values[] = {"2", "two-updated"};
     static const char *const all_columns[] = {"id", "v"};
@@ -183,6 +184,7 @@ static int test_prepared_statement_source_variables_and_dml(void) {
     static const char *const decimal_columns[] = {"v"};
     static const char *const decimal_values[] = {"-1.50", "1.00"};
     mylite_db *database = NULL;
+    mylite_result *binary_result = NULL;
     int failures = make_test_path(path, sizeof(path), "prepared-source-dml");
 
     if (failures != 0) {
@@ -283,6 +285,34 @@ static int test_prepared_statement_source_variables_and_dml(void) {
     );
     failures +=
         expect_statement_result(database, "DEALLOCATE PREPARE decimals", 0, "deallocate decimal");
+
+    failures += execute_statement_ok(database, "SELECT UNHEX('610062') INTO @binary_value");
+    failures += execute_statement_ok(database, "PREPARE binary_value FROM 'SELECT ? AS payload'");
+    failures += execute_ok(database, "EXECUTE binary_value USING @binary_value", &binary_result);
+    if (binary_result != NULL) {
+        failures += expect_size(
+            mylite_result_value_size(binary_result, 0U, 0U),
+            sizeof(binary_parameter),
+            "embedded NUL parameter size"
+        );
+        if (mylite_result_value_bytes(binary_result, 0U, 0U) == NULL ||
+            memcmp(
+                mylite_result_value_bytes(binary_result, 0U, 0U),
+                binary_parameter,
+                sizeof(binary_parameter)
+            ) != 0) {
+            fprintf(stderr, "embedded NUL parameter: unexpected value bytes\n");
+            ++failures;
+        }
+    }
+    mylite_result_free(binary_result);
+    binary_result = NULL;
+    failures += expect_statement_result(
+        database,
+        "DEALLOCATE PREPARE binary_value",
+        0,
+        "deallocate binary value"
+    );
 
     failures +=
         execute_statement_ok(database, "PREPARE escstmt FROM 'SELECT id FROM t WHERE v <=> ?'");

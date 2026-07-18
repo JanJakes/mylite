@@ -2,12 +2,15 @@
 
 set -eu
 
-ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
 MANIFEST="${MYLITE_MYSQL_EXPECTATIONS_MANIFEST:-$ROOT_DIR/tools/mysql-runtime-expectations-ci.txt}"
+SHARD_INDEX="${MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX:-}"
+SHARD_COUNT="${MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT:-}"
 
 failures=0
 total=0
+manifest_script_index=0
 
 fail() {
     printf '%s\n' "run-mysql-runtime-expectations: $1" >&2
@@ -24,6 +27,21 @@ verify_mysql_runtime() {
         8.4.9*) ;;
         *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
     esac
+}
+
+validate_shard_configuration() {
+    if [ -z "$SHARD_INDEX" ] && [ -z "$SHARD_COUNT" ]; then
+        return
+    fi
+    case "$SHARD_INDEX" in
+        '' | *[!0-9]*) fail "shard index must be a nonnegative integer" ;;
+    esac
+    case "$SHARD_COUNT" in
+        '' | *[!0-9]*) fail "shard count must be a nonnegative integer" ;;
+    esac
+    if [ "$SHARD_COUNT" -eq 0 ] || [ "$SHARD_INDEX" -ge "$SHARD_COUNT" ]; then
+        fail "shard index $SHARD_INDEX is outside shard count $SHARD_COUNT"
+    fi
 }
 
 run_expectation_script() {
@@ -60,6 +78,23 @@ run_expectation_script() {
     fi
 }
 
+run_manifest_script() {
+    script=$1
+    case "$script" in
+        '' | '#'*)
+            return
+            ;;
+    esac
+
+    script_index=$manifest_script_index
+    manifest_script_index=$((manifest_script_index + 1))
+    if [ -n "$SHARD_COUNT" ] && [ $((script_index % SHARD_COUNT)) -ne "$SHARD_INDEX" ]; then
+        return
+    fi
+    run_expectation_script "$script"
+}
+
+validate_shard_configuration
 verify_mysql_runtime
 
 if [ "$#" -gt 0 ]; then
@@ -71,7 +106,7 @@ else
         fail "missing expectation manifest: $MANIFEST"
     fi
     while IFS= read -r script || [ -n "$script" ]; do
-        run_expectation_script "$script"
+        run_manifest_script "$script"
     done <"$MANIFEST"
 fi
 
@@ -79,4 +114,9 @@ if [ "$failures" -ne 0 ]; then
     fail "$failures of $total expectation scripts failed"
 fi
 
-printf '%s\n' "run-mysql-runtime-expectations: $total scripts passed"
+if [ -n "$SHARD_COUNT" ]; then
+    printf '%s\n' \
+        "run-mysql-runtime-expectations: $total scripts passed in shard $SHARD_INDEX/$SHARD_COUNT"
+else
+    printf '%s\n' "run-mysql-runtime-expectations: $total scripts passed"
+fi

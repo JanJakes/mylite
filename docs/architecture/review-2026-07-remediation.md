@@ -407,10 +407,16 @@ complete.
   Every native test has a bounded timeout and functional label, concurrency
   tests retain serial resource controls, and all native CI configurations
   publish JUnit results on success or failure.
-- [ ] Create stable compatibility claim IDs and enforce
-  claim-to-spec-to-MySQL-fixture-to-native-test-to-CI mappings.
-- [ ] Run changed MySQL fixtures on pull requests and all 792 scripts in
-  sharded nightly/release tiers.
+- [x] Create stable compatibility claim IDs and enforce
+  claim-to-spec-to-MySQL-fixture-to-native-test-to-CI mappings. The committed
+  evidence manifest now covers all 700 unique green rows, verifies named
+  function coverage, and rejects missing specs, unregistered native tests,
+  absent CI jobs, or incomplete MySQL manifests.
+- [x] Run changed MySQL fixtures on pull requests and all 793 scripts in
+  sharded nightly/release tiers. Pull requests select directly changed probes
+  plus fixtures mapped from changed specs and native tests. A reusable
+  scheduled/manual workflow runs the complete sorted corpus in eight isolated
+  MySQL 8.4.9 shards and is callable by the release workflow.
 - [ ] Add coverage reports with ratcheted module thresholds.
 - [ ] Add stable-runner benchmark history and statistically tolerant
   regression checks.

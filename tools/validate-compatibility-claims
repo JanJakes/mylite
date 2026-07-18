@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+
+import csv
+import hashlib
+import re
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+COMPATIBILITY = ROOT / "COMPATIBILITY.md"
+CLAIMS = ROOT / "docs/compatibility/claims.tsv"
+ALL_MYSQL = ROOT / "tools/mysql-runtime-expectations-all.txt"
+CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
+EXPECTED_FIELDS = [
+    "claim_id",
+    "row_fingerprint",
+    "kind",
+    "specs",
+    "mysql_fixtures",
+    "native_tests",
+    "application_runners",
+    "ci_tiers",
+]
+CLAIM_ID_PATTERN = re.compile(r"claim-[a-z0-9]+(?:-[a-z0-9]+)*$")
+ROW_FINGERPRINT_PATTERN = re.compile(r"[0-9a-f]{16}$")
+
+
+def fail(message):
+    print("validate-compatibility-claims: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def split_paths(value):
+    if value == "-":
+        return []
+    return [item for item in value.split(";") if item]
+
+
+def parse_green_claims():
+    claims = []
+    section = None
+    in_baseline = False
+
+    for line_number, line in enumerate(COMPATIBILITY.read_text(encoding="utf-8").splitlines(), 1):
+        if line == "## Baseline Compatibility":
+            in_baseline = True
+            continue
+        if line == "## Detailed Compatibility Tables":
+            break
+        if not in_baseline:
+            continue
+        if line.startswith("### "):
+            section = line[4:].strip()
+            continue
+        if not line.startswith("|"):
+            continue
+        cells = re.split(r"(?<!\\)\|", line)[1:-1]
+        cells = [cell.strip() for cell in cells]
+        if len(cells) < 2 or cells[1] != "✅":
+            continue
+        if section is None:
+            raise ValueError("green row at line {} has no section".format(line_number))
+        claims.append((section, cells[0], line_number))
+    return claims
+
+
+def row_fingerprint(section, feature):
+    value = "{}\0{}".format(section, feature).encode("utf-8")
+    return hashlib.sha256(value).hexdigest()[:16]
+
+
+def read_claim_manifest():
+    with CLAIMS.open(encoding="utf-8", newline="") as claims_file:
+        reader = csv.DictReader(claims_file, delimiter="\t")
+        if reader.fieldnames != EXPECTED_FIELDS:
+            raise ValueError("unexpected claim manifest header")
+        return list(reader)
+
+
+def read_manifest_paths(path):
+    entries = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        entry = line.strip()
+        if entry and not entry.startswith("#"):
+            entries.append(entry)
+    return entries
+
+
+def evidence_mentions_named_function(path, function_name):
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9_]){}\s*\(".format(re.escape(function_name)),
+        re.IGNORECASE,
+    )
+    return pattern.search((ROOT / path).read_text(encoding="utf-8", errors="replace")) is not None
+
+
+def validate_claim_files(claim, feature, all_mysql, cmake_text, ci_text):
+    errors = []
+    claim_id = claim["claim_id"]
+    fingerprint = claim["row_fingerprint"]
+    specs = split_paths(claim["specs"])
+    mysql_fixtures = split_paths(claim["mysql_fixtures"])
+    native_tests = split_paths(claim["native_tests"])
+    application_runners = split_paths(claim["application_runners"])
+    ci_tiers = split_paths(claim["ci_tiers"])
+
+    if not CLAIM_ID_PATTERN.fullmatch(claim_id):
+        errors.append("{} has an invalid stable ID".format(claim_id))
+    if not ROW_FINGERPRINT_PATTERN.fullmatch(fingerprint):
+        errors.append("{} has an invalid row fingerprint".format(claim_id))
+    if not specs:
+        errors.append("{} has no specification".format(claim_id))
+    for spec in specs:
+        if not spec.startswith("docs/specs/") or not spec.endswith("/specs.md"):
+            errors.append("{} has invalid spec path {}".format(claim_id, spec))
+        elif not (ROOT / spec).is_file():
+            errors.append("{} references missing spec {}".format(claim_id, spec))
+
+    if claim["kind"] == "mysql":
+        if not mysql_fixtures:
+            errors.append("{} has no MySQL fixture".format(claim_id))
+        if not native_tests:
+            errors.append("{} has no native test".format(claim_id))
+        if application_runners:
+            errors.append("{} unexpectedly lists application runners".format(claim_id))
+        required_tiers = {"pr-native", "nightly-mysql"}
+        if not required_tiers.issubset(ci_tiers):
+            errors.append("{} is missing native PR or nightly MySQL CI".format(claim_id))
+    elif claim["kind"] == "application":
+        if mysql_fixtures or native_tests:
+            errors.append("{} mixes application and MySQL/native evidence".format(claim_id))
+        if not application_runners:
+            errors.append("{} has no application runner".format(claim_id))
+        if len(ci_tiers) != 1 or not ci_tiers[0].startswith("pr-application:"):
+            errors.append("{} has invalid application CI mapping".format(claim_id))
+        else:
+            job = ci_tiers[0].split(":", 1)[1]
+            if not re.search(r"^  {}:$".format(re.escape(job)), ci_text, re.MULTILINE):
+                errors.append("{} references missing CI job {}".format(claim_id, job))
+    else:
+        errors.append("{} has unknown kind {}".format(claim_id, claim["kind"]))
+
+    for fixture in mysql_fixtures:
+        if fixture not in all_mysql:
+            errors.append("{} fixture is absent from full manifest: {}".format(claim_id, fixture))
+        if not (ROOT / fixture).is_file():
+            errors.append("{} references missing fixture {}".format(claim_id, fixture))
+    for native_test in native_tests:
+        native_path = ROOT / native_test
+        if not native_path.is_file():
+            errors.append("{} references missing native test {}".format(claim_id, native_test))
+        elif native_path.name not in cmake_text:
+            errors.append("{} native test is not registered by CMake: {}".format(claim_id, native_test))
+    function_match = re.match(r"`([A-Za-z][A-Za-z0-9_]*)\(\)", feature)
+    if claim["kind"] == "mysql" and function_match is not None:
+        function_name = function_match.group(1)
+        if mysql_fixtures and not any(
+            evidence_mentions_named_function(path, function_name) for path in mysql_fixtures
+        ):
+            errors.append("{} MySQL fixture does not exercise {}()".format(claim_id, function_name))
+        if native_tests and not any(
+            evidence_mentions_named_function(path, function_name) for path in native_tests
+        ):
+            errors.append("{} native test does not exercise {}()".format(claim_id, function_name))
+    for runner in application_runners:
+        if not (ROOT / runner).is_file():
+            errors.append("{} references missing application runner {}".format(claim_id, runner))
+    return errors
+
+
+def main():
+    errors = []
+    try:
+        green_claims = parse_green_claims()
+        manifest_claims = read_claim_manifest()
+    except (OSError, ValueError) as error:
+        return fail(str(error))
+
+    green_by_fingerprint = {
+        row_fingerprint(section, feature): (section, feature, line)
+        for section, feature, line in green_claims
+    }
+    all_mysql_entries = read_manifest_paths(ALL_MYSQL)
+    actual_mysql = sorted(
+        str(path.relative_to(ROOT))
+        for path in (ROOT / "packages/libmylite/tests").glob("mysql_*_expectations.sh")
+    )
+    if all_mysql_entries != sorted(set(all_mysql_entries)):
+        errors.append("full MySQL manifest must be unique and sorted")
+    if all_mysql_entries != actual_mysql:
+        missing = sorted(set(actual_mysql) - set(all_mysql_entries))
+        stale = sorted(set(all_mysql_entries) - set(actual_mysql))
+        errors.append("full MySQL manifest mismatch; missing={} stale={}".format(missing, stale))
+
+    claim_ids = set()
+    manifest_by_fingerprint = {}
+    cmake_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "packages/libmylite/cmake").glob("*.cmake")
+    )
+    ci_text = CI_WORKFLOW.read_text(encoding="utf-8")
+    for claim in manifest_claims:
+        claim_id = claim["claim_id"]
+        fingerprint = claim["row_fingerprint"]
+        if claim_id in claim_ids:
+            errors.append("duplicate claim ID {}".format(claim_id))
+        claim_ids.add(claim_id)
+        if fingerprint in manifest_by_fingerprint:
+            errors.append("duplicate claim row fingerprint {}".format(fingerprint))
+        manifest_by_fingerprint[fingerprint] = claim
+        feature = green_by_fingerprint.get(fingerprint, ("", "", 0))[1]
+        errors.extend(
+            validate_claim_files(claim, feature, set(all_mysql_entries), cmake_text, ci_text)
+        )
+
+    if len(green_by_fingerprint) != len(green_claims):
+        errors.append("green compatibility rows contain a duplicate section/feature pair")
+    for fingerprint, (section, feature, line_number) in green_by_fingerprint.items():
+        if fingerprint not in manifest_by_fingerprint:
+            errors.append("green row at line {} has no claim mapping: {} / {}".format(
+                line_number, section, feature
+            ))
+    for fingerprint, claim in manifest_by_fingerprint.items():
+        if fingerprint not in green_by_fingerprint:
+            errors.append("{} maps a missing or non-green row fingerprint {}".format(
+                claim["claim_id"], fingerprint
+            ))
+
+    if errors:
+        for error in errors:
+            print("validate-compatibility-claims: {}".format(error), file=sys.stderr)
+        return 1
+    print(
+        "validate-compatibility-claims: {} green claims and {} MySQL fixtures verified".format(
+            len(green_claims), len(all_mysql_entries)
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

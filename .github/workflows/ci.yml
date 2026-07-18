@@ -12,6 +12,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  compatibility-evidence:
+    name: compatibility-evidence
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Validate compatibility claims and MySQL corpus
+        run: tools/validate-compatibility-claims
+
+      - name: Check expectation tooling syntax
+        run: |
+          sh -n tools/run-mysql-runtime-expectations
+          sh -n tools/select-changed-mysql-runtime-expectations
+
+      - name: Test expectation tooling
+        run: tools/test-mysql-runtime-expectation-tools
+
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -220,6 +238,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
 
       - name: Start MySQL 8.4.9
         run: |
@@ -242,6 +262,33 @@ jobs:
 
       - name: Run MySQL runtime expectation scripts
         run: tools/run-mysql-runtime-expectations
+
+      - name: Select changed MySQL runtime expectations
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
+          HEAD_REVISION: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p build
+          tools/select-changed-mysql-runtime-expectations \
+            "$BASE_REVISION" "$HEAD_REVISION" > build/mysql-runtime-expectations-changed.txt
+          cat build/mysql-runtime-expectations-changed.txt
+
+      - name: Run changed MySQL runtime expectations
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -s build/mysql-runtime-expectations-changed.txt ]; then
+            xargs tools/run-mysql-runtime-expectations \
+              < build/mysql-runtime-expectations-changed.txt
+          fi
+
+      - name: Upload MySQL expectation selection
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mysql-runtime-expectations-selection
+          path: build/mysql-runtime-expectations-changed.txt
+          if-no-files-found: ignore
 
   wordpress-phpunit:
     name: wordpress-phpunit-mysqli-mylite

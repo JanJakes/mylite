@@ -1,0 +1,62 @@
+name: Full MySQL Runtime Expectations
+
+on:
+  push:
+    tags:
+      - 'v*'
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mysql-runtime-expectations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-mysql-runtime-expectations:
+    name: mysql-runtime-expectations-${{ matrix.shard }}-of-8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Start MySQL 8.4.9
+        run: |
+          docker run \
+            --name mylite-mysql-849 \
+            -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+            -e MYSQL_ROOT_HOST=% \
+            -d mysql:8.4.9@sha256:14690274f4967ba207939c97dd79a8d6604f1d532218ea6be69c0001ddd2d45f \
+            --skip-log-bin
+          for _ in $(seq 1 120); do
+            if docker exec mylite-mysql-849 mysqladmin --protocol=TCP -h127.0.0.1 -uroot ping --silent; then
+              docker exec mylite-mysql-849 mysql --protocol=TCP -h127.0.0.1 -uroot \
+                --batch --raw --skip-column-names -e 'SELECT VERSION();'
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs mylite-mysql-849
+          exit 1
+
+      - name: Run full MySQL expectation shard
+        env:
+          MYLITE_MYSQL_EXPECTATIONS_MANIFEST: tools/mysql-runtime-expectations-all.txt
+          MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX: ${{ matrix.shard }}
+          MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT: 8
+        run: tools/run-mysql-runtime-expectations
+
+      - name: Show MySQL logs
+        if: failure()
+        run: docker logs mylite-mysql-849

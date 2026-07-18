@@ -1,0 +1,73 @@
+#!/usr/bin/env sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+ALL_MANIFEST="$ROOT_DIR/tools/mysql-runtime-expectations-all.txt"
+CI_MANIFEST="$ROOT_DIR/tools/mysql-runtime-expectations-ci.txt"
+CLAIMS="$ROOT_DIR/docs/compatibility/claims.tsv"
+
+fail() {
+    printf '%s\n' "select-changed-mysql-runtime-expectations: $1" >&2
+    exit 1
+}
+
+if [ "$#" -ne 2 ]; then
+    fail "usage: $0 <base-revision> <head-revision>"
+fi
+if [ ! -f "$ALL_MANIFEST" ]; then
+    fail "missing full expectation manifest"
+fi
+if [ ! -f "$CLAIMS" ]; then
+    fail "missing compatibility claim manifest"
+fi
+
+emit_claim_fixtures() {
+    changed_path=$1
+    awk -F '\t' -v changed_path="$changed_path" '
+        NR == 1 { next }
+        {
+            spec_count = split($4, specs, ";")
+            test_count = split($6, tests, ";")
+            matched = 0
+            for (item = 1; item <= spec_count; ++item) {
+                if (specs[item] == changed_path) {
+                    matched = 1
+                }
+            }
+            for (item = 1; item <= test_count; ++item) {
+                if (tests[item] == changed_path) {
+                    matched = 1
+                }
+            }
+            if (matched && $5 != "-") {
+                fixture_count = split($5, fixtures, ";")
+                for (item = 1; item <= fixture_count; ++item) {
+                    print fixtures[item]
+                }
+            }
+        }
+    ' "$CLAIMS"
+}
+
+git -C "$ROOT_DIR" diff --name-only "$1" "$2" -- packages/libmylite/tests \
+    docs/specs COMPATIBILITY.md docs/compatibility/claims.tsv \
+    tools/run-mysql-runtime-expectations tools/validate-compatibility-claims \
+    | while IFS= read -r path; do
+        case "$path" in
+            packages/libmylite/tests/mysql_*_expectations.sh)
+                if ! grep -Fqx "$path" "$ALL_MANIFEST"; then
+                    fail "changed expectation is absent from the full manifest: $path"
+                fi
+                printf '%s\n' "$path"
+                ;;
+            docs/specs/*/specs.md | packages/libmylite/tests/*_test.c)
+                emit_claim_fixtures "$path"
+                ;;
+            COMPATIBILITY.md | docs/compatibility/claims.tsv | \
+                tools/run-mysql-runtime-expectations | tools/validate-compatibility-claims)
+                awk 'NF && $1 !~ /^#/' "$CI_MANIFEST"
+                ;;
+        esac
+    done \
+    | LC_ALL=C sort -u

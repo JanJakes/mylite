@@ -1,0 +1,66 @@
+#!/usr/bin/env sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mylite-mysql-tools.XXXXXX")
+LOG_PATH="$TEMP_DIR/executed.log"
+MANIFEST_PATH="$TEMP_DIR/manifest.txt"
+
+cleanup() {
+    rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT HUP INT TERM
+
+cat >"$TEMP_DIR/docker" <<'EOF'
+#!/usr/bin/env sh
+printf '%s\n' '8.4.9'
+EOF
+chmod +x "$TEMP_DIR/docker"
+
+for script_number in 0 1 2 3 4; do
+    cat >"$TEMP_DIR/expectation-$script_number.sh" <<'EOF'
+#!/usr/bin/env sh
+printf '%s\n' "$(basename "$0")" >>"$MYLITE_EXPECTATION_TEST_LOG"
+EOF
+done
+
+{
+    printf '%s\n' '# test manifest' ''
+    for script_number in 0 1 2 3 4; do
+        printf '%s/expectation-%s.sh\n' "$TEMP_DIR" "$script_number"
+    done
+} >"$MANIFEST_PATH"
+
+expect_shard() {
+    shard_index=$1
+    expected=$2
+
+    : >"$LOG_PATH"
+    PATH="$TEMP_DIR:$PATH" \
+        MYLITE_EXPECTATION_TEST_LOG="$LOG_PATH" \
+        MYLITE_MYSQL_EXPECTATIONS_MANIFEST="$MANIFEST_PATH" \
+        MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX="$shard_index" \
+        MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT=3 \
+        "$ROOT_DIR/tools/run-mysql-runtime-expectations" >/dev/null
+    actual=$(LC_ALL=C sort "$LOG_PATH")
+    if [ "$actual" != "$expected" ]; then
+        printf '%s\n' "unexpected shard $shard_index output: [$actual]" >&2
+        return 1
+    fi
+}
+
+expect_shard 0 "$(printf '%s\n' expectation-0.sh expectation-3.sh)"
+expect_shard 1 "$(printf '%s\n' expectation-1.sh expectation-4.sh)"
+expect_shard 2 "expectation-2.sh"
+
+if PATH="$TEMP_DIR:$PATH" \
+    MYLITE_MYSQL_EXPECTATIONS_MANIFEST="$MANIFEST_PATH" \
+    MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX=3 \
+    MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT=3 \
+    "$ROOT_DIR/tools/run-mysql-runtime-expectations" >/dev/null 2>&1; then
+    printf '%s\n' 'out-of-range shard unexpectedly succeeded' >&2
+    exit 1
+fi
+
+printf '%s\n' 'test-mysql-runtime-expectation-tools: passed'

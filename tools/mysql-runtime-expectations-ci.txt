@@ -1,6 +1,6 @@
 # High-signal MySQL 8.4.9 runtime expectations for regular CI.
 # Keep this set broad enough to catch compatibility drift while avoiding the
-# cost of running the full 600+ script corpus on every push.
+# cost of running the complete corpus on every push.
 packages/libmylite/tests/mysql_baseline_compression_random_functions_expectations.sh
 packages/libmylite/tests/mysql_baseline_temporary_savepoint_ddl_expectations.sh
 packages/libmylite/tests/mysql_baseline_savepoint_lifecycle_expectations.sh

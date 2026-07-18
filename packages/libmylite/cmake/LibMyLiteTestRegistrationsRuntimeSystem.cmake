@@ -9,6 +9,17 @@
     )
   endif()
 
+  if(MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS)
+    add_test(
+      NAME libmylite.runtime.allocator_failpoint
+      COMMAND mylite_runtime_allocator_failpoint_test
+    )
+    set_tests_properties(
+      libmylite.runtime.allocator_failpoint
+      PROPERTIES LABELS "fault-injection;runtime"
+    )
+  endif()
+
   add_test(
     NAME libmylite.runtime.system_table_lookup
     COMMAND mylite_runtime_system_table_lookup_test

@@ -268,6 +268,21 @@ if(MYLITE_ENABLE_PROFILING)
   )
 endif()
 
+if(MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS)
+  target_sources(mylite PRIVATE src/runtime/mylite_test_allocator.c)
+  set(mylite_test_allocator
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/mylite_test_allocator.h"
+  )
+  if(MSVC)
+    target_compile_options(mylite PRIVATE "/FI${mylite_test_allocator}")
+  else()
+    target_compile_options(mylite PRIVATE -include "${mylite_test_allocator}")
+  endif()
+  set_source_files_properties(src/runtime/mylite_test_allocator.c PROPERTIES
+    COMPILE_DEFINITIONS MYLITE_TEST_ALLOCATOR_IMPLEMENTATION=1
+  )
+endif()
+
 target_include_directories(mylite
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

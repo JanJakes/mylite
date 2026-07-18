@@ -11,6 +11,17 @@
     mylite_configure_c_target(mylite_runtime_profile_test)
   endif()
 
+  if(MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS)
+    add_executable(mylite_runtime_allocator_failpoint_test
+      tests/runtime_allocator_failpoint_test.c
+    )
+    target_link_libraries(mylite_runtime_allocator_failpoint_test PRIVATE MyLite::mylite)
+    target_include_directories(mylite_runtime_allocator_failpoint_test PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    mylite_configure_c_target(mylite_runtime_allocator_failpoint_test)
+  endif()
+
   add_executable(mylite_runtime_system_table_lookup_test
     tests/runtime_system_table_lookup_test.c
   )

@@ -23,9 +23,22 @@ option(MYLITE_BUILD_PHP_EXTENSIONS "Build MyLite PHP extensions" OFF)
 option(MYLITE_ENABLE_PROFILING "Enable opt-in runtime profiling instrumentation" OFF)
 option(MYLITE_ENABLE_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(MYLITE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(
+  MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS
+  "Enable thread-local allocator failpoints for qualification tests"
+  OFF
+)
 
 if(MYLITE_ENABLE_ASAN_UBSAN AND MYLITE_ENABLE_TSAN)
   message(FATAL_ERROR "MYLITE_ENABLE_ASAN_UBSAN and MYLITE_ENABLE_TSAN are mutually exclusive")
+endif()
+
+if(MYLITE_ENABLE_PROFILING AND MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS)
+  message(FATAL_ERROR "Profiling and allocator failpoint shims are mutually exclusive")
+endif()
+
+if(MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS AND NOT BUILD_TESTING)
+  message(FATAL_ERROR "Allocator failpoints require BUILD_TESTING")
 endif()
 
 if((MYLITE_ENABLE_ASAN_UBSAN OR MYLITE_ENABLE_TSAN)

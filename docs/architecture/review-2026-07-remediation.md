@@ -245,7 +245,14 @@ complete.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization.
 - [ ] Separate mutable session publication from statement-owned collections.
-- [ ] Add scoped allocator and VFS failpoints used by qualification tests.
+- [x] Add scoped allocator and VFS failpoints used by qualification tests.
+  The dedicated `fault-injection` preset force-includes a test-only allocator
+  shim into first-party library sources; production and profiling builds keep
+  direct libc allocation. Its one-shot thread-local control sweeps every MyLite
+  allocation reached by open and representative statement execution, checking
+  fatal `MYLITE_NOMEM` ownership, valid optional-allocation fallback, and
+  post-failure handle recovery. Shifted-VFS failpoints remain independently
+  scoped by operation and thread.
 
 ### Measured performance work
 

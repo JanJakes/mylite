@@ -72,6 +72,16 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "MYLITE_ENABLE_TSAN": "ON"
       }
+    },
+    {
+      "name": "fault-injection",
+      "displayName": "Debug build with deterministic allocator failpoints",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/fault-injection",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -102,6 +112,10 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+    {
+      "name": "fault-injection",
+      "configurePreset": "fault-injection"
     },
     {
       "name": "format",
@@ -185,6 +199,18 @@
       },
       "environment": {
         "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
+      }
+    },
+    {
+      "name": "fault-injection",
+      "configurePreset": "fault-injection",
+      "filter": {
+        "include": {
+          "label": "fault-injection"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
       }
     }
   ],

@@ -4,6 +4,13 @@
 #include <string.h>
 
 static int test_empty_script(void);
+static int test_prepared_parameters(void);
+static void collect_parameter_indices(
+    const struct mylite_sql_ast_node *node,
+    size_t *indices,
+    size_t capacity,
+    size_t *count
+);
 static int test_use_statements(void);
 static int test_select_expression_list(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -15,6 +22,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_empty_script();
+    failures += test_prepared_parameters();
     failures += test_use_statements();
     failures += test_select_expression_list();
     failures += test_unary_and_parenthesized_expression();
@@ -44,6 +52,144 @@ static int test_empty_script(void) {
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
+}
+
+static int test_prepared_parameters(void) {
+    static const char select_sql[] =
+        "SELECT '?', ?, ? /* ? */ FROM t WHERE c = ? ORDER BY c LIMIT ? OFFSET ?";
+    static const char insert_sql[] = "INSERT INTO t VALUES (?, '?', ?)";
+    static const char update_sql[] = "UPDATE t SET c = ? WHERE id = ? LIMIT ?";
+    struct mylite_sql_parse_result result;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    size_t indices[8] = {0};
+    size_t count = 0U;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(select_sql, MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    status = mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = select_sql,
+            .length = strlen(select_sql),
+            .modes = 0U,
+            .allow_parameters = true,
+        },
+        &result
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        fprintf(
+            stderr,
+            "prepared SELECT: %s at offset %zu '%.*s'\n",
+            mylite_sql_parse_status_name(status),
+            result.error_token.offset,
+            (int)result.error_token.length,
+            result.error_token.text == NULL ? "" : result.error_token.text
+        );
+        ++failures;
+    }
+    collect_parameter_indices(result.root, indices, 8U, &count);
+    failures += parser_test_expect_true(
+        result.parameter_count == 5U,
+        "prepared SELECT reported parameter count"
+    );
+    if (count != 5U) {
+        fprintf(stderr, "prepared SELECT parameter count: expected 5, got %zu\n", count);
+        ++failures;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        failures += parser_test_expect_true(
+            indices[index] == index,
+            "prepared SELECT parameter lexical index"
+        );
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    count = 0U;
+    failures += mylite_sql_parse(
+                    (struct mylite_sql_parse_config){
+                        .input = insert_sql,
+                        .length = strlen(insert_sql),
+                        .modes = 0U,
+                        .allow_parameters = true,
+                    },
+                    &result
+                ) != MYLITE_SQL_PARSE_OK;
+    collect_parameter_indices(result.root, indices, 8U, &count);
+    failures += parser_test_expect_true(
+        result.parameter_count == 2U,
+        "prepared INSERT reported parameter count"
+    );
+    failures += parser_test_expect_true(count == 2U, "prepared INSERT parameter count");
+    failures += parser_test_expect_true(indices[0] == 0U, "prepared INSERT first parameter");
+    failures += parser_test_expect_true(indices[1] == 1U, "prepared INSERT second parameter");
+    mylite_sql_parse_result_deinit(&result);
+
+    count = 0U;
+    status = mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = update_sql,
+            .length = strlen(update_sql),
+            .modes = 0U,
+            .allow_parameters = true,
+        },
+        &result
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        fprintf(
+            stderr,
+            "prepared UPDATE: %s at offset %zu '%.*s'\n",
+            mylite_sql_parse_status_name(status),
+            result.error_token.offset,
+            (int)result.error_token.length,
+            result.error_token.text == NULL ? "" : result.error_token.text
+        );
+        ++failures;
+    }
+    collect_parameter_indices(result.root, indices, 8U, &count);
+    failures += parser_test_expect_true(
+        result.parameter_count == 3U,
+        "prepared UPDATE reported parameter count"
+    );
+    if (count != 3U) {
+        fprintf(stderr, "prepared UPDATE parameter count: expected 3, got %zu\n", count);
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += mylite_sql_parse(
+                    (struct mylite_sql_parse_config){
+                        .input = "SELECT * FROM ?",
+                        .length = strlen("SELECT * FROM ?"),
+                        .modes = 0U,
+                        .allow_parameters = true,
+                    },
+                    &result
+                ) != MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static void collect_parameter_indices(
+    const struct mylite_sql_ast_node *node,
+    size_t *indices,
+    size_t capacity,
+    size_t *count
+) {
+    if (node == NULL || indices == NULL || count == NULL) {
+        return;
+    }
+    if (node->kind == MYLITE_SQL_AST_PARAMETER) {
+        if (*count < capacity) {
+            indices[*count] = mylite_sql_ast_node_parameter_index(node);
+        }
+        ++*count;
+    }
+    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+         child = child->next_sibling) {
+        collect_parameter_indices(child, indices, capacity, count);
+    }
 }
 
 static int test_use_statements(void) {
@@ -1303,11 +1449,7 @@ static int test_comments_are_skipped(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT 1 /*!80000 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        executable_expression_sql,
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
+    failures += parser_test_parse_sql(executable_expression_sql, MYLITE_SQL_PARSE_OK, &result);
     select = parser_test_child_at(result.root, 0U);
     select_list = parser_test_child_at(select, 0U);
     select_item = parser_test_child_at(select_list, 0U);

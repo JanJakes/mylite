@@ -9,7 +9,9 @@
 
 struct mylite_sql_parser_state {
     struct mylite_sql_parse_result *result;
+    size_t next_parameter_index;
     unsigned int modes;
+    bool allow_parameters;
     bool accepted;
 };
 
@@ -2004,6 +2006,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token,
     enum mylite_sql_ast_literal_kind literal_kind
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_parameter(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_append_string_literal_segment(
     struct mylite_sql_parser_state *state,

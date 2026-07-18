@@ -4,6 +4,7 @@
 #include "mylite_ast.h"
 #include "mylite_lexer.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 enum mylite_sql_parse_status {
@@ -19,11 +20,13 @@ struct mylite_sql_parse_config {
     const char *input;
     size_t length;
     unsigned int modes;
+    bool allow_parameters;
 };
 
 struct mylite_sql_parse_result {
     struct mylite_sql_ast ast;
     struct mylite_sql_ast_node *root;
+    size_t parameter_count;
     enum mylite_sql_parse_status status;
     struct mylite_sql_token error_token;
     int parser_token;

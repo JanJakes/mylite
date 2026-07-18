@@ -86,12 +86,14 @@ static bool should_inject_parenthesized_row_constructor(
     const struct parenthesized_row_constructor_injection *injection
 );
 static bool token_can_name_immediate_function(const struct mylite_sql_token *token);
-static bool lexer_parenthesized_expression_has_top_level_comma(const struct mylite_sql_lexer *lexer
+static bool lexer_parenthesized_expression_has_top_level_comma(
+    const struct mylite_sql_lexer *lexer
 );
 static struct mylite_sql_token make_synthetic_row_constructor_token(
     const struct mylite_sql_token *left_paren
 );
-static bool parse_result_is_unsupported_utility_script(const struct mylite_sql_parse_result *result
+static bool parse_result_is_unsupported_utility_script(
+    const struct mylite_sql_parse_result *result
 );
 static enum mylite_sql_parse_status retry_unsupported_utility_parse(
     struct mylite_sql_parse_config config,
@@ -260,7 +262,9 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
 
     state = (struct mylite_sql_parser_state){
         .result = out_result,
+        .next_parameter_index = 0U,
         .modes = config.modes,
+        .allow_parameters = config.allow_parameters,
         .accepted = false,
     };
 
@@ -300,12 +304,16 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
     if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
         out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
     }
+    if (out_result->status == MYLITE_SQL_PARSE_OK) {
+        out_result->parameter_count = state.next_parameter_index;
+    }
 
     return out_result->status;
 }
 
 void mylite_sql_parser_reset_parse_result(struct mylite_sql_parse_result *out_result) {
     out_result->root = NULL;
+    out_result->parameter_count = 0U;
     out_result->status = MYLITE_SQL_PARSE_OK;
     out_result->error_token = (struct mylite_sql_token){0};
     out_result->parser_token = 0;
@@ -722,7 +730,8 @@ static bool token_can_name_immediate_function(const struct mylite_sql_token *tok
            !mylite_sql_parser_token_text_equals(token, "JOIN");
 }
 
-static bool lexer_parenthesized_expression_has_top_level_comma(const struct mylite_sql_lexer *lexer
+static bool lexer_parenthesized_expression_has_top_level_comma(
+    const struct mylite_sql_lexer *lexer
 ) {
     struct mylite_sql_lexer lookahead;
     int paren_depth = 1;
@@ -771,7 +780,8 @@ static struct mylite_sql_token make_synthetic_row_constructor_token(
     return token;
 }
 
-static bool parse_result_is_unsupported_utility_script(const struct mylite_sql_parse_result *result
+static bool parse_result_is_unsupported_utility_script(
+    const struct mylite_sql_parse_result *result
 ) {
     struct mylite_sql_ast_node *statement = NULL;
 

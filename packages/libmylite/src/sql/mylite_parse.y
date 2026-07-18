@@ -4554,6 +4554,9 @@ insert_value_list(A) ::= insert_value_list(B) COMMA insert_value(C). {
 insert_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+insert_value(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
+}
 insert_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
 }
@@ -4713,6 +4716,9 @@ insert_unix_timestamp_delta(A) ::= NULL(T). {
 
 update_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+update_value(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
 }
 update_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
@@ -8115,6 +8121,9 @@ introduced_predicate_literal_list(A) ::= introduced_predicate_literal_list(L) CO
 predicate_in_value(A) ::= predicate_integer_value(V). {
     A = V;
 }
+predicate_in_value(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
+}
 predicate_in_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
@@ -8222,6 +8231,9 @@ predicate_range_value(A) ::= row_scalar_numeric_predicate_expression(V). {
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
     A = V;
+}
+predicate_comparison_value(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
 }
 predicate_comparison_value(A) ::= qualified_identifier(V). {
     A = V;
@@ -9059,6 +9071,9 @@ predicate_integer_value(A) ::= FALSE(T). {
 predicate_scalar_literal(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+predicate_scalar_literal(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
+}
 predicate_scalar_literal(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
 }
@@ -9414,6 +9429,9 @@ update_limit_clause_opt(A) ::= LIMIT(L) limit_integer(C). {
 
 limit_integer(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+limit_integer(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
 }
 
 select_item_list(A) ::= first_select_item(B). {
@@ -13474,6 +13492,9 @@ case_else_opt(A) ::= ELSE(E) expression(B). {
 
 literal(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+literal(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
 }
 literal(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);

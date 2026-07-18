@@ -788,6 +788,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN = 779,
     MYLITE_SQL_AST_WITH_CLAUSE = 780,
     MYLITE_SQL_AST_COMMON_TABLE_EXPRESSION = 781,
+    MYLITE_SQL_AST_PARAMETER = 782,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -1017,6 +1018,10 @@ struct mylite_sql_ast_literal_payload {
     enum mylite_sql_ast_literal_kind kind;
 };
 
+struct mylite_sql_ast_parameter_payload {
+    size_t index;
+};
+
 struct mylite_sql_ast_expression_payload {
     enum mylite_sql_ast_operator operator_kind;
 };
@@ -1125,6 +1130,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_union_payload union_term;
     struct mylite_sql_ast_join_payload join;
     struct mylite_sql_ast_literal_payload literal;
+    struct mylite_sql_ast_parameter_payload parameter;
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
     struct mylite_sql_ast_varchar_type_payload varchar_type;
@@ -1208,6 +1214,7 @@ void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
 );
+void mylite_sql_ast_node_set_parameter_index(struct mylite_sql_ast_node *node, size_t index);
 void mylite_sql_ast_node_set_operator(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_operator operator_kind
@@ -1302,6 +1309,7 @@ enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(const struct mylite_
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node
 );
+size_t mylite_sql_ast_node_parameter_index(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_integer_type mylite_sql_ast_node_integer_type(
     const struct mylite_sql_ast_node *node
@@ -1391,7 +1399,8 @@ enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
 enum mylite_sql_ast_alter_algorithm mylite_sql_ast_node_alter_algorithm(
     const struct mylite_sql_ast_node *node
 );
-enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(const struct mylite_sql_ast_node *node
+enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(
+    const struct mylite_sql_ast_node *node
 );
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);

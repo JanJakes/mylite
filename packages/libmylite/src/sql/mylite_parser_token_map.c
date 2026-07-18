@@ -65,6 +65,17 @@ bool mylite_sql_parser_map_lexer_token(
         return true;
     }
 
+    if (token->kind == MYLITE_SQL_TOKEN_PARAMETER) {
+        if (state == NULL || !state->allow_parameters) {
+            return false;
+        }
+        *out_map = (struct mylite_sql_parser_token_map){
+            .parser_token = MYLITE_SQL_PARSE_PARAMETER,
+            .previous_token_was_dot = false,
+        };
+        return true;
+    }
+
     if (!map_direct_lexer_token(token->kind, &parser_token)) {
         switch (token->kind) {
         case MYLITE_SQL_TOKEN_KEYWORD:

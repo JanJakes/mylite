@@ -2,7 +2,7 @@
 
 - [x] Record the design and MySQL 8.4.9 authorities.
 - [x] Add focused MySQL 8.4.9 runtime expectations.
-- [ ] Add prepared-only parameter tokens and indexed AST nodes.
+- [x] Add prepared-only parameter tokens and indexed AST nodes.
 - [ ] Add typed public binding and reset APIs.
 - [ ] Add parameter descriptors to analysis and lowering.
 - [ ] Implement generation-safe reprepare and repeated execution.

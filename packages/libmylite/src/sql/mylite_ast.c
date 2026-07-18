@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 enum {
@@ -275,6 +276,14 @@ void mylite_sql_ast_node_set_literal_kind(
     }
 
     node->payload.literal.kind = literal_kind;
+}
+
+void mylite_sql_ast_node_set_parameter_index(struct mylite_sql_ast_node *node, size_t index) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.parameter.index = index;
 }
 
 void mylite_sql_ast_node_set_operator(
@@ -562,7 +571,8 @@ enum mylite_sql_ast_set_operator mylite_sql_ast_node_set_operator_kind(
     return node->payload.union_term.operator_kind;
 }
 
-enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(const struct mylite_sql_ast_node *node
+enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(
+    const struct mylite_sql_ast_node *node
 ) {
     if (node == NULL || node->kind != MYLITE_SQL_AST_FROM_JOIN) {
         return MYLITE_SQL_AST_JOIN_KIND_INNER;
@@ -582,6 +592,14 @@ enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     }
 
     return node->payload.literal.kind;
+}
+
+size_t mylite_sql_ast_node_parameter_index(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_PARAMETER) {
+        return SIZE_MAX;
+    }
+
+    return node->payload.parameter.index;
 }
 
 enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sql_ast_node *node) {
@@ -699,7 +717,8 @@ struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
     return node->payload.char_type.length_span;
 }
 
-enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_sql_ast_node *node
+enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(
+    const struct mylite_sql_ast_node *node
 ) {
     if (node == NULL || node->kind != MYLITE_SQL_AST_TEXT_TYPE) {
         return MYLITE_SQL_AST_TEXT_TYPE_NONE;
@@ -994,7 +1013,8 @@ enum mylite_sql_ast_alter_algorithm mylite_sql_ast_node_alter_algorithm(
     return node->payload.alter_table_options.algorithm;
 }
 
-enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(const struct mylite_sql_ast_node *node
+enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(
+    const struct mylite_sql_ast_node *node
 ) {
     if (node == NULL) {
         return MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED;
@@ -1037,6 +1057,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "qualified_wildcard";
     case MYLITE_SQL_AST_LITERAL:
         return "literal";
+    case MYLITE_SQL_AST_PARAMETER:
+        return "parameter";
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return "unary_expression";
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
@@ -2842,7 +2864,8 @@ const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direct
     return "unknown";
 }
 
-const char *mylite_sql_ast_column_visibility_name(enum mylite_sql_ast_column_visibility visibility
+const char *mylite_sql_ast_column_visibility_name(
+    enum mylite_sql_ast_column_visibility visibility
 ) {
     switch (visibility) {
     case MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE:

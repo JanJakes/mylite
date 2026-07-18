@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def digest(path):
+    checksum = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            checksum.update(block)
+    return checksum.hexdigest()
+
+
+def command_version(command, fallback):
+    try:
+        return subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return fallback
+
+
+def sqlite_version():
+    source = ROOT / "third_party/sqlite/amalgamation/sqlite3.h"
+    match = re.search(r'^#define SQLITE_VERSION\s+"([^"]+)"', source.read_text(encoding="utf-8"), re.M)
+    if match is None:
+        raise RuntimeError("cannot determine bundled SQLite version")
+    return match.group(1)
+
+
+def spdx_package(identifier, name, version, checksum=None):
+    package = {
+        "SPDXID": identifier,
+        "name": name,
+        "versionInfo": version,
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": False,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "copyrightText": "NOASSERTION",
+    }
+    if checksum is not None:
+        package["checksums"] = [{"algorithm": "SHA256", "checksumValue": checksum}]
+    return package
+
+
+def write_spdx(output_dir, version, commit, created, artifacts, components):
+    namespace_seed = "".join(record["sha256"] for record in artifacts)
+    namespace_digest = hashlib.sha256((commit + namespace_seed).encode("ascii")).hexdigest()
+    packages = []
+    relationships = []
+    for index, artifact in enumerate(artifacts, 1):
+        identifier = "SPDXRef-Artifact-{}".format(index)
+        packages.append(spdx_package(identifier, artifact["name"], version, artifact["sha256"]))
+        relationships.append({
+            "spdxElementId": "SPDXRef-DOCUMENT",
+            "relationshipType": "DESCRIBES",
+            "relatedSpdxElement": identifier,
+        })
+        for dependency in ("SPDXRef-SQLite", "SPDXRef-Zlib"):
+            relationships.append({
+                "spdxElementId": identifier,
+                "relationshipType": "DEPENDS_ON",
+                "relatedSpdxElement": dependency,
+            })
+        if "-php.tar.gz" in artifact["name"]:
+            relationships.append({
+                "spdxElementId": identifier,
+                "relationshipType": "DEPENDS_ON",
+                "relatedSpdxElement": "SPDXRef-PHP",
+            })
+    packages.extend((
+        spdx_package("SPDXRef-SQLite", "SQLite", components["sqlite"]),
+        spdx_package("SPDXRef-Zlib", "zlib", components["zlib"]),
+        spdx_package("SPDXRef-PHP", "PHP", components["php"]),
+    ))
+    document = {
+        "spdxVersion": "SPDX-2.3",
+        "dataLicense": "CC0-1.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "name": "MyLite {} release artifacts".format(version),
+        "documentNamespace": "https://github.com/mylite/mylite/spdx/{}".format(namespace_digest),
+        "creationInfo": {
+            "created": created,
+            "creators": ["Tool: tools/generate-release-metadata"],
+        },
+        "packages": packages,
+        "relationships": relationships,
+    }
+    (output_dir / "mylite-{}.spdx.json".format(version)).write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_provenance(output_dir, version, commit, epoch, artifacts, components):
+    server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    repository = os.environ.get("GITHUB_REPOSITORY", "mylite/mylite")
+    source_uri = "git+{}/{}.git@{}".format(server, repository, commit)
+    workflow_uri = "{}/{}/.github/workflows/release.yml@{}".format(server, repository, commit)
+    statement = {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [
+            {"name": record["name"], "digest": {"sha256": record["sha256"]}}
+            for record in artifacts
+        ],
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+            "buildDefinition": {
+                "buildType": "https://github.com/mylite/mylite/release-bundles/v1",
+                "externalParameters": {
+                    "version": version,
+                    "sourceDateEpoch": epoch,
+                    "components": components,
+                },
+                "internalParameters": {},
+                "resolvedDependencies": [
+                    {"uri": source_uri, "digest": {"gitCommit": commit}},
+                ],
+            },
+            "runDetails": {
+                "builder": {"id": workflow_uri},
+                "metadata": {
+                    "invocationId": os.environ.get("GITHUB_RUN_ID", "local"),
+                },
+            },
+        },
+    }
+    (output_dir / "mylite-{}.provenance.json".format(version)).write_text(
+        json.dumps(statement, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--artifacts-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--commit", required=True)
+    parser.add_argument("--source-date-epoch", type=int, required=True)
+    options = parser.parse_args()
+
+    try:
+        if re.fullmatch(r"[0-9a-f]{40}", options.commit) is None:
+            raise RuntimeError("commit must be a full lowercase Git object ID")
+        artifacts = [
+            {"name": path.name, "size": path.stat().st_size, "sha256": digest(path)}
+            for path in sorted(options.artifacts_dir.glob("*.tar.gz"))
+        ]
+        if not artifacts:
+            raise RuntimeError("no release archives found")
+        options.output_dir.mkdir(parents=True, exist_ok=True)
+        created = datetime.datetime.fromtimestamp(
+            options.source_date_epoch, datetime.timezone.utc
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        components = {
+            "sqlite": sqlite_version(),
+            "zlib": command_version(["pkg-config", "--modversion", "zlib"], "NOASSERTION"),
+            "php": command_version(["php", "-r", "echo PHP_VERSION;"], "NOASSERTION"),
+            "compiler": command_version(["cc", "--version"], "NOASSERTION").splitlines()[0],
+        }
+        (options.output_dir / "SHA256SUMS").write_text(
+            "".join("{}  {}\n".format(record["sha256"], record["name"]) for record in artifacts),
+            encoding="utf-8",
+        )
+        (options.output_dir / "release-manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": options.version,
+                    "commit": options.commit,
+                    "sourceDateEpoch": options.source_date_epoch,
+                    "created": created,
+                    "components": components,
+                    "artifacts": artifacts,
+                },
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        write_spdx(options.output_dir, options.version, options.commit, created, artifacts, components)
+        write_provenance(
+            options.output_dir,
+            options.version,
+            options.commit,
+            options.source_date_epoch,
+            artifacts,
+            components,
+        )
+    except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError) as error:
+        return fail(str(error))
+
+    print("generate-release-metadata: described {} release archives".format(len(artifacts)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

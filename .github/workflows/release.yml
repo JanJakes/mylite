@@ -1,0 +1,143 @@
+name: Release qualification
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Project version to qualify
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+
+  full-mysql:
+    uses: ./.github/workflows/mysql-runtime-expectations.yml
+
+  performance:
+    uses: ./.github/workflows/performance.yml
+
+  release-artifacts:
+    name: reproducible release artifacts
+    needs:
+      - quality
+      - full-mysql
+      - performance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Install release build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build php-cli php-dev pkg-config zlib1g-dev
+
+      - name: Resolve release identity
+        id: release
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          project_version=$(sed -n '/project(MyLite/,/)/s/^[[:space:]]*VERSION[[:space:]]*//p' CMakeLists.txt)
+          if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+            version=${GITHUB_REF_NAME#v}
+          elif [ -n "$INPUT_VERSION" ]; then
+            version=$INPUT_VERSION
+          else
+            version=$project_version
+          fi
+          if [ "$version" != "$project_version" ]; then
+            echo "release version $version does not match project version $project_version" >&2
+            exit 1
+          fi
+          {
+            printf 'version=%s\n' "$version"
+            printf 'commit=%s\n' "$(git rev-parse HEAD)"
+            printf 'epoch=%s\n' "$(git show -s --format=%ct HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Test release tooling
+        run: tools/test-release-tools
+
+      - name: Build first release set
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.release.outputs.epoch }}
+        run: |
+          tools/build-release-bundles \
+            --build-root build/release/first-build \
+            --output-dir build/release/first \
+            --version '${{ steps.release.outputs.version }}' \
+            --source-date-epoch "$SOURCE_DATE_EPOCH" \
+            --platform linux-x86_64
+
+      - name: Build second release set
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.release.outputs.epoch }}
+        run: |
+          tools/build-release-bundles \
+            --build-root build/release/second-build \
+            --output-dir build/release/second \
+            --version '${{ steps.release.outputs.version }}' \
+            --source-date-epoch "$SOURCE_DATE_EPOCH" \
+            --platform linux-x86_64
+
+      - name: Verify reproducibility and generate release metadata
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+          SOURCE_DATE_EPOCH: ${{ steps.release.outputs.epoch }}
+        run: |
+          mkdir -p build/release/final
+          tools/verify-release-reproducibility \
+            build/release/first build/release/second \
+            --output build/release/final/reproducibility.json
+          tools/test-release-bundles \
+            --artifacts-dir build/release/first \
+            --work-dir build/release/package-consumers
+          cp build/release/first/* build/release/final/
+          tools/generate-release-metadata \
+            --artifacts-dir build/release/final \
+            --output-dir build/release/final \
+            --version "$RELEASE_VERSION" \
+            --commit "$RELEASE_COMMIT" \
+            --source-date-epoch "$SOURCE_DATE_EPOCH"
+
+      - name: Attest release provenance
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: build/release/final/*.tar.gz
+
+      - name: Attest release SBOM
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: build/release/final/*.tar.gz
+          sbom-path: build/release/final/mylite-${{ steps.release.outputs.version }}.spdx.json
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mylite-${{ steps.release.outputs.version }}-linux-x86_64
+          path: build/release/final
+          if-no-files-found: error
+          retention-days: 90

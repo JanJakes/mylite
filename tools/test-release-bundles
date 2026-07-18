@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def fail(message):
+    print("test-release-bundles: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def run(command, environment=None):
+    subprocess.run(command, check=True, env=environment)
+
+
+def find_archive(artifacts_dir, suffix):
+    matches = sorted(artifacts_dir.glob("*{}.tar.gz".format(suffix)))
+    if len(matches) != 1:
+        raise RuntimeError("expected one {} release archive".format(suffix))
+    return matches[0]
+
+
+def extract_archive(archive, destination):
+    destination.mkdir(parents=True)
+    run(["tar", "-xzf", str(archive), "-C", str(destination)])
+    headers = list(destination.glob("*/usr/include/mylite/mylite.h"))
+    if len(headers) != 1:
+        raise RuntimeError("{} has an invalid install prefix".format(archive.name))
+    return headers[0].parents[2]
+
+
+def test_cmake_consumer(prefix, build_dir, shared=False):
+    run([
+        "cmake",
+        "-S",
+        str(ROOT / "tests/install-consumer"),
+        "-B",
+        str(build_dir),
+        "-GNinja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_PREFIX_PATH={}".format(prefix),
+    ])
+    run(["cmake", "--build", str(build_dir)])
+    environment = os.environ.copy()
+    if shared:
+        libraries = list(prefix.rglob("libmylite.so.0"))
+        if len(libraries) != 1:
+            raise RuntimeError("shared package has no versioned runtime library")
+        environment["LD_LIBRARY_PATH"] = str(libraries[0].parent)
+    run([str(build_dir / "mylite_install_consumer")], environment)
+
+
+def test_pkg_config_consumer(prefix, executable):
+    pkgconfig = list(prefix.rglob("pkgconfig/mylite.pc"))
+    if len(pkgconfig) != 1:
+        raise RuntimeError("static package has no pkg-config metadata")
+    environment = os.environ.copy()
+    environment["PKG_CONFIG_PATH"] = str(pkgconfig[0].parent)
+    pkg_config = Path("/usr/bin/pkg-config")
+    if not pkg_config.is_file():
+        executable_path = shutil.which("pkg-config")
+        if executable_path is None:
+            raise RuntimeError("pkg-config is required")
+        pkg_config = Path(executable_path)
+    arguments = subprocess.check_output(
+        [str(pkg_config), "--cflags", "--libs", "--static", "mylite"],
+        env=environment,
+        text=True,
+    )
+    run([
+        "cc",
+        str(ROOT / "tests/install-consumer/main.c"),
+        "-o",
+        str(executable),
+        *shlex.split(arguments),
+    ], environment)
+    run([str(executable)], environment)
+
+
+def test_php_modules(prefix):
+    module_directories = list(prefix.rglob("mylite/php"))
+    if len(module_directories) != 1:
+        raise RuntimeError("PHP package has no module directory")
+    module_directory = module_directories[0]
+    modules = [module_directory / name for name in ("mylite.so", "mysqli.so", "pdo_mylite.so")]
+    if not all(module.is_file() for module in modules):
+        raise RuntimeError("PHP package is missing a module")
+    run([
+        "php",
+        "-n",
+        "-d",
+        "extension=pdo.so",
+        "-d",
+        "extension={}".format(modules[0]),
+        "-d",
+        "extension={}".format(modules[1]),
+        "-d",
+        "extension={}".format(modules[2]),
+        "-r",
+        "exit(extension_loaded('mylite') && extension_loaded('mysqli') "
+        "&& extension_loaded('pdo_mylite') ? 0 : 1);",
+    ])
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--artifacts-dir", type=Path, required=True)
+    parser.add_argument("--work-dir", type=Path, required=True)
+    options = parser.parse_args()
+
+    try:
+        artifacts_dir = options.artifacts_dir.resolve(strict=True)
+        work_dir = options.work_dir.resolve()
+        shutil.rmtree(work_dir, ignore_errors=True)
+        work_dir.mkdir(parents=True)
+        static_prefix = extract_archive(
+            find_archive(artifacts_dir, "-static"), work_dir / "static"
+        )
+        shared_prefix = extract_archive(
+            find_archive(artifacts_dir, "-shared"), work_dir / "shared"
+        )
+        php_prefix = extract_archive(find_archive(artifacts_dir, "-php"), work_dir / "php")
+        test_cmake_consumer(static_prefix, work_dir / "static-consumer")
+        test_pkg_config_consumer(static_prefix, work_dir / "pkgconfig-consumer")
+        test_cmake_consumer(shared_prefix, work_dir / "shared-consumer", shared=True)
+        test_php_modules(php_prefix)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        return fail(str(error))
+
+    print("test-release-bundles: extracted package consumers passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

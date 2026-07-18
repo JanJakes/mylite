@@ -4,7 +4,7 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="${MYLITE_DRUPAL_DOCKER_IMAGE:-mylite-drupal-phpunit:php84}"
 drupal_repo="${MYLITE_DRUPAL_REPO:-https://git.drupalcode.org/project/drupal.git}"
-drupal_ref="${MYLITE_DRUPAL_REF:-11.3.11}"
+drupal_ref="${MYLITE_DRUPAL_REF:-ff73fbcaf9aa09e3a673921decb49d5ecbc7796f}"
 drupal_dir="${MYLITE_DRUPAL_DIR:-${root_dir}/build/drupal-core}"
 cmake_build_dir="${MYLITE_DRUPAL_CMAKE_BUILD_DIR:-${root_dir}/build/drupal-php-mylite}"
 cmake_build_type="${MYLITE_DRUPAL_CMAKE_BUILD_TYPE:-Release}"

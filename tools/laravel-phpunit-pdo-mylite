@@ -4,7 +4,7 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="${MYLITE_LARAVEL_DOCKER_IMAGE:-mylite-laravel-phpunit:php84}"
 laravel_repo="${MYLITE_LARAVEL_REPO:-https://github.com/laravel/framework.git}"
-laravel_ref="${MYLITE_LARAVEL_REF:-v12.62.0}"
+laravel_ref="${MYLITE_LARAVEL_REF:-f7e61eb1e0e06a38996802b769bce9127aec227c}"
 laravel_dir="${MYLITE_LARAVEL_DIR:-${root_dir}/build/laravel-framework}"
 suite_dir="${MYLITE_LARAVEL_SUITE_DIR:-${root_dir}/build/laravel-mylite-tests}"
 cmake_build_dir="${MYLITE_LARAVEL_CMAKE_BUILD_DIR:-${root_dir}/build/laravel-php-mylite}"

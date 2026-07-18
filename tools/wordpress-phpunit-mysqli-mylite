@@ -4,7 +4,7 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="${MYLITE_WORDPRESS_DOCKER_IMAGE:-mylite-wordpress-phpunit:php84}"
 wordpress_repo="${MYLITE_WORDPRESS_REPO:-https://github.com/WordPress/wordpress-develop.git}"
-wordpress_ref="${MYLITE_WORDPRESS_REF:-trunk}"
+wordpress_ref="${MYLITE_WORDPRESS_REF:-6ddfc9d9b532c6e95c1266165149815895e2eb56}"
 wordpress_dir="${MYLITE_WORDPRESS_DIR:-${root_dir}/build/wordpress-develop}"
 phpunit_tools_dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR:-${root_dir}/build/wordpress-phpunit-tools}"
 cmake_build_dir="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR:-${root_dir}/build/wordpress-php-mylite}"

@@ -4,7 +4,7 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 image="${MYLITE_MEDIAWIKI_DOCKER_IMAGE:-mylite-mediawiki-phpunit:php83}"
 mediawiki_repo="${MYLITE_MEDIAWIKI_REPO:-https://github.com/wikimedia/mediawiki.git}"
-mediawiki_ref="${MYLITE_MEDIAWIKI_REF:-REL1_42}"
+mediawiki_ref="${MYLITE_MEDIAWIKI_REF:-30d9707511274f256db07dc71010ae0bc6e33d28}"
 mediawiki_dir="${MYLITE_MEDIAWIKI_DIR:-${root_dir}/build/mediawiki-core}"
 cmake_build_dir="${MYLITE_MEDIAWIKI_CMAKE_BUILD_DIR:-${root_dir}/build/mediawiki-php-mylite}"
 cmake_build_type="${MYLITE_MEDIAWIKI_CMAKE_BUILD_TYPE:-Release}"

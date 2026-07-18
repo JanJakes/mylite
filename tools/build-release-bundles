@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import platform
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def fail(message):
+    print("build-release-bundles: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def run(command, environment=None):
+    subprocess.run(command, check=True, env=environment)
+
+
+def configure_and_install(build_dir, stage_dir, definitions, source_date_epoch):
+    environment = os.environ.copy()
+    environment["SOURCE_DATE_EPOCH"] = str(source_date_epoch)
+    command = [
+        "cmake",
+        "-S",
+        str(ROOT),
+        "-B",
+        str(build_dir),
+        "-GNinja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX=/usr",
+        "-DBUILD_TESTING=OFF",
+        "-DMYLITE_BUILD_TOOLS=OFF",
+        "-DMYLITE_ENABLE_LTO=OFF",
+        "-DMYLITE_ENABLE_SECTION_GC=ON",
+    ]
+    command.extend("-D{}={}".format(name, value) for name, value in definitions.items())
+    run(command, environment)
+    run(["cmake", "--build", str(build_dir)], environment)
+    run(["cmake", "--build", str(build_dir), "--target", "mylite_size_report"], environment)
+    if definitions.get("BUILD_SHARED_LIBS") == "ON":
+        run(["cmake", "--build", str(build_dir), "--target", "mylite_abi_check"], environment)
+    install_environment = environment.copy()
+    install_environment["DESTDIR"] = str(stage_dir)
+    run(["cmake", "--install", str(build_dir), "--strip"], install_environment)
+
+
+def copy_package(source, package_root):
+    shutil.copytree(source, package_root, symlinks=True)
+
+
+def remove_php_modules(package_root):
+    for path in list(package_root.rglob("php")):
+        if path.is_dir() and path.parent.name == "mylite":
+            shutil.rmtree(path)
+
+
+def require_matches(package_root, patterns):
+    for pattern in patterns:
+        if not any(package_root.glob(pattern)):
+            raise RuntimeError("release package is missing {}".format(pattern))
+
+
+def write_archive(package_root, output_path, source_date_epoch):
+    run([
+        "tar",
+        "--sort=name",
+        "--mtime=@{}".format(source_date_epoch),
+        "--owner=0",
+        "--group=0",
+        "--numeric-owner",
+        "--format=gnu",
+        "--use-compress-program=gzip -n",
+        "-cf",
+        str(output_path),
+        "-C",
+        str(package_root.parent),
+        package_root.name,
+    ])
+
+
+def package_variant(stage, package_root, output_path, source_date_epoch, patterns, remove_php=False):
+    copy_package(stage, package_root)
+    if remove_php:
+        remove_php_modules(package_root)
+    require_matches(package_root, patterns)
+    write_archive(package_root, output_path, source_date_epoch)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--build-root", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--source-date-epoch", type=int, required=True)
+    parser.add_argument("--platform", default="linux-{}".format(platform.machine()))
+    options = parser.parse_args()
+
+    try:
+        if options.source_date_epoch < 0 or not options.version:
+            raise RuntimeError("invalid release version or source date epoch")
+        build_root = options.build_root.resolve()
+        output_dir = options.output_dir.resolve()
+        shutil.rmtree(build_root, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)
+        build_root.mkdir(parents=True)
+        output_dir.mkdir(parents=True)
+
+        php_build = build_root / "php-static-build"
+        php_stage = build_root / "php-static-stage"
+        shared_build = build_root / "shared-build"
+        shared_stage = build_root / "shared-stage"
+        configure_and_install(
+            php_build,
+            php_stage,
+            {"BUILD_SHARED_LIBS": "OFF", "MYLITE_BUILD_PHP_EXTENSIONS": "ON"},
+            options.source_date_epoch,
+        )
+        configure_and_install(
+            shared_build,
+            shared_stage,
+            {"BUILD_SHARED_LIBS": "ON", "MYLITE_BUILD_PHP_EXTENSIONS": "OFF"},
+            options.source_date_epoch,
+        )
+
+        prefix = "mylite-{}-{}".format(options.version, options.platform)
+        static_root = build_root / "{}-static".format(prefix)
+        php_root = build_root / "{}-php".format(prefix)
+        shared_root = build_root / "{}-shared".format(prefix)
+        package_variant(
+            php_stage,
+            static_root,
+            output_dir / "{}-static.tar.gz".format(prefix),
+            options.source_date_epoch,
+            ("usr/**/libmylite.a", "usr/**/libmylite_sqlite.a", "usr/include/mylite/mylite.h"),
+            remove_php=True,
+        )
+        package_variant(
+            php_stage,
+            php_root,
+            output_dir / "{}-php.tar.gz".format(prefix),
+            options.source_date_epoch,
+            (
+                "usr/**/mylite/php/mylite.so",
+                "usr/**/mylite/php/mysqli.so",
+                "usr/**/mylite/php/pdo_mylite.so",
+            ),
+        )
+        package_variant(
+            shared_stage,
+            shared_root,
+            output_dir / "{}-shared.tar.gz".format(prefix),
+            options.source_date_epoch,
+            ("usr/**/libmylite.so.*", "usr/include/mylite/mylite.h"),
+        )
+        shutil.copy2(
+            php_build / "packages/libmylite/mylite-size-report.txt",
+            output_dir / "{}-static-size-report.txt".format(prefix),
+        )
+        shutil.copy2(
+            shared_build / "packages/libmylite/mylite-size-report.txt",
+            output_dir / "{}-shared-size-report.txt".format(prefix),
+        )
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        return fail(str(error))
+
+    for archive in sorted(output_dir.glob("*.tar.gz")):
+        print(archive)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

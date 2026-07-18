@@ -24,6 +24,14 @@ The `mylite_size_report` target writes a reproducible section/object and sorted
 symbol report beside the library. Production packaging should strip installed
 artifacts, not the build-tree artifacts that tests and ABI checks inspect.
 
+The formal tag/manual release workflow calls every reusable quality tier,
+rebuilds static, shared, and PHP packages twice in separate build trees, and
+requires byte-identical compressed archives. Release evidence includes SHA-256
+checksums, size reports, a source/build manifest, an SPDX 2.3 SBOM, local
+SLSA-style provenance, and GitHub-signed provenance/SBOM attestations when the
+repository supports them. Component license fields remain `NOASSERTION`; the
+SBOM records inventory without selecting a project license.
+
 ## CMake consumers
 
 The installed CMake package exports `MyLite::mylite` and `MyLite::headers`.

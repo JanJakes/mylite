@@ -418,7 +418,7 @@ complete.
   scheduled/manual workflow runs the complete sorted corpus in eight isolated
   MySQL 8.4.9 shards and is callable by the release workflow.
 - [x] Add coverage reports with ratcheted module thresholds. The complete
-  685-test Clang run records process-isolated profiles and reports runtime at
+  686-test Clang run records process-isolated profiles and reports runtime at
   80.19/97.81/67.49%, SQL at 81.05/97.75/61.56%, and storage at
   81.04/91.55/67.46% for lines/functions/branches. CI enforces nearby nonzero
   module ratchets and retains the HTML, JSON, text, and CTest evidence.
@@ -427,8 +427,14 @@ complete.
   ABBA samples to one CPU and tmpfs, compare medians with scaled-MAD standard
   error allowances, reject high-noise runs, and retain raw/environment evidence
   for 90 days. This avoids false absolute comparisons across hosted hardware.
-- [ ] Pin mutable CI/container/tool inputs and add a formal reproducible release
+- [x] Pin mutable CI/container/tool inputs and add a formal reproducible release
   workflow with checksums, provenance, and an SBOM excluding license selection.
+  Actions and container bases use immutable digests, application suites use
+  exact source commits, and release qualification calls CI, full MySQL, and
+  paired performance workflows. Static, shared, and PHP archives are rebuilt
+  twice and hash-compared before SHA-256, SPDX 2.3, SLSA-style provenance, size,
+  and supported GitHub attestation evidence is published. Component licenses
+  remain `NOASSERTION` pending the separate license decision.
 
 ## Final closure audit
 

@@ -7,7 +7,7 @@
 - [x] Add parameter descriptors to analysis and lowering.
 - [x] Implement generation-safe reprepare and repeated execution.
 - [x] Migrate the core PHP extension.
-- [ ] Migrate the mysqli replacement.
+- [x] Migrate the mysqli replacement.
 - [ ] Migrate the PDO driver.
 - [ ] Add core, PHP, sanitizer, and performance coverage.
 - [ ] Update public API and compatibility documentation.

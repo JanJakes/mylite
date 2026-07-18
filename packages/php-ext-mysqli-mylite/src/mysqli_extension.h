@@ -141,6 +141,8 @@ typedef struct {
     zval result;
     zval *bound_params;
     zval *bound_results;
+    zend_string **long_data;
+    mylite_stmt *native_stmt;
     zend_string *query;
     zend_string *types;
     char sqlstate[6];
@@ -240,6 +242,21 @@ bool mylite_mysqli_stmt_prepare_internal(
     size_t sql_length
 );
 bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params);
+bool mylite_mysqli_stmt_reset_internal(mylite_mysqli_stmt *stmt);
+bool mylite_mysqli_stmt_close_internal(mylite_mysqli_stmt *stmt);
+bool mylite_mysqli_stmt_send_long_data_internal(
+    mylite_mysqli_stmt *stmt,
+    zend_long parameter,
+    const char *data,
+    size_t data_length
+);
+bool mylite_mysqli_link_execute_query(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *params,
+    zval *out_result
+);
 void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value);
 void mylite_mysqli_result_fetch_object(mylite_mysqli_result *result, zval *return_value);
 void mylite_mysqli_result_fetch_column(
@@ -254,16 +271,6 @@ void mylite_mysqli_result_fetch_field(
 );
 zend_long mylite_mysqli_result_num_rows(const mylite_mysqli_result *result);
 void mylite_mysqli_result_discard(mylite_mysqli_result *result);
-zend_string *mylite_mysqli_interpolate_query(
-    zend_string *query,
-    zval *params,
-    uint32_t param_count
-);
-zend_string *mylite_mysqli_interpolate_bound_params(
-    zend_string *query,
-    zval *params,
-    uint32_t param_count
-);
 zend_string *mylite_mysqli_quote_identifier(const char *value, size_t length);
 zend_string *mylite_mysqli_escape_string(const char *value, size_t length);
 void mylite_mysqli_set_error(

@@ -47,6 +47,48 @@ expect_same(
 $result = $mysqli->execute_query('SELECT value FROM items WHERE id = ?', [2]);
 expect_same(['value' => '200'], $result->fetch_assoc(), 'execute_query result');
 
+expect_true($mysqli->query('SET SESSION sql_mode = \'NO_BACKSLASH_ESCAPES\''), 'set SQL mode');
+$hostile = "Grace\\'); DROP TABLE items; --";
+$hostileStatement = $mysqli->prepare('SELECT ? AS value');
+expect_true($hostileStatement->execute([$hostile]), 'execute hostile statement');
+expect_same(
+    ['value' => $hostile],
+    $hostileStatement->get_result()->fetch_assoc(),
+    'hostile statement value'
+);
+expect_same(
+    ['value' => $hostile],
+    $mysqli->execute_query('SELECT ? AS value', [$hostile])->fetch_assoc(),
+    'hostile execute_query value'
+);
+expect_same(
+    ['row_count' => '2'],
+    $mysqli->query('SELECT COUNT(*) AS row_count FROM items')->fetch_assoc(),
+    'bound text changed the database'
+);
+
+$typed = $mysqli->prepare('SELECT ? AS null_value, ? AS empty_value, ? AS binary_value');
+expect_true($typed->execute([null, '', "a\0b"]), 'execute typed values');
+expect_same(
+    ['null_value' => null, 'empty_value' => '', 'binary_value' => "a\0b"],
+    $typed->get_result()->fetch_assoc(),
+    'typed values'
+);
+
+expect_true($mysqli->query('CREATE TABLE payloads (id INT PRIMARY KEY, data BLOB)'), 'create blobs');
+$blobStatement = $mysqli->prepare('INSERT INTO payloads VALUES (?, ?)');
+$blobId = 1;
+$blobValue = null;
+expect_true($blobStatement->bind_param('ib', $blobId, $blobValue), 'bind blob');
+expect_true($blobStatement->send_long_data(1, "a\0"), 'send first blob chunk');
+expect_true($blobStatement->send_long_data(1, 'b'), 'send second blob chunk');
+expect_true($blobStatement->execute(), 'execute blob insert');
+expect_same(
+    ['data' => "a\0b"],
+    $mysqli->query('SELECT data FROM payloads WHERE id = 1')->fetch_assoc(),
+    'blob chunks'
+);
+
 $commented = $mysqli->prepare("SELECT ? AS value /* ignored ? marker */ -- ignored ? marker\n");
 expect_same(1, $commented->param_count, 'commented marker count');
 expect_true($commented->execute([300]), 'commented execute');
@@ -55,10 +97,20 @@ expect_same(['value' => '300'], $commented->get_result()->fetch_assoc(), 'commen
 $dashControl = $mysqli->prepare("SELECT ? AS value --\v ignored ? marker\n");
 expect_same(1, $dashControl->param_count, 'dash control marker count');
 
-$tooFew = $mysqli->prepare('SELECT ? AS first_value, ? AS second_value');
+$tooFew = $mysqli->prepare('SELECT ? AS a_value, ? AS b_value');
 expect_same(2, $tooFew->param_count, 'too few marker count');
 expect_false($tooFew->execute([1]), 'too few execute params');
 expect_false(
-    $mysqli->execute_query('SELECT ? AS first_value, ? AS second_value', [1]),
+    $mysqli->execute_query('SELECT ? AS a_value, ? AS b_value', [1]),
     'too few execute_query params'
 );
+
+$reset = $mysqli->prepare('SELECT ? AS value');
+expect_true($reset->execute([1]), 'execute reset statement');
+expect_true($reset->reset(), 'reset statement');
+expect_true($reset->execute([2]), 'execute reset statement again');
+expect_same(['value' => '2'], $reset->get_result()->fetch_assoc(), 'reset result');
+expect_true($reset->close(), 'close statement');
+expect_false($reset->execute([3]), 'execute closed statement');
+
+expect_false($mysqli->prepare('SELECT * FROM missing_table'), 'prepare missing table');

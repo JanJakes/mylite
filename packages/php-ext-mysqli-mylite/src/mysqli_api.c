@@ -133,7 +133,6 @@ PHP_FUNCTION(mysqli_execute_query) {
     char *query = NULL;
     size_t query_length = 0U;
     zval *params = NULL;
-    zend_string *sql = NULL;
     mylite_mysqli_link *link = NULL;
 
     ZEND_PARSE_PARAMETERS_START(2, 3)
@@ -144,34 +143,9 @@ PHP_FUNCTION(mysqli_execute_query) {
     ZEND_PARSE_PARAMETERS_END();
 
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
-    sql = params == NULL ? zend_string_init(query, query_length, false)
-                         : mylite_mysqli_interpolate_query(
-                               zend_string_init(query, query_length, false),
-                               params,
-                               zend_hash_num_elements(Z_ARRVAL_P(params))
-                           );
-    if (sql == NULL) {
-        mylite_mysqli_set_error(
-            link,
-            MYLITE_MYSQLI_ERROR_CLIENT,
-            "HY000",
-            "parameter count mismatch"
-        );
-        mylite_mysqli_report_link_error(link);
+    if (!mylite_mysqli_link_execute_query(link, query, query_length, params, return_value)) {
         RETURN_FALSE;
     }
-
-    if (!mylite_mysqli_link_query(
-            link,
-            ZSTR_VAL(sql),
-            ZSTR_LEN(sql),
-            MYLITE_MYSQLI_STORE_RESULT,
-            return_value
-        )) {
-        zend_string_release(sql);
-        RETURN_FALSE;
-    }
-    zend_string_release(sql);
 }
 
 PHP_FUNCTION(mysqli_real_query) {
@@ -1492,7 +1466,7 @@ PHP_FUNCTION(mysqli_stmt_close) {
     Z_PARAM_OBJECT_OF_CLASS(stmt_zval, mylite_mysqli_stmt_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_stmt_close_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))));
 }
 
 PHP_FUNCTION(mysqli_stmt_data_seek) {
@@ -1522,7 +1496,7 @@ PHP_FUNCTION(mysqli_stmt_reset) {
     Z_PARAM_OBJECT_OF_CLASS(stmt_zval, mylite_mysqli_stmt_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_stmt_reset_internal(mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval))));
 }
 
 PHP_FUNCTION(mysqli_stmt_attr_get) {
@@ -1566,10 +1540,12 @@ PHP_FUNCTION(mysqli_stmt_send_long_data) {
     Z_PARAM_STRING(data, data_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)param_num;
-    (void)data;
-    (void)data_length;
-    RETURN_FALSE;
+    RETURN_BOOL(mylite_mysqli_stmt_send_long_data_internal(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval)),
+        param_num,
+        data,
+        data_length
+    ));
 }
 
 PHP_FUNCTION(mysqli_stmt_errno) {
@@ -1878,8 +1854,6 @@ PHP_METHOD(mysqli, execute_query) {
     size_t query_length = 0U;
     zval *params = NULL;
     zval *object = getThis();
-    zend_string *query_string = NULL;
-    zend_string *sql = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 2)
     Z_PARAM_STRING(query, query_length)
@@ -1890,35 +1864,15 @@ PHP_METHOD(mysqli, execute_query) {
     if (object == NULL) {
         RETURN_FALSE;
     }
-    query_string = zend_string_init(query, query_length, false);
-    sql = params == NULL ? query_string
-                         : mylite_mysqli_interpolate_query(
-                               query_string,
-                               params,
-                               zend_hash_num_elements(Z_ARRVAL_P(params))
-                           );
-    if (sql == NULL) {
-        mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(object));
-        mylite_mysqli_set_error(
-            link,
-            MYLITE_MYSQLI_ERROR_CLIENT,
-            "HY000",
-            "parameter count mismatch"
-        );
-        mylite_mysqli_report_link_error(link);
-        RETURN_FALSE;
-    }
-    if (!mylite_mysqli_link_query(
+    if (!mylite_mysqli_link_execute_query(
             mylite_mysqli_link_from_obj(Z_OBJ_P(object)),
-            ZSTR_VAL(sql),
-            ZSTR_LEN(sql),
-            MYLITE_MYSQLI_STORE_RESULT,
+            query,
+            query_length,
+            params,
             return_value
         )) {
-        zend_string_release(sql);
         RETURN_FALSE;
     }
-    zend_string_release(sql);
 }
 
 PHP_METHOD(mysqli, real_query) {
@@ -2849,8 +2803,10 @@ PHP_METHOD(mysqli_stmt, free_result) {
 }
 
 PHP_METHOD(mysqli_stmt, close) {
+    mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_stmt_close_internal(stmt));
 }
 
 PHP_METHOD(mysqli_stmt, data_seek) {
@@ -2871,8 +2827,10 @@ PHP_METHOD(mysqli_stmt, data_seek) {
 }
 
 PHP_METHOD(mysqli_stmt, reset) {
+    mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_stmt_reset_internal(stmt));
 }
 
 PHP_METHOD(mysqli_stmt, attr_get) {
@@ -2910,10 +2868,12 @@ PHP_METHOD(mysqli_stmt, send_long_data) {
     Z_PARAM_STRING(data, data_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)param_num;
-    (void)data;
-    (void)data_length;
-    RETURN_FALSE;
+    RETURN_BOOL(mylite_mysqli_stmt_send_long_data_internal(
+        mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis())),
+        param_num,
+        data,
+        data_length
+    ));
 }
 
 PHP_METHOD(mysqli_stmt, get_warnings) {

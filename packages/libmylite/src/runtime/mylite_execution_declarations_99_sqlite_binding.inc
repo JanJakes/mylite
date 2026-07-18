@@ -209,11 +209,6 @@ static int convert_insert_duplicate_arithmetic_value(
     const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
     struct planned_value *out_value
 );
-static int parse_insert_duplicate_arithmetic_delta(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    uint64_t *out_delta
-);
 static int assign_insert_duplicate_arithmetic_result(
     struct mylite_db *database,
     const struct insert_duplicate_arithmetic_result_request *request,

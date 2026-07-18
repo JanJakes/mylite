@@ -707,7 +707,9 @@ static int plan_update_arithmetic_assignment(
 
     out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC;
     out_plan->arithmetic_operator = operator_kind;
-    out_plan->arithmetic_delta_node = delta;
+    out_plan->arithmetic_delta_is_valid =
+        parse_unsigned_integer_literal(&delta->span, &out_plan->arithmetic_delta_magnitude) ==
+        MYLITE_OK;
 
     return validate_update_arithmetic_assignment_target(database, out_plan);
 }

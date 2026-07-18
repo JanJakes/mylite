@@ -1508,14 +1508,14 @@ static int prepare_update_arithmetic_assignment(
     struct planned_update *executable_plan
 ) {
     const uint64_t int64_positive_max = 9223372036854775807ULL;
-    uint64_t delta = 0U;
+    uint64_t delta = plan->arithmetic_delta_magnitude;
     bool has_non_null_row = false;
     const struct update_arithmetic_range_check any_non_null_check = {
         .condition = UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL,
         .threshold = 0,
         .error_kind = UPDATE_ARITHMETIC_RANGE_ERROR_COLUMN,
     };
-    int rc = parse_update_arithmetic_delta(database, plan->arithmetic_delta_node, &delta);
+    int rc = plan->arithmetic_delta_is_valid ? MYLITE_OK : MYLITE_ERROR;
 
     if (rc != MYLITE_OK || delta > int64_positive_max) {
         rc = update_arithmetic_condition_matches_row(
@@ -1541,20 +1541,6 @@ static int prepare_update_arithmetic_assignment(
     }
 
     return validate_update_arithmetic_range(database, plan, delta);
-}
-
-static int parse_update_arithmetic_delta(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    uint64_t *out_delta
-) {
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_update_arithmetic_unsupported_error(database);
-        return MYLITE_ERROR;
-    }
-
-    return parse_unsigned_integer_literal(&literal->span, out_delta);
 }
 
 static int validate_update_arithmetic_range(

@@ -238,6 +238,10 @@ complete.
   typed columns/scalar expressions plus owned normalized labels only. GROUP
   BY, HAVING, ORDER BY, derived-source construction, lowering, and result
   metadata consume those analyzed names without expression/alias AST access.
+  UPDATE and `ON DUPLICATE KEY UPDATE` same-column arithmetic plans now retain
+  the parsed delta and its validity instead of a literal AST pointer. Deferred
+  execution errors remain conditional on a matching UPDATE row or an actual
+  duplicate-key evaluation.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization.
 - [ ] Separate mutable session publication from statement-owned collections.

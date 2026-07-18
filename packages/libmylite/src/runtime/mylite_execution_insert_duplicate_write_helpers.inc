@@ -754,7 +754,6 @@ static int convert_insert_duplicate_arithmetic_value(
     const size_t column_index = duplicate_assignment->assignment_column_index;
     const struct planned_value *current_value = NULL;
     uint64_t delta = 0U;
-    int rc = MYLITE_OK;
 
     if (current_values == NULL || column_index >= plan->column_count) {
         set_runtime_error(database, "invalid insert duplicate arithmetic assignment plan");
@@ -771,14 +770,11 @@ static int convert_insert_duplicate_arithmetic_value(
         return MYLITE_ERROR;
     }
 
-    rc = parse_insert_duplicate_arithmetic_delta(
-        database,
-        duplicate_assignment->arithmetic_delta_node,
-        &delta
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
+    if (!duplicate_assignment->arithmetic_delta_is_valid) {
+        set_insert_duplicate_arithmetic_delta_out_of_range_error(database);
+        return MYLITE_ERROR;
     }
+    delta = duplicate_assignment->arithmetic_delta;
 
     struct insert_duplicate_arithmetic_result_request request = {
         .column = &plan->columns[column_index],
@@ -789,24 +785,6 @@ static int convert_insert_duplicate_arithmetic_value(
     };
 
     return assign_insert_duplicate_arithmetic_result(database, &request, out_value);
-}
-
-static int parse_insert_duplicate_arithmetic_delta(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    uint64_t *out_delta
-) {
-    const uint64_t int64_positive_max = 9223372036854775807ULL;
-
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
-        parse_unsigned_integer_literal(&literal->span, out_delta) != MYLITE_OK ||
-        *out_delta > int64_positive_max) {
-        set_insert_duplicate_arithmetic_delta_out_of_range_error(database);
-        return MYLITE_ERROR;
-    }
-
-    return MYLITE_OK;
 }
 
 static int assign_insert_duplicate_arithmetic_result(

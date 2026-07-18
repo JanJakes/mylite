@@ -761,7 +761,10 @@ static int plan_insert_duplicate_same_column_arithmetic(
     duplicate_assignment->assignment_value_node = value_node;
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC;
     duplicate_assignment->arithmetic_operator = operator_kind;
-    duplicate_assignment->arithmetic_delta_node = delta;
+    duplicate_assignment->arithmetic_delta_is_valid =
+        parse_unsigned_integer_literal(&delta->span, &duplicate_assignment->arithmetic_delta) ==
+            MYLITE_OK &&
+        duplicate_assignment->arithmetic_delta <= INT64_MAX;
     *out_planned = true;
     return MYLITE_OK;
 }

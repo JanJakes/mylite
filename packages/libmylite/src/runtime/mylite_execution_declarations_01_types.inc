@@ -1015,8 +1015,9 @@ struct planned_insert_duplicate_update_assignment {
     size_t values_column_index;
     size_t values_reference_count;
     enum mylite_sql_ast_operator arithmetic_operator;
-    const struct mylite_sql_ast_node *arithmetic_delta_node;
+    uint64_t arithmetic_delta;
     struct planned_row_scalar_expression *row_scalar_expression;
+    bool arithmetic_delta_is_valid;
     bool generated_default_noop;
 };
 
@@ -2509,7 +2510,6 @@ struct planned_update {
     struct loaded_index_info *indexes;
     size_t index_count;
     const struct mylite_sql_ast_node *assignment_value_node;
-    const struct mylite_sql_ast_node *arithmetic_delta_node;
     uint64_t arithmetic_delta_magnitude;
     int64_t arithmetic_delta;
     int64_t date_interval_value;
@@ -2539,6 +2539,7 @@ struct planned_update {
     enum mylite_date_interval_second_input_kind date_interval_input_kind;
     enum mylite_date_interval_unit date_interval_unit;
     enum mylite_sql_ast_operator assignment_scalar_aggregate_operator;
+    bool arithmetic_delta_is_valid;
     bool date_interval_is_null;
     bool date_interval_subtract;
     bool assignment_value_is_scalar_subquery;

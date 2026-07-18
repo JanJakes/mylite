@@ -413,11 +413,6 @@ static int prepare_update_arithmetic_assignment(
     const struct planned_update *plan,
     struct planned_update *executable_plan
 );
-static int parse_update_arithmetic_delta(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    uint64_t *out_delta
-);
 static int validate_update_arithmetic_range(
     struct mylite_db *database,
     const struct planned_update *plan,

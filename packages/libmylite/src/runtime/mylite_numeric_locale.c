@@ -34,7 +34,7 @@ static long double parse_long_double_with_numeric_locale(
     char **out_end
 );
 #endif
-static atomic_int shared_numeric_locale_state = ATOMIC_VAR_INIT(NUMERIC_LOCALE_UNINITIALIZED);
+static atomic_int shared_numeric_locale_state = NUMERIC_LOCALE_UNINITIALIZED;
 static mylite_numeric_locale shared_numeric_locale;
 
 double mylite_numeric_parse_double(const char *text, char **out_end) {

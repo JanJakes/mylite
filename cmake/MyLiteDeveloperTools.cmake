@@ -2,10 +2,13 @@ function(mylite_add_developer_tool_targets)
   file(GLOB_RECURSE mylite_first_party_c_files CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/packages/*.c"
     "${PROJECT_SOURCE_DIR}/packages/*.h"
+    "${PROJECT_SOURCE_DIR}/packages/*.inc"
     "${PROJECT_SOURCE_DIR}/tests/*.c"
     "${PROJECT_SOURCE_DIR}/tests/*.h"
+    "${PROJECT_SOURCE_DIR}/tests/*.inc"
     "${PROJECT_SOURCE_DIR}/tools/*.c"
     "${PROJECT_SOURCE_DIR}/tools/*.h"
+    "${PROJECT_SOURCE_DIR}/tools/*.inc"
   )
   list(SORT mylite_first_party_c_files)
 

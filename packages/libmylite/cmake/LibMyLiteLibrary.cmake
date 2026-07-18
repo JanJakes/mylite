@@ -7,6 +7,7 @@ configure_file(
 set(MYLITE_SQL_PARSE_DIR "${PROJECT_BINARY_DIR}/generated/libmylite/sql")
 set(MYLITE_SQL_PARSE_C "${MYLITE_SQL_PARSE_DIR}/mylite_parse.c")
 set(MYLITE_SQL_PARSE_H "${MYLITE_SQL_PARSE_DIR}/mylite_parse.h")
+set(MYLITE_LEMON_TEMPLATE "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/tool/lempar.c")
 
 find_package(ZLIB REQUIRED)
 
@@ -17,11 +18,12 @@ add_custom_command(
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${MYLITE_SQL_PARSE_DIR}"
   COMMAND "$<TARGET_FILE:mylite_lemon>"
     -q
-    "-T$<TARGET_FILE_DIR:mylite_lemon>/lempar.c"
+    "-T${MYLITE_LEMON_TEMPLATE}"
     "-d${MYLITE_SQL_PARSE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
   DEPENDS
     mylite_lemon
+    "${MYLITE_LEMON_TEMPLATE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
   COMMENT "Generating MyLite SQL parser"
   VERBATIM

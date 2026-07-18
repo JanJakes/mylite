@@ -214,7 +214,7 @@ complete.
 - [ ] Add controlled production LTO, function/data sections, linker garbage
   collection, and stripping profiles across supported toolchains.
 - [ ] Compact generated metadata and measure parser state/table contributors.
-- [ ] Add `lempar.c` as a parser-generation dependency and include first-party
+- [x] Add `lempar.c` as a parser-generation dependency and include first-party
   `.inc` files in format validation.
 - [ ] Add installable headers, exported CMake/pkg-config targets, clean consumer
   tests, shared-library policy, ABI checks, and PHP packaging independent of

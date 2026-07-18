@@ -7,9 +7,10 @@ static struct mylite_result_cell session_scalar_cell_result_cell(
     if (cell == NULL || cell->value == NULL) {
         return (struct mylite_result_cell){.is_null = true};
     }
-    value_size = strlen(cell->value);
     if (cell->has_value_size) {
         value_size = cell->value_size;
+    } else {
+        value_size = strlen(cell->value);
     }
 
     return (struct mylite_result_cell){

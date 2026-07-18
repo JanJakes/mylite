@@ -364,6 +364,12 @@ if(NOT BUILD_SHARED_LIBS)
     endif()
   endforeach()
 endif()
+set(mylite_pkgconfig_prefix "${CMAKE_INSTALL_PREFIX}")
+cmake_path(
+  RELATIVE_PATH mylite_pkgconfig_prefix
+  BASE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+  OUTPUT_VARIABLE MYLITE_PKGCONFIG_PREFIX_RELATIVE
+)
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/mylite.pc.in"
   "${CMAKE_CURRENT_BINARY_DIR}/mylite.pc"

@@ -16,3 +16,19 @@ set_tests_properties(
     LABELS "install;integration"
     TIMEOUT 180
 )
+
+add_test(
+  NAME mylite.install.pkgconfig_multiarch
+  COMMAND "${CMAKE_COMMAND}"
+    "-DMYLITE_BUILD_DIR=${PROJECT_BINARY_DIR}"
+    "-DMYLITE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+    "-DMYLITE_GENERATOR=${CMAKE_GENERATOR}"
+    "-DMYLITE_C_COMPILER=${CMAKE_C_COMPILER}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig-multiarch/run.cmake"
+)
+set_tests_properties(
+  mylite.install.pkgconfig_multiarch
+  PROPERTIES
+    LABELS "install;integration"
+    TIMEOUT 30
+)

@@ -1404,6 +1404,9 @@ static int bind_planned_value_parameter(
     if (parameter_index <= 0 || value == NULL) {
         return MYLITE_ERROR;
     }
+    if (value->is_external_parameter && value->external_binding != NULL) {
+        return bind_stmt_binding_parameter(statement, parameter_index, value->external_binding);
+    }
     if (value->is_null) {
         sqlite_rc = sqlite3_bind_null(statement, parameter_index);
     } else if (value->is_text) {
@@ -1442,6 +1445,81 @@ static int bind_planned_value_parameter(
     }
 
     return MYLITE_OK;
+}
+
+static int bind_stmt_binding_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct mylite_stmt_binding *binding
+) {
+    static const unsigned char empty_blob[] = {0U};
+    static const char empty_text[] = "";
+    char uint64_text[32];
+    int written = 0;
+    int sqlite_rc = SQLITE_OK;
+
+    if (statement == NULL || parameter_index <= 0 || binding == NULL) {
+        return MYLITE_ERROR;
+    }
+    switch (binding->type) {
+    case MYLITE_STMT_BINDING_NULL:
+        sqlite_rc = sqlite3_bind_null(statement, parameter_index);
+        break;
+    case MYLITE_STMT_BINDING_INT64:
+        sqlite_rc = sqlite3_bind_int64(
+            statement,
+            parameter_index,
+            (sqlite3_int64)binding->scalar.int64_value
+        );
+        break;
+    case MYLITE_STMT_BINDING_UINT64:
+        if (binding->scalar.uint64_value <= (uint64_t)INT64_MAX) {
+            sqlite_rc = sqlite3_bind_int64(
+                statement,
+                parameter_index,
+                (sqlite3_int64)binding->scalar.uint64_value
+            );
+            break;
+        }
+        written =
+            snprintf(uint64_text, sizeof(uint64_text), "%" PRIu64, binding->scalar.uint64_value);
+        if (written <= 0 || (size_t)written >= sizeof(uint64_text)) {
+            return MYLITE_ERROR;
+        }
+        sqlite_rc =
+            sqlite3_bind_text(statement, parameter_index, uint64_text, written, SQLITE_TRANSIENT);
+        break;
+    case MYLITE_STMT_BINDING_DOUBLE:
+        sqlite_rc = sqlite3_bind_double(statement, parameter_index, binding->scalar.double_value);
+        break;
+    case MYLITE_STMT_BINDING_TEXT:
+        if (binding->size > (size_t)INT_MAX) {
+            return MYLITE_ERROR;
+        }
+        sqlite_rc = sqlite3_bind_text(
+            statement,
+            parameter_index,
+            binding->size == 0U ? empty_text : (const char *)binding->bytes,
+            (int)binding->size,
+            SQLITE_TRANSIENT
+        );
+        break;
+    case MYLITE_STMT_BINDING_BLOB:
+        if (binding->size > (size_t)INT_MAX) {
+            return MYLITE_ERROR;
+        }
+        sqlite_rc = sqlite3_bind_blob(
+            statement,
+            parameter_index,
+            binding->size == 0U ? empty_blob : binding->bytes,
+            (int)binding->size,
+            SQLITE_TRANSIENT
+        );
+        break;
+    case MYLITE_STMT_BINDING_UNBOUND:
+        return MYLITE_MISUSE;
+    }
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
 }
 
 static int validate_sqlite_parameter_count(sqlite3_stmt *statement, int bound_parameter_count) {

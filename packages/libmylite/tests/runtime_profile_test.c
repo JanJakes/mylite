@@ -22,6 +22,7 @@ static int test_parser_retry_profile(void);
 static int test_cursor_profile(void);
 static int test_repeated_prepared_profile(void);
 static int test_prepared_plan_cache_profile(void);
+static int test_parameterized_prepared_plan_cache_profile(void);
 static int test_connection_attribution(void);
 static int test_transaction_control_profile(void);
 static int test_close_active_profile(void);
@@ -40,6 +41,7 @@ int main(void) {
     failures += test_cursor_profile();
     failures += test_repeated_prepared_profile();
     failures += test_prepared_plan_cache_profile();
+    failures += test_parameterized_prepared_plan_cache_profile();
     failures += test_connection_attribution();
     failures += test_transaction_control_profile();
     failures += test_close_active_profile();
@@ -532,6 +534,302 @@ static int test_prepared_plan_cache_profile(void) {
     );
 
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cached plan query");
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_parameterized_prepared_plan_cache_profile(void) {
+    struct mylite_profile_snapshot snapshot = {0};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_stmt *limit_stmt = NULL;
+    mylite_stmt *scalar_stmt = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "parameter_plan_cache") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open parameter plan cache");
+    failures += expect_int(
+        mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
+        MYLITE_OK,
+        "create parameter plan cache database"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(database, "USE app", strlen("USE app"), &result),
+        MYLITE_OK,
+        "select parameter plan cache database"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "CREATE TABLE t (id INT PRIMARY KEY)",
+            strlen("CREATE TABLE t (id INT PRIMARY KEY)"),
+            &result
+        ),
+        MYLITE_OK,
+        "create parameter plan cache table"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "INSERT INTO t VALUES (1),(2),(3)",
+            strlen("INSERT INTO t VALUES (1),(2),(3)"),
+            &result
+        ),
+        MYLITE_OK,
+        "insert parameter plan cache rows"
+    );
+    mylite_result_free(result);
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM t WHERE id = ?",
+            strlen("SELECT id FROM t WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare parameter plan cache query"
+    );
+    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 1), MYLITE_OK, "bind initial integer");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step initial integer row");
+    failures +=
+        expect_true(strcmp(mylite_stmt_value_text(stmt, 0U), "1") == 0, "initial integer value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step initial integer done");
+
+    failures += expect_int(mylite_profile_start(database), MYLITE_OK, "start parameter cache hits");
+    for (int value = 2; value <= 4; ++value) {
+        int expected = value == 4 ? 1 : value;
+        const char *expected_text = expected == 1 ? "1" : expected == 2 ? "2" : "3";
+
+        failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset integer cache query");
+        failures += expect_int(
+            mylite_stmt_bind_int64(stmt, 0U, expected),
+            MYLITE_OK,
+            "bind changed integer"
+        );
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step changed integer row");
+        failures += expect_true(
+            strcmp(mylite_stmt_value_text(stmt, 0U), expected_text) == 0,
+            "changed integer value"
+        );
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step changed integer done");
+    }
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop parameter cache hits"
+    );
+    failures += expect_true(snapshot.select_plan_count == 0U, "parameter plan build count");
+    failures += expect_true(snapshot.select_plan_cache_hit_count == 3U, "parameter plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 0U, "parameter lowering build count");
+    failures +=
+        expect_true(snapshot.select_lowering_cache_hit_count == 3U, "parameter lowering hit count");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset changed parameter type");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "2", strlen("2")),
+        MYLITE_OK,
+        "bind changed parameter type"
+    );
+    failures += expect_int(mylite_profile_start(database), MYLITE_OK, "start parameter reanalysis");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step changed type row");
+    failures +=
+        expect_true(strcmp(mylite_stmt_value_text(stmt, 0U), "2") == 0, "changed type value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step changed type done");
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop parameter reanalysis"
+    );
+    failures += expect_true(snapshot.select_plan_count == 1U, "changed type plan build count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 0U, "changed type plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 1U, "changed type lowering count");
+
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset retained text parameter");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "3", strlen("3")),
+        MYLITE_OK,
+        "rebind retained text parameter"
+    );
+    failures += expect_int(mylite_profile_start(database), MYLITE_OK, "start retained text plan");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step retained text row");
+    failures +=
+        expect_true(strcmp(mylite_stmt_value_text(stmt, 0U), "3") == 0, "retained text value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step retained text done");
+    failures +=
+        expect_int(mylite_profile_stop(database, &snapshot), MYLITE_OK, "stop retained text plan");
+    failures += expect_true(snapshot.select_plan_count == 0U, "retained text plan build count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 1U, "retained text plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 0U, "retained text lowering count");
+    failures += expect_true(
+        snapshot.select_lowering_cache_hit_count == 1U,
+        "retained text lowering hit count"
+    );
+
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "ALTER TABLE t ADD COLUMN label VARCHAR(10)",
+            strlen("ALTER TABLE t ADD COLUMN label VARCHAR(10)"),
+            &result
+        ),
+        MYLITE_OK,
+        "invalidate parameter plan schema"
+    );
+    mylite_result_free(result);
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset invalidated parameter plan");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "1", strlen("1")),
+        MYLITE_OK,
+        "bind invalidated parameter plan"
+    );
+    failures +=
+        expect_int(mylite_profile_start(database), MYLITE_OK, "start invalidated parameter plan");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step invalidated parameter row");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step invalidated parameter done");
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop invalidated parameter plan"
+    );
+    failures += expect_true(snapshot.select_plan_count == 1U, "invalidated parameter plan count");
+    failures += expect_true(
+        snapshot.select_plan_cache_hit_count == 0U,
+        "invalidated parameter plan hit count"
+    );
+    failures +=
+        expect_true(snapshot.select_lowering_count == 1U, "invalidated parameter lowering count");
+
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY'",
+            strlen("SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY'"),
+            &result
+        ),
+        MYLITE_OK,
+        "change parameter plan session state"
+    );
+    mylite_result_free(result);
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset session-invalidated plan");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "2", strlen("2")),
+        MYLITE_OK,
+        "bind session-invalidated plan"
+    );
+    failures +=
+        expect_int(mylite_profile_start(database), MYLITE_OK, "start session-invalidated plan");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step session-invalidated row");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step session-invalidated done");
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop session-invalidated plan"
+    );
+    failures += expect_true(snapshot.select_plan_count == 1U, "session-invalidated plan count");
+    failures += expect_true(
+        snapshot.select_plan_cache_hit_count == 0U,
+        "session-invalidated plan hit count"
+    );
+    failures +=
+        expect_true(snapshot.select_lowering_count == 1U, "session-invalidated lowering count");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM t ORDER BY id LIMIT ?",
+            strlen("SELECT id FROM t ORDER BY id LIMIT ?"),
+            &limit_stmt
+        ),
+        MYLITE_OK,
+        "prepare dynamic limit query"
+    );
+    failures +=
+        expect_int(mylite_profile_start(database), MYLITE_OK, "start dynamic limit reanalysis");
+    for (int limit = 1; limit <= 2; ++limit) {
+        size_t row_count = 0U;
+        int step_rc = MYLITE_OK;
+
+        failures += expect_int(mylite_stmt_reset(limit_stmt), MYLITE_OK, "reset dynamic limit");
+        failures += expect_int(
+            mylite_stmt_bind_int64(limit_stmt, 0U, limit),
+            MYLITE_OK,
+            "bind dynamic limit"
+        );
+        while ((step_rc = mylite_stmt_step(limit_stmt)) == MYLITE_ROW) {
+            ++row_count;
+        }
+        failures += expect_int(step_rc, MYLITE_DONE, "step dynamic limit done");
+        failures += expect_true(row_count == (size_t)limit, "dynamic limit row count");
+    }
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop dynamic limit reanalysis"
+    );
+    failures += expect_true(snapshot.select_plan_count == 2U, "dynamic limit plan build count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 0U, "dynamic limit plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 2U, "dynamic limit lowering count");
+
+    failures += expect_int(
+        mylite_prepare(database, "SELECT ?", strlen("SELECT ?"), &scalar_stmt),
+        MYLITE_OK,
+        "prepare scalar parameter query"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(scalar_stmt, 0U, "a", strlen("a")),
+        MYLITE_OK,
+        "bind initial scalar parameter"
+    );
+    failures += expect_int(mylite_stmt_step(scalar_stmt), MYLITE_ROW, "step initial scalar row");
+    failures += expect_true(
+        strcmp(mylite_stmt_value_text(scalar_stmt, 0U), "a") == 0,
+        "initial scalar value"
+    );
+    failures += expect_int(mylite_stmt_step(scalar_stmt), MYLITE_DONE, "step initial scalar done");
+    failures += expect_int(mylite_stmt_reset(scalar_stmt), MYLITE_OK, "reset scalar parameter");
+    failures += expect_int(
+        mylite_stmt_bind_text(scalar_stmt, 0U, "longer", strlen("longer")),
+        MYLITE_OK,
+        "rebind scalar parameter"
+    );
+    failures +=
+        expect_int(mylite_profile_start(database), MYLITE_OK, "start scalar parameter reanalysis");
+    failures += expect_int(mylite_stmt_step(scalar_stmt), MYLITE_ROW, "step changed scalar row");
+    failures += expect_true(
+        strcmp(mylite_stmt_value_text(scalar_stmt, 0U), "longer") == 0,
+        "changed scalar value"
+    );
+    failures += expect_int(mylite_stmt_step(scalar_stmt), MYLITE_DONE, "step changed scalar done");
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop scalar parameter reanalysis"
+    );
+    failures += expect_true(snapshot.select_plan_count == 1U, "scalar parameter plan count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 0U, "scalar parameter plan hit count");
+
+    failures += expect_int(mylite_stmt_finalize(scalar_stmt), MYLITE_OK, "finalize scalar query");
+    failures += expect_int(mylite_stmt_finalize(limit_stmt), MYLITE_OK, "finalize dynamic limit");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize parameter cache query");
     mylite_close(database);
     remove_related_files(path);
     return failures;

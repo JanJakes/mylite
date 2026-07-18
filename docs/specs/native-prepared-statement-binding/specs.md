@@ -296,3 +296,15 @@ Profiling 10,000 retained SELECT executions records zero normalization calls
 and zero parse calls after prepare. A focused materialized-DML profile enforces
 the same invariant and verifies that lazy step execution, SQLite work, and
 completion are included in `cursor_step_ns`.
+
+Parameterized cursor SELECTs also retain their analyzed plan and lowered SQL
+when parameters occupy direct comparison, BETWEEN, or IN-list value positions,
+every binding keeps the same input type, and the catalog and SQLite schema
+generations are unchanged. The cache key also includes the SQL mode, time-zone
+offset, last insert ID, and `sql_auto_is_null` state currently consumed by
+SELECT analysis. Planned predicate values refer to statement-owned typed slots,
+so rebinding changes data without rebuilding SQL. A changed input type triggers
+conservative reanalysis. Parameters in projections, function options, LIMIT,
+OFFSET, and other positions that can influence plan structure or result metadata
+remain deliberately uncached until those plan fields carry explicit runtime
+parameter descriptors.

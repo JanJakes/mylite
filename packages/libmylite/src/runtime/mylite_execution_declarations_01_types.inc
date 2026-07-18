@@ -807,6 +807,8 @@ struct wall_clock_timestamp {
     long microsecond;
 };
 
+struct mylite_stmt_binding;
+
 struct planned_value {
     bool is_null;
     bool is_text;
@@ -818,6 +820,7 @@ struct planned_value {
     char *text;
     size_t text_length;
     size_t external_parameter_index;
+    const struct mylite_stmt_binding *external_binding;
 };
 
 enum integer_expression_default_text_work_item_kind {
@@ -2644,11 +2647,35 @@ struct mylite_stmt_binding {
     size_t capacity;
 };
 
+struct mylite_select_analysis_session_key {
+    uint64_t sql_mode;
+    uint64_t last_insert_id;
+    int time_zone_offset_minutes;
+    bool sql_auto_is_null;
+};
+
+struct mylite_select_parameter_context_frame {
+    const struct mylite_sql_ast_node *node;
+    enum mylite_sql_ast_node_kind parent_kind;
+    enum mylite_sql_ast_node_kind grandparent_kind;
+    size_t child_index;
+};
+
+struct mylite_select_parameter_context_stack {
+    struct mylite_select_parameter_context_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
 struct mylite_analyzed_select_plan {
     struct planned_select plan;
     char *lowered_sql;
+    enum mylite_stmt_binding_type *binding_types;
+    struct mylite_select_analysis_session_key session_key;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
+    size_t binding_type_count;
+    bool parameter_values_are_reusable;
     bool valid;
 };
 
@@ -2680,6 +2707,7 @@ struct mylite_stmt {
     bool buffered_results;
     bool returns_rows;
     bool analyzing_unbound_parameters;
+    bool parameter_plan_reusable;
     bool sqlite_statement_is_cached;
     bool current_row_available;
     bool done;

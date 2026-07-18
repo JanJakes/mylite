@@ -3125,6 +3125,9 @@ static int convert_limit_integer_literal(
     if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARAMETER) {
         struct planned_value value = {0};
 
+        if (database->active_bound_statement != NULL) {
+            database->active_bound_statement->parameter_plan_reusable = false;
+        }
         rc = copy_active_stmt_parameter_value(database, value_node, &value);
         if (rc != MYLITE_OK) {
             return rc;

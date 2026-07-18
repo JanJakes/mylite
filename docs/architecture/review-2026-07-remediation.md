@@ -291,12 +291,23 @@ complete.
   fixed Lemon parser allocation was also prototyped but showed no reliable
   normal-allocator improvement, so that added lifetime complexity was not
   retained.
-- [ ] Reuse analyzed prepared plans by schema generation and relevant session
-  state after native binding is complete. Zero-parameter native prepared
-  SELECTs now retain AST-independent aliases, analyzed plans, and lowered SQL
-  across reset, with catalog and SQLite schema generation invalidation.
-  Parameterized plans remain open because the current analyzer embeds bound
-  values and must first separate value binding from semantic analysis.
+- [x] Reuse analyzed prepared plans by schema generation and relevant session
+  state after native binding is complete. Native prepared SELECT plans retain
+  stable typed parameter slots, the input-type signature used during analysis,
+  and lowered SQL across reset when parameters occupy direct comparison,
+  BETWEEN, or IN-list value positions. Current values are read from
+  statement-owned bindings only when SQLite parameters are bound; a changed
+  input type or catalog/SQLite schema generation forces reanalysis. The reuse
+  key also covers SQL mode, time-zone conversion offset, `LAST_INSERT_ID()`, and
+  `sql_auto_is_null`, the session values currently consumed during SELECT
+  analysis. Parameter uses that can affect structure or metadata, including
+  projections, function options, and LIMIT/OFFSET, conservatively disable reuse.
+  A profiling regression verifies stable-type value changes, text/integer type
+  changes, schema and session invalidation, scalar-projection fallback, and
+  dynamic LIMIT behavior. The WordPress
+  prepared option lookup records 1,000 plan and lowering cache hits with zero
+  rebuilds; its median per-request p50 across seven pinned Release samples fell
+  from about 33.9 us to 21.8 us (35.7%).
 - [x] Measure and correct administrative cache/concurrency scaling. Descriptor
   caches use LRU replacement rather than fixed-slot churn, PROCESSLIST publishes
   synchronized session snapshots and sorts with `qsort`, and ordinary writes

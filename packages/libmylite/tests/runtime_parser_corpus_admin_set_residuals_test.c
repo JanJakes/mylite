@@ -43,6 +43,8 @@ static int test_admin_set_residual_runtime(void) {
     static const char *const describe_id[] = {"id", "int", "NO", "", NULL, ""};
     static const char *const describe_pattern[] = {"f1", "int", "YES", "", NULL, ""};
     static const char *const time_zone[] = {"UTC"};
+    static const char *const ansi_quotes_mode[] = {"ANSI_QUOTES"};
+    static const char *const empty_mode[] = {""};
     static const char *const explain_extra[] = {
         "1",
         "SIMPLE",
@@ -147,10 +149,28 @@ static int test_admin_set_residual_runtime(void) {
     failures += execute_error(database, "SHOW ENGINE MyISAM MUTEX", unsupported);
     failures += execute_error(database, "SHOW TRIGGERS WHERE 0", unsupported);
     failures += execute_error(database, "SHOW OPEN TABLES WHERE f1()=0", unsupported);
-    failures += execute_error(
+    failures += execute_ok(database, "SET sql_mode = ''");
+    failures += execute_ok(database, "SET sql_mode = sys.LIST_ADD(@@sql_mode, 'ANSI_QUOTES')");
+    failures += expect_query_values(
         database,
-        "SET sql_mode = sys.LIST_ADD(@@sql_mode, 'ANSI_QUOTES')",
-        unsupported
+        (struct expected_query){
+            .sql = "SELECT @@sql_mode",
+            .values = ansi_quotes_mode,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "sys.list_add sql_mode assignment",
+        }
+    );
+    failures += execute_ok(database, "SET sql_mode = sys.LIST_DROP(@@sql_mode, 'ANSI_QUOTES')");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@sql_mode",
+            .values = empty_mode,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "sys.list_drop sql_mode assignment",
+        }
     );
     failures +=
         execute_error(database, "SET optimizer_switch=`mrr=on,mrr_cost_based=off`", unsupported);
@@ -166,6 +186,16 @@ static int execute_ok(mylite_db *database, const char *sql) {
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = expect_int(rc, MYLITE_OK, sql);
 
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "%s: error %d (%s): %s\n",
+            sql,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+    }
     mylite_result_free(result);
     return failures;
 }

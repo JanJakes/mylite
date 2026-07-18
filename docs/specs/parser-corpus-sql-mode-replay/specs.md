@@ -74,10 +74,10 @@ Mode replay is a benchmark-local module:
 - `packages/libmylite/benchmarks/mylite_benchmark_sql_mode.c`
 
 The module uses MyLite's parser and AST to identify `SET` assignment lists and
-then evaluates only the small mode-value subset described above. Because current
-parser coverage admits `sys.LIST_ADD` / `sys.LIST_DROP` `SET sql_mode` forms as
-unsupported utility placeholders, the annotator also has a narrow textual
-fallback for those two placeholder forms. The benchmark does not include
+then evaluates only the small mode-value subset described above. The parser
+represents qualified `sys.LIST_ADD` / `sys.LIST_DROP` calls as typed generic
+function AST nodes. The annotator retains its narrow placeholder fallback so
+older corpus shapes remain replayable. The benchmark does not include
 mode-replay work in timed parser or lexer loops; each owned CSV query stores
 its precomputed `modes` value.
 

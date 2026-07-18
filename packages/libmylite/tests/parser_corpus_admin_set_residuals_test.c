@@ -61,7 +61,7 @@ static int test_placeholder_admin_set_residuals(void) {
         {.sql = "SHOW OPEN TABLES WHERE f1()=0",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SET sql_mode = sys.LIST_ADD(@@sql_mode, 'ANSI_QUOTES')",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+         .kind = MYLITE_SQL_AST_SET_STATEMENT},
         {.sql = "SET @@sql_mode := @@sql_mode", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT
         },
         {.sql = "SET optimizer_switch=`mrr=on,mrr_cost_based=off`",

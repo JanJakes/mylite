@@ -30,11 +30,14 @@ static int apply_set_sql_mode_value(
     }
     if (value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "SET supports only fixed no-op system variable assignments"
-        );
-        return MYLITE_ERROR;
+        struct session_scalar_cell value = {0};
+
+        rc = session_scalar_value(database, value_node, &value);
+        if (rc == MYLITE_OK) {
+            rc = apply_set_sql_mode_cell_value(database, &value);
+        }
+        mylite_execution_session_scalar_cell_deinit(&value);
+        return rc;
     }
 
     rc = decode_table_option_string_literal(

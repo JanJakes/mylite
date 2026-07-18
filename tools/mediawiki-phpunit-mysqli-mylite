@@ -18,8 +18,8 @@ container_db_path="${container_root}${db_path#"${root_dir}"}"
 
 build_image() {
   docker build -t "${image}" - <<'DOCKERFILE'
-FROM composer:2 AS composer
-FROM php:8.3-cli-bookworm
+FROM composer:2@sha256:5946476338742b200bb9ff88f8be56275ddae4b3949c72305cb0dbf10cfcb760 AS composer
+FROM php:8.3-cli-bookworm@sha256:a4fcf31ffb94b8d19b84514926b5a2cddf22a38b1e29922f8d3e8a933091f806
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

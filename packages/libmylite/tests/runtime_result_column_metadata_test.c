@@ -684,6 +684,17 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT sys.format_bytes(1024)", &result);
+    if (failures == 0) {
+        failures += expect_text(
+            mylite_result_column_name(result, 0U),
+            "sys.format_bytes(1024)",
+            "qualified sys function keeps source label"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(database, "SELECT /*!80000 1 */ + 2", &result);
     if (failures == 0) {
         failures += expect_size(

@@ -565,6 +565,11 @@ static void remove_list_drop_pattern(
 );
 static void trim_list_drop_commas(struct mylite_dynamic_string *string);
 static void set_sys_list_null_error(struct mylite_db *database, enum mylite_sys_function_kind kind);
+static void sys_function_identifier_span_text(
+    const struct mylite_sql_source_span *span,
+    const char **out_text,
+    size_t *out_size
+);
 static int sys_function_sqlite_argument(
     sqlite3_value *value,
     struct mylite_sys_function_argument *out_argument
@@ -605,8 +610,10 @@ bool mylite_sys_function_lookup_span(
     const struct mylite_sql_source_span *name,
     enum mylite_sys_function_kind *out_kind
 ) {
-    const char *schema_text = schema == NULL ? NULL : schema->text;
-    size_t schema_size = schema == NULL ? 0U : schema->length;
+    const char *schema_text = NULL;
+    const char *name_text = NULL;
+    size_t schema_size = 0U;
+    size_t name_size = 0U;
 
     if (name == NULL) {
         if (out_kind != NULL) {
@@ -614,7 +621,29 @@ bool mylite_sys_function_lookup_span(
         }
         return false;
     }
-    return mylite_sys_function_lookup(schema_text, schema_size, name->text, name->length, out_kind);
+    if (schema != NULL) {
+        sys_function_identifier_span_text(schema, &schema_text, &schema_size);
+    }
+    sys_function_identifier_span_text(name, &name_text, &name_size);
+    return mylite_sys_function_lookup(schema_text, schema_size, name_text, name_size, out_kind);
+}
+
+static void sys_function_identifier_span_text(
+    const struct mylite_sql_source_span *span,
+    const char **out_text,
+    size_t *out_size
+) {
+    const char *text = span == NULL ? NULL : span->text;
+    size_t size = span == NULL ? 0U : span->length;
+
+    if (text != NULL && size >= 2U &&
+        ((text[0] == '`' && text[size - 1U] == '`') ||
+         (text[0] == '"' && text[size - 1U] == '"'))) {
+        ++text;
+        size -= 2U;
+    }
+    *out_text = text;
+    *out_size = size;
 }
 
 const char *mylite_sys_function_name(enum mylite_sys_function_kind kind) {

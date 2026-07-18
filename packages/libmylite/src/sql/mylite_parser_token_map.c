@@ -33,6 +33,15 @@ static bool lexer_token_has_immediate_left_paren(
     const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token
 );
+static bool lexer_token_starts_qualified_function(
+    const struct mylite_sql_lexer *lexer,
+    const struct mylite_sql_token *token
+);
+static bool token_is_sys_schema_identifier(const struct mylite_sql_token *token);
+static bool lexer_next_non_comment_token(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token
+);
 static bool token_text_matches_keyword_mapping(
     const struct mylite_sql_token *token,
     const char *text,
@@ -76,6 +85,14 @@ bool mylite_sql_parser_map_lexer_token(
         return true;
     }
 
+    if (!previous_token_was_dot && lexer_token_starts_qualified_function(lexer, token)) {
+        *out_map = (struct mylite_sql_parser_token_map){
+            .parser_token = MYLITE_SQL_PARSE_QUALIFIED_FUNCTION_SCHEMA,
+            .previous_token_was_dot = false,
+        };
+        return true;
+    }
+
     if (!map_direct_lexer_token(token->kind, &parser_token)) {
         switch (token->kind) {
         case MYLITE_SQL_TOKEN_KEYWORD:
@@ -110,6 +127,68 @@ bool mylite_sql_parser_map_lexer_token(
         .parser_token = parser_token,
         .previous_token_was_dot = parser_token == MYLITE_SQL_PARSE_DOT,
     };
+    return true;
+}
+
+static bool lexer_token_starts_qualified_function(
+    const struct mylite_sql_lexer *lexer,
+    const struct mylite_sql_token *token
+) {
+    struct mylite_sql_lexer lookahead;
+    struct mylite_sql_token next = {0};
+
+    if (lexer == NULL || !token_is_sys_schema_identifier(token)) {
+        return false;
+    }
+
+    lookahead = *lexer;
+    if (!lexer_next_non_comment_token(&lookahead, &next) ||
+        next.kind != MYLITE_SQL_TOKEN_PUNCTUATION || next.length != 1U || next.text == NULL ||
+        next.text[0] != '.') {
+        return false;
+    }
+    if (!lexer_next_non_comment_token(&lookahead, &next) ||
+        (next.kind != MYLITE_SQL_TOKEN_IDENTIFIER &&
+         next.kind != MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER)) {
+        return false;
+    }
+    return lexer_next_non_comment_token(&lookahead, &next) &&
+           mylite_sql_parser_token_is_left_paren(&next);
+}
+
+static bool token_is_sys_schema_identifier(const struct mylite_sql_token *token) {
+    size_t start = 0U;
+    size_t length = 0U;
+
+    if (token == NULL || token->text == NULL ||
+        (token->kind != MYLITE_SQL_TOKEN_IDENTIFIER &&
+         token->kind != MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER) ||
+        (token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER && token->length < 2U)) {
+        return false;
+    }
+    start = token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER ? 1U : 0U;
+    length = token->length - (start == 0U ? 0U : 2U);
+    return length == 3U &&
+           mylite_sql_parser_ascii_upper((unsigned char)token->text[start]) == 'S' &&
+           mylite_sql_parser_ascii_upper((unsigned char)token->text[start + 1U]) == 'Y' &&
+           mylite_sql_parser_ascii_upper((unsigned char)token->text[start + 2U]) == 'S';
+}
+
+static bool lexer_next_non_comment_token(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token
+) {
+    if (lexer == NULL || out_token == NULL) {
+        return false;
+    }
+    do {
+        if (mylite_sql_lexer_next(lexer, out_token) != 0 ||
+            out_token->kind == MYLITE_SQL_TOKEN_ERROR || out_token->kind == MYLITE_SQL_TOKEN_EOF ||
+            out_token->kind == MYLITE_SQL_TOKEN_VERSION_COMMENT) {
+            return false;
+        }
+    } while (out_token->kind == MYLITE_SQL_TOKEN_COMMENT ||
+             out_token->kind == MYLITE_SQL_TOKEN_HINT_COMMENT);
     return true;
 }
 

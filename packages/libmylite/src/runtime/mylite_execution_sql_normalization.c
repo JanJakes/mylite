@@ -2,11 +2,9 @@
 
 #include <mylite/mylite.h>
 
-#include "mylite_catalog.h"
 #include "mylite_connection.h"
-#include "mylite_dynamic_string.h"
 #include "mylite_execution_diagnostics.h"
-#include "mylite_sys_functions.h"
+#include "mylite_version_comment.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -26,11 +24,6 @@ struct set_user_variable_increment_parts {
     size_t delta_end;
 };
 
-struct set_assignment_value_word_request {
-    size_t sql_size;
-    size_t value_start;
-};
-
 enum {
     normalization_decimal_base = 10,
     mysql_executable_comment_min_length = 5U,
@@ -47,22 +40,6 @@ static int extract_mysql_executable_comment_sql(
     bool *out_changed
 );
 static int rewrite_set_user_variable_increment_sql(
-    struct mylite_db *database,
-    const char *sql,
-    size_t sql_size,
-    char **out_sql,
-    size_t *out_sql_size,
-    bool *out_changed
-);
-static int quote_set_bare_compat_values_sql(
-    struct mylite_db *database,
-    const char *sql,
-    size_t sql_size,
-    char **out_sql,
-    size_t *out_sql_size,
-    bool *out_changed
-);
-static int rewrite_sys_helper_function_calls_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
@@ -102,45 +79,13 @@ static int format_set_user_variable_increment_sql(
     char **out_sql,
     size_t *out_sql_size
 );
-static bool set_assignment_target_before_equal(
-    const char *sql,
-    size_t assignment_start,
-    size_t equal_index,
-    char *buffer,
-    size_t buffer_size
-);
-static bool set_target_needs_bare_value_quoting(const char *target_name);
-static bool set_assignment_value_word(
-    const char *sql,
-    struct set_assignment_value_word_request request,
-    size_t *out_value_end
-);
 static void copy_folded_sql_identifier(
     const char *text,
     size_t text_size,
     char *buffer,
     size_t buffer_size
 );
-static bool sql_byte_starts_identifier(char byte);
 static char normalization_ascii_lower(unsigned char byte);
-static bool scan_sql_identifier_or_quoted_identifier(
-    const char *sql,
-    size_t sql_size,
-    size_t index,
-    size_t *out_start,
-    size_t *out_end,
-    size_t *out_next
-);
-static size_t skip_sql_quoted_identifier(const char *sql, size_t sql_size, size_t index);
-static size_t skip_sql_string_literal(const char *sql, size_t sql_size, size_t index);
-static size_t skip_sql_line_comment(const char *sql, size_t sql_size, size_t index);
-static size_t skip_sql_block_comment(const char *sql, size_t sql_size, size_t index);
-static bool sql_identifier_span_equals_ascii_case_insensitive(
-    const char *sql,
-    size_t start,
-    size_t end,
-    const char *expected
-);
 
 int mylite_execution_normalize_mysql_compat_sql(
     struct mylite_db *database,
@@ -197,219 +142,10 @@ int mylite_execution_normalize_mysql_compat_sql(
         current_size = next_size;
     }
 
-    rc = quote_set_bare_compat_values_sql(
-        database,
-        current_sql,
-        current_size,
-        &next_sql,
-        &next_size,
-        &changed
-    );
-    if (rc != MYLITE_OK) {
-        free(owned_sql);
-        return rc;
-    }
-    if (changed) {
-        free(owned_sql);
-        owned_sql = next_sql;
-        current_sql = owned_sql;
-        current_size = next_size;
-    }
-
-    rc = rewrite_sys_helper_function_calls_sql(
-        database,
-        current_sql,
-        current_size,
-        &next_sql,
-        &next_size,
-        &changed
-    );
-    if (rc != MYLITE_OK) {
-        free(owned_sql);
-        return rc;
-    }
-    if (changed) {
-        free(owned_sql);
-        owned_sql = next_sql;
-        current_sql = owned_sql;
-        current_size = next_size;
-    }
-
     out_sql->sql = current_sql;
     out_sql->sql_size = current_size;
     out_sql->owned_sql = owned_sql;
     return MYLITE_OK;
-}
-
-static int rewrite_sys_helper_function_calls_sql(
-    struct mylite_db *database,
-    const char *sql,
-    size_t sql_size,
-    char **out_sql,
-    size_t *out_sql_size,
-    bool *out_changed
-) {
-    struct mylite_dynamic_string rewritten;
-    size_t index = 0U;
-    size_t copied = 0U;
-    bool changed = false;
-    int rc = MYLITE_OK;
-
-    (void)database;
-    if (out_sql == NULL || out_sql_size == NULL || out_changed == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_sql = NULL;
-    *out_sql_size = 0U;
-    *out_changed = false;
-
-    index = skip_sql_spaces(sql, sql_size, index);
-    if (index < sql_size) {
-        size_t first_start = 0U;
-        size_t first_end = 0U;
-        size_t after_first = 0U;
-
-        if (scan_sql_identifier_or_quoted_identifier(
-                sql,
-                sql_size,
-                index,
-                &first_start,
-                &first_end,
-                &after_first
-            ) &&
-            sql_identifier_span_equals_ascii_case_insensitive(sql, first_start, first_end, "SET")) {
-            return MYLITE_OK;
-        }
-    }
-
-    index = 0U;
-    mylite_dynamic_string_init(&rewritten);
-    while (index < sql_size && rc == MYLITE_OK) {
-        size_t schema_start = 0U;
-        size_t schema_end = 0U;
-        size_t schema_token_start = index;
-        size_t after_schema = 0U;
-        size_t dot = 0U;
-        size_t function_start = 0U;
-        size_t function_end = 0U;
-        size_t after_function = 0U;
-        size_t open_paren = 0U;
-        enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
-
-        if (sql[index] == '\'' || sql[index] == '"') {
-            index = skip_sql_string_literal(sql, sql_size, index);
-            continue;
-        }
-        if (sql[index] == '`') {
-            if (!scan_sql_identifier_or_quoted_identifier(
-                    sql,
-                    sql_size,
-                    index,
-                    &schema_start,
-                    &schema_end,
-                    &after_schema
-                ) ||
-                !sql_identifier_span_equals_ascii_case_insensitive(
-                    sql,
-                    schema_start,
-                    schema_end,
-                    "sys"
-                )) {
-                index = skip_sql_quoted_identifier(sql, sql_size, index);
-                continue;
-            }
-        } else {
-            bool found_identifier =
-                sql_byte_starts_identifier(sql[index]) && scan_sql_identifier_or_quoted_identifier(
-                                                              sql,
-                                                              sql_size,
-                                                              index,
-                                                              &schema_start,
-                                                              &schema_end,
-                                                              &after_schema
-                                                          );
-
-            if (!found_identifier) {
-                if ((sql[index] == '-' && index + 1U < sql_size && sql[index + 1U] == '-') ||
-                    sql[index] == '#') {
-                    index = skip_sql_line_comment(sql, sql_size, index);
-                } else if (sql[index] == '/' && index + 1U < sql_size && sql[index + 1U] == '*') {
-                    index = skip_sql_block_comment(sql, sql_size, index);
-                } else {
-                    ++index;
-                }
-                continue;
-            }
-        }
-
-        if (!sql_identifier_span_equals_ascii_case_insensitive(
-                sql,
-                schema_start,
-                schema_end,
-                "sys"
-            )) {
-            index = after_schema;
-            continue;
-        }
-        dot = skip_sql_spaces(sql, sql_size, after_schema);
-        if (dot >= sql_size || sql[dot] != '.') {
-            index = after_schema;
-            continue;
-        }
-        function_start = skip_sql_spaces(sql, sql_size, dot + 1U);
-        if (!scan_sql_identifier_or_quoted_identifier(
-                sql,
-                sql_size,
-                function_start,
-                &function_start,
-                &function_end,
-                &after_function
-            )) {
-            index = dot + 1U;
-            continue;
-        }
-        open_paren = skip_sql_spaces(sql, sql_size, after_function);
-        if (open_paren >= sql_size || sql[open_paren] != '(' ||
-            !mylite_sys_function_lookup(
-                "sys",
-                sizeof("sys") - 1U,
-                sql + function_start,
-                function_end - function_start,
-                &kind
-            )) {
-            index = after_function;
-            continue;
-        }
-
-        rc = mylite_dynamic_string_append_bytes(
-            &rewritten,
-            sql + copied,
-            schema_token_start - copied
-        );
-        if (rc == MYLITE_OK) {
-            const char *function_name = mylite_sys_function_name(kind);
-
-            rc = function_name == NULL ? MYLITE_ERROR
-                                       : mylite_dynamic_string_append(&rewritten, function_name);
-        }
-        changed = true;
-        index = open_paren;
-        copied = after_function;
-    }
-    if (rc == MYLITE_OK && changed) {
-        rc = mylite_dynamic_string_append_bytes(&rewritten, sql + copied, sql_size - copied);
-    }
-    if (rc == MYLITE_OK && changed) {
-        *out_sql = mylite_dynamic_string_take(&rewritten);
-        if (*out_sql == NULL) {
-            rc = MYLITE_NOMEM;
-        } else {
-            *out_sql_size = strlen(*out_sql);
-            *out_changed = true;
-        }
-    }
-    mylite_dynamic_string_deinit(&rewritten);
-    return rc;
 }
 
 void mylite_execution_normalized_sql_deinit(struct mylite_execution_normalized_sql *sql) {
@@ -428,6 +164,7 @@ static int extract_mysql_executable_comment_sql(
     size_t *out_sql_size,
     bool *out_changed
 ) {
+    struct mylite_sql_version_comment_payload payload;
     size_t start = 0U;
     size_t end = 0U;
     size_t body_start = 0U;
@@ -469,10 +206,11 @@ static int extract_mysql_executable_comment_sql(
         return MYLITE_OK;
     }
 
-    body_start = start + 3U;
-    while (body_start < close && isdigit((unsigned char)sql[body_start])) {
-        ++body_start;
+    if (!mylite_sql_version_comment_parse(sql + start, close + 2U - start, &payload) ||
+        !payload.active) {
+        return MYLITE_OK;
     }
+    body_start = (size_t)(payload.text - sql);
     while (body_start < close && isspace((unsigned char)sql[body_start])) {
         ++body_start;
     }
@@ -709,119 +447,6 @@ static int format_set_user_variable_increment_sql(
     return MYLITE_OK;
 }
 
-static int quote_set_bare_compat_values_sql(
-    struct mylite_db *database,
-    const char *sql,
-    size_t sql_size,
-    char **out_sql,
-    size_t *out_sql_size,
-    bool *out_changed
-) {
-    struct mylite_dynamic_string rewritten;
-    size_t start = 0U;
-    size_t end = 0U;
-    size_t cursor = 0U;
-    size_t scan = 0U;
-    bool changed = false;
-
-    if (out_sql == NULL || out_sql_size == NULL || out_changed == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_sql = NULL;
-    *out_sql_size = 0U;
-    *out_changed = false;
-    if (!trim_sql_span(sql, sql_size, &start, &end) || end - start < mysql_set_keyword_length ||
-        !sql_span_equals_ascii_case_insensitive(sql + start, mysql_set_keyword_length, "SET")) {
-        return MYLITE_OK;
-    }
-
-    mylite_dynamic_string_init(&rewritten);
-    scan = start + mysql_set_keyword_length;
-    while (scan < sql_size) {
-        char target_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-        size_t equal_index = scan;
-        size_t value_start = 0U;
-        size_t value_end = 0U;
-
-        while (equal_index < sql_size && sql[equal_index] != '=') {
-            ++equal_index;
-        }
-        if (equal_index >= sql_size) {
-            break;
-        }
-        if (!set_assignment_target_before_equal(
-                sql,
-                scan,
-                equal_index,
-                target_name,
-                sizeof(target_name)
-            ) ||
-            !set_target_needs_bare_value_quoting(target_name)) {
-            scan = equal_index + 1U;
-            continue;
-        }
-
-        value_start = equal_index + 1U;
-        while (value_start < sql_size && isspace((unsigned char)sql[value_start])) {
-            ++value_start;
-        }
-        if (!set_assignment_value_word(
-                sql,
-                (struct set_assignment_value_word_request){
-                    .sql_size = sql_size,
-                    .value_start = value_start,
-                },
-                &value_end
-            ) ||
-            sql_span_equals_ascii_case_insensitive(
-                sql + value_start,
-                value_end - value_start,
-                "DEFAULT"
-            )) {
-            scan = equal_index + 1U;
-            continue;
-        }
-
-        if (mylite_dynamic_string_append_bytes(&rewritten, sql + cursor, value_start - cursor) !=
-                MYLITE_OK ||
-            mylite_dynamic_string_append_char(&rewritten, '\'') != MYLITE_OK ||
-            mylite_dynamic_string_append_bytes(
-                &rewritten,
-                sql + value_start,
-                value_end - value_start
-            ) != MYLITE_OK ||
-            mylite_dynamic_string_append_char(&rewritten, '\'') != MYLITE_OK) {
-            mylite_dynamic_string_deinit(&rewritten);
-            mylite_execution_diagnostics_set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        cursor = value_end;
-        scan = value_end;
-        changed = true;
-    }
-
-    if (!changed) {
-        mylite_dynamic_string_deinit(&rewritten);
-        return MYLITE_OK;
-    }
-    if (mylite_dynamic_string_append_bytes(&rewritten, sql + cursor, sql_size - cursor) !=
-        MYLITE_OK) {
-        mylite_dynamic_string_deinit(&rewritten);
-        mylite_execution_diagnostics_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    *out_sql = mylite_dynamic_string_take(&rewritten);
-    if (*out_sql == NULL) {
-        mylite_dynamic_string_deinit(&rewritten);
-        mylite_execution_diagnostics_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    *out_sql_size = strlen(*out_sql);
-    *out_changed = true;
-    mylite_dynamic_string_deinit(&rewritten);
-    return MYLITE_OK;
-}
-
 static bool trim_sql_span(const char *sql, size_t sql_size, size_t *out_start, size_t *out_end) {
     size_t start = 0U;
     size_t end = sql_size;
@@ -863,10 +488,6 @@ static bool sql_byte_is_identifier(char byte) {
     return isalnum((unsigned char)byte) || byte == '_' || byte == '$';
 }
 
-static bool sql_byte_starts_identifier(char byte) {
-    return isalpha((unsigned char)byte) || byte == '_' || byte == '$';
-}
-
 static void copy_folded_sql_identifier(
     const char *text,
     size_t text_size,
@@ -883,79 +504,6 @@ static void copy_folded_sql_identifier(
         buffer[index] = normalization_ascii_lower((unsigned char)text[index]);
     }
     buffer[copied] = '\0';
-}
-
-static bool set_target_needs_bare_value_quoting(const char *target_name) {
-    static const char *const targets[] = {
-        "character_set_client",
-        "character_set_connection",
-        "character_set_results",
-        "collation_connection",
-        "default_collation_for_utf8mb4",
-        "default_storage_engine",
-        "default_tmp_storage_engine",
-        "resultset_metadata",
-        "session_track_gtids",
-        "session_track_transaction_info",
-        "use_secondary_engine",
-    };
-
-    if (target_name == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < sizeof(targets) / sizeof(targets[0]); ++index) {
-        if (strcmp(target_name, targets[index]) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool set_assignment_target_before_equal(
-    const char *sql,
-    size_t assignment_start,
-    size_t equal_index,
-    char *buffer,
-    size_t buffer_size
-) {
-    size_t name_end = equal_index;
-    size_t name_start = 0U;
-
-    if (sql == NULL || buffer == NULL || buffer_size == 0U || assignment_start >= equal_index) {
-        return false;
-    }
-    buffer[0] = '\0';
-    while (name_end > assignment_start && isspace((unsigned char)sql[name_end - 1U])) {
-        --name_end;
-    }
-    name_start = name_end;
-    while (name_start > assignment_start && sql_byte_is_identifier(sql[name_start - 1U])) {
-        --name_start;
-    }
-    if (name_start == name_end || name_end - name_start >= buffer_size) {
-        return false;
-    }
-    copy_folded_sql_identifier(sql + name_start, name_end - name_start, buffer, buffer_size);
-    return true;
-}
-
-static bool set_assignment_value_word(
-    const char *sql,
-    struct set_assignment_value_word_request request,
-    size_t *out_value_end
-) {
-    size_t index = request.value_start;
-
-    if (sql == NULL || out_value_end == NULL || index >= request.sql_size ||
-        !sql_byte_starts_identifier(sql[index])) {
-        return false;
-    }
-    ++index;
-    while (index < request.sql_size && sql_byte_is_identifier(sql[index])) {
-        ++index;
-    }
-    *out_value_end = index;
-    return true;
 }
 
 static size_t skip_sql_spaces(const char *sql, size_t end, size_t index) {
@@ -977,148 +525,4 @@ static char normalization_ascii_lower(unsigned char byte) {
         return (char)(byte - 'A' + 'a');
     }
     return (char)byte;
-}
-
-static bool scan_sql_identifier_or_quoted_identifier(
-    const char *sql,
-    size_t sql_size,
-    size_t index,
-    size_t *out_start,
-    size_t *out_end,
-    size_t *out_next
-) {
-    size_t end = 0U;
-
-    if (sql == NULL || out_start == NULL || out_end == NULL || out_next == NULL ||
-        index >= sql_size) {
-        return false;
-    }
-    *out_start = index;
-    *out_end = index;
-    *out_next = index;
-
-    if (sql[index] == '`') {
-        end = index + 1U;
-        while (end < sql_size) {
-            if (sql[end] == '`') {
-                if (end + 1U < sql_size && sql[end + 1U] == '`') {
-                    end += 2U;
-                    continue;
-                }
-                *out_start = index + 1U;
-                *out_end = end;
-                *out_next = end + 1U;
-                return true;
-            }
-            ++end;
-        }
-        return false;
-    }
-
-    if (!sql_byte_starts_identifier(sql[index])) {
-        return false;
-    }
-    end = scan_sql_identifier(sql, sql_size, index);
-    if (end == index) {
-        return false;
-    }
-    *out_start = index;
-    *out_end = end;
-    *out_next = end;
-    return true;
-}
-
-static size_t skip_sql_quoted_identifier(const char *sql, size_t sql_size, size_t index) {
-    if (sql == NULL || index >= sql_size || sql[index] != '`') {
-        return index + 1U;
-    }
-    ++index;
-    while (index < sql_size) {
-        if (sql[index] == '`') {
-            if (index + 1U < sql_size && sql[index + 1U] == '`') {
-                index += 2U;
-                continue;
-            }
-            return index + 1U;
-        }
-        ++index;
-    }
-    return sql_size;
-}
-
-static size_t skip_sql_string_literal(const char *sql, size_t sql_size, size_t index) {
-    char quote = '\0';
-
-    if (sql == NULL || index >= sql_size || (sql[index] != '\'' && sql[index] != '"')) {
-        return index + 1U;
-    }
-    quote = sql[index];
-    ++index;
-    while (index < sql_size) {
-        if (sql[index] == '\\' && index + 1U < sql_size) {
-            index += 2U;
-            continue;
-        }
-        if (sql[index] == quote) {
-            if (index + 1U < sql_size && sql[index + 1U] == quote) {
-                index += 2U;
-                continue;
-            }
-            return index + 1U;
-        }
-        ++index;
-    }
-    return sql_size;
-}
-
-static size_t skip_sql_line_comment(const char *sql, size_t sql_size, size_t index) {
-    if (sql == NULL || index >= sql_size) {
-        return index;
-    }
-    while (index < sql_size && sql[index] != '\n') {
-        ++index;
-    }
-    return index;
-}
-
-static size_t skip_sql_block_comment(const char *sql, size_t sql_size, size_t index) {
-    if (sql == NULL || index >= sql_size) {
-        return index;
-    }
-    index += 2U;
-    while (index + 1U < sql_size) {
-        if (sql[index] == '*' && sql[index + 1U] == '/') {
-            return index + 2U;
-        }
-        ++index;
-    }
-    return sql_size;
-}
-
-static bool sql_identifier_span_equals_ascii_case_insensitive(
-    const char *sql,
-    size_t start,
-    size_t end,
-    const char *expected
-) {
-    size_t expected_size = expected == NULL ? 0U : strlen(expected);
-    size_t expected_index = 0U;
-
-    if (sql == NULL || expected == NULL || end < start) {
-        return false;
-    }
-    for (size_t index = start; index < end; ++index) {
-        char current = sql[index];
-
-        if (current == '`' && index + 1U < end && sql[index + 1U] == '`') {
-            ++index;
-        }
-        if (expected_index >= expected_size ||
-            normalization_ascii_lower((unsigned char)current) !=
-                normalization_ascii_lower((unsigned char)expected[expected_index])) {
-            return false;
-        }
-        ++expected_index;
-    }
-    return expected_index == expected_size;
 }

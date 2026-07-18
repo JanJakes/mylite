@@ -6,6 +6,7 @@
 #include "mylite_parser_internal.h"
 #include "mylite_parser_placeholders.h"
 #include "mylite_parser_token_map.h"
+#include "mylite_version_comment.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -31,12 +32,6 @@ struct mylite_sql_parser_feed_context {
     bool inject_parenthesized_row_constructors;
 };
 
-struct version_comment_payload {
-    const char *text;
-    size_t length;
-    bool active;
-};
-
 struct mylite_sql_parse_error {
     enum mylite_sql_parse_status status;
     int parser_token;
@@ -48,12 +43,6 @@ typedef enum mylite_sql_parse_status (*mylite_sql_parse_retry_callback)(
     struct mylite_sql_parse_result *result,
     bool *out_handled
 );
-
-enum {
-    mylite_mysql_version_comment_gate = 80409,
-    version_comment_min_token_length = 5,
-    version_comment_decimal_radix = 10,
-};
 
 static enum mylite_sql_parse_status feed_lexer_tokens(
     struct mylite_sql_parser_feed_context *context,
@@ -70,11 +59,6 @@ static void rebase_token_to_root_input(
     const char *root_input,
     size_t root_length
 );
-static bool parse_version_comment_payload(
-    const struct mylite_sql_token *token,
-    struct version_comment_payload *out_payload
-);
-static bool ascii_byte_is_digit(char byte);
 static bool feed_parenthesized_row_constructor_if_needed(
     void *parser,
     struct mylite_sql_parser_state *state,
@@ -495,61 +479,19 @@ static enum mylite_sql_parse_status feed_lexer_token(
     return context->state->result->status;
 }
 
-static bool parse_version_comment_payload(
-    const struct mylite_sql_token *token,
-    struct version_comment_payload *out_payload
-) {
-    const char *payload_start;
-    const char *payload_end;
-    const char *cursor;
-    unsigned int version = 0U;
-    bool has_version = false;
-
-    if (out_payload == NULL) {
-        return false;
-    }
-    *out_payload = (struct version_comment_payload){0};
-
-    if (token == NULL || token->kind != MYLITE_SQL_TOKEN_VERSION_COMMENT || token->text == NULL ||
-        token->length < (size_t)version_comment_min_token_length) {
-        return false;
-    }
-
-    payload_start = token->text + 3U;
-    payload_end = token->text + token->length - 2U;
-    if (payload_end < payload_start) {
-        return false;
-    }
-
-    cursor = payload_start;
-    while (cursor < payload_end && ascii_byte_is_digit(*cursor)) {
-        has_version = true;
-        if (version <= (unsigned int)mylite_mysql_version_comment_gate) {
-            version = (version * (unsigned int)version_comment_decimal_radix) +
-                      (unsigned int)(*cursor - '0');
-        }
-        ++cursor;
-    }
-
-    out_payload->text = cursor;
-    out_payload->length = (size_t)(payload_end - cursor);
-    out_payload->active =
-        !has_version || version <= (unsigned int)mylite_mysql_version_comment_gate;
-    return true;
-}
-
 enum mylite_sql_parse_status mylite_sql_parser_push_version_comment_payload_lexer(
     const struct mylite_sql_token *token,
     unsigned int modes,
     struct mylite_sql_lexer *lexer_stack,
     size_t *lexer_count
 ) {
-    struct version_comment_payload payload;
+    struct mylite_sql_version_comment_payload payload;
 
     if (lexer_stack == NULL || lexer_count == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
     }
-    if (!parse_version_comment_payload(token, &payload)) {
+    if (token == NULL || token->kind != MYLITE_SQL_TOKEN_VERSION_COMMENT ||
+        !mylite_sql_version_comment_parse(token->text, token->length, &payload)) {
         return MYLITE_SQL_PARSE_SYNTAX_ERROR;
     }
     if (!payload.active || payload.length == 0U) {
@@ -569,10 +511,6 @@ enum mylite_sql_parse_status mylite_sql_parser_push_version_comment_payload_lexe
     );
     ++*lexer_count;
     return MYLITE_SQL_PARSE_OK;
-}
-
-static bool ascii_byte_is_digit(char byte) {
-    return byte >= '0' && byte <= '9';
 }
 
 void mylite_sql_parse_result_deinit(struct mylite_sql_parse_result *result) {

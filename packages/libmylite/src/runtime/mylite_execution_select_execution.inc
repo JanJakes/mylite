@@ -151,9 +151,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && generic_rejected_native_function_name(expression)) ||
-             (has_row_source && expression_is_supported_row_scalar_system_function(expression)) ||
-             (has_row_source && expression_contains_supported_row_scalar_system_function(expression)
-             ) ||
+             expression_is_supported_row_scalar_system_function(expression) ||
+             expression_contains_supported_row_scalar_system_function(expression) ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {

@@ -106,6 +106,8 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         "FORCED",
     };
     static const char *const user_variable_increment_value[] = {"2"};
+    static const char *const normalizer_string_value[] = {"default_storage_engine=InnoDB"};
+    static const char *const executable_comment_gate_value[] = {"8"};
     static const char *const restored_charset_value[] = {"utf8mb4"};
     static const char *const dump_restore_values[] = {"1", "1", default_sql_mode};
     char path[test_path_capacity];
@@ -185,6 +187,31 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "SET user variable increment",
+        }
+    );
+    failures += expect_set_ok(database, "SET @normalizer_text = 'default_storage_engine=InnoDB'");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @normalizer_text",
+            .values = normalizer_string_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "SET string is not rewritten as an assignment",
+        }
+    );
+    failures += expect_set_ok(database, "SET @executable_comment_gate = 0");
+    failures += expect_set_ok(database, "/*!80409 SET @executable_comment_gate = 8 */");
+    failures += expect_set_ok(database, "/*!80410 SET @executable_comment_gate = 9 */");
+    failures += expect_set_ok(database, "/*!99999 SET @executable_comment_gate = 10 */");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @executable_comment_gate",
+            .values = executable_comment_gate_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "standalone executable comment version gate",
         }
     );
     failures += expect_set_ok(

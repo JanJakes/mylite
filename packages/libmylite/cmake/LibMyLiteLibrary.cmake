@@ -226,6 +226,7 @@ add_library(mylite STATIC
   src/sql/mylite_parser_schema_builders.c
   src/sql/mylite_parser_statement_builders.c
   src/sql/mylite_parser_token_map.c
+  src/sql/mylite_version_comment.c
   src/storage/mylite_file_open.c
   src/storage/mylite_file_format.c
   src/storage/mylite_offset_vfs.c

@@ -981,6 +981,9 @@ set_system_variable_value(A) ::= IDENTIFIER(T). {
 set_system_variable_value(A) ::= BINARY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+set_system_variable_value(A) ::= FULL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 set_system_variable_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
@@ -4969,6 +4972,9 @@ dml_function_call(A) ::= dml_function_token(T) LPAREN RPAREN(R). {
 dml_function_call(A) ::= dml_function_token(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_generic_function(state, T, B, R);
 }
+dml_function_call(A) ::= qualified_generic_function(B). {
+    A = B;
+}
 
 dml_bitwise_operand(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -8422,6 +8428,9 @@ predicate_row_scalar_expression(A) ::= LEAST(T) LPAREN function_argument_list(B)
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
 }
+predicate_row_scalar_expression(A) ::= qualified_generic_function(B). {
+    A = B;
+}
 predicate_row_scalar_expression(A) ::= DATABASE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
@@ -9507,6 +9516,9 @@ expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R) aggregate_window_opt(W). {
 expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R)
                   aggregate_window_opt(W). {
     A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, B, R, W);
+}
+expression(A) ::= qualified_generic_function(B) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(B, W);
 }
 expression(A) ::= IDENTIFIER(T) LPAREN DISTINCT(D) expression(B) RPAREN(R)
                   aggregate_window_opt(W). {
@@ -13597,6 +13609,14 @@ function_argument_list(A) ::= expression(B). {
 }
 function_argument_list(A) ::= function_argument_list(B) COMMA expression(C). {
     A = mylite_sql_parser_append_function_argument(state, B, C);
+}
+
+qualified_generic_function(A) ::= QUALIFIED_FUNCTION_SCHEMA(S) DOT identifier(N) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_qualified_generic_function(state, S, N, NULL, R);
+}
+qualified_generic_function(A) ::= QUALIFIED_FUNCTION_SCHEMA(S) DOT identifier(N) LPAREN
+                                  function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_qualified_generic_function(state, S, N, B, R);
 }
 
 qualified_identifier(A) ::= identifier(B). {

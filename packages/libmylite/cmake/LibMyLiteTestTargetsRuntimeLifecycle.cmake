@@ -2864,6 +2864,7 @@
   target_link_libraries(mylite_runtime_result_column_metadata_test PRIVATE MyLite::mylite)
   target_include_directories(mylite_runtime_result_column_metadata_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
   )
   mylite_configure_c_target(mylite_runtime_result_column_metadata_test)
 

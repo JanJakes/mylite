@@ -1470,6 +1470,7 @@ static enum mylite_sql_parse_status finish_placeholder_statement_parse(
             .text = config.input,
             .length = config.length,
             .offset = 0U,
+            .source_length = config.length,
         }
     );
     script = mylite_sql_parser_make_script_with_statement(&state, statement);

@@ -19,7 +19,8 @@ int mylite_execution_copy_source_span_text(
         return MYLITE_MISUSE;
     }
     *out_text = NULL;
-    if (span == NULL || span->text == NULL || span->length == 0U) {
+    if (span == NULL || !mylite_sql_source_span_is_valid(*span) || span->text == NULL ||
+        span->length == 0U) {
         mylite_execution_set_parse_result_error(database, NULL);
         return MYLITE_ERROR;
     }

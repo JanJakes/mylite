@@ -1,5 +1,6 @@
 #include "mylite_parser_helpers.h"
 
+#include <stdint.h>
 #include <string.h>
 
 char mylite_sql_parser_ascii_upper(unsigned char byte) {
@@ -47,6 +48,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_node(
     if (!mylite_sql_parser_is_parse_ok(state)) {
         return NULL;
     }
+    if (!mylite_sql_source_span_is_valid(span)) {
+        mylite_sql_parser_set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return NULL;
+    }
 
     node = mylite_sql_ast_new_node(&state->result->ast, kind, span);
     if (node == NULL) {
@@ -65,6 +70,7 @@ struct mylite_sql_source_span mylite_sql_parser_span_from_token(const struct myl
         .text = token->text,
         .length = token->length,
         .offset = token->offset,
+        .source_length = token->source_length,
     };
 }
 
@@ -73,9 +79,11 @@ struct mylite_sql_source_span mylite_sql_parser_span_join(
     struct mylite_sql_source_span right
 ) {
     struct mylite_sql_source_span start = left;
-    size_t left_end = left.offset + left.length;
-    size_t right_end = right.offset + right.length;
-    size_t end = left_end > right_end ? left_end : right_end;
+    uintptr_t left_source = 0U;
+    uintptr_t right_source = 0U;
+    size_t left_end = 0U;
+    size_t right_end = 0U;
+    size_t end = 0U;
 
     if (left.text == NULL || left.length == 0U) {
         return right;
@@ -83,6 +91,21 @@ struct mylite_sql_source_span mylite_sql_parser_span_join(
     if (right.text == NULL || right.length == 0U) {
         return left;
     }
+    if (!mylite_sql_source_span_is_valid(left) || !mylite_sql_source_span_is_valid(right) ||
+        left.source_length != right.source_length) {
+        return (struct mylite_sql_source_span){.text = left.text, .length = SIZE_MAX};
+    }
+
+    left_source = (uintptr_t)left.text;
+    right_source = (uintptr_t)right.text;
+    if (left_source < left.offset || right_source < right.offset ||
+        left_source - left.offset != right_source - right.offset) {
+        return (struct mylite_sql_source_span){.text = left.text, .length = SIZE_MAX};
+    }
+
+    left_end = left.offset + left.length;
+    right_end = right.offset + right.length;
+    end = left_end > right_end ? left_end : right_end;
 
     if (right.offset < left.offset) {
         start = right;

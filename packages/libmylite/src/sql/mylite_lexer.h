@@ -96,6 +96,7 @@ struct mylite_sql_token {
     const char *text;
     size_t length;
     size_t offset;
+    size_t source_length;
 };
 
 struct mylite_sql_keyword_lookup_result {

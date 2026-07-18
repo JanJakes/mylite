@@ -119,6 +119,7 @@ static enum mylite_sql_parse_status parse_select_result_option_before_duplicate_
         .kind = MYLITE_SQL_TOKEN_EOF,
         .text = config.input == NULL ? NULL : config.input + config.length,
         .offset = config.length,
+        .source_length = config.length,
     };
     enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
 
@@ -3547,6 +3548,7 @@ static enum mylite_sql_parse_status parse_parenthesized_row_arithmetic_predicate
         .kind = MYLITE_SQL_TOKEN_EOF,
         .text = config.input == NULL ? NULL : config.input + config.length,
         .offset = config.length,
+        .source_length = config.length,
     };
     enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
 
@@ -3776,6 +3778,7 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
         .offset = scan == NULL || start_index >= scan->token_count
                       ? 0U
                       : scan->tokens[start_index].offset,
+        .source_length = config.length,
     };
     struct mylite_sql_token row_token = {
         .kind = MYLITE_SQL_TOKEN_KEYWORD,
@@ -3784,11 +3787,13 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
         .offset = scan == NULL || start_index >= scan->token_count
                       ? 0U
                       : scan->tokens[start_index].offset,
+        .source_length = config.length,
     };
     struct mylite_sql_token eof_token = {
         .kind = MYLITE_SQL_TOKEN_EOF,
         .text = config.input == NULL ? NULL : config.input + config.length,
         .offset = config.length,
+        .source_length = config.length,
     };
     enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
 
@@ -4384,6 +4389,7 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_repeated_select_locking
             .text = config.input,
             .length = config.length,
             .offset = 0U,
+            .source_length = config.length,
         }
     );
     mylite_sql_ast_node_set_span(prefix_result.root, statement->span);
@@ -4705,6 +4711,7 @@ static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
         .kind = MYLITE_SQL_TOKEN_EOF,
         .text = config.input == NULL ? NULL : config.input + config.length,
         .offset = config.length,
+        .source_length = config.length,
     };
     enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
 

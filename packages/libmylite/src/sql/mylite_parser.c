@@ -54,7 +54,7 @@ static enum mylite_sql_parse_status feed_lexer_token(
     struct mylite_sql_lexer *lexer,
     struct mylite_sql_token *token
 );
-static void rebase_token_to_root_input(
+static bool rebase_token_to_root_input(
     struct mylite_sql_token *token,
     const char *root_input,
     size_t root_length
@@ -168,6 +168,12 @@ enum mylite_sql_parse_status mylite_sql_parse(
         status,
         mylite_sql_parser_try_parse_placeholder_statement
     );
+
+    if (status == MYLITE_SQL_PARSE_OK &&
+        !mylite_sql_ast_spans_are_within_source(&out_result->ast, config.input, config.length)) {
+        out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        status = out_result->status;
+    }
 
     return status;
 }
@@ -330,7 +336,9 @@ static enum mylite_sql_parse_status feed_lexer_tokens(
         if (mylite_sql_lexer_next(current_lexer, &token) != 0) {
             return MYLITE_SQL_PARSE_MISUSE;
         }
-        rebase_token_to_root_input(&token, root_input, root_length);
+        if (!rebase_token_to_root_input(&token, root_input, root_length)) {
+            return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        }
         if (token.kind == MYLITE_SQL_TOKEN_EOF) {
             if (lexer_count > 1U) {
                 --lexer_count;
@@ -359,7 +367,7 @@ static enum mylite_sql_parse_status feed_lexer_tokens(
     }
 }
 
-static void rebase_token_to_root_input(
+static bool rebase_token_to_root_input(
     struct mylite_sql_token *token,
     const char *root_input,
     size_t root_length
@@ -369,20 +377,22 @@ static void rebase_token_to_root_input(
     size_t root_offset = 0U;
 
     if (token == NULL || token->text == NULL || root_input == NULL) {
-        return;
+        return token != NULL && token->text == NULL && root_input == NULL && root_length == 0U;
     }
 
     root_address = (uintptr_t)root_input;
     token_address = (uintptr_t)token->text;
     if (token_address < root_address) {
-        return;
+        return false;
     }
     root_offset = (size_t)(token_address - root_address);
     if (root_offset > root_length || token->length > root_length - root_offset) {
-        return;
+        return false;
     }
 
     token->offset = root_offset;
+    token->source_length = root_length;
+    return true;
 }
 
 static enum mylite_sql_parse_status feed_lexer_token(

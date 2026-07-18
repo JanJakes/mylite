@@ -52,6 +52,37 @@ void mylite_sql_ast_deinit(struct mylite_sql_ast *ast) {
     ast->first_chunk = NULL;
 }
 
+bool mylite_sql_ast_spans_are_within_source(
+    const struct mylite_sql_ast *ast,
+    const char *source,
+    size_t source_length
+) {
+    const struct mylite_sql_ast_node_chunk *chunk = NULL;
+
+    if (ast == NULL || (source == NULL && source_length != 0U)) {
+        return false;
+    }
+
+    for (chunk = ast->first_chunk; chunk != NULL; chunk = chunk->next) {
+        for (size_t index = 0U; index < chunk->used; ++index) {
+            struct mylite_sql_source_span span = chunk->nodes[index].span;
+
+            if (!mylite_sql_source_span_is_valid(span)) {
+                return false;
+            }
+            if (span.text == NULL) {
+                continue;
+            }
+            if (span.source_length != source_length || source == NULL ||
+                span.text != source + span.offset) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 struct mylite_sql_ast_node *mylite_sql_ast_new_node(
     struct mylite_sql_ast *ast,
     enum mylite_sql_ast_node_kind kind,
@@ -304,6 +335,10 @@ void mylite_sql_ast_node_set_integer_type(
     if (node == NULL) {
         return;
     }
+    if (!mylite_sql_source_span_is_valid(payload.display_width_span)) {
+        node->span.length = SIZE_MAX;
+        return;
+    }
 
     node->payload.integer_type = payload;
 }
@@ -313,6 +348,10 @@ void mylite_sql_ast_node_set_varchar_type(
     struct mylite_sql_ast_varchar_type_payload payload
 ) {
     if (node == NULL) {
+        return;
+    }
+    if (!mylite_sql_source_span_is_valid(payload.length_span)) {
+        node->span.length = SIZE_MAX;
         return;
     }
 
@@ -326,6 +365,10 @@ void mylite_sql_ast_node_set_char_type(
     if (node == NULL) {
         return;
     }
+    if (!mylite_sql_source_span_is_valid(payload.length_span)) {
+        node->span.length = SIZE_MAX;
+        return;
+    }
 
     node->payload.char_type = payload;
 }
@@ -337,6 +380,10 @@ void mylite_sql_ast_node_set_text_type(
     if (node == NULL) {
         return;
     }
+    if (!mylite_sql_source_span_is_valid(payload.length_span)) {
+        node->span.length = SIZE_MAX;
+        return;
+    }
 
     node->payload.text_type = payload;
 }
@@ -346,6 +393,10 @@ void mylite_sql_ast_node_set_binary_string_type(
     struct mylite_sql_ast_binary_string_type_payload payload
 ) {
     if (node == NULL) {
+        return;
+    }
+    if (!mylite_sql_source_span_is_valid(payload.length_span)) {
+        node->span.length = SIZE_MAX;
         return;
     }
 
@@ -370,6 +421,10 @@ void mylite_sql_ast_node_set_bit_type(
     if (node == NULL) {
         return;
     }
+    if (!mylite_sql_source_span_is_valid(payload.length_span)) {
+        node->span.length = SIZE_MAX;
+        return;
+    }
 
     node->payload.bit_type = payload;
 }
@@ -379,6 +434,10 @@ void mylite_sql_ast_node_set_year_type(
     struct mylite_sql_ast_year_type_payload payload
 ) {
     if (node == NULL) {
+        return;
+    }
+    if (!mylite_sql_source_span_is_valid(payload.width_span)) {
+        node->span.length = SIZE_MAX;
         return;
     }
 
@@ -392,6 +451,11 @@ void mylite_sql_ast_node_set_decimal_type(
     if (node == NULL) {
         return;
     }
+    if (!mylite_sql_source_span_is_valid(payload.precision_span) ||
+        !mylite_sql_source_span_is_valid(payload.scale_span)) {
+        node->span.length = SIZE_MAX;
+        return;
+    }
 
     node->payload.decimal_type = payload;
 }
@@ -403,6 +467,11 @@ void mylite_sql_ast_node_set_approximate_type(
     if (node == NULL) {
         return;
     }
+    if (!mylite_sql_source_span_is_valid(payload.precision_span) ||
+        !mylite_sql_source_span_is_valid(payload.scale_span)) {
+        node->span.length = SIZE_MAX;
+        return;
+    }
 
     node->payload.approximate_type = payload;
 }
@@ -412,6 +481,10 @@ void mylite_sql_ast_node_set_temporal_fractional_precision(
     struct mylite_sql_ast_temporal_fractional_precision_payload payload
 ) {
     if (node == NULL) {
+        return;
+    }
+    if (!mylite_sql_source_span_is_valid(payload.precision_span)) {
+        node->span.length = SIZE_MAX;
         return;
     }
 

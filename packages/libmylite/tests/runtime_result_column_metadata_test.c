@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_execution_text_internal.h"
 #include "storage/mylite_file_format.h"
 
 #include <inttypes.h>
@@ -80,6 +81,7 @@ struct expected_column_metadata {
 static int test_descriptor_result_column_metadata(void);
 static int test_result_column_metadata_scalar_defaults_and_misuse(void);
 static int test_show_result_column_metadata(void);
+static int test_source_span_copy_bounds(void);
 static int setup_metadata_schema(mylite_db *database);
 static int expect_show_column_metadata(
     mylite_db *database,
@@ -121,8 +123,36 @@ int main(void) {
     failures += test_descriptor_result_column_metadata();
     failures += test_result_column_metadata_scalar_defaults_and_misuse();
     failures += test_show_result_column_metadata();
+    failures += test_source_span_copy_bounds();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_source_span_copy_bounds(void) {
+    static const char source[] = "x";
+    mylite_db *database = NULL;
+    char *text = (char *)source;
+    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open span bounds");
+
+    if (database != NULL) {
+        failures += expect_int(
+            mylite_execution_copy_source_span_text(
+                database,
+                &(struct mylite_sql_source_span){
+                    .text = source,
+                    .length = 2U,
+                    .offset = 0U,
+                    .source_length = sizeof(source) - 1U,
+                },
+                &text
+            ),
+            MYLITE_ERROR,
+            "reject out-of-bounds source span copy"
+        );
+        failures += expect_int(text == NULL, 1, "clear rejected source span output");
+    }
+    mylite_close(database);
+    return failures;
 }
 
 static int test_descriptor_result_column_metadata(void) {

@@ -51,7 +51,7 @@ complete.
 
 - [x] Rebase nested executable-comment tokens and AST spans to absolute input
   offsets.
-- [ ] Validate every source span using overflow-safe offset/length checks.
+- [x] Validate every source span using overflow-safe offset/length checks.
 - [x] Enforce executable-comment version gates for standalone and embedded
   forms.
 - [ ] Replace SQL-sensitive raw substring rewriting with token- or AST-aware
@@ -59,7 +59,7 @@ complete.
 - [x] Prevent SET rewrites inside strings, identifiers, and comments.
 - [x] Preserve user-visible expression text instead of internal helper names.
 - [x] Replace raw-SQL INFORMATION_SCHEMA bridge dispatch with typed plan data.
-- [ ] Add successful, invalid, retry, nested-comment, and sanitizer coverage.
+- [x] Add successful, invalid, retry, nested-comment, and sanitizer coverage.
 
 ## Phase 2: Handle and transaction lifecycle
 

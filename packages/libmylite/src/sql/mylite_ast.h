@@ -1169,6 +1169,11 @@ struct mylite_sql_ast {
 
 void mylite_sql_ast_init(struct mylite_sql_ast *ast);
 void mylite_sql_ast_deinit(struct mylite_sql_ast *ast);
+bool mylite_sql_ast_spans_are_within_source(
+    const struct mylite_sql_ast *ast,
+    const char *source,
+    size_t source_length
+);
 
 struct mylite_sql_ast_node *mylite_sql_ast_new_node(
     struct mylite_sql_ast *ast,

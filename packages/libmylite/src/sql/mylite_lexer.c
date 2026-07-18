@@ -2277,6 +2277,7 @@ static void set_token(
     out_token->text = lexer->input == NULL ? NULL : &lexer->input[start.offset];
     out_token->length = lexer->offset - start.offset;
     out_token->offset = start.offset;
+    out_token->source_length = lexer->length;
 }
 
 static void set_error_token(

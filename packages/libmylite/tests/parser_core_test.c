@@ -1,5 +1,6 @@
 #include "parser_test_support.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -17,6 +18,7 @@ static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_comments_are_skipped(void);
+static int test_source_span_bounds(void);
 
 int main(void) {
     int failures = 0;
@@ -29,6 +31,7 @@ int main(void) {
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
     failures += test_comments_are_skipped();
+    failures += test_source_span_bounds();
 
     return failures == 0 ? 0 : 1;
 }
@@ -1458,10 +1461,32 @@ static int test_comments_are_skipped(void) {
     left_text = strstr(executable_expression_sql, "1 */");
     failures += parser_test_expect_span_text(left, "1", "executable comment absolute span text");
     if (left == NULL || left_text == NULL ||
-        left->span.offset != (size_t)(left_text - executable_expression_sql)) {
+        left->span.offset != (size_t)(left_text - executable_expression_sql) ||
+        left->span.source_length != sizeof(executable_expression_sql) - 1U) {
         fprintf(stderr, "executable comment token span is not root-relative\n");
         ++failures;
     }
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "SELECT /*!80000 1 */ AS executable_alias;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parser_test_parse_sql("SELECT 1 WHERE /*!80000 1 = 1 */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "SELECT * FROM t WHERE (a,b) = /*!80000 (1,2) */;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "SELECT /*!80000 'unterminated */;",
+        MYLITE_SQL_PARSE_LEXER_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT 1 /*!80409 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -1528,6 +1553,50 @@ static int test_comments_are_skipped(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_source_span_bounds(void) {
+    static const char source[] = "SELECT 1";
+    struct mylite_sql_ast ast;
+    int failures = 0;
+
+    failures += parser_test_expect_true(
+        mylite_sql_source_span_is_valid((struct mylite_sql_source_span){
+            .text = source + 7U,
+            .length = 1U,
+            .offset = 7U,
+            .source_length = sizeof(source) - 1U,
+        }),
+        "bounded source span"
+    );
+    failures += parser_test_expect_true(
+        !mylite_sql_source_span_is_valid((struct mylite_sql_source_span){
+            .text = source,
+            .length = 2U,
+            .offset = SIZE_MAX,
+            .source_length = sizeof(source) - 1U,
+        }),
+        "overflowing source span offset"
+    );
+
+    mylite_sql_ast_init(&ast);
+    (void)mylite_sql_ast_new_node(
+        &ast,
+        MYLITE_SQL_AST_LITERAL,
+        (struct mylite_sql_source_span){
+            .text = source + 7U,
+            .length = 2U,
+            .offset = 7U,
+            .source_length = sizeof(source) - 1U,
+        }
+    );
+    failures += parser_test_expect_true(
+        !mylite_sql_ast_spans_are_within_source(&ast, source, sizeof(source) - 1U),
+        "AST rejects out-of-bounds source span"
+    );
+    mylite_sql_ast_deinit(&ast);
 
     return failures;
 }

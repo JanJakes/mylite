@@ -40,8 +40,7 @@ static int apply_set_bootstrap_system_variable_cell_value(
     return MYLITE_ERROR;
 }
 
-static bool bootstrap_system_variable_is_global_only(
-    enum mylite_execution_system_variable_kind kind
+static bool bootstrap_system_variable_is_global_only(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_ACTIVATE_ALL_ROLES_ON_LOGIN:

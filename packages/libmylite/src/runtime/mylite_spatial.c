@@ -1262,8 +1262,7 @@ static int convex_hull_point_set_from_geometry(
     struct mylite_spatial_error *error,
     const char *function_name
 );
-static size_t convex_hull_point_set_count_geometry(
-    const struct spatial_distance_geometry *geometry
+static size_t convex_hull_point_set_count_geometry(const struct spatial_distance_geometry *geometry
 );
 static int convex_hull_point_set_append_geometry(
     const struct spatial_distance_geometry *geometry,
@@ -2157,8 +2156,8 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS ||
-           (kind >= MYLITE_SPATIAL_FUNCTION_MBRCONTAINS &&
-            kind <= MYLITE_SPATIAL_FUNCTION_MBRWITHIN);
+           (kind >= MYLITE_SPATIAL_FUNCTION_MBRCONTAINS && kind <= MYLITE_SPATIAL_FUNCTION_MBRWITHIN
+           );
 }
 
 bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind kind) {
@@ -8355,8 +8354,7 @@ static int convex_hull_point_set_from_geometry(
     return rc;
 }
 
-static size_t convex_hull_point_set_count_geometry(
-    const struct spatial_distance_geometry *geometry
+static size_t convex_hull_point_set_count_geometry(const struct spatial_distance_geometry *geometry
 ) {
     size_t point_count = 0U;
 

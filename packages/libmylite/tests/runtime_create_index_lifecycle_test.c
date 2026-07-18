@@ -506,8 +506,7 @@ static int test_create_unique_index_validation_and_dml(void) {
 
     failures += expect_statement_ok(database, "CREATE TABLE non_ascii (name VARCHAR(10))");
     failures += expect_dml_ok(database, "INSERT INTO non_ascii VALUES ('é')", 1);
-    failures +=
-        expect_create_index_ok(database, "CREATE UNIQUE INDEX u_name ON non_ascii (name)");
+    failures += expect_create_index_ok(database, "CREATE UNIQUE INDEX u_name ON non_ascii (name)");
     failures += execute_error(
         database,
         "INSERT INTO non_ascii VALUES ('e')",

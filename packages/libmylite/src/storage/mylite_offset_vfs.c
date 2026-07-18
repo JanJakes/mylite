@@ -263,10 +263,8 @@ static int offset_close(sqlite3_file *file) {
 
     if (offset_file->inner_file != NULL) {
         if (offset_file->initialization_owner) {
-            (void)transition_initialization_state(
-                offset_file,
-                MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED
-            );
+            (void
+            )transition_initialization_state(offset_file, MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED);
         }
         if (offset_file->inner_file->pMethods != NULL) {
             rc = offset_file->inner_file->pMethods->xClose(offset_file->inner_file);

@@ -703,15 +703,16 @@ static enum mylite_sql_parse_status append_row_constructor_predicate_retry(
     retry = (struct placeholder_row_arithmetic_subject_retry){
         .start_index = start_index,
         .end_index = end_index,
-        .placeholder_token = {
-            .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
-            .text = placeholder_text,
-            .span_text = scan->tokens[start_index].text,
-            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
-                      scan->tokens[start_index].offset,
-            .offset = scan->tokens[start_index].offset,
-            .source_length = scan->tokens[start_index].source_length,
-        },
+        .placeholder_token =
+            {
+                .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+                .text = placeholder_text,
+                .span_text = scan->tokens[start_index].text,
+                .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                          scan->tokens[start_index].offset,
+                .offset = scan->tokens[start_index].offset,
+                .source_length = scan->tokens[start_index].source_length,
+            },
     };
     if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
         placeholder_row_arithmetic_subject_retries_deinit(retries);
@@ -918,15 +919,16 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
         retry = (struct placeholder_row_arithmetic_subject_retry){
             .start_index = index,
             .end_index = right_paren_index,
-            .placeholder_token = {
-                .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
-                .text = placeholder_text,
-                .span_text = scan->tokens[index].text,
-                .length = scan->tokens[right_paren_index].offset +
-                          scan->tokens[right_paren_index].length - scan->tokens[index].offset,
-                .offset = scan->tokens[index].offset,
-                .source_length = scan->tokens[index].source_length,
-            },
+            .placeholder_token =
+                {
+                    .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+                    .text = placeholder_text,
+                    .span_text = scan->tokens[index].text,
+                    .length = scan->tokens[right_paren_index].offset +
+                              scan->tokens[right_paren_index].length - scan->tokens[index].offset,
+                    .offset = scan->tokens[index].offset,
+                    .source_length = scan->tokens[index].source_length,
+                },
         };
         if (!placeholder_row_arithmetic_subject_retries_push(out_retries, retry)) {
             placeholder_row_arithmetic_subject_retries_deinit(out_retries);
@@ -1255,11 +1257,9 @@ static enum mylite_sql_parse_status scan_literal_left_string_predicate_subject_r
             &predicate_end_index,
             allow_concat_operator
         );
-    } else if (
-        placeholder_scan_token_text_equals(scan, suffix_index, "NOT") &&
-        suffix_index + 1U < scan->token_count &&
-        placeholder_scan_token_text_equals(scan, suffix_index + 1U, "BETWEEN")
-    ) {
+    } else if (placeholder_scan_token_text_equals(scan, suffix_index, "NOT") &&
+               suffix_index + 1U < scan->token_count &&
+               placeholder_scan_token_text_equals(scan, suffix_index + 1U, "BETWEEN")) {
         has_descriptor_context =
             placeholder_scan_literal_left_string_between_has_descriptor_context(
                 scan,
@@ -1267,11 +1267,9 @@ static enum mylite_sql_parse_status scan_literal_left_string_predicate_subject_r
                 &predicate_end_index,
                 allow_concat_operator
             );
-    } else if (
-        placeholder_scan_token_text_equals(scan, suffix_index, "NOT") &&
-        suffix_index + 1U < scan->token_count &&
-        placeholder_scan_token_text_equals(scan, suffix_index + 1U, "IN")
-    ) {
+    } else if (placeholder_scan_token_text_equals(scan, suffix_index, "NOT") &&
+               suffix_index + 1U < scan->token_count &&
+               placeholder_scan_token_text_equals(scan, suffix_index + 1U, "IN")) {
         has_descriptor_context = placeholder_scan_literal_left_string_in_has_descriptor_context(
             scan,
             suffix_index + 1U,
@@ -1310,15 +1308,16 @@ static enum mylite_sql_parse_status append_row_scalar_predicate_subject_retry(
     retry = (struct placeholder_row_arithmetic_subject_retry){
         .start_index = start_index,
         .end_index = end_index,
-        .placeholder_token = {
-            .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
-            .text = placeholder_text,
-            .span_text = scan->tokens[start_index].text,
-            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
-                      scan->tokens[start_index].offset,
-            .offset = scan->tokens[start_index].offset,
-            .source_length = scan->tokens[start_index].source_length,
-        },
+        .placeholder_token =
+            {
+                .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+                .text = placeholder_text,
+                .span_text = scan->tokens[start_index].text,
+                .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                          scan->tokens[start_index].offset,
+                .offset = scan->tokens[start_index].offset,
+                .source_length = scan->tokens[start_index].source_length,
+            },
     };
     if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
         placeholder_row_arithmetic_subject_retries_deinit(retries);
@@ -1333,12 +1332,33 @@ static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
     size_t index
 ) {
     static const char *const function_names[] = {
-        "LEFT",    "RIGHT",          "LOWER",     "LCASE",      "UPPER",
-        "UCASE",   "LTRIM",          "RTRIM",     "TRIM",       "LPAD",
-        "RPAD",    "REPEAT",         "SPACE",     "QUOTE",      "REVERSE",
-        "SOUNDEX", "UNHEX",          "INET_ATON",  "INET_NTOA",  "EXPORT_SET",
-        "MAKE_SET", "SUBSTRING_INDEX", "STRCMP",   "ROW_COUNT",  "FOUND_ROWS",
-        "LAST_INSERT_ID", "VALIDATE_PASSWORD_STRENGTH",
+        "LEFT",
+        "RIGHT",
+        "LOWER",
+        "LCASE",
+        "UPPER",
+        "UCASE",
+        "LTRIM",
+        "RTRIM",
+        "TRIM",
+        "LPAD",
+        "RPAD",
+        "REPEAT",
+        "SPACE",
+        "QUOTE",
+        "REVERSE",
+        "SOUNDEX",
+        "UNHEX",
+        "INET_ATON",
+        "INET_NTOA",
+        "EXPORT_SET",
+        "MAKE_SET",
+        "SUBSTRING_INDEX",
+        "STRCMP",
+        "ROW_COUNT",
+        "FOUND_ROWS",
+        "LAST_INSERT_ID",
+        "VALIDATE_PASSWORD_STRENGTH",
     };
 
     for (size_t name_index = 0U; name_index < sizeof(function_names) / sizeof(function_names[0]);
@@ -1389,8 +1409,8 @@ static bool placeholder_scan_token_is_top_level_where_predicate_context(
         return false;
     }
     if (scan->predicate_context_flags != NULL) {
-        return (scan->predicate_context_flags[index] &
-                placeholder_predicate_context_top_level_where) != 0U;
+        return (scan->predicate_context_flags[index] & placeholder_predicate_context_top_level_where
+               ) != 0U;
     }
     for (size_t cursor = 0U; cursor < index; ++cursor) {
         if (placeholder_scan_token_text_equals(scan, cursor, "WHERE")) {
@@ -1560,22 +1580,21 @@ static enum mylite_sql_parse_status scan_row_scalar_assignment_list_retries(
                 value_end,
                 allow_concat_operator
             )) {
-            enum mylite_sql_parse_status status =
-                use_literal_placeholder
-                    ? append_row_arithmetic_predicate_value_retry(
-                          scan,
-                          value_start,
-                          value_end,
-                          retries,
-                          inout_can_retry
-                      )
-                    : append_row_scalar_predicate_subject_retry(
-                          scan,
-                          value_start,
-                          value_end,
-                          retries,
-                          inout_can_retry
-                      );
+            enum mylite_sql_parse_status status = use_literal_placeholder
+                                                      ? append_row_arithmetic_predicate_value_retry(
+                                                            scan,
+                                                            value_start,
+                                                            value_end,
+                                                            retries,
+                                                            inout_can_retry
+                                                        )
+                                                      : append_row_scalar_predicate_subject_retry(
+                                                            scan,
+                                                            value_start,
+                                                            value_end,
+                                                            retries,
+                                                            inout_can_retry
+                                                        );
 
             if (status != MYLITE_SQL_PARSE_OK) {
                 return status;
@@ -1636,64 +1655,117 @@ static bool placeholder_scan_token_is_retryable_update_assignment_row_scalar_fun
     size_t index
 ) {
     static const char *const function_names[] = {
-        "LOWER",         "LCASE",
-        "UPPER",         "UCASE",
-        "LTRIM",         "RTRIM",
-        "TRIM",          "QUOTE",
-        "REVERSE",       "SOUNDEX",
-        "UNHEX",         "JSON_EXTRACT",
-        "JSON_UNQUOTE",  "JSON_LENGTH",
-        "JSON_KEYS",     "JSON_TYPE",
-        "JSON_QUOTE",    "JSON_ARRAY",
-        "JSON_OBJECT",   "JSON_SET",
-        "JSON_INSERT",   "JSON_REPLACE",
-        "JSON_REMOVE",   "JSON_ARRAY_APPEND",
-        "JSON_ARRAY_INSERT", "JSON_MERGE",
-        "JSON_MERGE_PATCH", "JSON_MERGE_PRESERVE",
+        "LOWER",
+        "LCASE",
+        "UPPER",
+        "UCASE",
+        "LTRIM",
+        "RTRIM",
+        "TRIM",
+        "QUOTE",
+        "REVERSE",
+        "SOUNDEX",
+        "UNHEX",
+        "JSON_EXTRACT",
+        "JSON_UNQUOTE",
+        "JSON_LENGTH",
+        "JSON_KEYS",
+        "JSON_TYPE",
+        "JSON_QUOTE",
+        "JSON_ARRAY",
+        "JSON_OBJECT",
+        "JSON_SET",
+        "JSON_INSERT",
+        "JSON_REPLACE",
+        "JSON_REMOVE",
+        "JSON_ARRAY_APPEND",
+        "JSON_ARRAY_INSERT",
+        "JSON_MERGE",
+        "JSON_MERGE_PATCH",
+        "JSON_MERGE_PRESERVE",
         "JSON_SEARCH",
         "GREATEST",
-        "LEAST",         "INTERVAL",
-        "ISNULL",        "CRC32",
-        "FORMAT",        "TRUNCATE",
-        "MOD",           "CONCAT",
-        "CONCAT_WS",     "FIELD",
-        "HEX",           "TO_BASE64",
-        "FROM_BASE64",   "LEFT",
-        "RIGHT",         "SUBSTRING",
-        "SUBSTR",        "MID",
-        "LPAD",          "RPAD",
-        "REPEAT",        "SPACE",
-        "LOCATE",        "INSTR",
-        "POSITION",      "REPLACE",
-        "INSERT",        "SUBSTRING_INDEX",
-        "FIND_IN_SET",   "STRCMP",
-        "REGEXP_LIKE",   "REGEXP_INSTR",
-        "REGEXP_SUBSTR", "REGEXP_REPLACE",
-        "EXPORT_SET",    "MAKE_SET",
-        "MD5",           "SHA",
-        "SHA1",          "SHA2",
-        "COMPRESS",      "UNCOMPRESS",
+        "LEAST",
+        "INTERVAL",
+        "ISNULL",
+        "CRC32",
+        "FORMAT",
+        "TRUNCATE",
+        "MOD",
+        "CONCAT",
+        "CONCAT_WS",
+        "FIELD",
+        "HEX",
+        "TO_BASE64",
+        "FROM_BASE64",
+        "LEFT",
+        "RIGHT",
+        "SUBSTRING",
+        "SUBSTR",
+        "MID",
+        "LPAD",
+        "RPAD",
+        "REPEAT",
+        "SPACE",
+        "LOCATE",
+        "INSTR",
+        "POSITION",
+        "REPLACE",
+        "INSERT",
+        "SUBSTRING_INDEX",
+        "FIND_IN_SET",
+        "STRCMP",
+        "REGEXP_LIKE",
+        "REGEXP_INSTR",
+        "REGEXP_SUBSTR",
+        "REGEXP_REPLACE",
+        "EXPORT_SET",
+        "MAKE_SET",
+        "MD5",
+        "SHA",
+        "SHA1",
+        "SHA2",
+        "COMPRESS",
+        "UNCOMPRESS",
         "UNCOMPRESSED_LENGTH",
         "RANDOM_BYTES",
-        "DATE",          "TIME",
-        "DATE_FORMAT",   "TIME_FORMAT",
-        "STR_TO_DATE",   "DATEDIFF",
-        "TIMEDIFF",      "TIMESTAMP",
-        "TIMESTAMPADD",  "TIMESTAMPDIFF",
+        "DATE",
+        "TIME",
+        "DATE_FORMAT",
+        "TIME_FORMAT",
+        "STR_TO_DATE",
+        "DATEDIFF",
+        "TIMEDIFF",
+        "TIMESTAMP",
+        "TIMESTAMPADD",
+        "TIMESTAMPDIFF",
         "UNIX_TIMESTAMP",
-        "SEC_TO_TIME",   "FROM_UNIXTIME",
-        "FROM_DAYS",     "MAKEDATE",
-        "MAKETIME",      "TIME_TO_SEC",
-        "TO_DAYS",       "TO_SECONDS",
-        "DAY",           "DAYOFMONTH",
-        "DAYOFWEEK",     "DAYOFYEAR",
-        "DAYNAME",       "LAST_DAY",
-        "HOUR",          "MINUTE",
-        "SECOND",        "MICROSECOND",
-        "MONTH",         "MONTHNAME",
-        "QUARTER",       "WEEK",
-        "WEEKDAY",       "WEEKOFYEAR",
-        "YEAR",          "YEARWEEK",
+        "SEC_TO_TIME",
+        "FROM_UNIXTIME",
+        "FROM_DAYS",
+        "MAKEDATE",
+        "MAKETIME",
+        "TIME_TO_SEC",
+        "TO_DAYS",
+        "TO_SECONDS",
+        "DAY",
+        "DAYOFMONTH",
+        "DAYOFWEEK",
+        "DAYOFYEAR",
+        "DAYNAME",
+        "LAST_DAY",
+        "HOUR",
+        "MINUTE",
+        "SECOND",
+        "MICROSECOND",
+        "MONTH",
+        "MONTHNAME",
+        "QUARTER",
+        "WEEK",
+        "WEEKDAY",
+        "WEEKOFYEAR",
+        "YEAR",
+        "YEARWEEK",
         "EXTRACT",
         "VALIDATE_PASSWORD_STRENGTH",
     };
@@ -1747,6 +1819,7 @@ static bool placeholder_scan_top_level_duplicate_update_index(
         duplicate_update_min_token_count = 6,
         duplicate_update_tail_token_count = 3,
     };
+
     int paren_depth = 0;
 
     if (out_update_index != NULL) {
@@ -1956,15 +2029,14 @@ static enum mylite_sql_parse_status scan_row_bitwise_order_key_retries(
             continue;
         }
 
-        enum mylite_sql_parse_status status =
-            scan_row_bitwise_order_items(
-                scan,
-                index + 2U,
-                retries,
-                inout_can_retry,
-                &index,
-                allow_concat_operator
-            );
+        enum mylite_sql_parse_status status = scan_row_bitwise_order_items(
+            scan,
+            index + 2U,
+            retries,
+            inout_can_retry,
+            &index,
+            allow_concat_operator
+        );
 
         if (status != MYLITE_SQL_PARSE_OK) {
             return status;
@@ -2038,15 +2110,16 @@ static enum mylite_sql_parse_status append_row_bitwise_order_key_retry(
     retry = (struct placeholder_row_arithmetic_subject_retry){
         .start_index = start_index,
         .end_index = end_index,
-        .placeholder_token = {
-            .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
-            .text = placeholder_text,
-            .span_text = scan->tokens[start_index].text,
-            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
-                      scan->tokens[start_index].offset,
-            .offset = scan->tokens[start_index].offset,
-            .source_length = scan->tokens[start_index].source_length,
-        },
+        .placeholder_token =
+            {
+                .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+                .text = placeholder_text,
+                .span_text = scan->tokens[start_index].text,
+                .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                          scan->tokens[start_index].offset,
+                .offset = scan->tokens[start_index].offset,
+                .source_length = scan->tokens[start_index].source_length,
+            },
     };
     if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
         placeholder_row_arithmetic_subject_retries_deinit(retries);
@@ -2468,14 +2541,13 @@ static enum mylite_sql_parse_status scan_row_arithmetic_comparison_value_retry(
     size_t value_start = comparison_index + 1U;
     size_t value_end = 0U;
 
-    if (value_start >= scan->token_count ||
-        !placeholder_scan_predicate_value_end(
-            scan,
-            value_start,
-            false,
-            &value_end,
-            allow_concat_operator
-        )) {
+    if (value_start >= scan->token_count || !placeholder_scan_predicate_value_end(
+                                                scan,
+                                                value_start,
+                                                false,
+                                                &value_end,
+                                                allow_concat_operator
+                                            )) {
         return MYLITE_SQL_PARSE_OK;
     }
     if (placeholder_scan_predicate_value_can_retry_as_row_scalar(
@@ -2542,13 +2614,12 @@ static enum mylite_sql_parse_status scan_row_arithmetic_between_value_retries(
             inout_can_retry
         );
     }
-    if (status == MYLITE_SQL_PARSE_OK &&
-        placeholder_scan_predicate_value_can_retry_as_row_scalar(
-            scan,
-            upper_start,
-            upper_end,
-            allow_concat_operator
-        )) {
+    if (status == MYLITE_SQL_PARSE_OK && placeholder_scan_predicate_value_can_retry_as_row_scalar(
+                                             scan,
+                                             upper_start,
+                                             upper_end,
+                                             allow_concat_operator
+                                         )) {
         status = append_row_arithmetic_predicate_value_retry(
             scan,
             upper_start,
@@ -3340,15 +3411,16 @@ static enum mylite_sql_parse_status append_row_arithmetic_predicate_value_retry(
     retry = (struct placeholder_row_arithmetic_subject_retry){
         .start_index = start_index,
         .end_index = end_index,
-        .placeholder_token = {
-            .kind = MYLITE_SQL_TOKEN_INTEGER,
-            .text = placeholder_text,
-            .span_text = scan->tokens[start_index].text,
-            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
-                      scan->tokens[start_index].offset,
-            .offset = scan->tokens[start_index].offset,
-            .source_length = scan->tokens[start_index].source_length,
-        },
+        .placeholder_token =
+            {
+                .kind = MYLITE_SQL_TOKEN_INTEGER,
+                .text = placeholder_text,
+                .span_text = scan->tokens[start_index].text,
+                .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                          scan->tokens[start_index].offset,
+                .offset = scan->tokens[start_index].offset,
+                .source_length = scan->tokens[start_index].source_length,
+            },
     };
     if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
         placeholder_row_arithmetic_subject_retries_deinit(retries);
@@ -4074,8 +4146,7 @@ static bool row_arithmetic_retry_clone_stack_push(
     return true;
 }
 
-static bool row_arithmetic_retry_clone_stack_reserve(
-    struct row_arithmetic_retry_clone_stack *stack
+static bool row_arithmetic_retry_clone_stack_reserve(struct row_arithmetic_retry_clone_stack *stack
 ) {
     struct row_arithmetic_retry_clone_work_item *items = NULL;
     size_t capacity = row_arithmetic_retry_clone_stack_initial_capacity;
@@ -4100,8 +4171,7 @@ static bool row_arithmetic_retry_clone_stack_reserve(
     return true;
 }
 
-static void row_arithmetic_retry_clone_stack_deinit(
-    struct row_arithmetic_retry_clone_stack *stack
+static void row_arithmetic_retry_clone_stack_deinit(struct row_arithmetic_retry_clone_stack *stack
 ) {
     if (stack == NULL) {
         return;
@@ -4615,10 +4685,8 @@ static bool scan_select_locking_clause_end(
         }
         if (placeholder_scan_token_text_equals(scan, index, "NOWAIT")) {
             ++index;
-        } else if (
-            placeholder_scan_token_text_equals(scan, index, "SKIP") &&
-            placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED")
-        ) {
+        } else if (placeholder_scan_token_text_equals(scan, index, "SKIP") &&
+                   placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED")) {
             index += 2U;
         }
         *out_end_index = index;
@@ -5938,8 +6006,7 @@ static bool scan_alter_table_algorithm_lock_tail(
     return false;
 }
 
-static size_t alter_table_placeholder_name_end_index(
-    const struct placeholder_statement_scan *scan
+static size_t alter_table_placeholder_name_end_index(const struct placeholder_statement_scan *scan
 ) {
     size_t index = 2U;
 

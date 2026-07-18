@@ -92,8 +92,7 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     static const char *const pipe_values[] = {"alpha|beta|delta|echo"};
     static const char *const note_columns[] = {"GROUP_CONCAT(note ORDER BY id SEPARATOR ':')"};
     static const char *const note_values[] = {"A:B:D:E"};
-    static const char *const asc_columns[] = {
-        "GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':')"
+    static const char *const asc_columns[] = {"GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':')"
     };
     static const char *const asc_values[] = {"delta:beta:alpha:echo"};
     static const char *const desc_columns[] = {

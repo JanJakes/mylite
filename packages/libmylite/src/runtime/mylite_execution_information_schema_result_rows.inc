@@ -178,31 +178,25 @@ static int information_schema_initialize_catalog_column_descriptor(
         strcmp(column_definition->data_type, "int") == 0 ||
         strcmp(column_definition->data_type, "bigint") == 0) {
         physical_type = "INTEGER";
-    } else if (
-        strcmp(column_definition->data_type, "float") == 0 ||
-        strcmp(column_definition->data_type, "double") == 0
-    ) {
+    } else if (strcmp(column_definition->data_type, "float") == 0 ||
+               strcmp(column_definition->data_type, "double") == 0) {
         physical_type = "REAL";
-    } else if (
-        strcmp(column_definition->data_type, "binary") == 0 ||
-        strcmp(column_definition->data_type, "varbinary") == 0 ||
-        strcmp(column_definition->data_type, "tinyblob") == 0 ||
-        strcmp(column_definition->data_type, "blob") == 0 ||
-        strcmp(column_definition->data_type, "mediumblob") == 0 ||
-        strcmp(column_definition->data_type, "longblob") == 0 ||
-        strcmp(column_definition->data_type, "bit") == 0
-    ) {
+    } else if (strcmp(column_definition->data_type, "binary") == 0 ||
+               strcmp(column_definition->data_type, "varbinary") == 0 ||
+               strcmp(column_definition->data_type, "tinyblob") == 0 ||
+               strcmp(column_definition->data_type, "blob") == 0 ||
+               strcmp(column_definition->data_type, "mediumblob") == 0 ||
+               strcmp(column_definition->data_type, "longblob") == 0 ||
+               strcmp(column_definition->data_type, "bit") == 0) {
         physical_type = "BLOB";
-    } else if (
-        strcmp(column_definition->data_type, "geometry") == 0 ||
-        strcmp(column_definition->data_type, "point") == 0 ||
-        strcmp(column_definition->data_type, "linestring") == 0 ||
-        strcmp(column_definition->data_type, "polygon") == 0 ||
-        strcmp(column_definition->data_type, "multipoint") == 0 ||
-        strcmp(column_definition->data_type, "multilinestring") == 0 ||
-        strcmp(column_definition->data_type, "multipolygon") == 0 ||
-        strcmp(column_definition->data_type, "geomcollection") == 0
-    ) {
+    } else if (strcmp(column_definition->data_type, "geometry") == 0 ||
+               strcmp(column_definition->data_type, "point") == 0 ||
+               strcmp(column_definition->data_type, "linestring") == 0 ||
+               strcmp(column_definition->data_type, "polygon") == 0 ||
+               strcmp(column_definition->data_type, "multipoint") == 0 ||
+               strcmp(column_definition->data_type, "multilinestring") == 0 ||
+               strcmp(column_definition->data_type, "multipolygon") == 0 ||
+               strcmp(column_definition->data_type, "geomcollection") == 0) {
         physical_type = "BLOB";
         preserve_lowercase_logical_type = true;
     }
@@ -307,13 +301,11 @@ static void information_schema_apply_connection_text_metadata(
     if (parse_unsigned_integer_literal(&length_span, &character_count) != MYLITE_OK) {
         return;
     }
-    max_bytes_per_character =
-        result_metadata_collation_max_bytes_per_character(
-            mylite_connection_statement_collation_connection(database)
-        );
-    descriptor->charset_id = result_metadata_collation_id(
+    max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
         mylite_connection_statement_collation_connection(database)
     );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     if (column_definition->column_type != NULL &&
         strcmp(column_definition->column_type, "varchar(65535)") == 0 &&
@@ -367,10 +359,8 @@ static void information_schema_apply_temporal_precision_metadata(
     }
     if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIME) {
         descriptor->display_length = time_text_maximum_length + precision + 1U;
-    } else if (
-        descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_DATETIME ||
-        descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIMESTAMP
-    ) {
+    } else if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_DATETIME ||
+               descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIMESTAMP) {
         descriptor->display_length = datetime_text_length + precision + 1U;
     }
 }
@@ -444,19 +434,16 @@ static void information_schema_make_group_concat_result_column_descriptor(
     const char *label,
     struct mylite_result_column_descriptor *out_descriptor
 ) {
-    const uint64_t max_bytes_per_character =
-        result_metadata_collation_max_bytes_per_character(
-            mylite_connection_statement_collation_connection(database)
-        );
+    const uint64_t max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
+        mylite_connection_statement_collation_connection(database)
+    );
 
     *out_descriptor = unknown_result_column_descriptor(label);
     out_descriptor->logical_type = database->session.group_concat_max_len > 512U
                                        ? MYLITE_RESULT_LOGICAL_TYPE_BLOB
                                        : MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
     out_descriptor->charset_id =
-        result_metadata_collation_id(
-            mylite_connection_statement_collation_connection(database)
-        );
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     out_descriptor->collation_id = out_descriptor->charset_id;
     if (database->session.group_concat_max_len > UINT64_MAX / max_bytes_per_character) {
         out_descriptor->display_length = UINT32_MAX;
@@ -1713,8 +1700,7 @@ static const struct mylite_sql_ast_node *information_schema_statement_where_clau
     return NULL;
 }
 
-static void information_schema_row_index_set_init(
-    struct information_schema_row_index_set *indexes
+static void information_schema_row_index_set_init(struct information_schema_row_index_set *indexes
 ) {
     *indexes = (struct information_schema_row_index_set){
         .items = indexes->stack_items,
@@ -1763,8 +1749,7 @@ static int information_schema_row_index_set_append(
     return MYLITE_OK;
 }
 
-static void information_schema_row_index_set_deinit(
-    struct information_schema_row_index_set *indexes
+static void information_schema_row_index_set_deinit(struct information_schema_row_index_set *indexes
 ) {
     if (indexes == NULL) {
         return;
@@ -1835,11 +1820,9 @@ static int information_schema_predicate_includes_connection_control_failed_login
                 predicate,
                 out_includes_table
             );
-        } else if (
-            predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-            predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-            predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE
-        ) {
+        } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+                   predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+                   predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
             rc = information_schema_predicate_stack_push_binary_children(
                 database,
                 &stack,
@@ -2078,10 +2061,8 @@ static int information_schema_compare_rows_by_column(
             comparison =
                 information_schema_compare_text(query->definition, order.column_index, left, right);
         }
-    } else if (
-        query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_COLLATIONS &&
-        order.column_index == information_schema_collations_name_column
-    ) {
+    } else if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_COLLATIONS &&
+               order.column_index == information_schema_collations_name_column) {
         size_t left_index = 0U;
         size_t right_index = 0U;
         bool left_known = mylite_execution_catalog_mysql_collation_index_by_name(left, &left_index);

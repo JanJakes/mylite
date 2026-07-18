@@ -309,11 +309,9 @@ static int plan_temporal_extract_predicate_value(
             "literals"
         );
         return MYLITE_ERROR;
-    } else if (
-        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
-        (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
-        (!is_negative && magnitude > (uint64_t)INT64_MAX)
-    ) {
+    } else if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+               (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+               (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
         set_unsupported_error(
             database,
             "temporal extract predicate comparison literals must fit the signed 64-bit range"

@@ -14,12 +14,7 @@ static int apply_set_last_insert_id_system_variable_value(
         return MYLITE_ERROR;
     }
 
-    rc = parse_set_last_insert_id_system_variable_value(
-        database,
-        target->name,
-        value_node,
-        &value
-    );
+    rc = parse_set_last_insert_id_system_variable_value(database, target->name, value_node, &value);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -58,9 +53,7 @@ static int apply_set_last_insert_id_system_variable_cell_value(
     return MYLITE_OK;
 }
 
-static bool set_system_variable_is_last_insert_id(
-    enum mylite_execution_system_variable_kind kind
-) {
+static bool set_system_variable_is_last_insert_id(enum mylite_execution_system_variable_kind kind) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_IDENTITY ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LAST_INSERT_ID;
 }

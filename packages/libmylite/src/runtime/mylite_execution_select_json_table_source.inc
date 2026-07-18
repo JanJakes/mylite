@@ -146,12 +146,7 @@ static int plan_json_table_select_source(
             "%s",
             out_source->alias
         );
-        snprintf(
-            out_source->table.name,
-            sizeof(out_source->table.name),
-            "%s",
-            out_source->alias
-        );
+        snprintf(out_source->table.name, sizeof(out_source->table.name), "%s", out_source->alias);
         if (database->session.has_selected_schema) {
             snprintf(
                 out_source->source.schema.name,
@@ -387,10 +382,8 @@ static int json_table_collect_row_values(
             set_nomem_error(database);
             return MYLITE_NOMEM;
         }
-        out_rows->items = (const struct json_value **)calloc(
-            document->payload.array.count,
-            sizeof(*out_rows->items)
-        );
+        out_rows->items = (const struct json_value **)
+            calloc(document->payload.array.count, sizeof(*out_rows->items));
         if (document->payload.array.count != 0U && out_rows->items == NULL) {
             set_nomem_error(database);
             return MYLITE_NOMEM;
@@ -875,6 +868,7 @@ static bool json_table_parse_json_integer(
     int64_t *out_value
 ) {
     enum { json_table_decimal_base = 10 };
+
     const bool negative = text_length != 0U && text[0] == '-';
     const uint64_t limit = negative ? ((uint64_t)INT64_MAX + 1U) : (uint64_t)INT64_MAX;
     uint64_t magnitude = 0U;

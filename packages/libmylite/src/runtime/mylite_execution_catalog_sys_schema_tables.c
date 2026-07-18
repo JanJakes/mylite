@@ -621,18 +621,8 @@ static const char *const sys_x_ps_schema_table_statistics_io_column_privileges[]
 static const struct mylite_execution_catalog_column_definition
     sys_x_ps_digest_avg_latency_distribution_columns[] = {
         {"cnt", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
-        {"avg_us",
-         NULL,
-         "YES",
-         "decimal",
-         NULL,
-         NULL,
-         "21",
-         "0",
-         NULL,
-         NULL,
-         NULL,
-         "decimal(21,0)"},
+        {"avg_us", NULL, "YES", "decimal", NULL, NULL, "21", "0", NULL, NULL, NULL, "decimal(21,0)"
+        },
 };
 
 static const char *const sys_x_ps_digest_avg_latency_distribution_column_keys[] = {
@@ -652,18 +642,8 @@ static const char *const sys_x_ps_digest_avg_latency_distribution_column_privile
 
 static const struct mylite_execution_catalog_column_definition
     sys_x_ps_digest_95th_percentile_by_avg_us_columns[] = {
-        {"avg_us",
-         NULL,
-         "YES",
-         "decimal",
-         NULL,
-         NULL,
-         "21",
-         "0",
-         NULL,
-         NULL,
-         NULL,
-         "decimal(21,0)"},
+        {"avg_us", NULL, "YES", "decimal", NULL, NULL, "21", "0", NULL, NULL, NULL, "decimal(21,0)"
+        },
         {"percentile",
          "0.0000",
          "NO",
@@ -1071,18 +1051,8 @@ static const struct mylite_execution_catalog_column_definition
          NULL,
          NULL,
          "decimal(42,0)"},
-        {"io_read",
-         NULL,
-         "YES",
-         "decimal",
-         NULL,
-         NULL,
-         "41",
-         "0",
-         NULL,
-         NULL,
-         NULL,
-         "decimal(41,0)"},
+        {"io_read", NULL, "YES", "decimal", NULL, NULL, "41", "0", NULL, NULL, NULL, "decimal(41,0)"
+        },
         {"io_read_latency",
          NULL,
          "YES",
@@ -1595,18 +1565,8 @@ static const struct mylite_execution_catalog_column_definition
          NULL,
          NULL,
          "decimal(42,0)"},
-        {"io_read",
-         NULL,
-         "YES",
-         "decimal",
-         NULL,
-         NULL,
-         "41",
-         "0",
-         NULL,
-         NULL,
-         NULL,
-         "decimal(41,0)"},
+        {"io_read", NULL, "YES", "decimal", NULL, NULL, "41", "0", NULL, NULL, NULL, "decimal(41,0)"
+        },
         {"io_read_latency",
          NULL,
          "YES",
@@ -1855,18 +1815,8 @@ static const struct mylite_execution_catalog_column_definition
          NULL,
          NULL,
          "bigint unsigned"},
-        {"latency",
-         NULL,
-         "NO",
-         "bigint",
-         NULL,
-         NULL,
-         "20",
-         "0",
-         NULL,
-         NULL,
-         NULL,
-         "bigint unsigned"},
+        {"latency", NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"
+        },
 };
 
 static const char *const sys_schema_table_statistics_column_keys[] = {
@@ -2147,18 +2097,8 @@ static const struct mylite_execution_catalog_column_definition
          "utf8mb3_tolower_ci",
          "varchar(64)"},
         {"non_unique", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
-        {"subpart_exists",
-         NULL,
-         "YES",
-         "bigint",
-         NULL,
-         NULL,
-         "19",
-         "0",
-         NULL,
-         NULL,
-         NULL,
-         "bigint"},
+        {"subpart_exists", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"
+        },
         {"index_columns",
          NULL,
          "YES",
@@ -2604,8 +2544,8 @@ static const struct mylite_execution_catalog_mysql_system_table
          {MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_OBJECT_OVERVIEW,
           "schema_object_overview",
           sys_schema_object_overview_columns,
-          sizeof(sys_schema_object_overview_columns) /
-              sizeof(sys_schema_object_overview_columns[0])},
+          sizeof(sys_schema_object_overview_columns) / sizeof(sys_schema_object_overview_columns[0])
+         },
          MYLITE_EXECUTION_CATALOG_ARRAY(sys_schema_object_overview_column_keys),
          MYLITE_EXECUTION_CATALOG_ARRAY(sys_schema_object_overview_column_extras),
          MYLITE_EXECUTION_CATALOG_ARRAY(sys_schema_object_overview_column_privileges),
@@ -2746,8 +2686,7 @@ static const struct mylite_execution_catalog_mysql_system_table
               sizeof(sys_x_ps_digest_95th_percentile_by_avg_us_columns[0])},
          MYLITE_EXECUTION_CATALOG_ARRAY(sys_x_ps_digest_95th_percentile_by_avg_us_column_keys),
          MYLITE_EXECUTION_CATALOG_ARRAY(sys_x_ps_digest_95th_percentile_by_avg_us_column_extras),
-         MYLITE_EXECUTION_CATALOG_ARRAY(
-             sys_x_ps_digest_95th_percentile_by_avg_us_column_privileges
+         MYLITE_EXECUTION_CATALOG_ARRAY(sys_x_ps_digest_95th_percentile_by_avg_us_column_privileges
          ),
          MYLITE_EXECUTION_CATALOG_NO_ARRAY,
          NULL,

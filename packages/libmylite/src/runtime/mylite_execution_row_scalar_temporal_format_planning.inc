@@ -940,9 +940,9 @@ static int plan_row_scalar_date_format_numeric_comparison_expression(
         table_column_count,
         &out_expression->arguments[0]
     );
-    if (rc == MYLITE_OK && !planned_date_format_numeric_comparison_format_is_supported(
-                               &out_expression->arguments[0]
-                           )) {
+    if (rc == MYLITE_OK &&
+        !planned_date_format_numeric_comparison_format_is_supported(&out_expression->arguments[0]
+        )) {
         set_unsupported_error(
             database,
             "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "
@@ -961,8 +961,7 @@ static int plan_row_scalar_date_format_numeric_comparison_expression(
     return rc;
 }
 
-static bool row_scalar_date_format_comparison_attempt(
-    const struct mylite_sql_ast_node *expression
+static bool row_scalar_date_format_comparison_attempt(const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;

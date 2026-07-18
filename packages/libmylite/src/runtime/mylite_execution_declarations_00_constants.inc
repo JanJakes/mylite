@@ -694,18 +694,8 @@ static const struct show_result_column_definition
          false},
         {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 64U, 0U, true, true},
         {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 1U, 0U, true, true},
-        {MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-         MYLITE_RESULT_COLUMN_FLAG_NUM,
-         21U,
-         0U,
-         true,
-         false},
-        {MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-         MYLITE_RESULT_COLUMN_FLAG_NUM,
-         21U,
-         0U,
-         true,
-         false},
+        {MYLITE_RESULT_LOGICAL_TYPE_LONGLONG, MYLITE_RESULT_COLUMN_FLAG_NUM, 21U, 0U, true, false},
+        {MYLITE_RESULT_LOGICAL_TYPE_LONGLONG, MYLITE_RESULT_COLUMN_FLAG_NUM, 21U, 0U, true, false},
         {MYLITE_RESULT_LOGICAL_TYPE_NULL,
          MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
          0U,
@@ -749,7 +739,7 @@ static const struct show_result_column_definition
          0U,
          true,
          true},
-    };
+};
 
 static const char *const show_columns_result_columns[show_columns_result_column_count] = {
     "Field",
@@ -789,7 +779,7 @@ static const struct show_result_column_definition
          true,
          true},
         {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 256U, 0U, true, true},
-    };
+};
 
 static const char *const show_full_columns_result_columns[show_full_columns_result_column_count] = {
     "Field",
@@ -841,7 +831,7 @@ static const struct show_result_column_definition
          0U,
          false,
          true},
-    };
+};
 
 static const char *const show_table_status_result_columns[show_table_status_result_column_count] = {
     "Name",
@@ -873,12 +863,7 @@ static const struct show_result_column_definition
          false,
          true},
         {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 64U, 0U, true, true},
-        {MYLITE_RESULT_LOGICAL_TYPE_LONG,
-         MYLITE_RESULT_COLUMN_FLAG_NUM,
-         3U,
-         0U,
-         true,
-         false},
+        {MYLITE_RESULT_LOGICAL_TYPE_LONG, MYLITE_RESULT_COLUMN_FLAG_NUM, 3U, 0U, true, false},
         {MYLITE_RESULT_LOGICAL_TYPE_STRING,
          MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_ENUM,
          10U,
@@ -934,38 +919,20 @@ static const struct show_result_column_definition
          0U,
          false,
          false},
-        {MYLITE_RESULT_LOGICAL_TYPE_DATETIME,
-         MYLITE_RESULT_COLUMN_FLAG_BINARY,
-         19U,
-         0U,
-         true,
-         false},
-        {MYLITE_RESULT_LOGICAL_TYPE_DATETIME,
-         MYLITE_RESULT_COLUMN_FLAG_BINARY,
-         19U,
-         0U,
-         true,
-         false},
+        {MYLITE_RESULT_LOGICAL_TYPE_DATETIME, MYLITE_RESULT_COLUMN_FLAG_BINARY, 19U, 0U, true, false
+        },
+        {MYLITE_RESULT_LOGICAL_TYPE_DATETIME, MYLITE_RESULT_COLUMN_FLAG_BINARY, 19U, 0U, true, false
+        },
         {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING,
          MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
          64U,
          0U,
          true,
          true},
-        {MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-         MYLITE_RESULT_COLUMN_FLAG_NUM,
-         21U,
-         0U,
-         true,
-         false},
+        {MYLITE_RESULT_LOGICAL_TYPE_LONGLONG, MYLITE_RESULT_COLUMN_FLAG_NUM, 21U, 0U, true, false},
         {MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING, 0U, 256U, 0U, true, true},
-        {MYLITE_RESULT_LOGICAL_TYPE_BLOB,
-         MYLITE_RESULT_COLUMN_FLAG_BLOB,
-         6144U,
-         0U,
-         true,
-         true},
-    };
+        {MYLITE_RESULT_LOGICAL_TYPE_BLOB, MYLITE_RESULT_COLUMN_FLAG_BLOB, 6144U, 0U, true, true},
+};
 
 static const char scalar_pi_text[] = "3.141593";
 static const long double decimal_round_integer_step = 1.0L;

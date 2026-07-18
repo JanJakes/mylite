@@ -153,8 +153,8 @@ static bool lexer_token_starts_qualified_function(
         return false;
     }
     if (!lexer_next_non_comment_token(&lookahead, &next) ||
-        (next.kind != MYLITE_SQL_TOKEN_IDENTIFIER &&
-         next.kind != MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER)) {
+        (next.kind != MYLITE_SQL_TOKEN_IDENTIFIER && next.kind != MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER
+        )) {
         return false;
     }
     return lexer_next_non_comment_token(&lookahead, &next) &&

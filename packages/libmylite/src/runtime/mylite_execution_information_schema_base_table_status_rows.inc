@@ -218,10 +218,8 @@ static int load_table_status_row_format(
         row_format = "Compact";
     } else if (text_equals_ascii_case_insensitive(table->row_format_option, "REDUNDANT")) {
         row_format = "Redundant";
-    } else if (
-        table->row_format_option[0] != '\0' &&
-        !text_equals_ascii_case_insensitive(table->row_format_option, "DYNAMIC")
-    ) {
+    } else if (table->row_format_option[0] != '\0' &&
+               !text_equals_ascii_case_insensitive(table->row_format_option, "DYNAMIC")) {
         set_runtime_error(database, "invalid table row format descriptor");
         return MYLITE_ERROR;
     }

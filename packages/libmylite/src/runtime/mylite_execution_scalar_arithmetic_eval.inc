@@ -452,19 +452,14 @@ static int scalar_arithmetic_div_short_circuit_push_function_arguments(
     const struct mylite_sql_ast_node *arguments,
     bool *out_short_circuits
 ) {
-    const struct mylite_sql_ast_node *child =
-        arguments == NULL ? NULL : arguments->first_child;
+    const struct mylite_sql_ast_node *child = arguments == NULL ? NULL : arguments->first_child;
 
     if (child == NULL) {
         *out_short_circuits = false;
         return MYLITE_OK;
     }
     while (child != NULL) {
-        int rc = scalar_arithmetic_div_short_circuit_push_child(
-            database,
-            stack,
-            child
-        );
+        int rc = scalar_arithmetic_div_short_circuit_push_child(database, stack, child);
 
         if (rc != MYLITE_OK) {
             return rc;
@@ -774,8 +769,7 @@ static bool scalar_arithmetic_node_stack_push_children(
     struct scalar_arithmetic_node_stack *stack,
     const struct mylite_sql_ast_node *expression
 ) {
-    const struct mylite_sql_ast_node *child =
-        expression == NULL ? NULL : expression->first_child;
+    const struct mylite_sql_ast_node *child = expression == NULL ? NULL : expression->first_child;
 
     while (child != NULL) {
         if (!scalar_arithmetic_node_stack_push(stack, child)) {

@@ -354,11 +354,8 @@ static int row_constructor_collect_values(
     }
     for (const struct mylite_sql_ast_node *element = child_at(constructor, 0U); element != NULL;
          element = element->next_sibling) {
-        int rc = row_constructor_collect_item_value(
-            database,
-            element,
-            &out_values->items[value_index]
-        );
+        int rc =
+            row_constructor_collect_item_value(database, element, &out_values->items[value_index]);
 
         if (rc != MYLITE_OK) {
             return rc;
@@ -1194,7 +1191,7 @@ static int evaluate_scalar_comparison_sounds_like_expression(
         right_length = scalar_cell_text_length(&right);
         out_value->integer =
             left_length == right_length && memcmp(left.value, right.value, left_length) == 0 ? 1
-                                                                                            : 0;
+                                                                                             : 0;
     }
 
     session_scalar_cell_deinit(&right);

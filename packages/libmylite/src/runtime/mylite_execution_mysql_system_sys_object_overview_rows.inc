@@ -270,8 +270,7 @@ static int increment_sys_schema_object_overview_group(
     return MYLITE_OK;
 }
 
-static int grow_sys_schema_object_overview_groups(
-    struct sys_schema_object_overview_context *context
+static int grow_sys_schema_object_overview_groups(struct sys_schema_object_overview_context *context
 ) {
     size_t new_capacity = context->group_capacity == 0U
                               ? sys_schema_object_overview_initial_group_capacity
@@ -307,8 +306,8 @@ static void sort_sys_schema_object_overview_groups(
         size_t insert = index;
 
         while (insert > 0U &&
-               compare_sys_schema_object_overview_groups(&group, &context->groups[insert - 1U]) <
-                   0) {
+               compare_sys_schema_object_overview_groups(&group, &context->groups[insert - 1U]) < 0
+        ) {
             context->groups[insert] = context->groups[insert - 1U];
             --insert;
         }

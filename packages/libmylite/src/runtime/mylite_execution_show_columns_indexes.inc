@@ -126,10 +126,9 @@ static int execute_show_columns_statement(
         }
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (
-            rc != MYLITE_OK &&
-            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-        ) {
+        } else if (rc != MYLITE_OK &&
+                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
+                       MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW COLUMNS result");
         }
     }
@@ -369,10 +368,9 @@ static int execute_show_columns_mysql_system_table_statement(
         );
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (
-            rc != MYLITE_OK &&
-            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-        ) {
+        } else if (rc != MYLITE_OK &&
+                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
+                       MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW COLUMNS result");
         }
     }
@@ -749,10 +747,8 @@ static int evaluate_show_columns_where_frame(
             return MYLITE_ERROR;
         }
         truth = negate_show_variables_where_truth(child_truth);
-    } else if (
-        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
-    ) {
+    } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+               predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
         rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
     } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         set_unsupported_error(database, "SHOW COLUMNS WHERE does not support XOR predicates");
@@ -1012,10 +1008,9 @@ static int execute_show_index_mysql_system_table_statement(
         rc = append_show_index_mysql_system_table_rows(database, result, where_clause, definition);
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (
-            rc != MYLITE_OK &&
-            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-        ) {
+        } else if (rc != MYLITE_OK &&
+                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
+                       MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW INDEX result");
         }
     }

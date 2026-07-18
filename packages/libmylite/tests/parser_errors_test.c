@@ -1803,13 +1803,14 @@ static int test_large_nested_syntax_error(void) {
         expression_count = 64,
         parenthesis_depth = 128,
     };
+
     static const char prefix[] = "SELECT ";
     static const char separator[] = ", ";
     static const char suffix[] = " +;";
     size_t expression_size = (size_t)parenthesis_depth * 2U + 1U;
     size_t sql_size = sizeof(prefix) - 1U + (size_t)expression_count * expression_size +
-                      (size_t)(expression_count - 1) * (sizeof(separator) - 1U) +
-                      sizeof(suffix) - 1U;
+                      (size_t)(expression_count - 1) * (sizeof(separator) - 1U) + sizeof(suffix) -
+                      1U;
     char *sql = (char *)malloc(sql_size + 1U);
     char *cursor = sql;
     struct mylite_sql_parse_result result;

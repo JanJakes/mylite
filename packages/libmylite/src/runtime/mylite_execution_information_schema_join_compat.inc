@@ -242,6 +242,7 @@ static int information_schema_join_compat_append_dynamic_columns_rows(
     const struct information_schema_row_set *rows,
     const char *id_text
 );
+
 static int execute_information_schema_join_compat_select_if_needed(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -877,17 +878,15 @@ static int information_schema_join_compat_append_concat_name_column(
     mylite_result *result
 ) {
     const uint64_t character_length = 73U;
-    const uint64_t max_bytes =
-        result_metadata_collation_max_bytes_per_character(
-            mylite_connection_statement_collation_connection(database)
-        );
+    const uint64_t max_bytes = result_metadata_collation_max_bytes_per_character(
+        mylite_connection_statement_collation_connection(database)
+    );
     struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor("name");
     int rc = MYLITE_OK;
 
     descriptor.logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
-    descriptor.charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor.charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor.collation_id = descriptor.charset_id;
     descriptor.display_length = result_metadata_display_length_cap(character_length * max_bytes);
     rc = mylite_result_append_column_descriptor(result, &descriptor);
@@ -1168,8 +1167,7 @@ static bool information_schema_join_compat_row_matches_schema_table(
     const char *schema_name,
     const char *table_name
 ) {
-    return (row != NULL &&
-            text_equals_ascii_case_insensitive(row[schema_column], schema_name) &&
+    return (row != NULL && text_equals_ascii_case_insensitive(row[schema_column], schema_name) &&
             text_equals_ascii_case_insensitive(row[table_column], table_name)) != 0;
 }
 
@@ -1222,7 +1220,11 @@ static int information_schema_join_compat_append_columns_tables_join_rows(
 ) {
     int rc = MYLITE_OK;
 
-    if (!information_schema_join_compat_has_base_table_row(request->tables, schema_name, table_name)) {
+    if (!information_schema_join_compat_has_base_table_row(
+            request->tables,
+            schema_name,
+            table_name
+        )) {
         return MYLITE_OK;
     }
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < request->columns->row_count;
@@ -1238,11 +1240,7 @@ static int information_schema_join_compat_append_columns_tables_join_rows(
             )) {
             continue;
         }
-        rc = information_schema_join_compat_append_columns_tables_join_row(
-            database,
-            result,
-            row
-        );
+        rc = information_schema_join_compat_append_columns_tables_join_row(database, result, row);
     }
     return rc;
 }
@@ -1313,13 +1311,7 @@ static int information_schema_join_compat_append_tables_grouped_size_rows(
     mylite_result *result
 ) {
     struct information_schema_row_index_set indexes = {0};
-    int rc = information_schema_matching_row_indexes(
-        database,
-        statement,
-        query,
-        rows,
-        &indexes
-    );
+    int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
 
     if (rc == MYLITE_OK) {
         rc = information_schema_sort_tables_default_row_indexes(
@@ -1483,10 +1475,8 @@ static int information_schema_join_compat_append_distinct_index_names(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(&candidate, " (index)");
         }
-        if (rc == MYLITE_OK && !information_schema_join_compat_name_rows_contain(
-                                names,
-                                candidate.text
-                            )) {
+        if (rc == MYLITE_OK &&
+            !information_schema_join_compat_name_rows_contain(names, candidate.text)) {
             rc = information_schema_join_compat_append_name(
                 database,
                 names,
@@ -1519,10 +1509,8 @@ static int information_schema_join_compat_append_name(
         rc = mylite_dynamic_string_append(&string, suffix);
     }
     if (rc == MYLITE_OK) {
-        grown_items = (char **)realloc(
-            (void *)names->items,
-            (names->count + 1U) * sizeof(*names->items)
-        );
+        grown_items =
+            (char **)realloc((void *)names->items, (names->count + 1U) * sizeof(*names->items));
         if (grown_items == NULL) {
             rc = MYLITE_NOMEM;
         }
@@ -1644,11 +1632,10 @@ static size_t information_schema_join_compat_count_table_matches(
     for (size_t row_index = 0U; row_index < tables->row_count; ++row_index) {
         char **row = tables->rows[row_index];
 
-        if (row != NULL &&
-            text_equals_ascii_case_insensitive(
-                row[information_schema_tables_table_schema_column],
-                schema_name
-            )) {
+        if (row != NULL && text_equals_ascii_case_insensitive(
+                               row[information_schema_tables_table_schema_column],
+                               schema_name
+                           )) {
             ++match_count;
         }
     }

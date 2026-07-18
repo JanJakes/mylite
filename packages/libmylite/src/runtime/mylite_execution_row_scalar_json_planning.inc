@@ -1463,11 +1463,10 @@ static int plan_row_scalar_json_array_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY;
     out_expression->argument_count = argument_count;
-    out_expression->arguments = argument_count == 0U
-                                    ? NULL
-                                    : (
-                                          struct planned_row_scalar_expression *
-                                      )calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments =
+        argument_count == 0U ? NULL
+                             : (struct planned_row_scalar_expression *)
+                                   calloc(argument_count, sizeof(*out_expression->arguments));
     if (argument_count != 0U && out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1537,11 +1536,10 @@ static int plan_row_scalar_json_object_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT;
     out_expression->argument_count = argument_count;
-    out_expression->arguments = argument_count == 0U
-                                    ? NULL
-                                    : (
-                                          struct planned_row_scalar_expression *
-                                      )calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments =
+        argument_count == 0U ? NULL
+                             : (struct planned_row_scalar_expression *)
+                                   calloc(argument_count, sizeof(*out_expression->arguments));
     if (argument_count != 0U && out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;

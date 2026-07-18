@@ -142,10 +142,8 @@ static int evaluate_show_variables_where_frame(
             return MYLITE_ERROR;
         }
         truth = negate_show_variables_where_truth(child_truth);
-    } else if (
-        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
-    ) {
+    } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+               predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
         rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
     } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         set_unsupported_error(database, "SHOW VARIABLES WHERE does not support XOR predicates");
@@ -561,8 +559,7 @@ static int decode_show_variables_where_string_literal(
     );
 }
 
-static void show_variables_where_frame_stack_deinit(
-    struct show_variables_where_frame_stack *stack
+static void show_variables_where_frame_stack_deinit(struct show_variables_where_frame_stack *stack
 ) {
     if (stack == NULL) {
         return;
@@ -613,8 +610,7 @@ static bool show_variables_where_frame_stack_pop(
     return true;
 }
 
-static void show_variables_where_truth_stack_deinit(
-    struct show_variables_where_truth_stack *stack
+static void show_variables_where_truth_stack_deinit(struct show_variables_where_truth_stack *stack
 ) {
     if (stack == NULL) {
         return;

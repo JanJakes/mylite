@@ -74,7 +74,11 @@ void mylite_profile_record_parse(
     size_t retry_handled_count
 );
 void mylite_profile_record_select_plan(mylite_db *database, uint64_t started_ns, bool cache_hit);
-void mylite_profile_record_select_lowering(mylite_db *database, uint64_t started_ns, bool cache_hit);
+void mylite_profile_record_select_lowering(
+    mylite_db *database,
+    uint64_t started_ns,
+    bool cache_hit
+);
 void mylite_profile_record_result_buffer(uint64_t started_ns, bool completed, size_t value_bytes);
 void mylite_profile_record_cursor_step(
     mylite_db *database,

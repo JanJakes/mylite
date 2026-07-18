@@ -164,8 +164,8 @@ static bool planned_column_is_json(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
     }
-    return (strcmp(column->logical_type, "JSON") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "JSON") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool planned_column_is_spatial(const struct planned_column *column) {
@@ -255,8 +255,8 @@ static bool planned_column_is_year(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
     }
-    return (strcmp(column->logical_type, "YEAR") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "YEAR") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool planned_column_is_decimal(const struct planned_column *column) {
@@ -290,16 +290,16 @@ static bool planned_column_is_date(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
     }
-    return (strcmp(column->logical_type, "DATE") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "DATE") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool planned_column_is_time(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
     }
-    return (strcmp(column->logical_type, "TIME") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "TIME") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool planned_column_is_datetime(const struct planned_column *column) {
@@ -325,8 +325,7 @@ static bool column_default_kind_has_integer_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) != 0;
 }
 
-static bool column_default_kind_has_text_value(
-    enum mylite_catalog_column_default_kind default_kind
+static bool column_default_kind_has_text_value(enum mylite_catalog_column_default_kind default_kind
 ) {
     return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
@@ -337,8 +336,7 @@ static bool column_default_kind_has_text_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
 }
 
-static bool column_default_kind_is_expression(
-    enum mylite_catalog_column_default_kind default_kind
+static bool column_default_kind_is_expression(enum mylite_catalog_column_default_kind default_kind
 ) {
     return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
@@ -444,8 +442,7 @@ static bool column_descriptor_is_char_or_varchar(
     return (column_descriptor_is_char(column) || column_descriptor_is_varchar(column)) != 0;
 }
 
-static bool column_descriptor_is_text_family(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_descriptor_is_text_family(const struct mylite_catalog_column_descriptor *column
 ) {
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
@@ -456,8 +453,7 @@ static bool column_descriptor_is_text_family(
     return text_family_type_info_for_logical_type(column->logical_type) != NULL;
 }
 
-static bool column_descriptor_is_string_family(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_descriptor_is_string_family(const struct mylite_catalog_column_descriptor *column
 ) {
     return (column_descriptor_is_char(column) || column_descriptor_is_varchar(column) ||
             column_descriptor_is_text_family(column)) != 0;
@@ -467,8 +463,8 @@ static bool column_descriptor_is_json(const struct mylite_catalog_column_descrip
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
     }
-    return (strcmp(column->logical_type, "JSON") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "JSON") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool column_descriptor_is_spatial(const struct mylite_catalog_column_descriptor *column) {
@@ -566,8 +562,8 @@ static bool column_descriptor_is_year(const struct mylite_catalog_column_descrip
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
     }
-    return (strcmp(column->logical_type, "YEAR") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "YEAR") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column) {
@@ -582,8 +578,7 @@ static bool column_descriptor_is_decimal(const struct mylite_catalog_column_desc
     return decimal_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
 }
 
-static bool column_descriptor_is_approximate(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_descriptor_is_approximate(const struct mylite_catalog_column_descriptor *column
 ) {
     struct approximate_type_info info = {
         .type_class = APPROXIMATE_TYPE_DOUBLE,
@@ -603,16 +598,16 @@ static bool column_descriptor_is_date(const struct mylite_catalog_column_descrip
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
     }
-    return (strcmp(column->logical_type, "DATE") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "DATE") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool column_descriptor_is_time(const struct mylite_catalog_column_descriptor *column) {
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
     }
-    return (strcmp(column->logical_type, "TIME") == 0 &&
-            strcmp(column->physical_type, "TEXT") == 0) != 0;
+    return (strcmp(column->logical_type, "TIME") == 0 && strcmp(column->physical_type, "TEXT") == 0
+           ) != 0;
 }
 
 static bool column_descriptor_is_datetime(const struct mylite_catalog_column_descriptor *column) {

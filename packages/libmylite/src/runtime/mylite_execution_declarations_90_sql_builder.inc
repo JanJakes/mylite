@@ -2475,11 +2475,13 @@ static int append_select_scalar_count_subquery_comparison_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+
 enum quantified_subquery_exists_kind {
     QUANTIFIED_SUBQUERY_EXISTS_MATCH = 0,
     QUANTIFIED_SUBQUERY_EXISTS_UNKNOWN = 1,
     QUANTIFIED_SUBQUERY_EXISTS_FALSE = 2,
 };
+
 static int append_select_quantified_subquery_predicate_sql(
     struct mylite_dynamic_string *string,
     bool qualify_column,

@@ -2384,8 +2384,7 @@ static int scalar_concat_operator_result(
     return MYLITE_OK;
 }
 
-static bool concat_operator_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -2492,8 +2491,7 @@ static bool concat_operator_scalar_arithmetic_node_is_admitted(
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
     if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        if (!integer_default_binary_operator_is_supported(
-                mylite_sql_ast_node_operator(expression)
+        if (!integer_default_binary_operator_is_supported(mylite_sql_ast_node_operator(expression)
             )) {
             return false;
         }

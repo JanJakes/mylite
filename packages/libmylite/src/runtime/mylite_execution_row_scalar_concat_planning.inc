@@ -178,10 +178,8 @@ static int plan_row_scalar_concat_function_arguments(
                 COLUMN_REFERENCE_FIELD,
                 &arguments[*inout_next_argument]
             );
-        } else if (
-            mylite_execution_string_slice_function_kind(current->kind) !=
-            PLANNED_STRING_SLICE_FUNCTION_NONE
-        ) {
+        } else if (mylite_execution_string_slice_function_kind(current->kind) !=
+                   PLANNED_STRING_SLICE_FUNCTION_NONE) {
             rc = plan_row_scalar_string_slice_expression(
                 database,
                 current,
@@ -366,10 +364,8 @@ static int plan_row_scalar_concat_operator_arguments(
                 COLUMN_REFERENCE_FIELD,
                 &arguments[*inout_next_argument]
             );
-        } else if (
-            mylite_execution_string_slice_function_kind(current->kind) !=
-            PLANNED_STRING_SLICE_FUNCTION_NONE
-        ) {
+        } else if (mylite_execution_string_slice_function_kind(current->kind) !=
+                   PLANNED_STRING_SLICE_FUNCTION_NONE) {
             rc = plan_row_scalar_string_slice_expression(
                 database,
                 current,

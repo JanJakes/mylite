@@ -601,8 +601,7 @@ static int execute_compound_select_statement(
     return rc;
 }
 
-static bool compound_select_statement_has_table_source(
-    const struct mylite_sql_ast_node *statement
+static bool compound_select_statement_has_table_source(const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
     const struct mylite_sql_ast_node *branch = child_at(statement, 0U);

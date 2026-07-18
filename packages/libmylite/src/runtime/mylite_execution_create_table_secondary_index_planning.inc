@@ -342,19 +342,14 @@ static int extract_create_table_secondary_index_definition_nodes(
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_IDENTIFIER && out_nodes->index_name_node == NULL) {
             out_nodes->index_name_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
-            out_nodes->options.index_type_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+                   out_nodes->options.index_type_node == NULL) {
             out_nodes->options.index_type_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST && out_nodes->part_list == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST &&
+                   out_nodes->part_list == NULL) {
             out_nodes->part_list = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
-            out_nodes->options.option_list_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+                   out_nodes->options.option_list_node == NULL) {
             out_nodes->options.option_list_node = child;
         } else {
             set_parse_error(database, NULL);

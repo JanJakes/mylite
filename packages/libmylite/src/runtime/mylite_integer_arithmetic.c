@@ -119,8 +119,7 @@ static int append_truncated_incorrect_arithmetic_warning(
     size_t value_length
 );
 static int append_arithmetic_division_by_zero_warning(sqlite3_context *context);
-static bool mylite_arithmetic_operation_is_valid(
-    enum mylite_integer_arithmetic_operation operation
+static bool mylite_arithmetic_operation_is_valid(enum mylite_integer_arithmetic_operation operation
 );
 static bool mylite_arithmetic_operation_uses_decimal_text_warning(
     enum mylite_integer_arithmetic_operation operation
@@ -808,8 +807,7 @@ static int append_arithmetic_division_by_zero_warning(sqlite3_context *context) 
     return rc;
 }
 
-static bool mylite_arithmetic_operation_is_valid(
-    enum mylite_integer_arithmetic_operation operation
+static bool mylite_arithmetic_operation_is_valid(enum mylite_integer_arithmetic_operation operation
 ) {
     switch (operation) {
     case MYLITE_INTEGER_ARITHMETIC_ADD:

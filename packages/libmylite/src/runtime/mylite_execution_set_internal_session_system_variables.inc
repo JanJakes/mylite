@@ -52,12 +52,7 @@ static int apply_set_internal_session_system_variable_assignment(
         &value_size
     );
     if (rc == MYLITE_OK) {
-        rc = apply_set_internal_session_system_variable_text(
-            database,
-            target,
-            value,
-            value_size
-        );
+        rc = apply_set_internal_session_system_variable_text(database, target, value, value_size);
     }
     free(value);
     return rc;

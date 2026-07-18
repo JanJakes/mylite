@@ -403,8 +403,7 @@ static int spatial_function_session_scalar_argument(
     struct session_scalar_cell *out_cell,
     struct mylite_spatial_argument *out_argument
 );
-static bool spatial_function_numeric_literal_expression(
-    const struct mylite_sql_ast_node *expression
+static bool spatial_function_numeric_literal_expression(const struct mylite_sql_ast_node *expression
 );
 static int spatial_function_numeric_literal_argument(
     struct mylite_db *database,

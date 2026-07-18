@@ -1851,6 +1851,7 @@ static uint64_t temptable_max_ram_default_value(void) {
         temptable_max_ram_percent = 3,
         temptable_max_ram_percent_denominator = 100,
     };
+
     const uint64_t minimum = UINT64_C(1073741824);
 
 #ifdef _WIN32
@@ -1870,8 +1871,7 @@ static uint64_t temptable_max_ram_default_value(void) {
     } else {
         physical_memory = (uint64_t)pages * (uint64_t)page_size;
     }
-    value = (physical_memory / temptable_max_ram_percent_denominator) *
-            temptable_max_ram_percent;
+    value = (physical_memory / temptable_max_ram_percent_denominator) * temptable_max_ram_percent;
     if (value < minimum) {
         return minimum;
     }
@@ -1927,8 +1927,7 @@ static const char *transaction_read_only_system_variable_value(
     return transaction_read_only_scalar_text(database->session.session_transaction_access_mode);
 }
 
-static bool system_variable_expression_has_global_scope(
-    const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
     size_t offset = system_variable_body_offset;

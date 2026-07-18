@@ -173,13 +173,8 @@ static int append_show_tables_result_columns(
         return MYLITE_OK;
     }
 
-    rc = append_show_result_columns(
-        database,
-        result,
-        &table_type_label,
-        &table_type_definition,
-        1U
-    );
+    rc =
+        append_show_result_columns(database, result, &table_type_label, &table_type_definition, 1U);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }

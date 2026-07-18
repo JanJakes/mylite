@@ -213,9 +213,8 @@ static int execute_show_events_statement(
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
-    if (first_child != NULL &&
-        (first_child->kind == MYLITE_SQL_AST_LITERAL ||
-         first_child->kind == MYLITE_SQL_AST_WHERE_CLAUSE)) {
+    if (first_child != NULL && (first_child->kind == MYLITE_SQL_AST_LITERAL ||
+                                first_child->kind == MYLITE_SQL_AST_WHERE_CLAUSE)) {
         schema_node = NULL;
         filter_node = first_child;
     }
@@ -286,9 +285,8 @@ static int execute_show_open_tables_statement(
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
-    if (first_child != NULL &&
-        (first_child->kind == MYLITE_SQL_AST_LITERAL ||
-         first_child->kind == MYLITE_SQL_AST_WHERE_CLAUSE)) {
+    if (first_child != NULL && (first_child->kind == MYLITE_SQL_AST_LITERAL ||
+                                first_child->kind == MYLITE_SQL_AST_WHERE_CLAUSE)) {
         schema_node = NULL;
         filter_node = first_child;
     }

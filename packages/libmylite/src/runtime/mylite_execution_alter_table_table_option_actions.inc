@@ -81,12 +81,7 @@ static int plan_alter_table_storage_statistics(
         "%s",
         out_plan->original_table.row_format_option
     );
-    snprintf(
-        out_plan->comment,
-        sizeof(out_plan->comment),
-        "%s",
-        out_plan->original_table.comment
-    );
+    snprintf(out_plan->comment, sizeof(out_plan->comment), "%s", out_plan->original_table.comment);
 
     table_option = child_at(table_options, 0U);
     while (rc == MYLITE_OK && table_option != NULL) {

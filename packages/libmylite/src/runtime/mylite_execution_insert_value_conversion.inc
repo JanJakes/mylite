@@ -849,8 +849,7 @@ static int convert_insert_value(
     );
 }
 
-static bool insert_value_is_unix_timestamp_arithmetic(
-    const struct mylite_sql_ast_node *value_node
+static bool insert_value_is_unix_timestamp_arithmetic(const struct mylite_sql_ast_node *value_node
 ) {
     const struct mylite_sql_ast_node *left = NULL;
     const struct mylite_sql_ast_node *right = NULL;
@@ -1215,8 +1214,7 @@ static int format_insert_unix_timestamp_integer_text(
     return MYLITE_OK;
 }
 
-static bool insert_unix_timestamp_now_node_is_admitted(
-    const struct mylite_sql_ast_node *value_node
+static bool insert_unix_timestamp_now_node_is_admitted(const struct mylite_sql_ast_node *value_node
 ) {
     value_node = unwrap_parenthesized_expression(value_node);
     return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION &&

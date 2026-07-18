@@ -163,9 +163,13 @@ static int evaluate_show_columns_where_comparison_predicate(
         if (rc == MYLITE_OK) {
             if (left == NULL) {
                 *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
-            } else if (
-                show_like_pattern_matches(pattern, strlen(pattern), left, strlen(left), false)
-            ) {
+            } else if (show_like_pattern_matches(
+                           pattern,
+                           strlen(pattern),
+                           left,
+                           strlen(left),
+                           false
+                       )) {
                 *out_truth = SHOW_VARIABLES_WHERE_TRUE;
             } else {
                 *out_truth = SHOW_VARIABLES_WHERE_FALSE;

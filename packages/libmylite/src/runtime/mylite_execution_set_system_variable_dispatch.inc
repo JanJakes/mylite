@@ -1031,10 +1031,8 @@ static int validate_set_fixed_boolean_value(
         if (text_equals_ascii_case_insensitive(decoded, "ON") ||
             text_equals_ascii_case_insensitive(decoded, "TRUE")) {
             actual_value = true;
-        } else if (
-            text_equals_ascii_case_insensitive(decoded, "OFF") ||
-            text_equals_ascii_case_insensitive(decoded, "FALSE")
-        ) {
+        } else if (text_equals_ascii_case_insensitive(decoded, "OFF") ||
+                   text_equals_ascii_case_insensitive(decoded, "FALSE")) {
             actual_value = false;
         } else {
             free(decoded);

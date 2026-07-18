@@ -472,8 +472,7 @@ static int commit_persistent_auto_increment_high_water_reconciliation(struct myl
     return normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
 }
 
-static void rollback_persistent_auto_increment_high_water_reconciliation(
-    struct mylite_db *database
+static void rollback_persistent_auto_increment_high_water_reconciliation(struct mylite_db *database
 ) {
     (void)execute_sqlite_control_sql(database, "ROLLBACK");
     mylite_catalog_invalidate_descriptor_cache(database);

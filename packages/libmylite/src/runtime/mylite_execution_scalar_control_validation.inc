@@ -629,8 +629,7 @@ static bool is_case_when_list_projection_expression(const struct mylite_sql_ast_
     return true;
 }
 
-static bool is_case_when_clause_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_case_when_clause_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_CASE_WHEN_CLAUSE ||
         mylite_sql_ast_node_child_count(expression) != 2U) {
@@ -642,8 +641,7 @@ static bool is_case_when_clause_projection_expression(
     return child_at(expression, 1U) != NULL;
 }
 
-static bool is_case_else_clause_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_case_else_clause_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_CASE_ELSE_CLAUSE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {

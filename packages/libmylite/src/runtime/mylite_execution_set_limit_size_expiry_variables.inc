@@ -214,10 +214,8 @@ static int parse_set_group_concat_max_len_value(
             return set_incorrect_system_variable_argument_type_error(database, variable_name);
         }
         magnitude = 0U;
-    } else if (
-        literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
-        parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK
-    ) {
+    } else if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
+               parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK) {
         return set_incorrect_system_variable_argument_type_error(database, variable_name);
     }
 

@@ -67,8 +67,7 @@ static int apply_set_remaining_system_variable_cell_value(
     }
 }
 
-static bool remaining_system_variable_handles_kind(
-    enum mylite_execution_system_variable_kind kind
+static bool remaining_system_variable_handles_kind(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INSERT_ID:

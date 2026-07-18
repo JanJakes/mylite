@@ -9,8 +9,7 @@ static bool select_statement_has_count_having_clause(const struct mylite_sql_ast
 
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_HAVING_CLAUSE &&
-            count_having_comparison_uses_count_star(
-                count_having_comparison_node(optional_clause)
+            count_having_comparison_uses_count_star(count_having_comparison_node(optional_clause)
             )) {
             return true;
         }
@@ -99,9 +98,8 @@ static int plan_count_having_select(
     if (rc == MYLITE_OK) {
         out_plan->descriptor_projection.source = source;
         out_plan->descriptor_projection.table = table;
-        out_plan->descriptor_projection.is_distinct =
-            mylite_sql_ast_node_select_modifier(statement) ==
-            MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+        out_plan->descriptor_projection.is_distinct = mylite_sql_ast_node_select_modifier(statement
+                                                      ) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
         out_plan->descriptor_projection.source_columns = table_columns;
         out_plan->descriptor_projection.source_column_count = table_column_count;
         out_plan->descriptor_projection.source_columns_cache_entry = table_columns_cache_entry;

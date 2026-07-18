@@ -59,9 +59,8 @@ static int plan_single_table_delete(
             .source = &out_plan->target,
         };
     }
-    if (rc == MYLITE_OK &&
-        (where_clause != NULL || order_clause != NULL || limit_clause != NULL ||
-         sql_safe_updates_is_enabled(database))) {
+    if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL ||
+                            sql_safe_updates_is_enabled(database))) {
         rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,

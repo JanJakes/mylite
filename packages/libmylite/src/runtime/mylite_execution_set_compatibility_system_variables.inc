@@ -113,8 +113,7 @@ static int validate_set_compatibility_system_variable_value(
     return validate_set_fixed_text_value(database, value_node, default_value);
 }
 
-static bool compatibility_system_variable_is_boolean(
-    enum mylite_execution_system_variable_kind kind
+static bool compatibility_system_variable_is_boolean(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TABLE_ENCRYPTION:
@@ -129,8 +128,7 @@ static bool compatibility_system_variable_is_boolean(
     }
 }
 
-static bool compatibility_system_variable_is_uint64(
-    enum mylite_execution_system_variable_kind kind
+static bool compatibility_system_variable_is_uint64(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CTE_MAX_RECURSION_DEPTH:

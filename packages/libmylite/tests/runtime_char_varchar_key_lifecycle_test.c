@@ -360,11 +360,8 @@ static int test_unicode_string_key_values(void) {
         "CREATE TABLE non_ascii_update (id INT, v VARCHAR(5) UNIQUE)"
     );
     failures += expect_dml_ok(database, "INSERT INTO non_ascii_update VALUES (1, 'abc')", 1);
-    failures += expect_dml_ok(
-        database,
-        "UPDATE non_ascii_update SET v = '\xC3\xA9' WHERE id = 1",
-        1
-    );
+    failures +=
+        expect_dml_ok(database, "UPDATE non_ascii_update SET v = '\xC3\xA9' WHERE id = 1", 1);
 
     mylite_close(database);
     return failures;

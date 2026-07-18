@@ -158,23 +158,17 @@ static int test_concurrent_processlist_snapshots(void) {
     atomic_init(&worker_failures, 0);
     failures += expect_int(mylite_open_memory(&observer), MYLITE_OK, "open processlist observer");
     for (size_t index = 0U; failures == 0 && index < processlist_worker_count; ++index) {
-        failures += expect_int(
-            mylite_open_memory(&workers[index]),
-            MYLITE_OK,
-            "open processlist worker"
-        );
+        failures +=
+            expect_int(mylite_open_memory(&workers[index]), MYLITE_OK, "open processlist worker");
         contexts[index] = (struct processlist_worker_context){
             .database = workers[index],
             .start = &start,
             .active_workers = &active_workers,
             .failures = &worker_failures,
         };
-        if (failures == 0 && pthread_create(
-                                 &threads[index],
-                                 NULL,
-                                 mutate_processlist_session,
-                                 &contexts[index]
-                             ) != 0) {
+        if (failures == 0 &&
+            pthread_create(&threads[index], NULL, mutate_processlist_session, &contexts[index]) !=
+                0) {
             fprintf(stderr, "create processlist worker thread: failed\n");
             ++failures;
         } else if (failures == 0) {
@@ -193,11 +187,7 @@ static int test_concurrent_processlist_snapshots(void) {
         do {
             struct mylite_processlist_session_snapshot *sessions = NULL;
             size_t count = 0U;
-            int rc = mylite_connection_collect_processlist_sessions(
-                observer,
-                &sessions,
-                &count
-            );
+            int rc = mylite_connection_collect_processlist_sessions(observer, &sessions, &count);
 
             failures += expect_int(rc, MYLITE_OK, "collect concurrent processlist sessions");
             if (rc == MYLITE_OK) {
@@ -208,8 +198,8 @@ static int test_concurrent_processlist_snapshots(void) {
                 );
             }
             free(sessions);
-        } while (failures == 0 &&
-                 atomic_load_explicit(&active_workers, memory_order_acquire) != 0U);
+        } while (failures == 0 && atomic_load_explicit(&active_workers, memory_order_acquire) != 0U
+        );
     }
     for (size_t index = 0U; index < thread_count; ++index) {
         if (pthread_join(threads[index], NULL) != 0) {
@@ -268,8 +258,11 @@ static int validate_concurrent_processlist_snapshot(
             fprintf(stderr, "concurrent processlist connection order: not strictly increasing\n");
             ++failures;
         }
-        if (memchr(sessions[index].selected_schema, '\0', sizeof(sessions[index].selected_schema)) ==
-                NULL ||
+        if (memchr(
+                sessions[index].selected_schema,
+                '\0',
+                sizeof(sessions[index].selected_schema)
+            ) == NULL ||
             memchr(
                 sessions[index].client_user_identity,
                 '\0',

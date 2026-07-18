@@ -920,8 +920,7 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
     return PLANNED_COLUMN_AGGREGATE_NONE;
 }
 
-static bool grouped_aggregate_function_has_column(
-    enum planned_grouped_aggregate_function function
+static bool grouped_aggregate_function_has_column(enum planned_grouped_aggregate_function function
 ) {
     if (function == PLANNED_GROUPED_AGGREGATE_NONE) {
         return false;
@@ -933,8 +932,7 @@ static bool grouped_aggregate_function_has_column(
     return true;
 }
 
-static bool grouped_aggregate_function_is_bitwise(
-    enum planned_grouped_aggregate_function function
+static bool grouped_aggregate_function_is_bitwise(enum planned_grouped_aggregate_function function
 ) {
     if (function == PLANNED_GROUPED_AGGREGATE_BIT_AND) {
         return true;

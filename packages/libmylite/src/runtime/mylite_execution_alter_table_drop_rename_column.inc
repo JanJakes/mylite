@@ -69,7 +69,12 @@ static int plan_alter_table_drop_primary_key_for_table_node(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_primary_key_info(
@@ -315,10 +320,7 @@ static int plan_alter_table_auto_increment(
     }
     if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
         out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
-        set_unsupported_error(
-            database,
-            "ALTER TABLE AUTO_INCREMENT supports only base tables"
-        );
+        set_unsupported_error(database, "ALTER TABLE AUTO_INCREMENT supports only base tables");
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
@@ -379,7 +381,12 @@ static int find_alter_table_auto_increment_column(
     struct mylite_catalog_column_descriptor *columns = NULL;
     size_t column_count = 0U;
     size_t auto_increment_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, plan->table.table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(
+        database,
+        plan->table.table_id,
+        &columns,
+        &column_count
+    );
 
     *out_column = (struct mylite_catalog_column_descriptor){0};
     *out_found = false;
@@ -434,19 +441,14 @@ static int alter_table_auto_increment_from_plan(
         }
     }
 
-    if (!plan->is_temporary && plan->table.auto_increment_status == 0 &&
-        plan->requested_next > 1) {
+    if (!plan->is_temporary && plan->table.auto_increment_status == 0 && plan->requested_next > 1) {
         rc = mylite_catalog_update_table_auto_increment_status(
             database,
             plan->table.table_id,
             plan->effective_next
         );
         if (rc != MYLITE_OK) {
-            set_internal_error_if_clear(
-                database,
-                rc,
-                "failed to update auto-increment status"
-            );
+            set_internal_error_if_clear(database, rc, "failed to update auto-increment status");
             return rc;
         }
     }
@@ -528,10 +530,8 @@ static int read_alter_table_auto_increment_row_next(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -738,7 +738,10 @@ static int reject_drop_column_foreign_key_dependencies(
     }
 
     mylite_execution_loaded_foreign_key_infos_deinit(&child_foreign_keys, &child_foreign_key_count);
-    mylite_execution_loaded_foreign_key_infos_deinit(&parent_foreign_keys, &parent_foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &parent_foreign_keys,
+        &parent_foreign_key_count
+    );
     return rc;
 }
 
@@ -1160,7 +1163,12 @@ static int plan_alter_table_rename_column(
     if (rc == MYLITE_OK) {
         size_t column_count = 0U;
 
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
         if (rc == MYLITE_OK) {
             rc = plan_alter_table_rename_column_from_columns(
                 database,

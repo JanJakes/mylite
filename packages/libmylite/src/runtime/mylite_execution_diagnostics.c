@@ -24,8 +24,7 @@ void mylite_execution_diagnostics_set_alter_table_instant_lock_error(struct myli
     );
 }
 
-void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -35,8 +34,7 @@ void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(
     );
 }
 
-void mylite_execution_diagnostics_set_alter_table_rebuild_instant_error(
-    struct mylite_db *database
+void mylite_execution_diagnostics_set_alter_table_rebuild_instant_error(struct mylite_db *database
 ) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),

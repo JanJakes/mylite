@@ -154,7 +154,11 @@ void mylite_profile_record_select_plan(mylite_db *database, uint64_t started_ns,
     ++database->profile.select_plan_count;
 }
 
-void mylite_profile_record_select_lowering(mylite_db *database, uint64_t started_ns, bool cache_hit) {
+void mylite_profile_record_select_lowering(
+    mylite_db *database,
+    uint64_t started_ns,
+    bool cache_hit
+) {
     if (database == NULL || !database->profile_active) {
         return;
     }

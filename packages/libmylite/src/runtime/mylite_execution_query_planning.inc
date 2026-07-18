@@ -1176,8 +1176,7 @@ static int validate_row_scalar_window_definitions(
     return rc;
 }
 
-static void row_scalar_window_definitions_deinit(
-    struct row_scalar_window_definitions *definitions
+static void row_scalar_window_definitions_deinit(struct row_scalar_window_definitions *definitions
 ) {
     if (definitions == NULL) {
         return;
@@ -1508,8 +1507,7 @@ static char *row_scalar_window_clause_source_name(
     return NULL;
 }
 
-static const char *row_scalar_window_clause_property_name(
-    const struct mylite_sql_ast_node *clause
+static const char *row_scalar_window_clause_property_name(const struct mylite_sql_ast_node *clause
 ) {
     if (clause == NULL) {
         return "clause";

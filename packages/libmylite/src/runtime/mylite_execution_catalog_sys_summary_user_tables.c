@@ -441,8 +441,8 @@ static const struct mylite_execution_catalog_mysql_system_table
          {MYLITE_EXECUTION_CATALOG_TABLE_SYS_USER_SUMMARY_BY_STAGES,
           "user_summary_by_stages",
           sys_user_summary_by_stages_columns,
-          sizeof(sys_user_summary_by_stages_columns) /
-              sizeof(sys_user_summary_by_stages_columns[0])},
+          sizeof(sys_user_summary_by_stages_columns) / sizeof(sys_user_summary_by_stages_columns[0])
+         },
          MYLITE_EXECUTION_CATALOG_ARRAY(column_keys_5),
          MYLITE_EXECUTION_CATALOG_ARRAY(column_extras_5),
          MYLITE_EXECUTION_CATALOG_ARRAY(column_privileges_5),

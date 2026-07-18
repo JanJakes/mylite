@@ -116,10 +116,8 @@ static int plan_row_scalar_field_argument(
         rc = plan_row_scalar_literal_value(database, expression, out_expression);
     } else if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         rc = plan_row_scalar_integer_value(database, expression, out_expression);
-    } else if (
-        expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
-    ) {
+    } else if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+               expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
             char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
             char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -601,10 +599,8 @@ static int plan_row_scalar_greatest_least_argument(
         } else {
             rc = plan_row_scalar_greatest_least_integer_value(database, expression, out_expression);
         }
-    } else if (
-        expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
-    ) {
+    } else if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+               expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
             char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
             char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -634,9 +630,8 @@ static int plan_row_scalar_greatest_least_argument(
             table_column_count,
             out_expression
         );
-    } else if (
-        has_source && row_scalar_expression_contains_integer_arithmetic_attempt(expression)
-    ) {
+    } else if (has_source &&
+               row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
         rc = plan_row_scalar_integer_arithmetic_expression(
             database,
             expression,
@@ -1342,8 +1337,7 @@ static bool row_scalar_column_descriptor_is_supported(
     return false;
 }
 
-static bool row_scalar_expression_contains_row_function(
-    const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
 ) {
     struct scalar_arithmetic_node_stack stack = {0};
     bool found = false;
@@ -1490,8 +1484,8 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_JSON_OBJECT_FUNCTION ||
             (current->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
              (mylite_sql_ast_node_operator(current) == MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT ||
-              mylite_sql_ast_node_operator(current) ==
-                  MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)) ||
+              mylite_sql_ast_node_operator(current) == MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)
+            ) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FROM_BASE64_FUNCTION ||

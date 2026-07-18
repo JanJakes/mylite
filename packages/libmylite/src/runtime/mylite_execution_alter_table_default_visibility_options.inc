@@ -51,7 +51,12 @@ static int plan_alter_table_set_default(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -228,7 +233,12 @@ static int plan_alter_table_drop_default(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -366,7 +376,12 @@ static int plan_alter_table_column_visibility(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -478,7 +493,12 @@ static int plan_alter_table_index_visibility(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(

@@ -168,7 +168,8 @@ static int information_schema_append_expression_projection(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 ) {
-    int rc = information_schema_validate_unsigned_projection_expression(database, query, expression);
+    int rc =
+        information_schema_validate_unsigned_projection_expression(database, query, expression);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -296,10 +297,8 @@ static int information_schema_append_projection_slot(
     }
     query->projection_kinds = kinds;
 
-    expressions = (const struct mylite_sql_ast_node **)realloc(
-        (void *)query->projection_expressions,
-        required_count * sizeof(*expressions)
-    );
+    expressions = (const struct mylite_sql_ast_node **)
+        realloc((void *)query->projection_expressions, required_count * sizeof(*expressions));
     if (expressions == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -378,7 +377,10 @@ static int information_schema_plan_group(
         size_t column_index = 0U;
 
         if (group_key == NULL || group_key->kind == MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER) {
-            set_unsupported_error(database, "INFORMATION_SCHEMA GROUP BY WITH ROLLUP is unsupported");
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA GROUP BY WITH ROLLUP is unsupported"
+            );
             return MYLITE_ERROR;
         }
         rc = information_schema_resolve_column_reference(
@@ -404,8 +406,8 @@ static int information_schema_plan_group(
     if (rc == MYLITE_OK) {
         out_query->group_index_count = group_key_count;
     }
-    for (size_t projection_index = 0U; rc == MYLITE_OK &&
-                                      projection_index < out_query->projection_count;
+    for (size_t projection_index = 0U;
+         rc == MYLITE_OK && projection_index < out_query->projection_count;
          ++projection_index) {
         if (!information_schema_projection_is_grouped_statistics_compatible(
                 out_query,
@@ -600,8 +602,7 @@ static int information_schema_validate_numeric_projection_expression(
             );
             rc = MYLITE_ERROR;
         } else if (unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
-                   mylite_sql_ast_node_literal_kind(unwrapped) ==
-                       MYLITE_SQL_AST_LITERAL_INTEGER) {
+                   mylite_sql_ast_node_literal_kind(unwrapped) == MYLITE_SQL_AST_LITERAL_INTEGER) {
             rc = MYLITE_OK;
         } else if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
                    unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
@@ -675,7 +676,10 @@ static int information_schema_plan_order(
                 return MYLITE_ERROR;
             }
             if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM || child_at(item, 0U) == NULL) {
-                set_unsupported_error(database, "INFORMATION_SCHEMA SELECT has an invalid ORDER BY");
+                set_unsupported_error(
+                    database,
+                    "INFORMATION_SCHEMA SELECT has an invalid ORDER BY"
+                );
                 return MYLITE_ERROR;
             }
             rc = information_schema_resolve_order_reference(
@@ -688,8 +692,7 @@ static int information_schema_plan_order(
             out_query->order_directions[out_query->order_count] = PLANNED_SELECT_ORDER_ASC;
             if (mylite_sql_ast_node_order_direction(direction) ==
                 MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-                out_query->order_directions[out_query->order_count] =
-                    PLANNED_SELECT_ORDER_DESC;
+                out_query->order_directions[out_query->order_count] = PLANNED_SELECT_ORDER_DESC;
             }
             if (rc == MYLITE_OK) {
                 ++out_query->order_count;
@@ -733,12 +736,8 @@ static int information_schema_resolve_order_reference(
     int rc = MYLITE_OK;
 
     if (order_reference != NULL && order_reference->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        rc = copy_identifier_text(
-            order_reference,
-            reference_text,
-            sizeof(reference_text),
-            database
-        );
+        rc =
+            copy_identifier_text(order_reference, reference_text, sizeof(reference_text), database);
         if (rc != MYLITE_OK) {
             return rc;
         }

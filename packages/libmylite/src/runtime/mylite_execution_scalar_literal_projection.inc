@@ -142,7 +142,10 @@ static int literal_projection_bit_value(
 
     if (literal == NULL || out_cell == NULL ||
         !literal_projection_bit_span_bounds(&literal->span, &bit_start, &bit_end)) {
-        set_unsupported_error(database, "SELECT literal projection supports only valid bit literals");
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports only valid bit literals"
+        );
         return MYLITE_ERROR;
     }
 
@@ -156,8 +159,8 @@ static int literal_projection_bit_value(
     for (size_t bit_index = 0U; bit_index < bit_count; ++bit_index) {
         size_t padded_bit_index = (byte_count * (size_t)CHAR_BIT) - bit_count + bit_index;
         size_t byte_index = padded_bit_index / (size_t)CHAR_BIT;
-        unsigned int bit_in_byte = (unsigned int)((size_t)(CHAR_BIT - 1) -
-                                                  (padded_bit_index % (size_t)CHAR_BIT));
+        unsigned int bit_in_byte =
+            (unsigned int)((size_t)(CHAR_BIT - 1) - (padded_bit_index % (size_t)CHAR_BIT));
         char bit = literal->span.text[bit_start + bit_index];
 
         if (bit != '0' && bit != '1') {

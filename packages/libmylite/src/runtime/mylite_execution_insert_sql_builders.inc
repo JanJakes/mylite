@@ -905,12 +905,10 @@ static bool insert_select_compound_output_uses_string_collation(
                 )) {
                 return true;
             }
-        } else if (
-            column_index < branch->row_source.item_count &&
-            row_scalar_expression_uses_string_collation(
-                &branch->row_source.items[column_index].expression
-            )
-        ) {
+        } else if (column_index < branch->row_source.item_count &&
+                   row_scalar_expression_uses_string_collation(
+                       &branch->row_source.items[column_index].expression
+                   )) {
             return true;
         }
     }

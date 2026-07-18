@@ -637,8 +637,8 @@ static void sys_function_identifier_span_text(
     size_t size = span == NULL ? 0U : span->length;
 
     if (text != NULL && size >= 2U &&
-        ((text[0] == '`' && text[size - 1U] == '`') ||
-         (text[0] == '"' && text[size - 1U] == '"'))) {
+        ((text[0] == '`' && text[size - 1U] == '`') || (text[0] == '"' && text[size - 1U] == '"')
+        )) {
         ++text;
         size -= 2U;
     }

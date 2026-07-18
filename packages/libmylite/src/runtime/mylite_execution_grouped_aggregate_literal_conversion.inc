@@ -179,6 +179,7 @@ static bool normalize_fractional_datetime_storage_text(
     char *out_text
 ) {
     enum { fractional_temporal_suffix_max_length = 7U };
+
     const char *text = input == NULL ? NULL : input->text;
 
     if (input == NULL || text == NULL || out_text == NULL ||
@@ -230,6 +231,7 @@ static bool normalize_single_digit_hour_datetime_storage_text(
         single_digit_second_time_separator_offset = datetime_second_time_separator_offset - 1U,
         single_digit_second_text_offset = datetime_second_text_offset - 1U,
     };
+
     const char *text = input == NULL ? NULL : input->text;
 
     if (input == NULL || text == NULL || out_text == NULL ||
@@ -483,6 +485,7 @@ static bool normalize_time_numeric_text(
         packed_time_hour_divisor = 10000U,
         packed_time_minute_divisor = 100U,
     };
+
     bool is_negative = false;
     size_t digit_offset = 0U;
     uint32_t packed = 0U;
@@ -540,6 +543,7 @@ static bool normalize_fractional_time_text(
         fractional_temporal_max_digits = 6U,
         fractional_temporal_suffix_max_length = 7U,
     };
+
     size_t prefix_length = 0U;
 
     if (text == NULL || out_text == NULL || out_text_length == NULL ||
@@ -1113,13 +1117,11 @@ static int convert_year_string_magnitude(const char *text, size_t text_length, u
         uint64_t digit = 0U;
 
         if (byte < '0' || byte > '9') {
-            if (year_string_accepts_trailing_hyphen(
-                    (struct year_string_trailing_hyphen_request){
-                        .index = index,
-                        .byte = byte,
-                        .magnitude = magnitude,
-                    }
-                )) {
+            if (year_string_accepts_trailing_hyphen((struct year_string_trailing_hyphen_request){
+                    .index = index,
+                    .byte = byte,
+                    .magnitude = magnitude,
+                })) {
                 *out_year = (uint32_t)magnitude;
                 return MYLITE_OK;
             }
@@ -1144,8 +1146,7 @@ static int convert_year_string_magnitude(const char *text, size_t text_length, u
     );
 }
 
-static bool year_string_accepts_trailing_hyphen(
-    struct year_string_trailing_hyphen_request request
+static bool year_string_accepts_trailing_hyphen(struct year_string_trailing_hyphen_request request
 ) {
     if (request.index != year_text_length || request.byte != '-') {
         return false;
@@ -1173,8 +1174,7 @@ static int convert_year_string_magnitude_by_length(
             *out_year = 0U;
             return MYLITE_OK;
         }
-        if (conversion.magnitude >= year_minimum_normal &&
-            conversion.magnitude <= year_maximum) {
+        if (conversion.magnitude >= year_minimum_normal && conversion.magnitude <= year_maximum) {
             *out_year = (uint32_t)conversion.magnitude;
             return MYLITE_OK;
         }
@@ -1519,9 +1519,8 @@ static bool temporal_sql_mode_has_no_zero_in_date(const struct mylite_db *databa
 }
 
 static bool temporal_sql_mode_has_allow_invalid_dates(const struct mylite_db *database) {
-    return (
-               database != NULL &&
-               session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES)
+    return (database != NULL &&
+            session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES)
            ) != 0;
 }
 

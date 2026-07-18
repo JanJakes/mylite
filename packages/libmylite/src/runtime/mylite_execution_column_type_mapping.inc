@@ -1427,9 +1427,9 @@ static int apply_approximate_type_float_precision(
         set_incorrect_column_specifier_error(database, column_name);
         return MYLITE_ERROR;
     }
-    state->type_class =
-        state->precision <= float_double_precision_threshold ? APPROXIMATE_TYPE_FLOAT
-                                                             : APPROXIMATE_TYPE_DOUBLE;
+    state->type_class = state->precision <= float_double_precision_threshold
+                            ? APPROXIMATE_TYPE_FLOAT
+                            : APPROXIMATE_TYPE_DOUBLE;
     return MYLITE_OK;
 }
 

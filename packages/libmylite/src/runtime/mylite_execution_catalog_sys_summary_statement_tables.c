@@ -426,8 +426,7 @@ static const struct mylite_execution_catalog_mysql_system_table
           sys_statements_with_runtimes_in_95th_percentile_columns,
           sizeof(sys_statements_with_runtimes_in_95th_percentile_columns) /
               sizeof(sys_statements_with_runtimes_in_95th_percentile_columns[0])},
-         MYLITE_EXECUTION_CATALOG_ARRAY(
-             sys_statements_with_runtimes_in_95th_percentile_column_keys
+         MYLITE_EXECUTION_CATALOG_ARRAY(sys_statements_with_runtimes_in_95th_percentile_column_keys
          ),
          MYLITE_EXECUTION_CATALOG_ARRAY(
              sys_statements_with_runtimes_in_95th_percentile_column_extras
@@ -525,8 +524,7 @@ static const struct mylite_execution_catalog_mysql_system_table
           sys_x_statements_with_runtimes_in_95th_percentile_columns,
           sizeof(sys_x_statements_with_runtimes_in_95th_percentile_columns) /
               sizeof(sys_x_statements_with_runtimes_in_95th_percentile_columns[0])},
-         MYLITE_EXECUTION_CATALOG_ARRAY(
-             sys_statements_with_runtimes_in_95th_percentile_column_keys
+         MYLITE_EXECUTION_CATALOG_ARRAY(sys_statements_with_runtimes_in_95th_percentile_column_keys
          ),
          MYLITE_EXECUTION_CATALOG_ARRAY(
              sys_statements_with_runtimes_in_95th_percentile_column_extras

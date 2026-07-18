@@ -268,11 +268,9 @@ static int information_schema_evaluate_predicate(
         } else {
             truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         }
-    } else if (
-        predicate_node->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate_node->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-        predicate_node->kind == MYLITE_SQL_AST_XOR_PREDICATE
-    ) {
+    } else if (predicate_node->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+               predicate_node->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+               predicate_node->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         rc = information_schema_compound_predicate_matches(
             database,
             predicate_node->kind,
@@ -426,10 +424,8 @@ static int information_schema_compound_predicate_matches(
         if (left_truth == INFORMATION_SCHEMA_TRUTH_FALSE ||
             right_truth == INFORMATION_SCHEMA_TRUTH_FALSE) {
             *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
-        } else if (
-            left_truth == INFORMATION_SCHEMA_TRUTH_TRUE &&
-            right_truth == INFORMATION_SCHEMA_TRUTH_TRUE
-        ) {
+        } else if (left_truth == INFORMATION_SCHEMA_TRUTH_TRUE &&
+                   right_truth == INFORMATION_SCHEMA_TRUTH_TRUE) {
             *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
         } else {
             *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
@@ -438,18 +434,14 @@ static int information_schema_compound_predicate_matches(
         if (left_truth == INFORMATION_SCHEMA_TRUTH_TRUE ||
             right_truth == INFORMATION_SCHEMA_TRUTH_TRUE) {
             *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
-        } else if (
-            left_truth == INFORMATION_SCHEMA_TRUTH_FALSE &&
-            right_truth == INFORMATION_SCHEMA_TRUTH_FALSE
-        ) {
+        } else if (left_truth == INFORMATION_SCHEMA_TRUTH_FALSE &&
+                   right_truth == INFORMATION_SCHEMA_TRUTH_FALSE) {
             *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
         } else {
             *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         }
-    } else if (
-        left_truth == INFORMATION_SCHEMA_TRUTH_UNKNOWN ||
-        right_truth == INFORMATION_SCHEMA_TRUTH_UNKNOWN
-    ) {
+    } else if (left_truth == INFORMATION_SCHEMA_TRUTH_UNKNOWN ||
+               right_truth == INFORMATION_SCHEMA_TRUTH_UNKNOWN) {
         *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
     } else {
         *out_truth = information_schema_truth_from_bool(left_truth != right_truth);

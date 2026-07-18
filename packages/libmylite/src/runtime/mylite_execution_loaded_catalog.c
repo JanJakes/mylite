@@ -213,13 +213,9 @@ static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_
     struct mylite_db *database,
     size_t required_bytes
 );
-static bool table_key_metadata_cache_make_room(
-    struct mylite_db *database,
-    size_t required_bytes
-);
+static bool table_key_metadata_cache_make_room(struct mylite_db *database, size_t required_bytes);
 static size_t table_key_metadata_cache_byte_count(const struct mylite_db *database);
-static size_t loaded_table_key_metadata_byte_count(
-    const struct loaded_table_key_metadata *metadata
+static size_t loaded_table_key_metadata_byte_count(const struct loaded_table_key_metadata *metadata
 );
 static uint64_t table_key_metadata_cache_next_clock(struct mylite_db *database);
 static void release_table_key_metadata_cache_entry(
@@ -264,10 +260,7 @@ int mylite_execution_acquire_table_columns(
         return rc;
     }
 
-    entry = prepare_table_columns_cache_entry(
-        database,
-        *out_column_count * sizeof(**out_columns)
-    );
+    entry = prepare_table_columns_cache_entry(database, *out_column_count * sizeof(**out_columns));
     if (entry == NULL) {
         return MYLITE_OK;
     }
@@ -752,10 +745,7 @@ static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entr
     return entry;
 }
 
-static bool table_columns_cache_make_room(
-    struct mylite_db *database,
-    size_t required_bytes
-) {
+static bool table_columns_cache_make_room(struct mylite_db *database, size_t required_bytes) {
     if (required_bytes > MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT) {
         return false;
     }
@@ -805,8 +795,7 @@ static uint64_t table_columns_cache_next_clock(struct mylite_db *database) {
     return database->table_columns_cache_clock;
 }
 
-static void loaded_table_columns_cache_entry_deinit(
-    struct loaded_table_columns_cache_entry *entry
+static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry
 ) {
     if (entry == NULL) {
         return;
@@ -876,10 +865,7 @@ static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_
     return entry;
 }
 
-static bool table_key_metadata_cache_make_room(
-    struct mylite_db *database,
-    size_t required_bytes
-) {
+static bool table_key_metadata_cache_make_room(struct mylite_db *database, size_t required_bytes) {
     if (required_bytes > MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_BYTE_LIMIT) {
         return false;
     }
@@ -918,8 +904,7 @@ static size_t table_key_metadata_cache_byte_count(const struct mylite_db *databa
     return byte_count;
 }
 
-static size_t loaded_table_key_metadata_byte_count(
-    const struct loaded_table_key_metadata *metadata
+static size_t loaded_table_key_metadata_byte_count(const struct loaded_table_key_metadata *metadata
 ) {
     size_t byte_count = 0U;
 

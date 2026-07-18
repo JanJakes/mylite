@@ -535,8 +535,7 @@ static int test_alter_add_unique_validation_dml_and_drop(void) {
 
     failures += expect_statement_ok(database, "CREATE TABLE non_ascii (name VARCHAR(10))");
     failures += expect_dml_ok(database, "INSERT INTO non_ascii VALUES ('é')", 1);
-    failures +=
-        expect_alter_unique_ok(database, "ALTER TABLE non_ascii ADD UNIQUE u_name (name)");
+    failures += expect_alter_unique_ok(database, "ALTER TABLE non_ascii ADD UNIQUE u_name (name)");
     failures += execute_error(
         database,
         "INSERT INTO non_ascii VALUES ('e')",

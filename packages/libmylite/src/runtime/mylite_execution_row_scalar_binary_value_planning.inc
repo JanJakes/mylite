@@ -1181,8 +1181,7 @@ static int plan_row_scalar_uuid_source_argument_expression(
     return MYLITE_OK;
 }
 
-static bool is_row_scalar_uuid_nested_function_argument(
-    const struct mylite_sql_ast_node *argument
+static bool is_row_scalar_uuid_nested_function_argument(const struct mylite_sql_ast_node *argument
 ) {
     if (argument == NULL) {
         return false;

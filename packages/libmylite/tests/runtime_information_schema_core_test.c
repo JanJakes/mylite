@@ -112,11 +112,9 @@ static int test_information_schema_result_metadata(void) {
             .origin_table_name = "TABLES",
             .origin_column_name = "TABLE_NAME",
             .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
-            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                         MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
                          MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
-            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                     MYLITE_RESULT_COLUMN_FLAG_BINARY |
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
                      MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
             .charset_id = 255U,
             .collation_id = 255U,
@@ -131,10 +129,10 @@ static int test_information_schema_result_metadata(void) {
             .origin_table_name = "TABLES",
             .origin_column_name = "TABLE_ROWS",
             .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
-            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                         MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
-            .flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NUM,
             .charset_id = 63U,
             .collation_id = 63U,
             .display_length = 20U,
@@ -148,12 +146,10 @@ static int test_information_schema_result_metadata(void) {
             .origin_table_name = "TABLES",
             .origin_column_name = "TABLE_TYPE",
             .type = MYLITE_RESULT_COLUMN_TYPE_STRING,
-            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                         MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_ENUM |
-                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
-            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_ENUM |
-                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_ENUM | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_ENUM | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
             .charset_id = 255U,
             .collation_id = 255U,
             .display_length = 44U,
@@ -170,8 +166,8 @@ static int test_information_schema_result_metadata(void) {
             .origin_column_name = "",
             .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
             .flag_mask = UINT32_MAX,
-            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                     MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NUM,
             .charset_id = 63U,
             .collation_id = 63U,
             .display_length = 21U,
@@ -187,16 +183,11 @@ static int test_information_schema_result_metadata(void) {
             .origin_table_name = "threads",
             .origin_column_name = "THREAD_ID",
             .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
-            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                         MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
-                         MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
-                         MYLITE_RESULT_COLUMN_FLAG_PART_KEY |
-                         MYLITE_RESULT_COLUMN_FLAG_NUM,
-            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                     MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
-                     MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
+                         MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+                         MYLITE_RESULT_COLUMN_FLAG_PART_KEY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
+                     MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
                      MYLITE_RESULT_COLUMN_FLAG_PART_KEY | MYLITE_RESULT_COLUMN_FLAG_NUM,
             .charset_id = 63U,
             .collation_id = 63U,
@@ -213,14 +204,10 @@ static int test_information_schema_result_metadata(void) {
             .origin_table_name = "processlist",
             .origin_column_name = "thd_id",
             .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
-            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                         MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
-                         MYLITE_RESULT_COLUMN_FLAG_NUM,
-            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                     MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
-                     MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT | MYLITE_RESULT_COLUMN_FLAG_NUM,
             .charset_id = 63U,
             .collation_id = 63U,
             .display_length = 20U,
@@ -312,8 +299,7 @@ static int test_information_schema_result_metadata(void) {
     result = NULL;
 
     if (failures == 0) {
-        static const char thread_sql[] =
-            "SELECT THREAD_ID FROM performance_schema.threads LIMIT 0";
+        static const char thread_sql[] = "SELECT THREAD_ID FROM performance_schema.threads LIMIT 0";
 
         failures += expect_int(
             mylite_execute(database, thread_sql, strlen(thread_sql), &result),
@@ -1809,8 +1795,11 @@ static int expect_stmt_metadata(
     int failures = expect_size(mylite_stmt_column_count(stmt), column_count, context);
 
     for (size_t index = 0U; index < column_count; ++index) {
-        failures +=
-            expect_text_or_null(mylite_stmt_column_name(stmt, index), expected[index].label, context);
+        failures += expect_text_or_null(
+            mylite_stmt_column_name(stmt, index),
+            expected[index].label,
+            context
+        );
         failures += expect_text_or_null(
             mylite_stmt_column_schema_name(stmt, index),
             expected[index].schema_name,
@@ -1861,11 +1850,8 @@ static int expect_stmt_metadata(
             (int64_t)expected[index].display_length,
             context
         );
-        failures += expect_int(
-            mylite_stmt_column_nullable(stmt, index),
-            expected[index].nullable,
-            context
-        );
+        failures +=
+            expect_int(mylite_stmt_column_nullable(stmt, index), expected[index].nullable, context);
     }
     return failures;
 }

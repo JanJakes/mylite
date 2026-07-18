@@ -3470,8 +3470,7 @@ static int plan_row_scalar_unix_timestamp_sysdate_expression(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static bool unix_timestamp_argument_is_sysdate_function(
-    const struct mylite_sql_ast_node *expression
+static bool unix_timestamp_argument_is_sysdate_function(const struct mylite_sql_ast_node *expression
 );
 static int plan_row_scalar_unix_timestamp_column(
     struct mylite_db *database,
@@ -3734,8 +3733,7 @@ static bool row_scalar_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
-static bool row_scalar_expression_contains_row_function(
-    const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression,

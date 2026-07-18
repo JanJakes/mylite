@@ -880,17 +880,11 @@ static int test_metadata_caches_enforce_byte_budgets(void) {
     }
 
     for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
-        int written = snprintf(
-            sql,
-            sizeof(sql),
-            "SELECT c0 FROM budget_%zu WHERE c0 = 0",
-            table_index
-        );
+        int written =
+            snprintf(sql, sizeof(sql), "SELECT c0 FROM budget_%zu WHERE c0 = 0", table_index);
 
-        failures += expect_true(
-            written > 0 && (size_t)written < sizeof(sql),
-            "format cache budget select"
-        );
+        failures +=
+            expect_true(written > 0 && (size_t)written < sizeof(sql), "format cache budget select");
         if (written > 0 && (size_t)written < sizeof(sql)) {
             failures += expect_int(
                 mylite_prepare(database, sql, (size_t)written, &stmt),
@@ -1181,10 +1175,8 @@ static int test_native_prepared_scalar_bindings(void) {
             database,
             "SELECT '?' AS string_marker, \"?\" AS double_string_marker, "
             "1 AS `?`, ? AS bound_value /* ? */ -- ?\n",
-            strlen(
-                "SELECT '?' AS string_marker, \"?\" AS double_string_marker, "
-                "1 AS `?`, ? AS bound_value /* ? */ -- ?\n"
-            ),
+            strlen("SELECT '?' AS string_marker, \"?\" AS double_string_marker, "
+                   "1 AS `?`, ? AS bound_value /* ? */ -- ?\n"),
             &stmt
         ),
         MYLITE_OK,
@@ -1227,10 +1219,8 @@ static int test_native_prepared_scalar_bindings(void) {
             database,
             "SELECT /*!80000 ? AS executable_value, */ ? AS ordinary_value "
             "/*!99999 , ? AS skipped_value */",
-            strlen(
-                "SELECT /*!80000 ? AS executable_value, */ ? AS ordinary_value "
-                "/*!99999 , ? AS skipped_value */"
-            ),
+            strlen("SELECT /*!80000 ? AS executable_value, */ ? AS ordinary_value "
+                   "/*!99999 , ? AS skipped_value */"),
             &stmt
         ),
         MYLITE_OK,
@@ -1656,10 +1646,8 @@ static int test_cursor_materializes_information_schema_selects(void) {
             database,
             "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
             "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'items' AND COLUMN_NAME = 'id'",
-            strlen(
-                "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
-                "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'items' AND COLUMN_NAME = 'id'"
-            ),
+            strlen("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'items' AND COLUMN_NAME = 'id'"),
             &stmt
         ),
         MYLITE_OK,

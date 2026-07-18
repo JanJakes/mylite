@@ -478,8 +478,7 @@ static int evaluate_integer_default_binary_enter_frame(
     return rc;
 }
 
-static bool integer_default_binary_operator_is_supported(
-    enum mylite_sql_ast_operator operator_kind
+static bool integer_default_binary_operator_is_supported(enum mylite_sql_ast_operator operator_kind
 ) {
     return (operator_kind == MYLITE_SQL_AST_OPERATOR_ADD ||
             operator_kind == MYLITE_SQL_AST_OPERATOR_SUBTRACT ||

@@ -57,8 +57,7 @@ enum mylite_file_lifecycle_state mylite_file_preamble_lifecycle_state(
     }
 }
 
-uint16_t mylite_file_preamble_format_version(
-    const unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]
+uint16_t mylite_file_preamble_format_version(const unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]
 ) {
     if (mylite_file_preamble_lifecycle_state(preamble) == MYLITE_FILE_LIFECYCLE_INVALID) {
         return 0U;

@@ -9,11 +9,8 @@ static bool generic_spatial_function_kind(
     if (out_kind != NULL) {
         *out_kind = MYLITE_SPATIAL_FUNCTION_NONE;
     }
-    if (generic_function_identifier_nodes(
-            expression,
-            &schema_identifier,
-            &function_identifier
-        ) != MYLITE_OK ||
+    if (generic_function_identifier_nodes(expression, &schema_identifier, &function_identifier) !=
+            MYLITE_OK ||
         schema_identifier != NULL || function_identifier == NULL) {
         return false;
     }
@@ -65,7 +62,8 @@ static int spatial_function_session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
-    const struct mylite_sql_ast_node *arguments_node = generic_system_function_arguments(expression);
+    const struct mylite_sql_ast_node *arguments_node =
+        generic_system_function_arguments(expression);
     enum mylite_spatial_function_kind kind = MYLITE_SPATIAL_FUNCTION_NONE;
     struct session_scalar_cell *cells = NULL;
     struct mylite_spatial_argument *arguments = NULL;
@@ -159,8 +157,7 @@ static int spatial_function_session_scalar_argument(
     return rc;
 }
 
-static bool spatial_function_numeric_literal_expression(
-    const struct mylite_sql_ast_node *expression
+static bool spatial_function_numeric_literal_expression(const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;

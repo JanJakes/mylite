@@ -367,8 +367,7 @@ static bool select_order_column_needs_integer_validation(
            !column_descriptor_is_bit(column);
 }
 
-static bool order_item_list_contains_field_order_key(
-    const struct mylite_sql_ast_node *order_items
+static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items
 ) {
     const struct mylite_sql_ast_node *item = NULL;
 
@@ -453,8 +452,7 @@ static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *
     return false;
 }
 
-static bool select_order_key_is_searched_case_expression(
-    const struct mylite_sql_ast_node *order_key
+static bool select_order_key_is_searched_case_expression(const struct mylite_sql_ast_node *order_key
 ) {
     order_key = unwrap_parenthesized_expression(order_key);
     return order_key != NULL && order_key->kind == MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION;

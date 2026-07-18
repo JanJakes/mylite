@@ -175,11 +175,7 @@ static int parse_set_connection_memory_system_variable_value(
         *out_value = 1U;
         if (*out_value < connection_memory_system_variable_min_value_for_kind(target->kind)) {
             *out_value = connection_memory_system_variable_min_value_for_kind(target->kind);
-            return append_truncated_incorrect_system_variable_warning(
-                database,
-                target->name,
-                "1"
-            );
+            return append_truncated_incorrect_system_variable_warning(database, target->name, "1");
         }
         return MYLITE_OK;
     }

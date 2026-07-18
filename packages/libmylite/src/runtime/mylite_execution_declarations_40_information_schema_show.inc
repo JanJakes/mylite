@@ -901,8 +901,7 @@ static int append_mysql_escaped_expression_text(
     const char *text
 );
 static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column);
-static bool column_default_is_generated_extra(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_default_is_generated_extra(const struct mylite_catalog_column_descriptor *column
 );
 static int append_information_schema_columns_numeric_metadata(
     struct mylite_db *database,
@@ -1526,8 +1525,7 @@ static int information_schema_row_index_set_append(
     struct information_schema_row_index_set *indexes,
     size_t value
 );
-static void information_schema_row_index_set_deinit(
-    struct information_schema_row_index_set *indexes
+static void information_schema_row_index_set_deinit(struct information_schema_row_index_set *indexes
 );
 static int information_schema_includes_connection_control_failed_login_attempts(
     struct mylite_db *database,
@@ -2096,8 +2094,7 @@ static int execute_show_grants_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static bool show_grants_statement_targets_embedded_root(
-    const struct mylite_sql_ast_node *statement
+static bool show_grants_statement_targets_embedded_root(const struct mylite_sql_ast_node *statement
 );
 static const struct mylite_sql_ast_node *show_grants_statement_target(
     const struct mylite_sql_ast_node *statement

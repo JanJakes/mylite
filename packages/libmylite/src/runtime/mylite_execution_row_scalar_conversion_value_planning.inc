@@ -1552,8 +1552,8 @@ static int plan_row_scalar_conversion_expression(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION;
-    while (row_scalar_conversion_kind_from_expression(current) !=
-           PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+    while (row_scalar_conversion_kind_from_expression(current) != PLANNED_ROW_SCALAR_CONVERSION_NONE
+    ) {
         rc = append_row_scalar_conversion_step(database, current, out_expression);
         if (rc != MYLITE_OK) {
             return rc;
@@ -2099,8 +2099,7 @@ static int plan_row_scalar_session_value(
     return copy_rc;
 }
 
-static bool row_scalar_session_value_prefers_integer(
-    enum mylite_sql_ast_node_kind expression_kind
+static bool row_scalar_session_value_prefers_integer(enum mylite_sql_ast_node_kind expression_kind
 ) {
     switch (expression_kind) {
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:

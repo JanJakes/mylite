@@ -1356,8 +1356,7 @@ static int append_grouped_aggregate_expression_sql(
     return rc;
 }
 
-static const char *grouped_aggregate_sql_function(
-    enum planned_grouped_aggregate_function function
+static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function
 ) {
     switch (function) {
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
@@ -4169,11 +4168,9 @@ static int append_select_order_item_sql(
 
         snprintf(ordinal_text, sizeof(ordinal_text), "%zu", item->ordinal);
         rc = mylite_dynamic_string_append(string, ordinal_text);
-    } else if (
-        item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
-        item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
-        item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR
-    ) {
+    } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
+               item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
+               item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
         bool real_order_key = false;
 
         if (next_parameter == NULL || item->expression == NULL) {

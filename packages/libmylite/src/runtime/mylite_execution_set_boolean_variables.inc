@@ -497,13 +497,7 @@ static int apply_set_autocommit_cell_value(
         return MYLITE_ERROR;
     }
 
-    rc = parse_set_big_tables_cell_value(
-        database,
-        target->name,
-        value,
-        value_kind,
-        &boolean_value
-    );
+    rc = parse_set_big_tables_cell_value(database, target->name, value, value_kind, &boolean_value);
     if (rc != MYLITE_OK) {
         return rc;
     }

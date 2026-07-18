@@ -123,11 +123,7 @@ static int information_schema_validate_comparison_predicate(
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
             char escape_character = '\0';
 
-            rc = like_escape_character_from_predicate(
-                database,
-                predicate_node,
-                &escape_character
-            );
+            rc = like_escape_character_from_predicate(database, predicate_node, &escape_character);
             if (rc == MYLITE_OK) {
                 rc = information_schema_predicate_like_pattern_text(
                     database,

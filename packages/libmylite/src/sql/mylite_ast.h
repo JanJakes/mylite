@@ -1410,8 +1410,7 @@ enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
 enum mylite_sql_ast_alter_algorithm mylite_sql_ast_node_alter_algorithm(
     const struct mylite_sql_ast_node *node
 );
-enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(
-    const struct mylite_sql_ast_node *node
+enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(const struct mylite_sql_ast_node *node
 );
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);

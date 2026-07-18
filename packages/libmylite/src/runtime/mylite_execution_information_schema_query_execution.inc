@@ -102,9 +102,8 @@ static int information_schema_query_plan_materialization(
                 query,
                 query->projection_expressions[index]
             );
-        } else if (
-            query->projection_kinds[index] != INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL
-        ) {
+        } else if (query->projection_kinds[index] !=
+                   INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL) {
             information_schema_query_require_column(query, query->projection_indexes[index]);
         }
     }
@@ -255,12 +254,8 @@ static int execute_information_schema_query(
     bool skip_row_enumeration =
         (query->limit.has_limit && query->limit.row_count == 0) ||
         (query->is_count_star && query->limit.has_offset && query->limit.offset != 0);
-    int rc = information_schema_catalog_filter_init_from_statement(
-        database,
-        statement,
-        query,
-        &filter
-    );
+    int rc =
+        information_schema_catalog_filter_init_from_statement(database, statement, query, &filter);
 
     if (rc == MYLITE_OK) {
         bool handled = false;
@@ -420,9 +415,8 @@ static int information_schema_tables_exact_base_table_query_is_supported(
     const struct information_schema_catalog_filter *filter,
     bool *out_supported
 ) {
-    const struct mylite_sql_ast_node *where_clause = information_schema_statement_where_clause(
-        statement
-    );
+    const struct mylite_sql_ast_node *where_clause =
+        information_schema_statement_where_clause(statement);
 
     if (out_supported == NULL) {
         return MYLITE_MISUSE;
@@ -451,11 +445,9 @@ static int information_schema_tables_exact_base_table_query_is_supported(
         ) != 0) {
         return MYLITE_OK;
     }
-    if (
-        !query->is_count_star &&
+    if (!query->is_count_star &&
         (query->projection_count != 1U ||
-         query->projection_kinds[0] != INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL)
-    ) {
+         query->projection_kinds[0] != INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL)) {
         return MYLITE_OK;
     }
 
@@ -618,15 +610,10 @@ static int information_schema_append_fast_table_existence_result(
                 table_exists,
                 result
             );
-        } else if (
-            table_exists && !(query->limit.has_limit && query->limit.row_count == 0) &&
-            !(query->limit.has_offset && query->limit.offset != 0)
-        ) {
-            rc = information_schema_append_fast_table_existence_literal_row(
-                database,
-                query,
-                result
-            );
+        } else if (table_exists && !(query->limit.has_limit && query->limit.row_count == 0) &&
+                   !(query->limit.has_offset && query->limit.offset != 0)) {
+            rc =
+                information_schema_append_fast_table_existence_literal_row(database, query, result);
         }
     }
     if (rc != MYLITE_OK) {
@@ -909,9 +896,11 @@ static bool information_schema_catalog_filter_resolve_schema_table_columns(
                             "TABLE_SCHEMA",
                             out_schema_column_index
                         ) == MYLITE_OK;
-    has_table_column =
-        information_schema_table_definition_index(definition, "TABLE_NAME", out_table_column_index) ==
-        MYLITE_OK;
+    has_table_column = information_schema_table_definition_index(
+                           definition,
+                           "TABLE_NAME",
+                           out_table_column_index
+                       ) == MYLITE_OK;
     return has_schema_column && has_table_column;
 }
 
@@ -992,8 +981,7 @@ static int information_schema_catalog_filter_collect_comparison(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (column_index != filter->schema_column_index &&
-        column_index != filter->table_column_index &&
+    if (column_index != filter->schema_column_index && column_index != filter->table_column_index &&
         column_index != filter->table_type_column_index) {
         return MYLITE_OK;
     }
@@ -1044,9 +1032,17 @@ static bool information_schema_catalog_filter_allows_system_rows(
     const struct mylite_execution_catalog_table_definition *definition,
     const struct information_schema_catalog_filter *filter
 ) {
-    return information_schema_catalog_filter_allows_schema(definition, filter, "information_schema") ||
+    return information_schema_catalog_filter_allows_schema(
+               definition,
+               filter,
+               "information_schema"
+           ) ||
            information_schema_catalog_filter_allows_schema(definition, filter, "mysql") ||
-           information_schema_catalog_filter_allows_schema(definition, filter, "performance_schema") ||
+           information_schema_catalog_filter_allows_schema(
+               definition,
+               filter,
+               "performance_schema"
+           ) ||
            information_schema_catalog_filter_allows_schema(definition, filter, "sys");
 }
 

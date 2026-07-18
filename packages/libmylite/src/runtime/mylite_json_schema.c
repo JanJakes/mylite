@@ -127,8 +127,7 @@ static int parse_json_schema_document(
     struct mylite_json_normalize_result *out_result
 );
 
-void mylite_json_schema_validation_result_deinit(
-    struct mylite_json_schema_validation_result *result
+void mylite_json_schema_validation_result_deinit(struct mylite_json_schema_validation_result *result
 ) {
     if (result == NULL) {
         return;

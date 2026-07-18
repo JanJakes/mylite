@@ -152,10 +152,8 @@ static int evaluate_show_table_status_where_frame(
             return MYLITE_ERROR;
         }
         truth = negate_show_variables_where_truth(child_truth);
-    } else if (
-        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
-    ) {
+    } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+               predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
         rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
     } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         set_unsupported_error(database, "SHOW TABLE STATUS WHERE does not support XOR predicates");
@@ -306,12 +304,7 @@ static int evaluate_show_table_status_where_in_predicate(
         if (rc == MYLITE_OK) {
             bool equal = false;
 
-            rc = show_table_status_where_texts_are_equal(
-                database,
-                &left,
-                right,
-                &equal
-            );
+            rc = show_table_status_where_texts_are_equal(database, &left, right, &equal);
             if (rc == MYLITE_OK && equal) {
                 *out_truth = SHOW_VARIABLES_WHERE_TRUE;
                 free(right);
@@ -342,12 +335,8 @@ static int evaluate_show_table_status_where_is_null_predicate(
     enum show_variables_where_truth *out_truth
 ) {
     struct show_table_status_where_operand value = {0};
-    int rc = show_table_status_where_operand_value(
-        database,
-        child_at(predicate, 0U),
-        values,
-        &value
-    );
+    int rc =
+        show_table_status_where_operand_value(database, child_at(predicate, 0U), values, &value);
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -380,9 +369,8 @@ static int show_table_status_where_operand_value(
     }
 
     operand_node = unwrap_parenthesized_expression(operand_node);
-    if (operand_node != NULL &&
-        mylite_execution_string_slice_function_kind(operand_node->kind) ==
-            PLANNED_STRING_SLICE_FUNCTION_SUBSTRING) {
+    if (operand_node != NULL && mylite_execution_string_slice_function_kind(operand_node->kind) ==
+                                    PLANNED_STRING_SLICE_FUNCTION_SUBSTRING) {
         return show_table_status_where_substring_operand_value(
             database,
             operand_node,
@@ -402,8 +390,7 @@ static int show_table_status_where_operand_value(
     return MYLITE_OK;
 }
 
-static void show_table_status_where_operand_deinit(
-    struct show_table_status_where_operand *operand
+static void show_table_status_where_operand_deinit(struct show_table_status_where_operand *operand
 ) {
     if (operand != NULL) {
         mylite_execution_session_scalar_cell_deinit(&operand->cell);

@@ -586,8 +586,7 @@ static int render_check_expression_binary(
     return rc;
 }
 
-static bool check_expression_binary_operator_is_boolean(
-    enum mylite_sql_ast_operator operator_kind
+static bool check_expression_binary_operator_is_boolean(enum mylite_sql_ast_operator operator_kind
 ) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
@@ -675,8 +674,7 @@ static const char *check_expression_check_clause_operator_sql(
     }
 }
 
-static const char *check_expression_sqlite_operator_sql(
-    enum mylite_sql_ast_operator operator_kind
+static const char *check_expression_sqlite_operator_sql(enum mylite_sql_ast_operator operator_kind
 ) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:

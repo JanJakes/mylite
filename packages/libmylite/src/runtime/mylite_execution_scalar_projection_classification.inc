@@ -73,7 +73,8 @@ static bool is_unsupported_scalar_projection_literal_attempt(
         return false;
     }
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
 
         return literal_kind != MYLITE_SQL_AST_LITERAL_STRING &&
                literal_kind != MYLITE_SQL_AST_LITERAL_HEX &&

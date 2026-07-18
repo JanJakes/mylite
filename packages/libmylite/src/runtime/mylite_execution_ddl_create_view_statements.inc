@@ -294,7 +294,13 @@ static int copy_view_definer_host(
         ++text;
         --text_size;
     }
-    return copy_view_account_component_span(database, text, text_size, destination, destination_size);
+    return copy_view_account_component_span(
+        database,
+        text,
+        text_size,
+        destination,
+        destination_size
+    );
 }
 
 static int copy_view_account_component_span(
@@ -313,8 +319,7 @@ static int copy_view_account_component_span(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (text_size >= 2U &&
-        (text[0] == '\'' || text[0] == '"' || text[0] == '`') &&
+    if (text_size >= 2U && (text[0] == '\'' || text[0] == '"' || text[0] == '`') &&
         text[text_size - 1U] == text[0]) {
         quote = text[0];
         begin = 1U;
@@ -365,8 +370,8 @@ static void copy_view_check_option(
     const char *value = "NONE";
 
     if (check_option_node != NULL) {
-        value = view_check_option_span_has_keyword(check_option_node, "LOCAL") ? "LOCAL"
-                                                                               : "CASCADED";
+        value =
+            view_check_option_span_has_keyword(check_option_node, "LOCAL") ? "LOCAL" : "CASCADED";
     }
     snprintf(destination, destination_size, "%s", value);
 }
@@ -388,8 +393,7 @@ static bool view_check_option_span_has_keyword(
         bool matched = true;
 
         for (size_t index = 0U; index < keyword_length; ++index) {
-            char left =
-                (char)toupper((unsigned char)check_option_node->span.text[offset + index]);
+            char left = (char)toupper((unsigned char)check_option_node->span.text[offset + index]);
 
             if (left != keyword[index]) {
                 matched = false;
@@ -607,10 +611,8 @@ static int validate_create_view_select_subset(
                 set_unsupported_error(database, "CREATE VIEW wildcard items cannot have aliases");
                 return MYLITE_ERROR;
             }
-        } else if (
-            expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
-            expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
-        ) {
+        } else if (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                   expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
             set_unsupported_error(database, "CREATE VIEW supports only direct column projection");
             return MYLITE_ERROR;
         }

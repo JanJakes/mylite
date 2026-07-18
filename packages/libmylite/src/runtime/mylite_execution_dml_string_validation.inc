@@ -91,13 +91,8 @@ static int append_decoded_sql_string_literal_node(
 
     segment = literal_node->first_child;
     while (segment != NULL) {
-        int rc = append_decoded_sql_string_literal_span(
-            database,
-            segment,
-            string,
-            messages,
-            allow_nul
-        );
+        int rc =
+            append_decoded_sql_string_literal_span(database, segment, string, messages, allow_nul);
 
         if (rc != MYLITE_OK) {
             return rc;

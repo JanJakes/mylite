@@ -109,8 +109,7 @@ static int apply_set_system_variable_assignment(
     if (set_system_variable_is_last_insert_id(target.kind)) {
         return apply_set_last_insert_id_system_variable_value(database, &target, value_node);
     }
-    rc =
-        apply_set_remaining_system_variable_assignment(database, &target, value_node, &handled);
+    rc = apply_set_remaining_system_variable_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
@@ -243,12 +242,8 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    rc = apply_set_server_database_character_set_assignment(
-        database,
-        &target,
-        value_node,
-        &handled
-    );
+    rc =
+        apply_set_server_database_character_set_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
@@ -319,8 +314,7 @@ static int apply_set_system_variable_assignment(
     return MYLITE_ERROR;
 }
 
-static bool set_system_variable_target_is_read_only(
-    enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
 ) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
@@ -1831,9 +1825,7 @@ static int apply_set_default_engine_system_variable_cell_value(
     return validate_set_fixed_text_cell_value(database, target, value, value_kind, "InnoDB");
 }
 
-static bool set_system_variable_is_default_engine(
-    enum mylite_execution_system_variable_kind kind
-) {
+static bool set_system_variable_is_default_engine(enum mylite_execution_system_variable_kind kind) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE;
 }
@@ -2114,11 +2106,10 @@ static int set_server_database_character_set_pair_from_value(
     if (set_system_variable_is_character_set_pair_variable(target->kind)) {
         if (value_is_catalog_id) {
             collation = mylite_execution_catalog_mysql_collation_by_id(value);
-            charset = collation == NULL
-                          ? NULL
-                          : mylite_execution_catalog_mysql_character_set_by_name(
-                                collation->character_set
-                            );
+            charset = collation == NULL ? NULL
+                                        : mylite_execution_catalog_mysql_character_set_by_name(
+                                              collation->character_set
+                                          );
         } else {
             charset = mylite_execution_catalog_mysql_character_set_by_name(value);
         }
@@ -2153,8 +2144,7 @@ static int set_server_database_character_set_pair(
     const char *collation
 ) {
     struct set_session_snapshot snapshot = {0};
-    enum mylite_execution_system_variable_kind charset_kind =
-        MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+    enum mylite_execution_system_variable_kind charset_kind = MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
     enum mylite_execution_system_variable_kind collation_kind =
         MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
     int rc = MYLITE_OK;
@@ -2211,10 +2201,7 @@ static int append_server_database_character_set_pair_warnings(
     if (rc == MYLITE_OK &&
         (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE ||
          target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE)) {
-        rc = append_database_character_set_assignment_deprecation_warning(
-            database,
-            target->name
-        );
+        rc = append_database_character_set_assignment_deprecation_warning(database, target->name);
     }
     return rc;
 }
@@ -2419,15 +2406,12 @@ static int set_session_character_set_filesystem_value(
     );
 }
 
-static bool set_character_set_value_is_catalog_id(
-    const struct mylite_sql_ast_node *value_node
-) {
-    return set_character_set_value_literal_kind(value_node, false) == MYLITE_SQL_AST_LITERAL_INTEGER;
+static bool set_character_set_value_is_catalog_id(const struct mylite_sql_ast_node *value_node) {
+    return set_character_set_value_literal_kind(value_node, false) ==
+           MYLITE_SQL_AST_LITERAL_INTEGER;
 }
 
-static bool set_character_set_value_is_decimal(
-    const struct mylite_sql_ast_node *value_node
-) {
+static bool set_character_set_value_is_decimal(const struct mylite_sql_ast_node *value_node) {
     enum mylite_sql_ast_literal_kind literal_kind =
         set_character_set_value_literal_kind(value_node, true);
 

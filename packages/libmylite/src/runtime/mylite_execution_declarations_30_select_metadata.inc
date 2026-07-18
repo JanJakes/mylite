@@ -97,9 +97,7 @@ static int execute_compound_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static bool compound_select_statement_has_table_source(
-    const struct mylite_sql_ast_node *statement
-);
+static bool compound_select_statement_has_table_source(const struct mylite_sql_ast_node *statement);
 static int execute_compound_select_statement_in_read_transaction(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

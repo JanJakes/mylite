@@ -145,8 +145,7 @@ static int append_execute_string_literal(
     const char *text,
     size_t text_size
 ) {
-    bool no_backslash_escapes =
-        (lexer_modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U;
+    bool no_backslash_escapes = (lexer_modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U;
     int rc = mylite_dynamic_string_append_char(string, '\'');
 
     for (size_t index = 0U; rc == MYLITE_OK && index < text_size; ++index) {

@@ -1071,17 +1071,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_bound(
             bound,
             MYLITE_SQL_AST_WINDOW_FRAME_BOUND_CURRENT_ROW
         );
-    } else if (
-        bound_token.text != NULL && (bound_token.text[0] == 'P' || bound_token.text[0] == 'p')
-    ) {
+    } else if (bound_token.text != NULL &&
+               (bound_token.text[0] == 'P' || bound_token.text[0] == 'p')) {
         mylite_sql_ast_node_set_window_frame_bound_kind(
             bound,
             value == NULL ? MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING
                           : MYLITE_SQL_AST_WINDOW_FRAME_BOUND_VALUE_PRECEDING
         );
-    } else if (
-        bound_token.text != NULL && (bound_token.text[0] == 'F' || bound_token.text[0] == 'f')
-    ) {
+    } else if (bound_token.text != NULL &&
+               (bound_token.text[0] == 'F' || bound_token.text[0] == 'f')) {
         mylite_sql_ast_node_set_window_frame_bound_kind(
             bound,
             value == NULL ? MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING

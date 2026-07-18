@@ -115,8 +115,8 @@ static int show_catalog_where_clause_matches(
     enum show_variables_where_truth truth = SHOW_VARIABLES_WHERE_FALSE;
     int rc = MYLITE_OK;
 
-    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE ||
-        row == NULL || out_matches == NULL) {
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE || row == NULL ||
+        out_matches == NULL) {
         set_runtime_error(database, "invalid SHOW catalog WHERE predicate");
         return MYLITE_ERROR;
     }
@@ -249,10 +249,8 @@ static int evaluate_show_catalog_where_frame(
             return MYLITE_ERROR;
         }
         truth = negate_show_variables_where_truth(child_truth);
-    } else if (
-        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
-    ) {
+    } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+               predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
         rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
     } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         set_unsupported_error(database, "SHOW catalog WHERE does not support XOR predicates");
@@ -395,13 +393,7 @@ static int evaluate_show_catalog_where_comparison_predicate(
         return rc;
     }
 
-    return compare_show_catalog_where_literal(
-        database,
-        operator_kind,
-        left,
-        right_node,
-        out_truth
-    );
+    return compare_show_catalog_where_literal(database, operator_kind, left, right_node, out_truth);
 }
 
 static int evaluate_show_catalog_where_in_predicate(
@@ -613,9 +605,8 @@ static enum show_variables_where_truth show_catalog_null_literal_truth(
 static enum show_variables_where_truth show_catalog_null_left_truth(
     enum mylite_sql_ast_operator operator_kind
 ) {
-    return operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL
-               ? SHOW_VARIABLES_WHERE_FALSE
-               : SHOW_VARIABLES_WHERE_UNKNOWN;
+    return operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL ? SHOW_VARIABLES_WHERE_FALSE
+                                                                    : SHOW_VARIABLES_WHERE_UNKNOWN;
 }
 
 static int show_catalog_where_truth_from_comparison(
@@ -626,22 +617,28 @@ static int show_catalog_where_truth_from_comparison(
     switch (comparison.operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
-        *out_truth = comparison.comparison == 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth =
+            comparison.comparison == 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
         break;
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
-        *out_truth = comparison.comparison != 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth =
+            comparison.comparison != 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
         break;
     case MYLITE_SQL_AST_OPERATOR_LESS:
-        *out_truth = comparison.comparison < 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth =
+            comparison.comparison < 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
         break;
     case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
-        *out_truth = comparison.comparison <= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth =
+            comparison.comparison <= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
         break;
     case MYLITE_SQL_AST_OPERATOR_GREATER:
-        *out_truth = comparison.comparison > 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth =
+            comparison.comparison > 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
         break;
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
-        *out_truth = comparison.comparison >= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+        *out_truth =
+            comparison.comparison >= 0 ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
         break;
     default:
         set_unsupported_error(database, "SHOW catalog WHERE comparison operator is not supported");

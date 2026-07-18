@@ -613,9 +613,8 @@ static int append_update_integer_string_adjustment_diagnostic(
         );
         if (rc == MYLITE_OK && exceeds_range) {
             rc = append_out_of_range_warning(database, column->name, row_number);
-        } else if (
-            rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
-        ) {
+        } else if (rc == MYLITE_OK &&
+                   parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
             rc = append_data_truncated_warning(database, column->name, row_number);
         }
     }
@@ -1428,11 +1427,9 @@ static int prepare_executable_update_plan(
         rc = prepare_update_multiple_assignments(database, plan, executable_plan);
     } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = prepare_update_arithmetic_assignment(database, plan, executable_plan);
-    } else if (
-        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL ||
-        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY ||
-        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR
-    ) {
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL ||
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY ||
+               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
         rc = MYLITE_OK;
     } else {
         rc = convert_update_value(database, plan, &executable_plan->assignment_value);

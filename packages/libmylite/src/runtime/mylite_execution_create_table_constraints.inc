@@ -743,7 +743,10 @@ static bool create_table_foreign_key_parent_is_self_reference(
         return false;
     }
     return parent_resolution->schema.schema_id == plan->target.schema.schema_id &&
-           text_equals_ascii_case_insensitive(parent_resolution->table_name, plan->target.table_name);
+           text_equals_ascii_case_insensitive(
+               parent_resolution->table_name,
+               plan->target.table_name
+           );
 }
 
 static int plan_create_table_self_referencing_foreign_key_parent(
@@ -945,10 +948,12 @@ static int find_create_table_self_foreign_key_parent_index(
         matches = true;
         for (size_t part_index = 0U; matches && part_index < foreign_key->part_count;
              ++part_index) {
-            const struct planned_secondary_index_part *candidate_part = &candidate->parts[part_index];
+            const struct planned_secondary_index_part *candidate_part =
+                &candidate->parts[part_index];
 
             if (candidate_part->has_prefix_length ||
-                candidate_part->column_index != foreign_key->parts[part_index].parent_column_index) {
+                candidate_part->column_index !=
+                    foreign_key->parts[part_index].parent_column_index) {
                 matches = false;
             }
         }
@@ -985,7 +990,12 @@ static int find_foreign_key_parent_index(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, parent_table->table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(
+        database,
+        parent_table->table_id,
+        &columns,
+        &column_count
+    );
 
     *out_index = (struct mylite_catalog_index_descriptor){0};
     if (rc == MYLITE_OK) {
@@ -1044,7 +1054,12 @@ static int find_alter_table_foreign_key_parent_index(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
-    int rc = mylite_execution_load_table_columns(database, plan->parent_table.table_id, &columns, &column_count);
+    int rc = mylite_execution_load_table_columns(
+        database,
+        plan->parent_table.table_id,
+        &columns,
+        &column_count
+    );
 
     *out_index = (struct mylite_catalog_index_descriptor){0};
     if (rc == MYLITE_OK) {
@@ -2307,14 +2322,12 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
     } else if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
-    } else if (
-        planned_column_is_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column) || planned_column_is_set(column) ||
-        planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
-        planned_column_is_date(column) || planned_column_is_time(column) ||
-        planned_column_is_datetime(column) || planned_column_is_timestamp(column) ||
-        planned_column_is_year(column)
-    ) {
+    } else if (planned_column_is_string_family(column) || planned_column_is_bit(column) ||
+               planned_column_is_enum(column) || planned_column_is_set(column) ||
+               planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
+               planned_column_is_date(column) || planned_column_is_time(column) ||
+               planned_column_is_datetime(column) || planned_column_is_timestamp(column) ||
+               planned_column_is_year(column)) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
         }

@@ -476,7 +476,10 @@ static int append_mysql_quoted_text(struct mylite_dynamic_string *string, const 
     return rc;
 }
 
-static int append_mysql_quoted_comment_text(struct mylite_dynamic_string *string, const char *text) {
+static int append_mysql_quoted_comment_text(
+    struct mylite_dynamic_string *string,
+    const char *text
+) {
     int rc = mylite_dynamic_string_append_char(string, '\'');
 
     for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {

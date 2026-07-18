@@ -191,8 +191,7 @@ static int append_deprecated_logical_or_warning(struct mylite_db *database) {
     return rc;
 }
 
-static bool planned_select_predicate_has_expression(
-    const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
 ) {
     if (predicate == NULL) {
         return false;

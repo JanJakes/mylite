@@ -381,8 +381,7 @@ static int validate_alter_table_convert_character_set_columns(
     return MYLITE_OK;
 }
 
-static bool table_charset_option_is_default_keyword(
-    const struct mylite_sql_ast_node *charset_option
+static bool table_charset_option_is_default_keyword(const struct mylite_sql_ast_node *charset_option
 ) {
     const struct mylite_sql_ast_node *name_node = child_at(charset_option, 0U);
     char keyword[sizeof("DEFAULT")];

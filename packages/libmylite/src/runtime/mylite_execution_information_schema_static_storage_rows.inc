@@ -56,8 +56,8 @@ static int append_information_schema_tables_system_rows(
     };
     int rc = MYLITE_OK;
 
-    for (size_t table_index = 0U; rc == MYLITE_OK && table_index < sizeof(schema_order) /
-                                                                       sizeof(schema_order[0]);
+    for (size_t table_index = 0U;
+         rc == MYLITE_OK && table_index < sizeof(schema_order) / sizeof(schema_order[0]);
          ++table_index) {
         const struct mylite_execution_catalog_builtin_schema_table_directory *directory =
             mylite_execution_catalog_builtin_schema_table_directory_by_name(
@@ -90,8 +90,8 @@ static int append_information_schema_tables_extensions_system_rows(
     };
     int rc = MYLITE_OK;
 
-    for (size_t table_index = 0U; rc == MYLITE_OK && table_index < sizeof(schema_order) /
-                                                                       sizeof(schema_order[0]);
+    for (size_t table_index = 0U;
+         rc == MYLITE_OK && table_index < sizeof(schema_order) / sizeof(schema_order[0]);
          ++table_index) {
         const struct mylite_execution_catalog_builtin_schema_table_directory *directory =
             mylite_execution_catalog_builtin_schema_table_directory_by_name(

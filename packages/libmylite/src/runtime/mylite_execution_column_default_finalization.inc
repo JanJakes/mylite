@@ -49,8 +49,7 @@ static int validate_column_default_value(
                 unwrap_parenthesized_expression(value_node),
                 (struct mylite_execution_temporal_fractional_precision_context){
                     .subject_name = "curtime",
-                    .unsupported_message =
-                        "fractional CURRENT_TIME precision is not supported",
+                    .unsupported_message = "fractional CURRENT_TIME precision is not supported",
                 }
             );
         }
@@ -182,8 +181,7 @@ static int finalize_planned_column_default(
                 unwrap_parenthesized_expression(value_node),
                 (struct mylite_execution_temporal_fractional_precision_context){
                     .subject_name = "curtime",
-                    .unsupported_message =
-                        "fractional CURRENT_TIME precision is not supported",
+                    .unsupported_message = "fractional CURRENT_TIME precision is not supported",
                 }
             );
             if (rc != MYLITE_OK) {
@@ -815,8 +813,7 @@ static int allocate_numeric_character_default_text(
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             size_t operand_length = operand == NULL ? 0U : operand->span.length;
 
-            if (operand == NULL || operand->span.text == NULL ||
-                operand_length > SIZE_MAX - 1U) {
+            if (operand == NULL || operand->span.text == NULL || operand_length > SIZE_MAX - 1U) {
                 set_runtime_error(database, "invalid character default literal");
                 return MYLITE_ERROR;
             }
@@ -841,22 +838,10 @@ static int allocate_numeric_character_default_text(
 
     literal_kind = mylite_sql_ast_node_literal_kind(value_node);
     if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
-        return copy_numeric_character_default_bytes(
-            database,
-            "1",
-            1U,
-            out_text,
-            out_text_length
-        );
+        return copy_numeric_character_default_bytes(database, "1", 1U, out_text, out_text_length);
     }
     if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
-        return copy_numeric_character_default_bytes(
-            database,
-            "0",
-            1U,
-            out_text,
-            out_text_length
-        );
+        return copy_numeric_character_default_bytes(database, "0", 1U, out_text, out_text_length);
     }
 
     return copy_numeric_character_default_span(database, value_node, out_text, out_text_length);

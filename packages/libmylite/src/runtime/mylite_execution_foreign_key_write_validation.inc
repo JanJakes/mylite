@@ -142,10 +142,8 @@ static int validate_foreign_key_references(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -160,11 +158,8 @@ static int set_row_is_referenced_foreign_key_error(
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_dynamic_string message;
     char *message_text = NULL;
-    int rc = mylite_catalog_read_schema_by_id(
-        database,
-        foreign_key->child_table.schema_id,
-        &schema
-    );
+    int rc =
+        mylite_catalog_read_schema_by_id(database, foreign_key->child_table.schema_id, &schema);
 
     if (rc != MYLITE_OK) {
         set_row_is_referenced_error(database);

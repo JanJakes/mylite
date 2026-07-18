@@ -531,8 +531,7 @@ static bool stored_procedure_placeholder_token_is_comment(enum mylite_sql_token_
 static void deinit_stored_procedure_placeholder_token_list(
     struct stored_procedure_placeholder_token_list *tokens
 );
-static void deinit_stored_procedure_placeholder_body(
-    struct stored_procedure_placeholder_body *body
+static void deinit_stored_procedure_placeholder_body(struct stored_procedure_placeholder_body *body
 );
 static int build_stored_procedure_show_create_sql(
     struct mylite_db *database,
@@ -895,8 +894,8 @@ static int parse_stored_procedure_placeholder_body(
             out_body
         );
     }
-    while (rc == MYLITE_OK &&
-           stored_procedure_placeholder_token_text_equals(tokens, cursor, "SET")) {
+    while (rc == MYLITE_OK && stored_procedure_placeholder_token_text_equals(tokens, cursor, "SET")
+    ) {
         rc = parse_stored_procedure_placeholder_assignment(
             database,
             tokens,
@@ -2609,9 +2608,8 @@ static int expand_stored_procedure_local_sql(
                 &index,
                 (char)byte
             );
-        } else if (
-            byte == '#' || (byte == '-' && index + 1U < sql_size && sql[index + 1U] == '-')
-        ) {
+        } else if (byte == '#' ||
+                   (byte == '-' && index + 1U < sql_size && sql[index + 1U] == '-')) {
             rc = append_stored_procedure_sql_line_comment(&string, sql, sql_size, &index);
         } else if (byte == '/' && index + 1U < sql_size && sql[index + 1U] == '*') {
             rc = append_stored_procedure_sql_block_comment(&string, sql, sql_size, &index);
@@ -2881,8 +2879,8 @@ static int append_stored_procedure_sql_variable_token(
         ++index;
     }
     while (rc == MYLITE_OK && index < sql_size &&
-           (stored_procedure_sql_identifier_continue((unsigned char)sql[index]) ||
-            sql[index] == '.')) {
+           (stored_procedure_sql_identifier_continue((unsigned char)sql[index]) || sql[index] == '.'
+           )) {
         rc = mylite_dynamic_string_append_char(string, sql[index]);
         ++index;
     }
@@ -2998,9 +2996,8 @@ static size_t stored_procedure_placeholder_top_level_semicolon(
             if (depth > 0U) {
                 --depth;
             }
-        } else if (
-            depth == 0U && stored_procedure_placeholder_token_text_equals(tokens, index, ";")
-        ) {
+        } else if (depth == 0U &&
+                   stored_procedure_placeholder_token_text_equals(tokens, index, ";")) {
             return index;
         }
     }
@@ -3026,9 +3023,8 @@ static size_t stored_procedure_placeholder_top_level_token(
             if (depth > 0U) {
                 --depth;
             }
-        } else if (
-            depth == 0U && stored_procedure_placeholder_token_text_equals(tokens, index, text)
-        ) {
+        } else if (depth == 0U &&
+                   stored_procedure_placeholder_token_text_equals(tokens, index, text)) {
             return index;
         }
     }
@@ -3100,9 +3096,8 @@ static int copy_stored_procedure_placeholder_identifier(
     destination[0] = '\0';
     if (token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER) {
         rc = copy_quoted_identifier_text(token->text, token->length, destination, destination_size);
-    } else if (
-        token->kind == MYLITE_SQL_TOKEN_IDENTIFIER || token->kind == MYLITE_SQL_TOKEN_KEYWORD
-    ) {
+    } else if (token->kind == MYLITE_SQL_TOKEN_IDENTIFIER ||
+               token->kind == MYLITE_SQL_TOKEN_KEYWORD) {
         rc = copy_unquoted_identifier_text(
             token->text,
             token->length,
@@ -3135,8 +3130,7 @@ static void deinit_stored_procedure_placeholder_token_list(
     *tokens = (struct stored_procedure_placeholder_token_list){0};
 }
 
-static void deinit_stored_procedure_placeholder_body(
-    struct stored_procedure_placeholder_body *body
+static void deinit_stored_procedure_placeholder_body(struct stored_procedure_placeholder_body *body
 ) {
     if (body == NULL) {
         return;

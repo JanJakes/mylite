@@ -44,8 +44,7 @@ int mylite_file_preamble_validate(const unsigned char preamble[MYLITE_FILE_PREAM
 enum mylite_file_lifecycle_state mylite_file_preamble_lifecycle_state(
     const unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]
 );
-uint16_t mylite_file_preamble_format_version(
-    const unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]
+uint16_t mylite_file_preamble_format_version(const unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]
 );
 
 uint16_t mylite_file_preamble_get_u16(const unsigned char *preamble, size_t offset);

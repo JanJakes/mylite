@@ -27,7 +27,12 @@ static int plan_alter_table_add_index(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
@@ -198,7 +203,12 @@ static int plan_create_index(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
@@ -936,19 +946,14 @@ static int extract_alter_table_add_index_nodes(
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_IDENTIFIER && out_nodes->index_name_node == NULL) {
             out_nodes->index_name_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
-            out_nodes->options.index_type_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+                   out_nodes->options.index_type_node == NULL) {
             out_nodes->options.index_type_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST && out_nodes->part_list == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST &&
+                   out_nodes->part_list == NULL) {
             out_nodes->part_list = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
-            out_nodes->options.option_list_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+                   out_nodes->options.option_list_node == NULL) {
             out_nodes->options.option_list_node = child;
         } else {
             set_parse_error(database, NULL);
@@ -993,15 +998,11 @@ static int extract_create_index_nodes(
         if (child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
             out_nodes->options.index_type_node == NULL) {
             out_nodes->options.index_type_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST &&
-            out_nodes->part_list_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST &&
+                   out_nodes->part_list_node == NULL) {
             out_nodes->part_list_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
-            out_nodes->options.option_list_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+                   out_nodes->options.option_list_node == NULL) {
             out_nodes->options.option_list_node = child;
         } else if (out_nodes->index_name_node == NULL && child->kind == MYLITE_SQL_AST_IDENTIFIER) {
             out_nodes->index_name_node = child;
@@ -1933,8 +1934,7 @@ static size_t planned_create_table_spatial_index_warning_count(
     return warning_count;
 }
 
-static size_t planned_create_table_hash_index_warning_count(
-    const struct planned_create_table *plan
+static size_t planned_create_table_hash_index_warning_count(const struct planned_create_table *plan
 ) {
     size_t warning_count = 0U;
 

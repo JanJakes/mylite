@@ -380,8 +380,7 @@ static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function
     return PLANNED_ROW_SCALAR_NUMERIC_NONE;
 }
 
-static const char *row_scalar_numeric_function_display_name(
-    enum mylite_sql_ast_node_kind ast_kind
+static const char *row_scalar_numeric_function_display_name(enum mylite_sql_ast_node_kind ast_kind
 ) {
     switch (ast_kind) {
     case MYLITE_SQL_AST_ABS_FUNCTION:
@@ -746,10 +745,8 @@ static int plan_row_scalar_numeric_extra_expression(
                 &out_expression->arguments[0]
             );
         }
-    } else if (
-        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
-        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE
-    ) {
+    } else if (function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
+               function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE) {
         if (argument_count != 2U) {
             set_native_function_parameter_count_error(database, function_name);
             rc = MYLITE_ERROR;

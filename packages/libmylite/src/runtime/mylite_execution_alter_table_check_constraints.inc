@@ -182,7 +182,12 @@ static int populate_alter_table_check_rebuild_plan(
         out_plan->table.default_collation
     );
 
-    rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    rc = mylite_execution_load_table_columns(
+        database,
+        out_plan->table.table_id,
+        &columns,
+        &column_count
+    );
     if (rc == MYLITE_OK) {
         rc = copy_alter_table_check_columns(database, columns, column_count, out_plan);
     }
@@ -216,7 +221,10 @@ static int populate_alter_table_check_rebuild_plan(
         );
     }
 
-    mylite_execution_loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
+    mylite_execution_loaded_check_constraint_infos_deinit(
+        &check_constraints,
+        &check_constraint_count
+    );
     mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
@@ -261,11 +269,9 @@ static int copy_alter_table_check_indexes(
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
         if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
             rc = copy_alter_table_check_primary_index(database, &indexes[index], out_plan);
-        } else if (
-            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
-            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
-            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL
-        ) {
+        } else if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
+                   indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+                   indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
             rc = copy_alter_table_check_secondary_index(database, &indexes[index], out_plan);
         }
     }

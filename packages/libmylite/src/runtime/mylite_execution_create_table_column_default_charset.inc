@@ -128,14 +128,11 @@ static bool create_table_column_has_explicit_charset_or_collation(
 ) {
     return (child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) != NULL ||
             child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) != NULL ||
-            child_with_kind(
-                column_node,
-                MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE
-            ) != NULL) != 0;
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE) != NULL
+           ) != 0;
 }
 
-static bool planned_create_table_default_charset_is_binary(
-    const struct planned_create_table *plan
+static bool planned_create_table_default_charset_is_binary(const struct planned_create_table *plan
 ) {
     if (plan == NULL) {
         return false;

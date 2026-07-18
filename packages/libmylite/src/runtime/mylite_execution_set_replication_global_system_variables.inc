@@ -192,7 +192,8 @@ static int apply_set_replication_global_system_variable_assignment(
         set_runtime_error(database, "invalid replication global system variable");
         return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER &&
+    if (rc == MYLITE_OK &&
+        target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER &&
         mylite_execution_system_variable_warns_on_scalar_read(target->kind)) {
         rc = append_system_variable_read_warning(database, target->kind);
     }

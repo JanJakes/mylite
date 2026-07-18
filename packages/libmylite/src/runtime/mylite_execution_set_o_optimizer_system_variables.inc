@@ -143,16 +143,12 @@ static int render_o_optimizer_default_flags(
 static struct o_optimizer_flag_set o_optimizer_flag_set_for_kind(
     enum mylite_execution_system_variable_kind kind
 );
-static uint64_t o_optimizer_unsigned_default_value(
-    enum mylite_execution_system_variable_kind kind
-);
+static uint64_t o_optimizer_unsigned_default_value(enum mylite_execution_system_variable_kind kind);
 static uint64_t o_optimizer_unsigned_min_value(enum mylite_execution_system_variable_kind kind);
 static uint64_t o_optimizer_unsigned_max_value(enum mylite_execution_system_variable_kind kind);
-static bool o_optimizer_system_variable_is_unsigned(
-    enum mylite_execution_system_variable_kind kind
+static bool o_optimizer_system_variable_is_unsigned(enum mylite_execution_system_variable_kind kind
 );
-static bool o_optimizer_system_variable_is_flag_set(
-    enum mylite_execution_system_variable_kind kind
+static bool o_optimizer_system_variable_is_flag_set(enum mylite_execution_system_variable_kind kind
 );
 static int copy_o_optimizer_text_for_error(
     const char *text,
@@ -494,14 +490,20 @@ static int validate_set_o_optimizer_fixed_global_signed_value(
 
     literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
     if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
-        set_unsupported_error(database, "SET supports only fixed no-op system variable assignments");
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
         return MYLITE_ERROR;
     }
     literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
     if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
-        parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK ||
-        !negative || magnitude != 1ULL) {
-        set_unsupported_error(database, "SET supports only fixed no-op system variable assignments");
+        parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK || !negative ||
+        magnitude != 1ULL) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
         return MYLITE_ERROR;
     }
 
@@ -540,34 +542,42 @@ static int parse_o_optimizer_unsigned_value_node(
         if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
             const struct mylite_sql_source_span true_span = {.text = "1", .length = 1U};
 
-            if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
+            if (!sql_mode_token_matches(
+                    literal_node->span.text,
+                    literal_node->span.length,
+                    "TRUE"
+                )) {
                 return set_incorrect_system_variable_argument_type_error(database, target->name);
             }
             return parse_o_optimizer_unsigned_integer(
-                database,
-                target,
-                &true_span,
-                negative,
-                negative ? "-1" : "1",
-                &value
-            ) == MYLITE_OK
+                       database,
+                       target,
+                       &true_span,
+                       negative,
+                       negative ? "-1" : "1",
+                       &value
+                   ) == MYLITE_OK
                        ? format_uint64(database, value, out_value, out_value_size)
                        : MYLITE_ERROR;
         }
         if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
             const struct mylite_sql_source_span false_span = {.text = "0", .length = 1U};
 
-            if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
+            if (!sql_mode_token_matches(
+                    literal_node->span.text,
+                    literal_node->span.length,
+                    "FALSE"
+                )) {
                 return set_incorrect_system_variable_argument_type_error(database, target->name);
             }
             return parse_o_optimizer_unsigned_integer(
-                database,
-                target,
-                &false_span,
-                negative,
-                negative ? "-0" : "0",
-                &value
-            ) == MYLITE_OK
+                       database,
+                       target,
+                       &false_span,
+                       negative,
+                       negative ? "-0" : "0",
+                       &value
+                   ) == MYLITE_OK
                        ? format_uint64(database, value, out_value, out_value_size)
                        : MYLITE_ERROR;
         }
@@ -719,34 +729,42 @@ static int parse_o_optimizer_signed_value_node(
         if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
             const struct mylite_sql_source_span true_span = {.text = "1", .length = 1U};
 
-            if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
+            if (!sql_mode_token_matches(
+                    literal_node->span.text,
+                    literal_node->span.length,
+                    "TRUE"
+                )) {
                 return set_incorrect_system_variable_argument_type_error(database, target->name);
             }
             return parse_o_optimizer_signed_integer(
-                database,
-                target,
-                &true_span,
-                negative,
-                negative ? "-1" : "1",
-                &value
-            ) == MYLITE_OK
+                       database,
+                       target,
+                       &true_span,
+                       negative,
+                       negative ? "-1" : "1",
+                       &value
+                   ) == MYLITE_OK
                        ? format_o_optimizer_int64(database, value, out_value, out_value_size)
                        : MYLITE_ERROR;
         }
         if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
             const struct mylite_sql_source_span false_span = {.text = "0", .length = 1U};
 
-            if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
+            if (!sql_mode_token_matches(
+                    literal_node->span.text,
+                    literal_node->span.length,
+                    "FALSE"
+                )) {
                 return set_incorrect_system_variable_argument_type_error(database, target->name);
             }
             return parse_o_optimizer_signed_integer(
-                database,
-                target,
-                &false_span,
-                negative,
-                negative ? "-0" : "0",
-                &value
-            ) == MYLITE_OK
+                       database,
+                       target,
+                       &false_span,
+                       negative,
+                       negative ? "-0" : "0",
+                       &value
+                   ) == MYLITE_OK
                        ? format_o_optimizer_int64(database, value, out_value, out_value_size)
                        : MYLITE_ERROR;
         }
@@ -855,7 +873,11 @@ static int parse_o_optimizer_signed_integer(
     }
     if (magnitude > o_optimizer_signed_max_magnitude) {
         *out_value = (int64_t)o_optimizer_signed_max_magnitude;
-        return append_truncated_incorrect_system_variable_warning(database, target->name, value_text);
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            target->name,
+            value_text
+        );
     }
 
     *out_value = (int64_t)magnitude;
@@ -1008,12 +1030,7 @@ static int parse_o_optimizer_flag_text(
             }
         }
         if (equals == NULL) {
-            copy_o_optimizer_text_for_error(
-                token,
-                token_size,
-                token_text,
-                sizeof(token_text)
-            );
+            copy_o_optimizer_text_for_error(token, token_size, token_text, sizeof(token_text));
             set_system_variable_cant_be_set_value_error(database, target->name, token_text);
             return MYLITE_ERROR;
         }
@@ -1144,8 +1161,7 @@ static struct o_optimizer_flag_set o_optimizer_flag_set_for_kind(
     }
 }
 
-static uint64_t o_optimizer_unsigned_default_value(
-    enum mylite_execution_system_variable_kind kind
+static uint64_t o_optimizer_unsigned_default_value(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_PRUNE_LEVEL:
@@ -1163,9 +1179,7 @@ static uint64_t o_optimizer_unsigned_default_value(
     }
 }
 
-static uint64_t o_optimizer_unsigned_min_value(
-    enum mylite_execution_system_variable_kind kind
-) {
+static uint64_t o_optimizer_unsigned_min_value(enum mylite_execution_system_variable_kind kind) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PARSER_MAX_MEM_SIZE:
         return o_optimizer_parser_max_mem_size_min_value;
@@ -1178,9 +1192,7 @@ static uint64_t o_optimizer_unsigned_min_value(
     }
 }
 
-static uint64_t o_optimizer_unsigned_max_value(
-    enum mylite_execution_system_variable_kind kind
-) {
+static uint64_t o_optimizer_unsigned_max_value(enum mylite_execution_system_variable_kind kind) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_PRUNE_LEVEL:
         return o_optimizer_prune_level_max_value;
@@ -1195,8 +1207,7 @@ static uint64_t o_optimizer_unsigned_max_value(
     }
 }
 
-static bool o_optimizer_system_variable_is_unsigned(
-    enum mylite_execution_system_variable_kind kind
+static bool o_optimizer_system_variable_is_unsigned(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_PRUNE_LEVEL:
@@ -1210,8 +1221,7 @@ static bool o_optimizer_system_variable_is_unsigned(
     }
 }
 
-static bool o_optimizer_system_variable_is_flag_set(
-    enum mylite_execution_system_variable_kind kind
+static bool o_optimizer_system_variable_is_flag_set(enum mylite_execution_system_variable_kind kind
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SWITCH:

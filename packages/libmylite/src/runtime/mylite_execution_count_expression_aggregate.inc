@@ -203,10 +203,7 @@ static int collect_count_expression_aggregate_clauses(
         return rc;
     }
     if (out_clauses->having_clause != NULL || out_clauses->order_clause != NULL) {
-        set_unsupported_error(
-            database,
-            "COUNT expression aggregate supports only WHERE and LIMIT"
-        );
+        set_unsupported_error(database, "COUNT expression aggregate supports only WHERE and LIMIT");
         return MYLITE_ERROR;
     }
 
@@ -223,10 +220,7 @@ static int plan_count_expression_aggregate_source(
     const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
 
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
-        set_unsupported_error(
-            database,
-            "COUNT expression aggregate requires a table source"
-        );
+        set_unsupported_error(database, "COUNT expression aggregate requires a table source");
         return MYLITE_ERROR;
     }
     if (from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) {
@@ -745,9 +739,8 @@ static int append_count_expression_aggregate_select_item_sql(
 
     if (rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR) {
         rc = mylite_dynamic_string_append(string, "*");
-    } else if (
-        rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE
-    ) {
+    } else if (rc == MYLITE_OK &&
+               item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE) {
         if (item->is_distinct) {
             rc = mylite_dynamic_string_append(string, "DISTINCT ");
         }

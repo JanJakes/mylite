@@ -739,9 +739,8 @@ static void populate_scalar_temporal_string_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
-    descriptor->charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = mysql_temporal_string_function_display_length *
                                  scalar_connection_max_bytes_per_character(database);
@@ -1004,8 +1003,7 @@ static int scalar_decimal_integer_significant_digit_count(
 }
 
 static uint64_t scalar_connection_max_bytes_per_character(const struct mylite_db *database) {
-    const char *character_set_name =
-        mylite_connection_statement_character_set_connection(database);
+    const char *character_set_name = mylite_connection_statement_character_set_connection(database);
     const struct mylite_execution_catalog_character_set *character_set =
         character_set_by_name(character_set_name);
     struct mylite_sql_source_span maxlen_span = {0};
@@ -1104,9 +1102,8 @@ static void populate_scalar_connection_string_result_column_descriptor(
     struct scalar_connection_string_result_column_shape shape
 ) {
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
-    descriptor->charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = shape.display_length;
     descriptor->decimals = mysql_approximate_decimals;
@@ -1122,9 +1119,8 @@ static void populate_roles_graphml_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
-    descriptor->charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = mysql_roles_graphml_base_display_length *
                                  scalar_connection_max_bytes_per_character(database);
@@ -1138,9 +1134,8 @@ static void populate_statement_digest_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
-    descriptor->charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = mysql_statement_digest_display_character_length *
                                  scalar_connection_max_bytes_per_character(database);
@@ -1154,9 +1149,8 @@ static void populate_statement_digest_text_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
-    descriptor->charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = mysql_statement_digest_text_base_display_length *
                                  scalar_connection_max_bytes_per_character(database);
@@ -1186,9 +1180,8 @@ static void populate_scalar_json_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_JSON;
-    descriptor->charset_id = result_metadata_collation_id(
-        mylite_connection_statement_collation_connection(database)
-    );
+    descriptor->charset_id =
+        result_metadata_collation_id(mylite_connection_statement_collation_connection(database));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = mysql_json_document_display_length;
     descriptor->decimals = mysql_approximate_decimals;

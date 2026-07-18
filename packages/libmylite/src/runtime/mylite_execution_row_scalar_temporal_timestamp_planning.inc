@@ -99,8 +99,7 @@ static int plan_row_scalar_unix_timestamp_sysdate_expression(
     return MYLITE_OK;
 }
 
-static bool unix_timestamp_argument_is_sysdate_function(
-    const struct mylite_sql_ast_node *expression
+static bool unix_timestamp_argument_is_sysdate_function(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
     return expression != NULL && (expression->kind == MYLITE_SQL_AST_SYSDATE_FUNCTION ||

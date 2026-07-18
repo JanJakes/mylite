@@ -43,8 +43,7 @@ static const char *select_statement_argument_count_error_function(
     return NULL;
 }
 
-static const char *argument_count_error_function_name(
-    const struct mylite_sql_ast_node *expression
+static const char *argument_count_error_function_name(const struct mylite_sql_ast_node *expression
 ) {
     struct scalar_arithmetic_node_stack stack = {0};
     const char *function_name = NULL;

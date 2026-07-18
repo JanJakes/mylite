@@ -152,8 +152,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && generic_rejected_native_function_name(expression)) ||
              (has_row_source && expression_is_supported_row_scalar_system_function(expression)) ||
-             (has_row_source &&
-              expression_contains_supported_row_scalar_system_function(expression)) ||
+             (has_row_source && expression_contains_supported_row_scalar_system_function(expression)
+             ) ||
              (!has_row_source && expression_contains_qualified_sys_function(expression)) ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
@@ -241,8 +241,7 @@ static bool expression_contains_supported_row_scalar_system_function(
     return found;
 }
 
-static bool expression_contains_qualified_sys_function(
-    const struct mylite_sql_ast_node *expression
+static bool expression_contains_qualified_sys_function(const struct mylite_sql_ast_node *expression
 ) {
     struct scalar_arithmetic_node_stack stack = {0};
     bool found = false;
@@ -1968,8 +1967,7 @@ static int row_scalar_integer_width_enter_frame(
     return row_scalar_integer_width_push_result(stack, (struct row_scalar_integer_width_result){0});
 }
 
-static int row_scalar_integer_width_finish_unary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result operand = {0};
     int rc = row_scalar_integer_width_pop_result(stack, &operand);
@@ -1993,8 +1991,7 @@ static int row_scalar_integer_width_finish_unary_frame(
     );
 }
 
-static int row_scalar_integer_width_finish_binary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result left = {0};
     struct row_scalar_integer_width_result right = {0};

@@ -697,8 +697,7 @@ static int plan_in_predicate(
     return rc;
 }
 
-static bool predicate_node_is_quantified_subquery(
-    const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_quantified_subquery(const struct mylite_sql_ast_node *predicate_node
 ) {
     return predicate_node != NULL &&
            (predicate_node->kind == MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE ||
@@ -971,8 +970,7 @@ static int plan_row_scalar_expression_in_predicate(
         free(node.values);
         if (node.row_scalar_value_expressions != NULL) {
             for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
-                planned_row_scalar_expression_deinit(
-                    &node.row_scalar_value_expressions[value_index]
+                planned_row_scalar_expression_deinit(&node.row_scalar_value_expressions[value_index]
                 );
             }
         }
@@ -1064,9 +1062,9 @@ static int plan_in_literal_predicate(
                 &node.value_count,
                 &node.compare_date_as_datetime
             );
-        } else if (
-            predicate_value_list_contains_row_scalar_predicate_value(child_at(predicate_node, 1U))
-        ) {
+        } else if (predicate_value_list_contains_row_scalar_predicate_value(
+                       child_at(predicate_node, 1U)
+                   )) {
             rc = plan_descriptor_in_value_list(
                 database,
                 child_at(predicate_node, 1U),
@@ -1093,8 +1091,7 @@ static int plan_in_literal_predicate(
         free(node.values);
         if (node.row_scalar_value_expressions != NULL) {
             for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
-                planned_row_scalar_expression_deinit(
-                    &node.row_scalar_value_expressions[value_index]
+                planned_row_scalar_expression_deinit(&node.row_scalar_value_expressions[value_index]
                 );
             }
         }

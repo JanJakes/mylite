@@ -333,11 +333,8 @@ static int append_update_date_interval_assignment_sql(
     const struct planned_update *plan,
     size_t *next_parameter
 ) {
-    int rc = append_update_date_interval_function_sql(
-        string,
-        &plan->assignment_column,
-        *next_parameter
-    );
+    int rc =
+        append_update_date_interval_function_sql(string, &plan->assignment_column, *next_parameter);
 
     if (rc == MYLITE_OK) {
         *next_parameter += update_date_interval_parameter_count;

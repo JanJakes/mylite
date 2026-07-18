@@ -1159,8 +1159,8 @@ static int parse_decimal_literal_parts(
         saw_dot = true;
         ++fraction_start;
         fraction_end = fraction_start;
-        while (fraction_end < text_length && text[fraction_end] >= '0' &&
-               text[fraction_end] <= '9') {
+        while (fraction_end < text_length && text[fraction_end] >= '0' && text[fraction_end] <= '9'
+        ) {
             ++fraction_end;
             saw_digit = true;
         }

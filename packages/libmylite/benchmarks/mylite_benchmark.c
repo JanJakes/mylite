@@ -3201,18 +3201,15 @@ static int append_profile_json(
         file,
         "{\"scenario\":\"%s\",\"kind\":\"%s\",\"sample\":%zu,"
         "\"operations\":%zu,\"wall_ns\":%" PRIu64 ",\"statement_api_ns\":%" PRIu64
-        ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64
-        ",\"select_plan_ns\":%" PRIu64 ",\"select_lowering_ns\":%" PRIu64
-        ",\"sqlite_step_ns\":%" PRIu64 ",\"metadata_step_ns\":%" PRIu64
-        ",\"result_buffer_ns\":%" PRIu64 ",\"cursor_step_ns\":%" PRIu64
-        ",\"cursor_finalize_ns\":%" PRIu64 ",\"unattributed_ns\":%" PRIu64
-        ",\"statement_count\":%" PRIu64 ",\"normalization_count\":%" PRIu64
-        ",\"parse_count\":%" PRIu64 ",\"select_plan_count\":%" PRIu64
-        ",\"parser_retry_callback_count\":%" PRIu64
-        ",\"parser_retry_handled_count\":%" PRIu64
-        ",\"select_plan_cache_hit_count\":%" PRIu64
-        ",\"select_lowering_count\":%" PRIu64
-        ",\"select_lowering_cache_hit_count\":%" PRIu64
+        ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64 ",\"select_plan_ns\":%" PRIu64
+        ",\"select_lowering_ns\":%" PRIu64 ",\"sqlite_step_ns\":%" PRIu64
+        ",\"metadata_step_ns\":%" PRIu64 ",\"result_buffer_ns\":%" PRIu64
+        ",\"cursor_step_ns\":%" PRIu64 ",\"cursor_finalize_ns\":%" PRIu64
+        ",\"unattributed_ns\":%" PRIu64 ",\"statement_count\":%" PRIu64
+        ",\"normalization_count\":%" PRIu64 ",\"parse_count\":%" PRIu64
+        ",\"select_plan_count\":%" PRIu64 ",\"parser_retry_callback_count\":%" PRIu64
+        ",\"parser_retry_handled_count\":%" PRIu64 ",\"select_plan_cache_hit_count\":%" PRIu64
+        ",\"select_lowering_count\":%" PRIu64 ",\"select_lowering_cache_hit_count\":%" PRIu64
         ",\"sqlite_step_count\":%" PRIu64 ",\"metadata_step_count\":%" PRIu64
         ",\"allocation_count\":%" PRIu64 ",\"allocation_bytes\":%" PRIu64
         ",\"descriptor_copy_count\":%" PRIu64 ",\"descriptor_copy_bytes\":%" PRIu64

@@ -643,10 +643,9 @@ static int plan_row_scalar_addtime_subtime_column(
             );
             return MYLITE_ERROR;
         }
-    } else if (
-        !column_descriptor_is_time(&column) && !column_descriptor_is_datetime(&column) &&
-        !column_descriptor_is_timestamp(&column) && !column_descriptor_is_string_family(&column)
-    ) {
+    } else if (!column_descriptor_is_time(&column) && !column_descriptor_is_datetime(&column) &&
+               !column_descriptor_is_timestamp(&column) &&
+               !column_descriptor_is_string_family(&column)) {
         set_unsupported_error(
             database,
             "ADDTIME()/SUBTIME() supports only TIME, DATETIME, TIMESTAMP, and string descriptor "

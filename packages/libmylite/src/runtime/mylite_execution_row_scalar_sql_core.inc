@@ -741,10 +741,8 @@ static int append_row_scalar_json_aggregate_window_expression_sql(
     if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG &&
         expression->argument_count == 1U) {
         function_name = "_mylite_json_arrayagg";
-    } else if (
-        expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG &&
-        expression->argument_count == 2U
-    ) {
+    } else if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG &&
+               expression->argument_count == 2U) {
         function_name = "_mylite_json_objectagg";
     } else {
         return MYLITE_ERROR;

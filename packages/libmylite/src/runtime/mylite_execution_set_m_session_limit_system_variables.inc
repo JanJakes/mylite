@@ -16,8 +16,7 @@ static int apply_set_m_session_limit_system_variable_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 ) {
-    const char *unsupported_message =
-        "SET supports only fixed no-op system variable assignments";
+    const char *unsupported_message = "SET supports only fixed no-op system variable assignments";
     uint64_t value = 0U;
     int rc = MYLITE_OK;
 
@@ -44,7 +43,8 @@ static int apply_set_m_session_limit_system_variable_assignment(
             m_session_limit_system_variable_default_value(target->kind),
             unsupported_message
         );
-        if (rc == MYLITE_OK && mylite_execution_system_variable_warns_on_scalar_read(target->kind)) {
+        if (rc == MYLITE_OK &&
+            mylite_execution_system_variable_warns_on_scalar_read(target->kind)) {
             rc = append_system_variable_read_warning(database, target->kind);
         }
         return rc;
@@ -276,7 +276,12 @@ static int apply_m_session_limit_system_variable_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = set_session_system_variable_override(database, target->kind, value_text, strlen(value_text));
+    rc = set_session_system_variable_override(
+        database,
+        target->kind,
+        value_text,
+        strlen(value_text)
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }

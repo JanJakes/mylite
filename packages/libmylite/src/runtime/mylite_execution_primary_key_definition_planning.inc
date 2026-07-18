@@ -98,8 +98,8 @@ static int apply_create_table_primary_key_definition(
         }
         if (plan->columns[column_index].nullability == MYLITE_SQL_AST_NULLABILITY_NULL ||
             (plan->columns[column_index].default_node != NULL &&
-             plan->columns[column_index].default_node->kind ==
-                 MYLITE_SQL_AST_COLUMN_DEFAULT_NULL)) {
+             plan->columns[column_index].default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL
+            )) {
             set_primary_key_part_null_error(database);
             return MYLITE_ERROR;
         }
@@ -134,15 +134,11 @@ static int extract_primary_key_definition_nodes(
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST && out_nodes->part_list == NULL) {
             out_nodes->part_list = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
-            out_nodes->options.index_type_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+                   out_nodes->options.index_type_node == NULL) {
             out_nodes->options.index_type_node = child;
-        } else if (
-            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
-            out_nodes->options.option_list_node == NULL
-        ) {
+        } else if (child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+                   out_nodes->options.option_list_node == NULL) {
             out_nodes->options.option_list_node = child;
         } else {
             set_parse_error(database, NULL);

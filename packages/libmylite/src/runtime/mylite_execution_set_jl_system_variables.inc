@@ -93,12 +93,8 @@ static int apply_set_internal_tmp_mem_storage_engine_value(
         return MYLITE_MISUSE;
     }
 
-    rc = parse_set_internal_tmp_mem_storage_engine_value(
-        database,
-        target->name,
-        value_node,
-        &value
-    );
+    rc =
+        parse_set_internal_tmp_mem_storage_engine_value(database, target->name, value_node, &value);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -218,12 +214,8 @@ static int parse_set_internal_tmp_mem_storage_engine_value(
         if (rc != MYLITE_OK) {
             return rc;
         }
-        rc = parse_internal_tmp_mem_storage_engine_text(
-            database,
-            variable_name,
-            decoded,
-            out_value
-        );
+        rc =
+            parse_internal_tmp_mem_storage_engine_text(database, variable_name, decoded, out_value);
         free(decoded);
         return rc;
     }
@@ -299,12 +291,7 @@ static int parse_set_internal_tmp_mem_storage_engine_cell_value(
         return set_incorrect_system_variable_argument_type_error(database, variable_name);
     }
     if (value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
-        return parse_internal_tmp_mem_storage_engine_text(
-            database,
-            variable_name,
-            text,
-            out_value
-        );
+        return parse_internal_tmp_mem_storage_engine_text(database, variable_name, text, out_value);
     }
     if (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
         return set_incorrect_system_variable_argument_type_error(database, variable_name);

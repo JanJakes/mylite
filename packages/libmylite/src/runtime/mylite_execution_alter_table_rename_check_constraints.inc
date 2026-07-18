@@ -133,7 +133,12 @@ static int reject_rename_table_check_constraint_collisions(
     struct loaded_check_constraint_info *checks = NULL;
     size_t check_count = 0U;
     char check_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    int rc = mylite_execution_load_table_check_constraint_infos(database, source->table_id, &checks, &check_count);
+    int rc = mylite_execution_load_table_check_constraint_infos(
+        database,
+        source->table_id,
+        &checks,
+        &check_count
+    );
 
     for (size_t index = 0U; rc == MYLITE_OK && index < check_count; ++index) {
         rc = build_renamed_check_constraint_name(

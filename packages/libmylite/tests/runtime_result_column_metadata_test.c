@@ -1840,17 +1840,16 @@ static int test_show_result_column_metadata(void) {
         not_null_binary_no_default_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
                                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
                                            MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
-        not_null_numeric_flags =
-            MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        not_null_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NUM,
         not_null_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
                                         MYLITE_RESULT_COLUMN_FLAG_BINARY |
                                         MYLITE_RESULT_COLUMN_FLAG_NUM,
-        unsigned_numeric_flags =
-            MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        unsigned_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_NUM,
         unsigned_binary_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
                                         MYLITE_RESULT_COLUMN_FLAG_BINARY |
                                         MYLITE_RESULT_COLUMN_FLAG_NUM,
     };
+
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;

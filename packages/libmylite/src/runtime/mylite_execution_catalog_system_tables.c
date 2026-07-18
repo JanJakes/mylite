@@ -181,8 +181,7 @@ static bool system_table_definition_is_valid(
         return false;
     }
     for (size_t index = 0U; index < column_count; ++index) {
-        if (!system_table_column_definition_is_valid(
-                &definition->query_definition.columns[index]
+        if (!system_table_column_definition_is_valid(&definition->query_definition.columns[index]
             ) ||
             definition->column_keys[index] == NULL || definition->column_extras[index] == NULL ||
             definition->column_privileges[index] == NULL ||
@@ -237,8 +236,8 @@ static bool system_table_definition_has_valid_shape(
         definition->column_privileges == NULL ||
         definition->column_privilege_count < column_count ||
         ((definition->column_comments == NULL) != (definition->column_comment_count == 0U)) ||
-        (definition->column_comment_count != 0U &&
-         definition->column_comment_count < column_count) ||
+        (definition->column_comment_count != 0U && definition->column_comment_count < column_count
+        ) ||
         ((definition->column_generation_expressions == NULL) !=
          (definition->column_generation_expression_count == 0U)) ||
         (definition->column_generation_expression_count != 0U &&

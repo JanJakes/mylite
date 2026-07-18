@@ -451,15 +451,17 @@ static int append_insert_omitted_column_warnings(
             if (rc != MYLITE_OK) {
                 return rc;
             }
-        } else if (
-            !column_is_targeted &&
-            !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
-            !column_descriptor_uses_enum_implicit_missing_default(&plan->columns[column_index]) &&
-            (plan->columns[column_index].default_kind ==
-                 MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
-             (!plan->columns[column_index].is_nullable &&
-              !column_default_kind_materializes_value(plan->columns[column_index].default_kind)))
-        ) {
+        } else if (!column_is_targeted &&
+                   !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
+                   !column_descriptor_uses_enum_implicit_missing_default(
+                       &plan->columns[column_index]
+                   ) &&
+                   (plan->columns[column_index].default_kind ==
+                        MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
+                    (!plan->columns[column_index].is_nullable &&
+                     !column_default_kind_materializes_value(
+                         plan->columns[column_index].default_kind
+                     )))) {
             int rc = append_no_default_warning(database, plan->columns[column_index].name);
 
             if (rc != MYLITE_OK) {

@@ -788,8 +788,7 @@ static const char *column_extra_text(const struct mylite_catalog_column_descript
     return "";
 }
 
-static bool column_default_is_generated_extra(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_default_is_generated_extra(const struct mylite_catalog_column_descriptor *column
 ) {
     return (column_default_kind_is_expression(column->default_kind) ||
             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT_EXPRESSION ||

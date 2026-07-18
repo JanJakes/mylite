@@ -210,7 +210,10 @@ static void alter_table_add_foreign_key_child_metadata_deinit(
         return;
     }
 
-    mylite_execution_loaded_foreign_key_infos_deinit(&metadata->foreign_keys, &metadata->foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &metadata->foreign_keys,
+        &metadata->foreign_key_count
+    );
     mylite_execution_loaded_index_infos_deinit(&metadata->indexes, &metadata->index_count);
     free(metadata->columns);
     *metadata = (struct alter_table_add_foreign_key_child_metadata){0};
@@ -770,7 +773,12 @@ static int plan_alter_table_drop_foreign_key(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_foreign_key_infos(
@@ -1031,10 +1039,8 @@ static void match_alter_table_drop_constraint_indexes(
         if (candidate->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
             resolution->kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY;
             ++resolution->match_count;
-        } else if (
-            candidate->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-            candidate->index.is_unique
-        ) {
+        } else if (candidate->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
+                   candidate->index.is_unique) {
             resolution->kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX;
             resolution->unique_index = index;
             ++resolution->match_count;
@@ -1156,7 +1162,10 @@ static void alter_table_drop_constraint_context_deinit(
         &context->check_constraints,
         &context->check_constraint_count
     );
-    mylite_execution_loaded_foreign_key_infos_deinit(&context->foreign_keys, &context->foreign_key_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &context->foreign_keys,
+        &context->foreign_key_count
+    );
     mylite_execution_loaded_index_infos_deinit(&context->indexes, &context->index_count);
     free(context->columns);
     *context = (struct alter_table_drop_constraint_context){0};
@@ -1574,10 +1583,8 @@ static int validate_create_unique_index_string_values(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -1669,10 +1676,8 @@ static int validate_create_unique_index_duplicates(
 
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -1755,7 +1760,12 @@ static int plan_drop_index(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
@@ -1970,7 +1980,12 @@ static int plan_alter_table_rename_index(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+        rc = mylite_execution_load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &column_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(

@@ -209,7 +209,7 @@ int mylite_catalog_read_view_by_table_id_from_sqlite(
     struct mylite_catalog_view_descriptor *out_view
 );
 int mylite_catalog_read_column_by_name_from_sqlite(
-    sqlite3 *sqlite,
+    struct mylite_db *database,
     int64_t table_id,
     const char *name,
     struct mylite_catalog_column_descriptor *out_column

@@ -270,8 +270,13 @@ complete.
   cache outcomes are now included in runtime snapshots and benchmark JSON with
   focused tests. Profiling builds force-include a portable allocator shim for
   the MyLite target, while production builds retain direct libc allocation.
-- [ ] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
-  separately owned/interned cold strings. As an intermediate ownership step,
+- [x] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
+  separately owned/interned cold strings. Four cold, variable-length fields now
+  use validated strings interned in a handle-owned pool, giving every descriptor
+  copy a stable lifetime without duplicating text. The descriptor fell from
+  15,633 bytes to 2,352 bytes on the qualified 64-bit build, an 85.0% reduction;
+  a compile-time size bound and direct growth/deduplication/lifetime tests guard
+  the representation. As an intermediate ownership step,
   SELECT aggregates and INSERT/UPDATE/DELETE plans now pin generation-safe
   cached column spans instead of cloning them. This removed all measured full
   descriptor copies from the six-query WordPress frontend and five-query write
@@ -303,15 +308,19 @@ complete.
   keys/projections fell from 16,296 bytes to 680 bytes, grouped aggregate items
   from 17,128 bytes to 1,512 bytes, and column aggregates from 26,952 bytes to
   11,336 bytes. A controlled 128-projection grouped query fell from 2.719 ms to
-  1.365 ms median (49.8%). The underlying catalog descriptor representation
-  itself remains open for compact hot metadata and separately owned cold text.
+  1.365 ms median (49.8%). A same-host ABBA comparison of the completed compact
+  representation measured the WordPress frontend request 7.2% faster and the
+  write request 6.4% faster. The medium-schema frontend request measured about
+  10% faster but exceeded the host-noise limit; parser, large-IN, prepared, and
+  cache-saturation scenarios remained within the comparison gate.
 - [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
   Column and deep key-metadata payloads now have independent 8 MiB limits in
   addition to their 64-entry caps. Insertion evicts only unpinned LRU entries;
   oversized or fully pinned workloads retain statement-owned metadata instead.
   End-to-end coverage warms both caches with 40 wide composite-key tables and
-  verifies bounded bytes, eviction, pin survival, and release after
-  invalidation.
+  verifies that compact metadata retains the full working set within the byte
+  budgets. Separate capacity coverage verifies LRU eviction, pin survival, and
+  release after invalidation.
 - [x] Bound invalid-SQL parser recovery work and make nested-parenthesis scans
   linear after measuring current scaling. Predicate retries now precompute one
   byte of WHERE-clause context per token instead of repeatedly rescanning the

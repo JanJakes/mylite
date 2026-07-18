@@ -3,6 +3,7 @@
 #include "runtime_test_support.h"
 
 #include "runtime/mylite_catalog.h"
+#include "runtime/mylite_catalog_string_pool.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 #include "storage/mylite_file_format.h"
@@ -28,6 +29,11 @@ enum {
     catalog_test_timestamp_epoch = 1700000000,
 };
 
+_Static_assert(
+    sizeof(struct mylite_catalog_column_descriptor) <= 3072U,
+    "catalog column descriptors must keep cold text out of line"
+);
+
 typedef int (*catalog_tamper_fn)(sqlite3 *sqlite);
 
 static int test_catalog_created_in_shifted_payload_without_preamble_changes(void);
@@ -38,6 +44,7 @@ static int test_catalog_default_text_validation(void);
 static int test_rejects_incompatible_and_incomplete_catalog_metadata(void);
 static int test_rejects_catalog_integrity_corruption(void);
 static int test_zero_initialized_catalog_cleanup(void);
+static int test_catalog_string_pool_deduplicates_and_grows(void);
 static int expect_catalog_tamper_rejected(
     const char *name,
     const char *const *setup_sql,
@@ -99,8 +106,56 @@ int main(void) {
     failures += test_rejects_incompatible_and_incomplete_catalog_metadata();
     failures += test_rejects_catalog_integrity_corruption();
     failures += test_zero_initialized_catalog_cleanup();
+    failures += test_catalog_string_pool_deduplicates_and_grows();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_catalog_string_pool_deduplicates_and_grows(void) {
+    enum { string_count = 160 };
+
+    struct mylite_catalog_string_pool pool = {0};
+    const char *strings[string_count] = {0};
+    const char *duplicate = NULL;
+    const char *empty = NULL;
+    char text[32];
+    int failures = 0;
+
+    mylite_catalog_string_pool_init(&pool);
+    failures += expect_int(
+        mylite_catalog_string_pool_intern_c_string(&pool, NULL, &empty),
+        MYLITE_OK,
+        "intern empty catalog string"
+    );
+    failures += expect_text(empty, "", "empty catalog string value");
+    for (size_t index = 0U; index < string_count; ++index) {
+        int written = snprintf(text, sizeof(text), "catalog-string-%zu", index);
+
+        failures +=
+            expect_true(written > 0 && (size_t)written < sizeof(text), "format catalog string");
+        failures += expect_int(
+            mylite_catalog_string_pool_intern_c_string(&pool, text, &strings[index]),
+            MYLITE_OK,
+            "intern catalog string"
+        );
+    }
+    failures += expect_int(
+        mylite_catalog_string_pool_intern_c_string(&pool, "catalog-string-117", &duplicate),
+        MYLITE_OK,
+        "re-intern catalog string"
+    );
+    failures += expect_true(duplicate == strings[117], "catalog string pointer deduplication");
+    for (size_t index = 0U; index < string_count; ++index) {
+        int written = snprintf(text, sizeof(text), "catalog-string-%zu", index);
+
+        failures +=
+            expect_true(written > 0 && (size_t)written < sizeof(text), "reformat catalog string");
+        failures += expect_text(strings[index], text, "catalog string survives pool growth");
+    }
+    failures += expect_int((int)pool.count, string_count + 1, "unique catalog string count");
+    mylite_catalog_string_pool_deinit(&pool);
+
+    return failures;
 }
 
 static int test_catalog_created_in_shifted_payload_without_preamble_changes(void) {

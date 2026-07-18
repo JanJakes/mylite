@@ -176,12 +176,7 @@ static int append_alter_table_add_column_character_expression_default(
 
     planned_column_descriptor_for_default(&plan->column, &descriptor);
     descriptor.default_kind = plan->column.default_kind;
-    snprintf(
-        descriptor.default_text,
-        sizeof(descriptor.default_text),
-        "%s",
-        plan->column.default_text
-    );
+    descriptor.default_text = plan->column.default_text;
     rc = materialize_character_expression_default_value(database, &descriptor, false, &value);
     if (rc == MYLITE_OK) {
         rc = append_quoted_sql_text(string, value.text);

@@ -809,7 +809,13 @@ static int build_temporary_table_column_descriptors(
             .is_auto_increment = column->is_auto_increment,
             .default_kind = column->default_kind,
             .default_integer = column->default_integer,
+            .default_text = column->default_text,
             .on_update_current_timestamp = column->on_update_current_timestamp,
+            .comment = column->comment,
+            .is_generated = column->is_generated,
+            .generated_kind = column->generated_kind,
+            .generation_expression = column->generation_expression,
+            .sqlite_generation_expression = column->sqlite_generation_expression,
         };
         snprintf(descriptor->name, sizeof(descriptor->name), "%s", column->name);
         snprintf(
@@ -825,12 +831,6 @@ static int build_temporary_table_column_descriptors(
             column->physical_type
         );
         snprintf(
-            descriptor->default_text,
-            sizeof(descriptor->default_text),
-            "%s",
-            column->default_text
-        );
-        snprintf(
             descriptor->character_set_name,
             sizeof(descriptor->character_set_name),
             "%s",
@@ -842,7 +842,7 @@ static int build_temporary_table_column_descriptors(
             "%s",
             column->collation_name
         );
-        snprintf(descriptor->comment, sizeof(descriptor->comment), "%s", column->comment);
+        rc = intern_temporary_column_descriptor_strings(database, descriptor);
     }
     if (rc != MYLITE_OK) {
         free(column_ids);
@@ -851,6 +851,43 @@ static int build_temporary_table_column_descriptors(
 
     *out_column_ids = column_ids;
     return MYLITE_OK;
+}
+
+static int intern_temporary_column_descriptor_strings(
+    struct mylite_db *database,
+    struct mylite_catalog_column_descriptor *column
+) {
+    int rc = mylite_catalog_string_pool_intern_c_string(
+        &database->catalog_strings,
+        column->default_text,
+        &column->default_text
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_string_pool_intern_c_string(
+            &database->catalog_strings,
+            column->comment,
+            &column->comment
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_string_pool_intern_c_string(
+            &database->catalog_strings,
+            column->generation_expression,
+            &column->generation_expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_string_pool_intern_c_string(
+            &database->catalog_strings,
+            column->sqlite_generation_expression,
+            &column->sqlite_generation_expression
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int build_temporary_table_index_descriptors(

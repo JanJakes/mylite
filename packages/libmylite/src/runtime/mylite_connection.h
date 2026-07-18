@@ -7,6 +7,7 @@
 #endif
 
 #include "mylite_catalog.h"
+#include "mylite_catalog_string_pool.h"
 #include "mylite_diagnostics.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_system_variables.h"
@@ -345,6 +346,7 @@ struct mylite_db {
     struct mylite_session_state session;
     struct mylite_sqlite_bootstrap_state sqlite_bootstrap;
     struct mylite_catalog catalog;
+    struct mylite_catalog_string_pool catalog_strings;
     struct mylite_execution_statement_cache_entry
         execution_statement_cache[MYLITE_EXECUTION_STATEMENT_CACHE_LIMIT];
     size_t execution_statement_cache_count;

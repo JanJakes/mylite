@@ -49,6 +49,10 @@ static void planned_column_descriptor_for_default(
         column->physical_type
     );
     out_descriptor->is_nullable = column->is_nullable;
+    out_descriptor->default_text = column->default_text;
+    out_descriptor->comment = column->comment;
+    out_descriptor->generation_expression = column->generation_expression;
+    out_descriptor->sqlite_generation_expression = column->sqlite_generation_expression;
 }
 
 static int copy_planned_default_text(

@@ -913,12 +913,12 @@ static int test_metadata_caches_enforce_byte_budgets(void) {
         "key cache byte budget"
     );
     failures += expect_true(
-        database->table_columns_cache_count < cache_budget_table_count,
-        "column cache evicts before retaining every wide table"
+        database->table_columns_cache_count == cache_budget_table_count,
+        "compact column metadata retains every budgeted table"
     );
     failures += expect_true(
-        database->table_key_metadata_cache_count < cache_budget_table_count,
-        "key cache evicts before retaining every wide table"
+        database->table_key_metadata_cache_count == cache_budget_table_count,
+        "compact key metadata retains every budgeted table"
     );
 
     mylite_close(database);

@@ -136,12 +136,7 @@ int mylite_catalog_insert_column_in_mutation(
     }
 
     if (out_column != NULL) {
-        return mylite_catalog_read_column_by_name_from_sqlite(
-            database->sqlite,
-            table_id,
-            name,
-            out_column
-        );
+        return mylite_catalog_read_column_by_name_from_sqlite(database, table_id, name, out_column);
     }
 
     return MYLITE_OK;

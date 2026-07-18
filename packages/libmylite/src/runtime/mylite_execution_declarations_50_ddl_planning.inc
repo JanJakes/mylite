@@ -2244,6 +2244,10 @@ static void make_modify_target_descriptor(
     const struct planned_alter_table_modify_column *plan,
     struct mylite_catalog_column_descriptor *out_column
 );
+static int intern_temporary_column_descriptor_strings(
+    struct mylite_db *database,
+    struct mylite_catalog_column_descriptor *column
+);
 static int rename_table_from_plan_with_policy(
     struct mylite_db *database,
     const struct planned_rename_table *plan,

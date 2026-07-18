@@ -72,6 +72,7 @@ add_library(mylite
   src/runtime/mylite_catalog_schema_table_mutation.c
   src/runtime/mylite_catalog_sqlite.c
   src/runtime/mylite_catalog_state.c
+  src/runtime/mylite_catalog_string_pool.c
   src/runtime/mylite_catalog_table_validation.c
   src/runtime/mylite_catalog_validation.c
   src/runtime/mylite_connection.c

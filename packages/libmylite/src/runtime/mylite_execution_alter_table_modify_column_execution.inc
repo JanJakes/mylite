@@ -117,12 +117,15 @@ static int replace_temporary_column_descriptor(
         );
     } else {
         make_modify_target_descriptor(plan, &replacement);
-        rc = mylite_temporary_catalog_replace_column(
-            &database->session.temporary_catalog,
-            plan->table.table_id,
-            plan->original_column.column_id,
-            &replacement
-        );
+        rc = intern_temporary_column_descriptor_strings(database, &replacement);
+        if (rc == MYLITE_OK) {
+            rc = mylite_temporary_catalog_replace_column(
+                &database->session.temporary_catalog,
+                plan->table.table_id,
+                plan->original_column.column_id,
+                &replacement
+            );
+        }
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update temporary column descriptor");
@@ -262,6 +265,13 @@ static int collect_modify_column_rebuild_columns(
             rebuild_columns[index] = columns[index];
             if (index == out_plan->column_index) {
                 make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
+                int rc =
+                    intern_temporary_column_descriptor_strings(database, &rebuild_columns[index]);
+
+                if (rc != MYLITE_OK) {
+                    free(rebuild_columns);
+                    return rc;
+                }
             }
         }
     } else {
@@ -270,6 +280,13 @@ static int collect_modify_column_rebuild_columns(
         for (size_t index = 0U; index < column_count; ++index) {
             if (index == out_plan->target_column_index) {
                 make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
+                int rc =
+                    intern_temporary_column_descriptor_strings(database, &rebuild_columns[index]);
+
+                if (rc != MYLITE_OK) {
+                    free(rebuild_columns);
+                    return rc;
+                }
             } else {
                 while (source_index < column_count && source_index == out_plan->column_index) {
                     ++source_index;
@@ -691,12 +708,7 @@ static void make_modify_target_descriptor(
     out_column->on_update_current_timestamp = plan->column.on_update_current_timestamp;
     out_column->default_kind = plan->column.default_kind;
     out_column->default_integer = plan->column.default_integer;
-    snprintf(
-        out_column->default_text,
-        sizeof(out_column->default_text),
-        "%s",
-        plan->column.default_text
-    );
+    out_column->default_text = plan->column.default_text;
     snprintf(
         out_column->character_set_name,
         sizeof(out_column->character_set_name),
@@ -709,6 +721,11 @@ static void make_modify_target_descriptor(
         "%s",
         plan->column.collation_name
     );
+    out_column->comment = plan->column.comment;
+    out_column->is_generated = plan->column.is_generated;
+    out_column->generated_kind = plan->column.generated_kind;
+    out_column->generation_expression = plan->column.generation_expression;
+    out_column->sqlite_generation_expression = plan->column.sqlite_generation_expression;
 }
 
 static int execute_physical_alter_table_modify_column(

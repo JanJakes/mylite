@@ -348,6 +348,7 @@ static int allocate_database_handle(struct mylite_db **out_database) {
     mylite_diagnostics_init(&database->previous_diagnostics);
     initialize_session_state(&database->session);
     mylite_catalog_init(&database->catalog);
+    mylite_catalog_string_pool_init(&database->catalog_strings);
     register_processlist_session(database);
     *out_database = database;
 
@@ -473,6 +474,7 @@ static void destroy_database_handle(struct mylite_db *database) {
     mylite_execution_table_columns_cache_deinit(database);
     mylite_execution_table_key_metadata_cache_deinit(database);
     mylite_catalog_deinit(&database->catalog);
+    mylite_catalog_string_pool_deinit(&database->catalog_strings);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {
         (void)sqlite3_close(database->sqlite);

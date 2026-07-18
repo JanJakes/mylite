@@ -1,6 +1,7 @@
 #include "mylite_catalog.h"
 
 #include "mylite_catalog_internal.h"
+#include "mylite_catalog_string_pool.h"
 
 #include "mylite_connection.h"
 #include "mylite_sqlite_registration.h"
@@ -36,10 +37,12 @@ enum catalog_column_select_column_index {
 };
 
 static int materialize_column(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 );
 static int materialize_column_identity(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 );
@@ -48,16 +51,33 @@ static int materialize_column_flags(
     struct mylite_catalog_column_descriptor *out_column
 );
 static int materialize_column_defaults(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 );
 static int materialize_column_generated(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 );
 static int materialize_column_generations(
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
+);
+static int intern_column_text(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int index,
+    const char **out_text,
+    size_t capacity
+);
+static int intern_nullable_column_text(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int index,
+    bool *out_has_value,
+    const char **out_text,
+    size_t capacity
 );
 
 int mylite_catalog_for_each_column_in_table(
@@ -107,7 +127,7 @@ int mylite_catalog_for_each_column_in_table(
             break;
         }
 
-        rc = materialize_column(statement, &column);
+        rc = materialize_column(database, statement, &column);
         if (rc == MYLITE_OK) {
             rc = callback(&column, user_data);
         }
@@ -139,16 +159,11 @@ int mylite_catalog_read_column_by_name(
         return rc;
     }
 
-    return mylite_catalog_read_column_by_name_from_sqlite(
-        database->sqlite,
-        table_id,
-        name,
-        out_column
-    );
+    return mylite_catalog_read_column_by_name_from_sqlite(database, table_id, name, out_column);
 }
 
 int mylite_catalog_read_column_by_name_from_sqlite(
-    sqlite3 *sqlite,
+    struct mylite_db *database,
     int64_t table_id,
     const char *name,
     struct mylite_catalog_column_descriptor *out_column
@@ -156,7 +171,7 @@ int mylite_catalog_read_column_by_name_from_sqlite(
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
     int rc = mylite_catalog_prepare_statement(
-        sqlite,
+        database->sqlite,
         "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
         "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
         "default_text, on_update_current_timestamp, character_set_name, collation_name, comment, "
@@ -176,7 +191,7 @@ int mylite_catalog_read_column_by_name_from_sqlite(
     if (rc == MYLITE_OK) {
         sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
-            rc = materialize_column(statement, out_column);
+            rc = materialize_column(database, statement, out_column);
         } else {
             rc =
                 sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -187,19 +202,20 @@ int mylite_catalog_read_column_by_name_from_sqlite(
 }
 
 static int materialize_column(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 ) {
-    int rc = materialize_column_identity(statement, out_column);
+    int rc = materialize_column_identity(database, statement, out_column);
 
     if (rc == MYLITE_OK) {
         rc = materialize_column_flags(statement, out_column);
     }
     if (rc == MYLITE_OK) {
-        rc = materialize_column_defaults(statement, out_column);
+        rc = materialize_column_defaults(database, statement, out_column);
     }
     if (rc == MYLITE_OK) {
-        rc = materialize_column_generated(statement, out_column);
+        rc = materialize_column_generated(database, statement, out_column);
     }
     if (rc == MYLITE_OK) {
         rc = materialize_column_generations(statement, out_column);
@@ -209,6 +225,7 @@ static int materialize_column(
 }
 
 static int materialize_column_identity(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 ) {
@@ -273,11 +290,12 @@ static int materialize_column_identity(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_checked_column_text(
+        rc = intern_column_text(
+            database,
             statement,
             catalog_column_select_comment_column,
-            out_column->comment,
-            sizeof(out_column->comment)
+            &out_column->comment,
+            MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY
         );
     }
 
@@ -339,6 +357,7 @@ static int materialize_column_flags(
 }
 
 static int materialize_column_defaults(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 ) {
@@ -372,12 +391,13 @@ static int materialize_column_defaults(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_checked_nullable_column_text(
+        rc = intern_nullable_column_text(
+            database,
             statement,
             catalog_column_select_default_text_column,
             &has_default_text,
-            out_column->default_text,
-            sizeof(out_column->default_text)
+            &out_column->default_text,
+            MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY
         );
     }
     if (rc == MYLITE_OK &&
@@ -420,6 +440,7 @@ static int materialize_column_generations(
 }
 
 static int materialize_column_generated(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     struct mylite_catalog_column_descriptor *out_column
 ) {
@@ -445,21 +466,73 @@ static int materialize_column_generated(
         out_column->generated_kind = (enum mylite_catalog_generated_column_kind)generated_kind;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_checked_column_text(
+        rc = intern_column_text(
+            database,
             statement,
             catalog_column_select_generation_expression_column,
-            out_column->generation_expression,
-            sizeof(out_column->generation_expression)
+            &out_column->generation_expression,
+            MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_checked_column_text(
+        rc = intern_column_text(
+            database,
             statement,
             catalog_column_select_sqlite_generation_expression_column,
-            out_column->sqlite_generation_expression,
-            sizeof(out_column->sqlite_generation_expression)
+            &out_column->sqlite_generation_expression,
+            MYLITE_CATALOG_GENERATION_EXPRESSION_CAPACITY
         );
     }
 
+    return rc;
+}
+
+static int intern_column_text(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int index,
+    const char **out_text,
+    size_t capacity
+) {
+    const unsigned char *text = NULL;
+    int byte_count = 0;
+
+    *out_text = NULL;
+    if (sqlite3_column_type(statement, index) != SQLITE_TEXT) {
+        return MYLITE_ERROR;
+    }
+    text = sqlite3_column_text(statement, index);
+    byte_count = sqlite3_column_bytes(statement, index);
+    if (text == NULL || byte_count < 0 || (size_t)byte_count >= capacity) {
+        return MYLITE_ERROR;
+    }
+
+    return mylite_catalog_string_pool_intern(
+        &database->catalog_strings,
+        (const char *)text,
+        (size_t)byte_count,
+        out_text
+    );
+}
+
+static int intern_nullable_column_text(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int index,
+    bool *out_has_value,
+    const char **out_text,
+    size_t capacity
+) {
+    *out_has_value = false;
+    *out_text = NULL;
+    if (sqlite3_column_type(statement, index) == SQLITE_NULL) {
+        return mylite_catalog_string_pool_intern(&database->catalog_strings, "", 0U, out_text);
+    }
+
+    int rc = intern_column_text(database, statement, index, out_text, capacity);
+
+    if (rc == MYLITE_OK) {
+        *out_has_value = true;
+    }
     return rc;
 }

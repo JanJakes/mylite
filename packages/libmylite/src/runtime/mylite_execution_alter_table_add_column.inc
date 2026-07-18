@@ -572,9 +572,13 @@ static int build_temporary_added_column_descriptor(
         .is_auto_increment = false,
         .default_kind = plan->column.default_kind,
         .default_integer = plan->column.default_integer,
+        .default_text = plan->column.default_text,
         .on_update_current_timestamp = plan->column.on_update_current_timestamp,
+        .comment = plan->column.comment,
         .is_generated = plan->column.is_generated,
         .generated_kind = plan->column.generated_kind,
+        .generation_expression = plan->column.generation_expression,
+        .sqlite_generation_expression = plan->column.sqlite_generation_expression,
     };
     snprintf(out_column->name, sizeof(out_column->name), "%s", plan->column.name);
     snprintf(
@@ -590,12 +594,6 @@ static int build_temporary_added_column_descriptor(
         plan->column.physical_type
     );
     snprintf(
-        out_column->default_text,
-        sizeof(out_column->default_text),
-        "%s",
-        plan->column.default_text
-    );
-    snprintf(
         out_column->character_set_name,
         sizeof(out_column->character_set_name),
         "%s",
@@ -607,20 +605,7 @@ static int build_temporary_added_column_descriptor(
         "%s",
         plan->column.collation_name
     );
-    snprintf(out_column->comment, sizeof(out_column->comment), "%s", plan->column.comment);
-    snprintf(
-        out_column->generation_expression,
-        sizeof(out_column->generation_expression),
-        "%s",
-        plan->column.generation_expression
-    );
-    snprintf(
-        out_column->sqlite_generation_expression,
-        sizeof(out_column->sqlite_generation_expression),
-        "%s",
-        plan->column.sqlite_generation_expression
-    );
-    return MYLITE_OK;
+    return intern_temporary_column_descriptor_strings(database, out_column);
 }
 
 static int alter_table_add_column_in_mutation(

@@ -1,8 +1,7 @@
 static int plan_select_predicate_leaf_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -229,8 +228,7 @@ static int plan_select_predicate_leaf_node(
         );
     }
     if (rc == MYLITE_OK) {
-        rc =
-            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+        rc = append_predicate_result_index(database, result_stack, node_index);
     }
 
     return rc;
@@ -239,8 +237,7 @@ static int plan_select_predicate_leaf_node(
 static int plan_select_predicate_leaf_node_without_exists(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -456,8 +453,7 @@ static int plan_select_predicate_leaf_node_without_exists(
         );
     }
     if (rc == MYLITE_OK) {
-        rc =
-            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+        rc = append_predicate_result_index(database, result_stack, node_index);
     }
 
     return rc;

@@ -368,21 +368,17 @@ static int plan_select_predicate_node(
     const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 ) {
-    struct predicate_work_item *items = NULL;
-    size_t item_count = 0U;
-    size_t *result_indexes = NULL;
-    size_t result_index_count = 0U;
-    int rc = append_predicate_work_node(database, &items, &item_count, predicate_node);
+    struct predicate_work_stack work_stack = {0};
+    struct predicate_result_stack result_stack = {0};
+    int rc = append_predicate_work_node(database, &work_stack, predicate_node);
 
-    while (rc == MYLITE_OK && item_count > 0U) {
-        struct predicate_work_item item = items[--item_count];
+    while (rc == MYLITE_OK && work_stack.count > 0U) {
+        struct predicate_work_item item = work_stack.items[--work_stack.count];
         rc = plan_select_predicate_work_item(
             database,
             item,
-            &items,
-            &item_count,
-            &result_indexes,
-            &result_index_count,
+            &work_stack,
+            &result_stack,
             source_context,
             table_columns,
             table_column_count,
@@ -391,16 +387,16 @@ static int plan_select_predicate_node(
         );
     }
 
-    if (rc == MYLITE_OK && result_index_count == 1U) {
-        out_predicate->root_index = result_indexes[0];
+    if (rc == MYLITE_OK && result_stack.count == 1U) {
+        out_predicate->root_index = result_stack.indexes[0];
         out_predicate->has_root = true;
     } else if (rc == MYLITE_OK) {
         set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
         rc = MYLITE_ERROR;
     }
 
-    free(result_indexes);
-    free(items);
+    free(result_stack.indexes);
+    free(work_stack.items);
     return rc;
 }
 
@@ -413,21 +409,17 @@ static int plan_select_predicate_node_without_exists(
     const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 ) {
-    struct predicate_work_item *items = NULL;
-    size_t item_count = 0U;
-    size_t *result_indexes = NULL;
-    size_t result_index_count = 0U;
-    int rc = append_predicate_work_node(database, &items, &item_count, predicate_node);
+    struct predicate_work_stack work_stack = {0};
+    struct predicate_result_stack result_stack = {0};
+    int rc = append_predicate_work_node(database, &work_stack, predicate_node);
 
-    while (rc == MYLITE_OK && item_count > 0U) {
-        struct predicate_work_item item = items[--item_count];
+    while (rc == MYLITE_OK && work_stack.count > 0U) {
+        struct predicate_work_item item = work_stack.items[--work_stack.count];
         rc = plan_select_predicate_work_item_without_exists(
             database,
             item,
-            &items,
-            &item_count,
-            &result_indexes,
-            &result_index_count,
+            &work_stack,
+            &result_stack,
             source_context,
             table_columns,
             table_column_count,
@@ -436,26 +428,24 @@ static int plan_select_predicate_node_without_exists(
         );
     }
 
-    if (rc == MYLITE_OK && result_index_count == 1U) {
-        out_predicate->root_index = result_indexes[0];
+    if (rc == MYLITE_OK && result_stack.count == 1U) {
+        out_predicate->root_index = result_stack.indexes[0];
         out_predicate->has_root = true;
     } else if (rc == MYLITE_OK) {
         set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
         rc = MYLITE_ERROR;
     }
 
-    free(result_indexes);
-    free(items);
+    free(result_stack.indexes);
+    free(work_stack.items);
     return rc;
 }
 
 static int plan_select_predicate_work_item(
     struct mylite_db *database,
     struct predicate_work_item item,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -471,25 +461,17 @@ static int plan_select_predicate_work_item(
         return finish_planned_select_logical_predicate(
             database,
             item.operator_kind,
-            result_indexes,
-            result_index_count,
+            result_stack,
             out_predicate
         );
     case PREDICATE_WORK_FINISH_NOT:
-        return finish_planned_select_not_predicate(
-            database,
-            result_indexes,
-            result_index_count,
-            out_predicate
-        );
+        return finish_planned_select_not_predicate(database, result_stack, out_predicate);
     case PREDICATE_WORK_NODE:
         return plan_select_predicate_ast_node(
             database,
             item.node,
-            items,
-            item_count,
-            result_indexes,
-            result_index_count,
+            work_stack,
+            result_stack,
             source_context,
             table_columns,
             table_column_count,
@@ -505,10 +487,8 @@ static int plan_select_predicate_work_item(
 static int plan_select_predicate_work_item_without_exists(
     struct mylite_db *database,
     struct predicate_work_item item,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -524,25 +504,17 @@ static int plan_select_predicate_work_item_without_exists(
         return finish_planned_select_logical_predicate(
             database,
             item.operator_kind,
-            result_indexes,
-            result_index_count,
+            result_stack,
             out_predicate
         );
     case PREDICATE_WORK_FINISH_NOT:
-        return finish_planned_select_not_predicate(
-            database,
-            result_indexes,
-            result_index_count,
-            out_predicate
-        );
+        return finish_planned_select_not_predicate(database, result_stack, out_predicate);
     case PREDICATE_WORK_NODE:
         return plan_select_predicate_ast_node_without_exists(
             database,
             item.node,
-            items,
-            item_count,
-            result_indexes,
-            result_index_count,
+            work_stack,
+            result_stack,
             source_context,
             table_columns,
             table_column_count,
@@ -558,8 +530,7 @@ static int plan_select_predicate_work_item_without_exists(
 static int finish_planned_select_logical_predicate(
     struct mylite_db *database,
     enum mylite_sql_ast_operator operator_kind,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     struct planned_select_predicate *out_predicate
 ) {
     enum planned_select_predicate_kind kind = PLANNED_SELECT_PREDICATE_NONE;
@@ -574,9 +545,9 @@ static int finish_planned_select_logical_predicate(
         return MYLITE_ERROR;
     }
 
-    rc = pop_predicate_result_index(*result_indexes, result_index_count, &right_index);
+    rc = pop_predicate_result_index(result_stack, &right_index);
     if (rc == MYLITE_OK) {
-        rc = pop_predicate_result_index(*result_indexes, result_index_count, &left_index);
+        rc = pop_predicate_result_index(result_stack, &left_index);
     }
     if (rc != MYLITE_OK) {
         set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
@@ -591,8 +562,7 @@ static int finish_planned_select_logical_predicate(
     };
     rc = append_planned_select_predicate_node(database, out_predicate, &logical_node, &node_index);
     if (rc == MYLITE_OK) {
-        rc =
-            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+        rc = append_predicate_result_index(database, result_stack, node_index);
     }
 
     return rc;
@@ -600,14 +570,13 @@ static int finish_planned_select_logical_predicate(
 
 static int finish_planned_select_not_predicate(
     struct mylite_db *database,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     struct planned_select_predicate *out_predicate
 ) {
     size_t child_index = 0U;
     size_t node_index = 0U;
     struct planned_select_predicate_node not_node = {0};
-    int rc = pop_predicate_result_index(*result_indexes, result_index_count, &child_index);
+    int rc = pop_predicate_result_index(result_stack, &child_index);
 
     if (rc != MYLITE_OK) {
         set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
@@ -622,8 +591,7 @@ static int finish_planned_select_not_predicate(
     };
     rc = append_planned_select_predicate_node(database, out_predicate, &not_node, &node_index);
     if (rc == MYLITE_OK) {
-        rc =
-            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+        rc = append_predicate_result_index(database, result_stack, node_index);
     }
 
     return rc;
@@ -632,10 +600,8 @@ static int finish_planned_select_not_predicate(
 static int plan_select_predicate_ast_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -645,10 +611,10 @@ static int plan_select_predicate_ast_node(
     const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(predicate_node);
 
     if (current != NULL && current->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
-        return append_select_predicate_not_work(database, current, items, item_count);
+        return append_select_predicate_not_work(database, current, work_stack);
     }
     if (is_logical_predicate_node(current)) {
-        return append_select_predicate_logical_work(database, current, items, item_count);
+        return append_select_predicate_logical_work(database, current, work_stack);
     }
     if (current != NULL && (predicate_node_is_find_in_set_expression(current) ||
                             predicate_node_is_regexp_like_expression(current) ||
@@ -671,8 +637,7 @@ static int plan_select_predicate_ast_node(
         return plan_select_predicate_leaf_node(
             database,
             current,
-            result_indexes,
-            result_index_count,
+            result_stack,
             source_context,
             table_columns,
             table_column_count,
@@ -688,10 +653,8 @@ static int plan_select_predicate_ast_node(
 static int plan_select_predicate_ast_node_without_exists(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -701,10 +664,10 @@ static int plan_select_predicate_ast_node_without_exists(
     const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(predicate_node);
 
     if (current != NULL && current->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
-        return append_select_predicate_not_work(database, current, items, item_count);
+        return append_select_predicate_not_work(database, current, work_stack);
     }
     if (is_logical_predicate_node(current)) {
-        return append_select_predicate_logical_work(database, current, items, item_count);
+        return append_select_predicate_logical_work(database, current, work_stack);
     }
     if (current != NULL && (predicate_node_is_find_in_set_expression(current) ||
                             predicate_node_is_regexp_like_expression(current) ||
@@ -726,8 +689,7 @@ static int plan_select_predicate_ast_node_without_exists(
         return plan_select_predicate_leaf_node_without_exists(
             database,
             current,
-            result_indexes,
-            result_index_count,
+            result_stack,
             source_context,
             table_columns,
             table_column_count,
@@ -772,25 +734,19 @@ static bool is_logical_predicate_node(const struct mylite_sql_ast_node *node) {
 static int append_select_predicate_logical_work(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *work_stack
 ) {
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
-    int rc = append_predicate_work_finish_logical(database, items, item_count, operator_kind);
+    int rc = append_predicate_work_finish_logical(database, work_stack, operator_kind);
 
     if (rc == MYLITE_OK) {
-        rc = append_predicate_work_node(database, items, item_count, child_at(predicate_node, 1U));
+        rc = append_predicate_work_node(database, work_stack, child_at(predicate_node, 1U));
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_predicate_deprecated_warning_work(
-            database,
-            operator_kind,
-            items,
-            item_count
-        );
+        rc = append_select_predicate_deprecated_warning_work(database, operator_kind, work_stack);
     }
     if (rc == MYLITE_OK) {
-        rc = append_predicate_work_node(database, items, item_count, child_at(predicate_node, 0U));
+        rc = append_predicate_work_node(database, work_stack, child_at(predicate_node, 0U));
     }
 
     return rc;
@@ -799,13 +755,12 @@ static int append_select_predicate_logical_work(
 static int append_select_predicate_not_work(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *work_stack
 ) {
-    int rc = append_predicate_work_finish_not(database, items, item_count);
+    int rc = append_predicate_work_finish_not(database, work_stack);
 
     if (rc == MYLITE_OK) {
-        rc = append_predicate_work_node(database, items, item_count, child_at(predicate_node, 0U));
+        rc = append_predicate_work_node(database, work_stack, child_at(predicate_node, 0U));
     }
 
     return rc;
@@ -814,14 +769,13 @@ static int append_select_predicate_not_work(
 static int append_select_predicate_deprecated_warning_work(
     struct mylite_db *database,
     enum mylite_sql_ast_operator operator_kind,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *work_stack
 ) {
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
-        return append_predicate_work_deprecated_and_warning(database, items, item_count);
+        return append_predicate_work_deprecated_and_warning(database, work_stack);
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
-        return append_predicate_work_deprecated_or_warning(database, items, item_count);
+        return append_predicate_work_deprecated_or_warning(database, work_stack);
     }
 
     return MYLITE_OK;

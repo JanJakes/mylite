@@ -1208,6 +1208,18 @@ struct predicate_work_item {
     enum mylite_sql_ast_operator operator_kind;
 };
 
+struct predicate_work_stack {
+    struct predicate_work_item *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct predicate_result_stack {
+    size_t *indexes;
+    size_t count;
+    size_t capacity;
+};
+
 enum predicate_sql_work_item_kind {
     PREDICATE_SQL_WORK_NODE = 0,
     PREDICATE_SQL_WORK_OPERATOR = 1,

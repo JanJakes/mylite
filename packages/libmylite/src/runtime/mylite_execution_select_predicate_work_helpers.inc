@@ -104,54 +104,46 @@ static bool planned_select_predicate_has_expression(
 
 static int append_predicate_work_node(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count,
+    struct predicate_work_stack *stack,
     const struct mylite_sql_ast_node *node
 ) {
     return append_predicate_work_item(
         database,
-        items,
-        item_count,
+        stack,
         (struct predicate_work_item){.kind = PREDICATE_WORK_NODE, .node = node}
     );
 }
 
 static int append_predicate_work_deprecated_and_warning(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *stack
 ) {
     return append_predicate_work_item(
         database,
-        items,
-        item_count,
+        stack,
         (struct predicate_work_item){.kind = PREDICATE_WORK_DEPRECATED_AND_WARNING}
     );
 }
 
 static int append_predicate_work_deprecated_or_warning(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *stack
 ) {
     return append_predicate_work_item(
         database,
-        items,
-        item_count,
+        stack,
         (struct predicate_work_item){.kind = PREDICATE_WORK_DEPRECATED_OR_WARNING}
     );
 }
 
 static int append_predicate_work_finish_logical(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count,
+    struct predicate_work_stack *stack,
     enum mylite_sql_ast_operator operator_kind
 ) {
     return append_predicate_work_item(
         database,
-        items,
-        item_count,
+        stack,
         (struct predicate_work_item){
             .kind = PREDICATE_WORK_FINISH_LOGICAL,
             .operator_kind = operator_kind,
@@ -161,82 +153,96 @@ static int append_predicate_work_finish_logical(
 
 static int append_predicate_work_finish_not(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *stack
 ) {
     return append_predicate_work_item(
         database,
-        items,
-        item_count,
+        stack,
         (struct predicate_work_item){.kind = PREDICATE_WORK_FINISH_NOT}
     );
 }
 
 static int append_predicate_work_item(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count,
+    struct predicate_work_stack *stack,
     struct predicate_work_item item
 ) {
     struct predicate_work_item *grown_items = NULL;
-    size_t required_count = *item_count + 1U;
+    size_t capacity = stack->capacity;
 
-    if (required_count > SIZE_MAX / sizeof(*grown_items)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (stack->count == stack->capacity) {
+        if (capacity == 0U) {
+            capacity = 8U;
+        } else if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        } else {
+            capacity *= 2U;
+        }
+        if (capacity > SIZE_MAX / sizeof(*grown_items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+
+        grown_items = realloc(stack->items, capacity * sizeof(*grown_items));
+        if (grown_items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = grown_items;
+        stack->capacity = capacity;
     }
 
-    grown_items = realloc(*items, required_count * sizeof(*grown_items));
-    if (grown_items == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
-    *items = grown_items;
-    (*items)[*item_count] = item;
-    *item_count = required_count;
+    stack->items[stack->count] = item;
+    ++stack->count;
 
     return MYLITE_OK;
 }
 
 static int append_predicate_result_index(
     struct mylite_db *database,
-    size_t **indexes,
-    size_t *index_count,
+    struct predicate_result_stack *stack,
     size_t index
 ) {
     size_t *grown_indexes = NULL;
-    size_t required_count = *index_count + 1U;
+    size_t capacity = stack->capacity;
 
-    if (required_count > SIZE_MAX / sizeof(*grown_indexes)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (stack->count == stack->capacity) {
+        if (capacity == 0U) {
+            capacity = 8U;
+        } else if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        } else {
+            capacity *= 2U;
+        }
+        if (capacity > SIZE_MAX / sizeof(*grown_indexes)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+
+        grown_indexes = realloc(stack->indexes, capacity * sizeof(*grown_indexes));
+        if (grown_indexes == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->indexes = grown_indexes;
+        stack->capacity = capacity;
     }
 
-    grown_indexes = realloc(*indexes, required_count * sizeof(*grown_indexes));
-    if (grown_indexes == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
-    *indexes = grown_indexes;
-    (*indexes)[*index_count] = index;
-    *index_count = required_count;
+    stack->indexes[stack->count] = index;
+    ++stack->count;
 
     return MYLITE_OK;
 }
 
-static int pop_predicate_result_index(
-    const size_t *indexes,
-    size_t *index_count,
-    size_t *out_index
-) {
-    if (indexes == NULL || index_count == NULL || *index_count == 0U || out_index == NULL) {
+static int pop_predicate_result_index(struct predicate_result_stack *stack, size_t *out_index) {
+    if (stack == NULL || stack->indexes == NULL || stack->count == 0U || out_index == NULL) {
         return MYLITE_ERROR;
     }
 
-    --(*index_count);
-    *out_index = indexes[*index_count];
+    --stack->count;
+    *out_index = stack->indexes[stack->count];
     return MYLITE_OK;
 }
 

@@ -65,10 +65,8 @@ static int plan_select_predicate_node_without_exists(
 static int plan_select_predicate_work_item(
     struct mylite_db *database,
     struct predicate_work_item item,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -78,10 +76,8 @@ static int plan_select_predicate_work_item(
 static int plan_select_predicate_work_item_without_exists(
     struct mylite_db *database,
     struct predicate_work_item item,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -91,23 +87,19 @@ static int plan_select_predicate_work_item_without_exists(
 static int finish_planned_select_logical_predicate(
     struct mylite_db *database,
     enum mylite_sql_ast_operator operator_kind,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     struct planned_select_predicate *out_predicate
 );
 static int finish_planned_select_not_predicate(
     struct mylite_db *database,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     struct planned_select_predicate *out_predicate
 );
 static int plan_select_predicate_ast_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -117,10 +109,8 @@ static int plan_select_predicate_ast_node(
 static int plan_select_predicate_ast_node_without_exists(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_work_stack *work_stack,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -134,26 +124,22 @@ static bool is_logical_predicate_node(const struct mylite_sql_ast_node *node);
 static int append_select_predicate_logical_work(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *work_stack
 );
 static int append_select_predicate_not_work(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *work_stack
 );
 static int append_select_predicate_deprecated_warning_work(
     struct mylite_db *database,
     enum mylite_sql_ast_operator operator_kind,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *work_stack
 );
 static int plan_select_predicate_leaf_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -163,8 +149,7 @@ static int plan_select_predicate_leaf_node(
 static int plan_select_predicate_leaf_node_without_exists(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
-    size_t **result_indexes,
-    size_t *result_index_count,
+    struct predicate_result_stack *result_stack,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -1312,48 +1297,37 @@ static bool planned_select_predicate_has_expression(const struct planned_select_
 );
 static int append_predicate_work_node(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count,
+    struct predicate_work_stack *stack,
     const struct mylite_sql_ast_node *node
 );
 static int append_predicate_work_deprecated_and_warning(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *stack
 );
 static int append_predicate_work_deprecated_or_warning(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *stack
 );
 static int append_predicate_work_finish_logical(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count,
+    struct predicate_work_stack *stack,
     enum mylite_sql_ast_operator operator_kind
 );
 static int append_predicate_work_finish_not(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count
+    struct predicate_work_stack *stack
 );
 static int append_predicate_work_item(
     struct mylite_db *database,
-    struct predicate_work_item **items,
-    size_t *item_count,
+    struct predicate_work_stack *stack,
     struct predicate_work_item item
 );
 static int append_predicate_result_index(
     struct mylite_db *database,
-    size_t **indexes,
-    size_t *index_count,
+    struct predicate_result_stack *stack,
     size_t index
 );
-static int pop_predicate_result_index(
-    const size_t *indexes,
-    size_t *index_count,
-    size_t *out_index
-);
+static int pop_predicate_result_index(struct predicate_result_stack *stack, size_t *out_index);
 static int bind_select_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate *predicate,

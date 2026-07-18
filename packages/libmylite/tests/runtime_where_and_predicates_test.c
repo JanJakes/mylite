@@ -39,6 +39,7 @@ struct expected_result {
 static int test_where_and_predicates(void);
 static int test_where_xor_predicates(void);
 static int test_where_scalar_literal_predicates(void);
+static int test_large_logical_predicate(void);
 static int test_independent_where_and_handles(void);
 static int seed_database(mylite_db *database);
 static int reset_numbers(mylite_db *database);
@@ -75,6 +76,7 @@ int main(void) {
     failures += test_where_and_predicates();
     failures += test_where_xor_predicates();
     failures += test_where_scalar_literal_predicates();
+    failures += test_large_logical_predicate();
     failures += test_independent_where_and_handles();
 
     return failures == 0 ? 0 : 1;
@@ -5067,6 +5069,60 @@ static int test_where_scalar_literal_predicates(void) {
     mylite_close(database);
     remove_related_files(path);
 
+    return failures;
+}
+
+static int test_large_logical_predicate(void) {
+    static const char prefix[] = "SELECT id FROM numbers WHERE id = 1";
+    static const char term[] = " OR id = 1";
+    static const char *const expected_rows[] = {"1"};
+
+    enum { logical_term_count = 256 };
+
+    char path[test_path_capacity];
+    char *sql = NULL;
+    size_t sql_length = sizeof(prefix) - 1U + (logical_term_count - 1U) * (sizeof(term) - 1U);
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "large_logical_predicate") != 0) {
+        return 1;
+    }
+    sql = malloc(sql_length + 1U);
+    if (sql == NULL) {
+        fprintf(stderr, "large logical predicate: failed to allocate SQL\n");
+        return 1;
+    }
+    memcpy(sql, prefix, sizeof(prefix) - 1U);
+    for (size_t index = 1U; index < logical_term_count; ++index) {
+        memcpy(
+            sql + sizeof(prefix) - 1U + (index - 1U) * (sizeof(term) - 1U),
+            term,
+            sizeof(term) - 1U
+        );
+    }
+    sql[sql_length] = '\0';
+
+    remove_related_files(path);
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open large predicate database");
+    failures += seed_database(database);
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = sql,
+            .values = expected_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "large logical predicate",
+        }
+    );
+
+    free(sql);
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

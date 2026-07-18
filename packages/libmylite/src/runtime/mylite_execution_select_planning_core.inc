@@ -1687,7 +1687,7 @@ static int make_derived_row_scalar_source_column(
         return MYLITE_MISUSE;
     }
     if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-        *out_column = item->expression.column;
+        *out_column = *item->expression.column;
     } else if (
         item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC ||
         item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE

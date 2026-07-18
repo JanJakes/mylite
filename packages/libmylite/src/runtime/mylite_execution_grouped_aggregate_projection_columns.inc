@@ -46,12 +46,17 @@ static int plan_grouped_aggregate_projection_columns(
                 table_column_count,
                 out_plan
             );
-        } else if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(expression)
-                   ) != PLANNED_GROUPED_AGGREGATE_NONE) {
+        } else if (
+            grouped_aggregate_function_from_expression(
+                unwrap_parenthesized_expression(expression)
+            ) != PLANNED_GROUPED_AGGREGATE_NONE
+        ) {
             *out_first_aggregate_index = item_index;
             return MYLITE_OK;
-        } else if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
-                   child_at(item, 1U) == NULL) {
+        } else if (
+            expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
+            child_at(item, 1U) == NULL
+        ) {
             rc = plan_grouped_aggregate_wildcard_projection_columns(
                 database,
                 expression_index,
@@ -398,7 +403,8 @@ static bool grouping_projection_column_matches_group_key(
     if (group == NULL || column == NULL || group->uses_row_scalar_expression) {
         return false;
     }
-    return group->column_source_index == source_index && group->column.table_id == column->table_id &&
+    return group->column_source_index == source_index &&
+           group->column.table_id == column->table_id &&
            group->column.column_id == column->column_id;
 }
 
@@ -595,7 +601,7 @@ static int validate_grouped_projection_row_scalar_column(
             plan,
             table_columns,
             table_column_count,
-            &expression->column,
+            expression->column,
             source_index,
             &dependency_rc
         )) {
@@ -610,7 +616,7 @@ static int validate_grouped_projection_row_scalar_column(
         1U,
         "SELECT list",
         planned_grouped_aggregate_source_resolution(plan, source_index),
-        &expression->column
+        expression->column
     );
     return MYLITE_ERROR;
 }
@@ -769,7 +775,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -783,7 +789,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }
@@ -1093,7 +1099,7 @@ static bool planned_grouped_row_scalar_columns_match(
         return false;
     }
 
-    return left->column.column_id == right->column.column_id &&
+    return left->column->column_id == right->column->column_id &&
            left->column_has_source_index == right->column_has_source_index &&
            (!left->column_has_source_index ||
             left->column_source_index == right->column_source_index);

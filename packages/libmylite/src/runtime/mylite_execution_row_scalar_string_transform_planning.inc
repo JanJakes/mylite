@@ -151,7 +151,9 @@ static int plan_row_scalar_string_reverse_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -344,7 +346,9 @@ static int plan_row_scalar_soundex_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -609,7 +613,9 @@ static int plan_row_scalar_string_quote_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

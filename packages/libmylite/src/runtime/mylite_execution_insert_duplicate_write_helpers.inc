@@ -1095,6 +1095,31 @@ static int materialize_insert_duplicate_row_scalar_expression(
     out_expression->arguments = NULL;
     out_expression->argument_count = 0U;
     out_expression->value = (struct planned_value){0};
+    out_expression->window_partition_column = NULL;
+    out_expression->window_order_column = NULL;
+    out_expression->column = NULL;
+
+    if (source->window_partition_column != NULL) {
+        rc = retain_planned_row_scalar_column(
+            database,
+            &out_expression->window_partition_column,
+            source->window_partition_column
+        );
+    }
+    if (rc == MYLITE_OK && source->window_order_column != NULL) {
+        rc = retain_planned_row_scalar_column(
+            database,
+            &out_expression->window_order_column,
+            source->window_order_column
+        );
+    }
+    if (rc == MYLITE_OK && source->column != NULL) {
+        rc = retain_planned_row_scalar_column(database, &out_expression->column, source->column);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+        return rc;
+    }
 
     if (source->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE &&
         source->value_is_insert_values_reference) {
@@ -1125,10 +1150,8 @@ static int materialize_insert_duplicate_row_scalar_expression(
         planned_row_scalar_expression_deinit(out_expression);
         return MYLITE_NOMEM;
     }
-    out_expression->arguments = (struct planned_row_scalar_expression *)calloc(
-        source->argument_count,
-        sizeof(*out_expression->arguments)
-    );
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(source->argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         planned_row_scalar_expression_deinit(out_expression);
@@ -1187,11 +1210,7 @@ static int build_insert_duplicate_update_sql(
         rc = mylite_dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_insert_duplicate_key_predicate_sql(
-            &string,
-            conflicting_index,
-            &next_parameter
-        );
+        rc = append_insert_duplicate_key_predicate_sql(&string, conflicting_index, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " AND ");
@@ -1291,9 +1310,8 @@ static int append_insert_duplicate_assignments_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, " = ");
         }
-        if (rc == MYLITE_OK &&
-            plan->duplicate_update.assignments[index].value_kind ==
-                PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+        if (rc == MYLITE_OK && plan->duplicate_update.assignments[index].value_kind ==
+                                   PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
             rc = append_row_scalar_expression_sql(
                 string,
                 plan->duplicate_update.assignments[index].row_scalar_expression,
@@ -1329,9 +1347,8 @@ static int append_insert_duplicate_changed_conditions_sql(
         if (has_previous) {
             rc = mylite_dynamic_string_append(string, " OR ");
         }
-        if (rc == MYLITE_OK &&
-            plan->duplicate_update.assignments[index].value_kind ==
-                PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+        if (rc == MYLITE_OK && plan->duplicate_update.assignments[index].value_kind ==
+                                   PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
             rc = append_update_assignment_row_scalar_changed_condition_sql(
                 string,
                 &plan->columns[column_index],

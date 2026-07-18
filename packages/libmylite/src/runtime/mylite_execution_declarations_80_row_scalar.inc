@@ -3706,8 +3706,16 @@ static enum planned_row_scalar_field_domain row_scalar_field_argument_domain(
 static enum planned_row_scalar_field_domain row_scalar_field_column_domain(
     const struct mylite_catalog_column_descriptor *column
 );
+static int retain_planned_row_scalar_column(
+    struct mylite_db *database,
+    struct mylite_catalog_column_descriptor **target,
+    const struct mylite_catalog_column_descriptor *column
+);
 static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expression *expression);
 static void planned_row_scalar_expression_deinit_next_leaf(
+    struct planned_row_scalar_expression *expression
+);
+static void planned_row_scalar_expression_columns_deinit(
     struct planned_row_scalar_expression *expression
 );
 static bool row_scalar_column_descriptor_is_supported(

@@ -266,7 +266,9 @@ static int plan_row_scalar_regexp_like_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -318,7 +320,10 @@ static int plan_row_scalar_regexp_string_expression(
                 "REGEXP string function optional arguments are not supported"
             );
         } else {
-            set_native_function_parameter_count_error(database, mylite_execution_regexp_string_function_name(kind));
+            set_native_function_parameter_count_error(
+                database,
+                mylite_execution_regexp_string_function_name(kind)
+            );
         }
         return MYLITE_ERROR;
     }

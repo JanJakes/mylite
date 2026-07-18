@@ -76,6 +76,7 @@ selected explicitly with `--scenario`:
 - `runtime.cold_open`
 - `runtime.large_in_256` and `runtime.large_in_4096`
 - `runtime.large_or_2048`
+- `runtime.scalar_projection_128`
 - `runtime.wide_projection_16` and `runtime.wide_projection_128`
 - `runtime.catalog_cache_saturation`
 - `runtime.concurrent_read_write`

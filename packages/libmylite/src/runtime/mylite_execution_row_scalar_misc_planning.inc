@@ -213,7 +213,9 @@ static int plan_row_scalar_field_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -235,7 +237,7 @@ static enum planned_row_scalar_field_domain row_scalar_field_argument_domain(
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
     }
     if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-        return row_scalar_field_column_domain(&expression->column);
+        return row_scalar_field_column_domain(expression->column);
     }
     if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC) {
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
@@ -460,7 +462,9 @@ static int plan_row_scalar_elt_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -702,7 +706,9 @@ static int plan_row_scalar_greatest_least_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -1188,7 +1194,9 @@ static int plan_row_scalar_interval_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -1252,6 +1260,7 @@ static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expre
     }
     free(expression->arguments);
     planned_value_deinit(&expression->value);
+    planned_row_scalar_expression_columns_deinit(expression);
     *expression = (struct planned_row_scalar_expression){0};
 }
 
@@ -1268,10 +1277,39 @@ static void planned_row_scalar_expression_deinit_next_leaf(
 
     free(current->arguments);
     planned_value_deinit(&current->value);
+    planned_row_scalar_expression_columns_deinit(current);
     *current = (struct planned_row_scalar_expression){0};
     if (parent != NULL) {
         --parent->argument_count;
     }
+}
+
+static void planned_row_scalar_expression_columns_deinit(
+    struct planned_row_scalar_expression *expression
+) {
+    free(expression->window_partition_column);
+    free(expression->window_order_column);
+    free(expression->column);
+    expression->window_partition_column = NULL;
+    expression->window_order_column = NULL;
+    expression->column = NULL;
+}
+
+static int retain_planned_row_scalar_column(
+    struct mylite_db *database,
+    struct mylite_catalog_column_descriptor **target,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct mylite_catalog_column_descriptor *copy = malloc(sizeof(*copy));
+
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    *copy = *column;
+    free(*target);
+    *target = copy;
+    return MYLITE_OK;
 }
 
 static bool row_scalar_column_descriptor_is_supported(

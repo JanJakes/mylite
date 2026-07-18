@@ -12,8 +12,9 @@ static int plan_row_scalar_string_length_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_LENGTH_FUNCTION_NONE
-                                       : mylite_execution_string_length_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_LENGTH_FUNCTION_NONE
+                        : mylite_execution_string_length_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_LENGTH_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string length functions support exactly one argument");
@@ -173,7 +174,9 @@ static int plan_row_scalar_string_length_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -223,8 +226,9 @@ static int plan_row_scalar_string_codepoint_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_CODEPOINT_FUNCTION_NONE
-                                       : mylite_execution_string_codepoint_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_CODEPOINT_FUNCTION_NONE
+                        : mylite_execution_string_codepoint_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_CODEPOINT_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string codepoint functions support exactly one argument");
@@ -430,7 +434,9 @@ static int plan_row_scalar_string_codepoint_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -477,8 +483,9 @@ static int plan_row_scalar_string_case_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_CASE_FUNCTION_NONE
-                                       : mylite_execution_string_case_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_CASE_FUNCTION_NONE
+                        : mylite_execution_string_case_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_CASE_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string case functions support exactly one argument");
@@ -625,7 +632,9 @@ static int plan_row_scalar_string_case_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

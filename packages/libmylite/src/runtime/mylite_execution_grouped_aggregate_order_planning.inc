@@ -246,14 +246,15 @@ static int validate_grouped_order_row_scalar_column(
     const struct planned_row_scalar_expression *expression
 ) {
     int dependency_rc = MYLITE_OK;
-    size_t source_index = expression->column_has_source_index ? expression->column_source_index : 0U;
+    size_t source_index =
+        expression->column_has_source_index ? expression->column_source_index : 0U;
 
     if (grouped_projection_column_is_allowed(
             database,
             plan,
             table_columns,
             table_column_count,
-            &expression->column,
+            expression->column,
             source_index,
             &dependency_rc
         )) {
@@ -268,7 +269,7 @@ static int validate_grouped_order_row_scalar_column(
         1U,
         "ORDER BY clause",
         planned_grouped_aggregate_source_resolution(plan, source_index),
-        &expression->column
+        expression->column
     );
     return MYLITE_ERROR;
 }
@@ -876,9 +877,12 @@ static bool grouped_order_row_scalar_aggregate_expression_fields_match(
         left->conversion_step_count != right->conversion_step_count ||
         left->window_order_direction != right->window_order_direction ||
         left->window_frame_unit != right->window_frame_unit ||
-        left->window_partition_column.column_id != right->window_partition_column.column_id ||
-        left->window_order_column.column_id != right->window_order_column.column_id ||
-        left->column.column_id != right->column.column_id ||
+        !planned_row_scalar_columns_match(
+            left->window_partition_column,
+            right->window_partition_column
+        ) ||
+        !planned_row_scalar_columns_match(left->window_order_column, right->window_order_column) ||
+        !planned_row_scalar_columns_match(left->column, right->column) ||
         left->column_cast_as_integer != right->column_cast_as_integer ||
         left->column_has_source_index != right->column_has_source_index ||
         left->argument_count != right->argument_count ||
@@ -890,7 +894,10 @@ static bool grouped_order_row_scalar_aggregate_expression_fields_match(
         return false;
     }
 
-    return grouped_order_optional_strings_match(left->conversion_charset, right->conversion_charset) &&
+    return grouped_order_optional_strings_match(
+               left->conversion_charset,
+               right->conversion_charset
+           ) &&
            grouped_order_optional_strings_match(
                left->conversion_collation,
                right->conversion_collation
@@ -902,7 +909,20 @@ static bool grouped_order_row_scalar_aggregate_expression_fields_match(
                &left->window_frame_start,
                &right->window_frame_start
            ) &&
-           grouped_order_window_frame_bounds_match(&left->window_frame_end, &right->window_frame_end);
+           grouped_order_window_frame_bounds_match(
+               &left->window_frame_end,
+               &right->window_frame_end
+           );
+}
+
+static bool planned_row_scalar_columns_match(
+    const struct mylite_catalog_column_descriptor *left,
+    const struct mylite_catalog_column_descriptor *right
+) {
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+    return left->column_id == right->column_id;
 }
 
 static bool grouped_order_planned_values_match(
@@ -936,7 +956,8 @@ static bool grouped_order_row_scalar_conversion_steps_match(
         const struct planned_row_scalar_conversion_step *right_step =
             &right->conversion_steps[step_index];
 
-        if (left_step->kind != right_step->kind || left_step->ascii_only != right_step->ascii_only ||
+        if (left_step->kind != right_step->kind ||
+            left_step->ascii_only != right_step->ascii_only ||
             !grouped_order_optional_strings_match(left_step->charset, right_step->charset) ||
             !grouped_order_optional_strings_match(left_step->collation, right_step->collation)) {
             return false;

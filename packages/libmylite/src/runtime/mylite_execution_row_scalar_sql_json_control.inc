@@ -1754,8 +1754,8 @@ static int append_row_scalar_nullif_expression_sql(
     size_t *next_parameter
 ) {
     bool use_string_collation =
-        (expression != NULL && expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING
-        ) != 0;
+        (expression != NULL &&
+         expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING) != 0;
     int rc = MYLITE_OK;
 
     if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
@@ -1980,8 +1980,9 @@ static int append_row_scalar_like_predicate_expression_sql(
     if (rc == MYLITE_OK && (operator_kind == MYLITE_SQL_AST_OPERATOR_NONE ||
                             operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE)) {
         rc = mylite_dynamic_string_append(string, " LIKE ");
-    } else if (rc == MYLITE_OK &&
-               row_scalar_control_flow_comparison_operator_is_supported(operator_kind)) {
+    } else if (
+        rc == MYLITE_OK && row_scalar_control_flow_comparison_operator_is_supported(operator_kind)
+    ) {
         rc = mylite_dynamic_string_append_char(string, ' ');
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, comparison_operator_sql(operator_kind));
@@ -2061,8 +2062,9 @@ static int append_row_scalar_leaf_like_predicate_expression_sql(
     if (rc == MYLITE_OK && (operator_kind == MYLITE_SQL_AST_OPERATOR_NONE ||
                             operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE)) {
         rc = mylite_dynamic_string_append(string, " LIKE ");
-    } else if (rc == MYLITE_OK &&
-               row_scalar_control_flow_comparison_operator_is_supported(operator_kind)) {
+    } else if (
+        rc == MYLITE_OK && row_scalar_control_flow_comparison_operator_is_supported(operator_kind)
+    ) {
         rc = mylite_dynamic_string_append_char(string, ' ');
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, comparison_operator_sql(operator_kind));
@@ -2108,8 +2110,10 @@ static int append_row_scalar_logical_condition_expression_sql(
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
         operator_sql = " AND ";
-    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
-               operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+    } else if (
+        operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR
+    ) {
         operator_sql = " OR ";
     } else {
         return MYLITE_ERROR;
@@ -2157,8 +2161,10 @@ static int append_row_scalar_leaf_logical_condition_expression_sql(
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
         operator_sql = " AND ";
-    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
-               operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+    } else if (
+        operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR
+    ) {
         operator_sql = " OR ";
     } else {
         return MYLITE_ERROR;
@@ -2298,8 +2304,8 @@ static int append_row_scalar_nested_nullif_expression_sql(
     size_t *next_parameter
 ) {
     bool use_string_collation =
-        (expression != NULL && expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING
-        ) != 0;
+        (expression != NULL &&
+         expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING) != 0;
     int rc = MYLITE_OK;
 
     if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
@@ -3153,7 +3159,7 @@ static int append_row_scalar_hex_expression_sql(
     }
     argument = &expression->arguments[0];
     if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-        if (strcmp(argument->column.physical_type, "INTEGER") == 0) {
+        if (strcmp(argument->column->physical_type, "INTEGER") == 0) {
             argument_is_integer = true;
         }
     }

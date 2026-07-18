@@ -348,7 +348,8 @@ static int append_row_scalar_numeric_extra_expression_sql(
     );
 }
 
-static const char *row_scalar_numeric_extra_sql_name(enum planned_row_scalar_numeric_extra_kind kind
+static const char *row_scalar_numeric_extra_sql_name(
+    enum planned_row_scalar_numeric_extra_kind kind
 ) {
     switch (kind) {
     case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32:
@@ -616,7 +617,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return mylite_dynamic_string_append(string, "NULL");
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return mylite_dynamic_string_append_quoted_identifier(string, argument->column.name);
+        return mylite_dynamic_string_append_quoted_identifier(string, argument->column->name);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -914,8 +915,10 @@ static int append_row_scalar_char_expression_sql(
             if (rc == MYLITE_OK) {
                 ++(*next_parameter);
             }
-        } else if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
-                                          PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        } else if (
+            rc == MYLITE_OK &&
+            expression->arguments[argument_index].kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN
+        ) {
             rc = append_row_scalar_column_sql(string, &expression->arguments[argument_index]);
         } else if (rc == MYLITE_OK) {
             rc = MYLITE_ERROR;
@@ -1239,8 +1242,8 @@ static bool row_scalar_string_length_argument_is_binary(
     if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return false;
     }
-    return (column_descriptor_is_binary_string_family(&expression->column) ||
-            column_descriptor_is_bit(&expression->column)) != 0;
+    return (column_descriptor_is_binary_string_family(expression->column) ||
+            column_descriptor_is_bit(expression->column)) != 0;
 }
 
 static int append_row_scalar_string_codepoint_expression_sql(
@@ -1613,8 +1616,10 @@ static int append_row_scalar_string_padding_expression_sql(
         if (expression->argument_count != 2U) {
             return MYLITE_ERROR;
         }
-    } else if (expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
-               expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) {
+    } else if (
+        expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
+        expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD
+    ) {
         if (expression->argument_count != 3U) {
             return MYLITE_ERROR;
         }

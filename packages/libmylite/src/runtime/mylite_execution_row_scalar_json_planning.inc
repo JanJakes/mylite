@@ -167,7 +167,9 @@ static int plan_row_scalar_json_valid_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -1461,10 +1463,11 @@ static int plan_row_scalar_json_array_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY;
     out_expression->argument_count = argument_count;
-    out_expression->arguments =
-        argument_count == 0U ? NULL
-                             : (struct planned_row_scalar_expression *)
-                                   calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = argument_count == 0U
+                                    ? NULL
+                                    : (
+                                          struct planned_row_scalar_expression *
+                                      )calloc(argument_count, sizeof(*out_expression->arguments));
     if (argument_count != 0U && out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1534,10 +1537,11 @@ static int plan_row_scalar_json_object_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT;
     out_expression->argument_count = argument_count;
-    out_expression->arguments =
-        argument_count == 0U ? NULL
-                             : (struct planned_row_scalar_expression *)
-                                   calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = argument_count == 0U
+                                    ? NULL
+                                    : (
+                                          struct planned_row_scalar_expression *
+                                      )calloc(argument_count, sizeof(*out_expression->arguments));
     if (argument_count != 0U && out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -2223,19 +2227,28 @@ static int plan_row_scalar_json_constructor_column(
     }
     if (!is_key && column_descriptor_is_json(&column)) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-        out_expression->column = column;
+        if (retain_planned_row_scalar_column(database, &out_expression->column, &column) !=
+            MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
         out_expression->json_value_kind = MYLITE_JSON_SQL_VALUE_JSON;
         return MYLITE_OK;
     }
     if (column_descriptor_is_string_family(&column)) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-        out_expression->column = column;
+        if (retain_planned_row_scalar_column(database, &out_expression->column, &column) !=
+            MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
         out_expression->json_value_kind = MYLITE_JSON_SQL_VALUE_STRING;
         return MYLITE_OK;
     }
     if (strcmp(column.physical_type, "INTEGER") == 0) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-        out_expression->column = column;
+        if (retain_planned_row_scalar_column(database, &out_expression->column, &column) !=
+            MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
         out_expression->json_value_kind = MYLITE_JSON_SQL_VALUE_INTEGER;
         return MYLITE_OK;
     }
@@ -3168,7 +3181,9 @@ static int plan_row_scalar_json_quote_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -3222,7 +3237,9 @@ static int plan_row_scalar_json_text_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

@@ -1894,9 +1894,9 @@ struct planned_row_scalar_expression {
     enum planned_window_frame_unit window_frame_unit;
     struct planned_window_frame_bound window_frame_start;
     struct planned_window_frame_bound window_frame_end;
-    struct mylite_catalog_column_descriptor window_partition_column;
-    struct mylite_catalog_column_descriptor window_order_column;
-    struct mylite_catalog_column_descriptor column;
+    struct mylite_catalog_column_descriptor *window_partition_column;
+    struct mylite_catalog_column_descriptor *window_order_column;
+    struct mylite_catalog_column_descriptor *column;
     char column_effective_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char column_effective_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool column_cast_as_integer;
@@ -1905,6 +1905,11 @@ struct planned_row_scalar_expression {
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
 };
+
+_Static_assert(
+    sizeof(struct planned_row_scalar_expression) <= 1024U,
+    "planned row-scalar expressions must retain compact column references"
+);
 
 struct row_scalar_uuid_column_expression_request {
     const struct mylite_sql_ast_node *function_expression;

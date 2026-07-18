@@ -2386,7 +2386,9 @@ static int plan_row_scalar_control_flow_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -2422,7 +2424,9 @@ static int plan_row_scalar_control_flow_condition_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -2499,7 +2503,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return row_scalar_control_flow_column_domain(&expression->column);
+        return row_scalar_control_flow_column_domain(expression->column);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:

@@ -431,7 +431,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
         return expression->value.is_text;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return column_descriptor_uses_string_key_collation(&expression->column, true);
+        return column_descriptor_uses_string_key_collation(expression->column, true);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
@@ -905,10 +905,12 @@ static bool insert_select_compound_output_uses_string_collation(
                 )) {
                 return true;
             }
-        } else if (column_index < branch->row_source.item_count &&
-                   row_scalar_expression_uses_string_collation(
-                       &branch->row_source.items[column_index].expression
-                   )) {
+        } else if (
+            column_index < branch->row_source.item_count &&
+            row_scalar_expression_uses_string_collation(
+                &branch->row_source.items[column_index].expression
+            )
+        ) {
             return true;
         }
     }

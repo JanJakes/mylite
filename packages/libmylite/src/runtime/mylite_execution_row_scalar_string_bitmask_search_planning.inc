@@ -13,8 +13,9 @@ static int plan_row_scalar_string_bitmask_expression(
     size_t argument_count = 0U;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_BITMASK_FUNCTION_NONE
-                                       : mylite_execution_string_bitmask_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_BITMASK_FUNCTION_NONE
+                        : mylite_execution_string_bitmask_function_kind(expression->kind);
     if (function_kind == PLANNED_STRING_BITMASK_FUNCTION_NONE || expression == NULL ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(database, "string bitmask functions support EXPORT_SET and MAKE_SET");
@@ -267,8 +268,9 @@ static int plan_row_scalar_string_search_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_SEARCH_FUNCTION_NONE
-                                       : mylite_execution_string_search_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_SEARCH_FUNCTION_NONE
+                        : mylite_execution_string_search_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_NONE ||
         (argument_count != 2U && argument_count != 3U) ||
@@ -473,7 +475,9 @@ static int plan_row_scalar_string_search_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

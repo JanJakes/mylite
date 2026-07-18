@@ -580,14 +580,14 @@ static int row_scalar_collate_base_charset(
                            : "binary";
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        if (column_descriptor_is_string_family(&base_expression->column) &&
+        if (column_descriptor_is_string_family(base_expression->column) &&
             base_expression->column_effective_charset[0] != '\0') {
             *out_charset = base_expression->column_effective_charset;
             return MYLITE_OK;
         }
-        if (column_descriptor_is_string_family(&base_expression->column) &&
-            base_expression->column.character_set_name[0] != '\0') {
-            *out_charset = base_expression->column.character_set_name;
+        if (column_descriptor_is_string_family(base_expression->column) &&
+            base_expression->column->character_set_name[0] != '\0') {
+            *out_charset = base_expression->column->character_set_name;
             return MYLITE_OK;
         }
         *out_charset = "binary";
@@ -859,7 +859,9 @@ static int plan_row_scalar_sum_column_expression(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -2438,10 +2440,9 @@ static int plan_row_scalar_aggregate_window_function_arguments(
         table_column_count,
         &out_expression->arguments[0]
     );
-    if (rc == MYLITE_OK &&
-        (window_function_is_numeric_core_aggregate(kind) ||
-         window_function_is_bitwise_aggregate(kind) ||
-         window_function_is_statistical_aggregate(kind))) {
+    if (rc == MYLITE_OK && (window_function_is_numeric_core_aggregate(kind) ||
+                            window_function_is_bitwise_aggregate(kind) ||
+                            window_function_is_statistical_aggregate(kind))) {
         rc = validate_aggregate_window_numeric_argument(database, function_name, out_expression);
     }
     return rc;
@@ -2459,8 +2460,7 @@ static int plan_row_scalar_json_aggregate_window_function_arguments(
 ) {
     const struct mylite_sql_ast_node *arguments = window_function_argument_list_node(expression);
     const struct mylite_sql_ast_node *value = NULL;
-    size_t expected_argument_count =
-        kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG ? 2U : 1U;
+    size_t expected_argument_count = kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG ? 2U : 1U;
     int rc = validate_window_function_argument_count(
         database,
         (struct window_function_argument_count_request){
@@ -2477,10 +2477,8 @@ static int plan_row_scalar_json_aggregate_window_function_arguments(
         return MYLITE_ERROR;
     }
 
-    out_expression->arguments = (struct planned_row_scalar_expression *)calloc(
-        expected_argument_count,
-        sizeof(*out_expression->arguments)
-    );
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(expected_argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -2556,7 +2554,7 @@ static bool aggregate_window_numeric_argument_is_supported(
         return argument->value.is_null ||
                (!argument->value.is_text && !argument->value.is_blob && !argument->value.is_real);
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return strcmp(argument->column.physical_type, "INTEGER") == 0;
+        return strcmp(argument->column->physical_type, "INTEGER") == 0;
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         break;
     default:
@@ -2789,7 +2787,7 @@ static int plan_row_scalar_window_function_value_argument(
             database,
             function_name,
             0U,
-            &out_argument->column
+            out_argument->column
         )) {
         planned_row_scalar_expression_deinit(out_argument);
         return MYLITE_ERROR;
@@ -2942,7 +2940,9 @@ static int plan_row_scalar_window_function_column_argument(
     }
 
     out_argument->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_argument->column = column;
+    if (retain_planned_row_scalar_column(database, &out_argument->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -3169,7 +3169,13 @@ static int plan_row_scalar_window_partition_clause(
     }
 
     out_expression->window_has_partition = true;
-    out_expression->window_partition_column = column;
+    if (retain_planned_row_scalar_column(
+            database,
+            &out_expression->window_partition_column,
+            &column
+        ) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -3213,7 +3219,10 @@ static int plan_row_scalar_window_order_clause(
     }
 
     out_expression->window_has_order = true;
-    out_expression->window_order_column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->window_order_column, &column) !=
+        MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->window_order_direction = PLANNED_SELECT_ORDER_ASC;
     if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
         out_expression->window_order_direction = PLANNED_SELECT_ORDER_DESC;
@@ -4182,7 +4191,9 @@ static int plan_row_scalar_integer_arithmetic_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_cast_as_integer = cast_as_integer;
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;

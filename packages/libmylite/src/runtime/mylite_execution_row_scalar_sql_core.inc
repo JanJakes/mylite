@@ -410,8 +410,7 @@ static int append_row_scalar_expression_sql(
             next_parameter
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION: {
-        const char *sqlite_name =
-            mylite_sys_function_sqlite_name(expression->sys_function_kind);
+        const char *sqlite_name = mylite_sys_function_sqlite_name(expression->sys_function_kind);
 
         if (sqlite_name == NULL) {
             return MYLITE_ERROR;
@@ -644,7 +643,7 @@ static int append_row_scalar_column_sql(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, expression->column->name);
     }
     if (rc == MYLITE_OK && expression->column_cast_as_integer) {
         rc = mylite_dynamic_string_append(string, " AS INTEGER)");
@@ -742,8 +741,10 @@ static int append_row_scalar_json_aggregate_window_expression_sql(
     if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG &&
         expression->argument_count == 1U) {
         function_name = "_mylite_json_arrayagg";
-    } else if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG &&
-               expression->argument_count == 2U) {
+    } else if (
+        expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG &&
+        expression->argument_count == 2U
+    ) {
         function_name = "_mylite_json_objectagg";
     } else {
         return MYLITE_ERROR;
@@ -835,7 +836,7 @@ static int append_row_scalar_window_over_clause_sql(
     if (rc == MYLITE_OK && expression->window_has_partition) {
         rc = append_descriptor_value_sql_for_source(
             string,
-            &expression->window_partition_column,
+            expression->window_partition_column,
             0U,
             false
         );
@@ -849,7 +850,7 @@ static int append_row_scalar_window_over_clause_sql(
     if (rc == MYLITE_OK && expression->window_has_order) {
         rc = append_descriptor_value_sql_for_source(
             string,
-            &expression->window_order_column,
+            expression->window_order_column,
             0U,
             false
         );
@@ -1950,7 +1951,7 @@ static int append_row_scalar_integer_arithmetic_column_sql(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, expression->column->name);
     }
     return rc;
 }

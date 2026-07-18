@@ -256,9 +256,15 @@ complete.
   to a predicate-owned, identity-deduplicated descriptor set instead of
   embedding two descriptors in every node; a compile-time bound keeps nodes at
   512 bytes or less. A balanced 2,048-leaf OR scenario fell from 75.7 ms to
-  10.2 ms median in controlled Release builds (7.4x). The descriptor
-  representation itself remains open for expression, ordering, and aggregate
-  plan fields.
+  10.2 ms median in controlled Release builds (7.4x). Row-scalar expressions
+  now allocate descriptors only for the zero to three column references they
+  actually use and release them through the existing iterative teardown. The
+  expression structure fell from 47,488 bytes to 640 bytes (98.7%), and a
+  controlled 128-expression projection fell from 9.291 ms to 1.764 ms median
+  (5.3x). The nested `planned_column_aggregate` consequently fell from 183,104
+  bytes to 42,560 bytes. Compile-time bounds keep expression state below 1 KiB.
+  The descriptor representation itself remains open for ordering and remaining
+  aggregate/group plan fields.
 - [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
   Column and deep key-metadata payloads now have independent 8 MiB limits in
   addition to their 64-entry caps. Insertion evicts only unpinned LRU entries;

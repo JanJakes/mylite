@@ -12,8 +12,9 @@ static int plan_row_scalar_string_trim_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_TRIM_FUNCTION_NONE
-                                       : mylite_execution_string_trim_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_TRIM_FUNCTION_NONE
+                        : mylite_execution_string_trim_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if (function_kind == PLANNED_STRING_TRIM_FUNCTION_NONE ||
         (argument_count != 1U && argument_count != 2U)) {
@@ -199,7 +200,9 @@ static int plan_row_scalar_string_trim_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -253,8 +256,9 @@ static int plan_row_scalar_string_slice_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_SLICE_FUNCTION_NONE
-                                       : mylite_execution_string_slice_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_SLICE_FUNCTION_NONE
+                        : mylite_execution_string_slice_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if (function_kind == PLANNED_STRING_SLICE_FUNCTION_NONE) {
         set_unsupported_error(database, "string slice functions support exactly two arguments");
@@ -504,7 +508,9 @@ static int plan_row_scalar_string_slice_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;
@@ -557,8 +563,9 @@ static int plan_row_scalar_string_padding_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    function_kind = expression == NULL ? PLANNED_STRING_PADDING_FUNCTION_NONE
-                                       : mylite_execution_string_padding_function_kind(expression->kind);
+    function_kind = expression == NULL
+                        ? PLANNED_STRING_PADDING_FUNCTION_NONE
+                        : mylite_execution_string_padding_function_kind(expression->kind);
     argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
     if ((function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
          function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) &&
@@ -776,7 +783,9 @@ static int plan_row_scalar_string_padding_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

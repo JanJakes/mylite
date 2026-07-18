@@ -716,8 +716,11 @@ static bool map_json_extract_row_scalar_step_error(
 }
 
 static bool map_json_schema_row_scalar_step_error(struct mylite_db *database, const char *message) {
-    if (strncmp(message, "Invalid JSON text in argument ", strlen("Invalid JSON text in argument ")) ==
-        0) {
+    if (strncmp(
+            message,
+            "Invalid JSON text in argument ",
+            strlen("Invalid JSON text in argument ")
+        ) == 0) {
         mylite_diagnostics_set_error(
             mylite_connection_diagnostics(database),
             mysql_error_invalid_json_text_in_function,
@@ -752,10 +755,8 @@ static bool map_json_schema_row_scalar_step_error(struct mylite_db *database, co
         );
         return true;
     }
-    if (strcmp(
-            message,
-            "This version of MySQL doesn't yet support 'references in JSON Schema'"
-        ) == 0) {
+    if (strcmp(message, "This version of MySQL doesn't yet support 'references in JSON Schema'") ==
+        0) {
         mylite_diagnostics_set_error(
             mylite_connection_diagnostics(database),
             mysql_error_not_supported_yet,
@@ -1213,13 +1214,13 @@ static int make_row_scalar_column_result_column_descriptor(
     out_descriptor->table_name = table_name;
     out_descriptor->origin_schema_name = plan->source.schema.name;
     out_descriptor->origin_table_name = plan->table.name;
-    out_descriptor->origin_column_name = item->expression.column.name;
-    out_descriptor->nullable = item->expression.column.is_nullable;
+    out_descriptor->origin_column_name = item->expression.column->name;
+    out_descriptor->nullable = item->expression.column->is_nullable;
 
     return populate_select_result_column_descriptor(
         database,
         &plan->table,
-        &item->expression.column,
+        item->expression.column,
         metadata_context,
         out_descriptor
     );
@@ -1966,7 +1967,8 @@ static int row_scalar_integer_width_enter_frame(
     return row_scalar_integer_width_push_result(stack, (struct row_scalar_integer_width_result){0});
 }
 
-static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(
+    struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result operand = {0};
     int rc = row_scalar_integer_width_pop_result(stack, &operand);
@@ -1990,7 +1992,8 @@ static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer
     );
 }
 
-static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(
+    struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result left = {0};
     struct row_scalar_integer_width_result right = {0};
@@ -2310,10 +2313,9 @@ static int populate_row_scalar_expression_result_column_descriptor(
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;
         descriptor->collation_id = mysql_collation_binary_id;
-        descriptor->display_length =
-            expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES
-                ? mysql_random_bytes_display_length
-                : mysql_json_document_display_length;
+        descriptor->display_length = expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES
+                                         ? mysql_random_bytes_display_length
+                                         : mysql_json_document_display_length;
         descriptor->decimals = mysql_approximate_decimals;
         descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;
@@ -2880,7 +2882,7 @@ static int populate_window_value_function_result_column_descriptor(
     if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return populate_window_value_column_result_column_descriptor(
             database,
-            &argument->column,
+            argument->column,
             descriptor
         );
     }
@@ -3120,7 +3122,7 @@ static int populate_row_scalar_compress_result_column_descriptor(
         } else if (expression->arguments[0].kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
             rc = populate_window_value_column_result_column_descriptor(
                 database,
-                &expression->arguments[0].column,
+                expression->arguments[0].column,
                 &argument_descriptor
             );
         } else {
@@ -3229,7 +3231,7 @@ static int copy_row_scalar_result_column_name(
         return copy_scalar_projection_column_name(database, item->source_expression, out_name);
     }
     if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-        return duplicate_text(database, item->expression.column.name, out_name);
+        return duplicate_text(database, item->expression.column->name, out_name);
     }
 
     return copy_scalar_projection_column_name(database, item->source_expression, out_name);

@@ -433,7 +433,7 @@ static int validate_grouped_having_row_scalar_column(
             plan,
             table_columns,
             table_column_count,
-            &expression->column,
+            expression->column,
             source_index,
             &dependency_rc
         )) {
@@ -448,7 +448,7 @@ static int validate_grouped_having_row_scalar_column(
         1U,
         "HAVING clause",
         planned_grouped_aggregate_source_resolution(plan, source_index),
-        &expression->column
+        expression->column
     );
     return MYLITE_ERROR;
 }
@@ -916,8 +916,7 @@ static int convert_grouped_having_in_values(
     }
     value_node = value_list->first_child;
 
-    for (size_t value_index = 0U;
-         rc == MYLITE_OK && value_index < value_count;
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count;
          ++value_index, value_node = value_node->next_sibling) {
         if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
@@ -1003,10 +1002,7 @@ static int convert_grouped_having_string_value(
 
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(
-            database,
-            "HAVING string comparisons support only string literals"
-        );
+        set_unsupported_error(database, "HAVING string comparisons support only string literals");
         return MYLITE_ERROR;
     }
 
@@ -1058,8 +1054,12 @@ static int convert_grouped_having_bitwise_value(
         return MYLITE_ERROR;
     }
 
-    written = snprintf(plan->having.uint64_order_key, sizeof(plan->having.uint64_order_key),
-                       "%020" PRIu64, magnitude);
+    written = snprintf(
+        plan->having.uint64_order_key,
+        sizeof(plan->having.uint64_order_key),
+        "%020" PRIu64,
+        magnitude
+    );
     if (written < 0 || (size_t)written >= sizeof(plan->having.uint64_order_key)) {
         set_runtime_error(database, "failed to format bitwise HAVING comparison key");
         return MYLITE_ERROR;

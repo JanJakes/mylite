@@ -94,8 +94,7 @@ static int plan_row_scalar_unix_timestamp_sysdate_expression(
     (void)precision;
     *out_expression = (struct planned_row_scalar_expression){
         .kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE,
-        .value =
-            (struct planned_value){.is_null = false, .integer = current_wall_clock_epoch()},
+        .value = (struct planned_value){.is_null = false, .integer = current_wall_clock_epoch()},
     };
     return MYLITE_OK;
 }
@@ -104,9 +103,8 @@ static bool unix_timestamp_argument_is_sysdate_function(
     const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
-    return expression != NULL &&
-           (expression->kind == MYLITE_SQL_AST_SYSDATE_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR);
+    return expression != NULL && (expression->kind == MYLITE_SQL_AST_SYSDATE_FUNCTION ||
+                                  expression->kind == MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR);
 }
 
 static int plan_row_scalar_unix_timestamp_argument(
@@ -237,7 +235,9 @@ static int plan_row_scalar_unix_timestamp_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -455,7 +455,9 @@ static int plan_row_scalar_timestamp_temporal_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -597,7 +599,9 @@ static int plan_row_scalar_timestamp_time_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

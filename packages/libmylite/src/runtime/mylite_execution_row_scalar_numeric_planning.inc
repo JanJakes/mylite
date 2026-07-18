@@ -141,7 +141,9 @@ static int plan_row_scalar_numeric_function_column_argument(
     }
 
     out_argument->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_argument->column = column;
+    if (retain_planned_row_scalar_column(database, &out_argument->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_argument->column_has_source_index = select_source_context_is_joined(source_context);
     out_argument->column_source_index = source_index;
     return MYLITE_OK;
@@ -163,7 +165,7 @@ static int validate_row_scalar_numeric_function_argument(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        if (row_scalar_numeric_function_column_descriptor_is_supported(&argument->column)) {
+        if (row_scalar_numeric_function_column_descriptor_is_supported(argument->column)) {
             return MYLITE_OK;
         }
         break;
@@ -378,7 +380,8 @@ static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function
     return PLANNED_ROW_SCALAR_NUMERIC_NONE;
 }
 
-static const char *row_scalar_numeric_function_display_name(enum mylite_sql_ast_node_kind ast_kind
+static const char *row_scalar_numeric_function_display_name(
+    enum mylite_sql_ast_node_kind ast_kind
 ) {
     switch (ast_kind) {
     case MYLITE_SQL_AST_ABS_FUNCTION:
@@ -743,8 +746,10 @@ static int plan_row_scalar_numeric_extra_expression(
                 &out_expression->arguments[0]
             );
         }
-    } else if (function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
-               function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE) {
+    } else if (
+        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
+        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE
+    ) {
         if (argument_count != 2U) {
             set_native_function_parameter_count_error(database, function_name);
             rc = MYLITE_ERROR;
@@ -954,7 +959,9 @@ static int plan_row_scalar_format_truncate_column_argument(
     }
 
     out_argument->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_argument->column = column;
+    if (retain_planned_row_scalar_column(database, &out_argument->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_argument->column_has_source_index = select_source_context_is_joined(source_context);
     out_argument->column_source_index = source_index;
     (void)function_name;
@@ -1014,9 +1021,9 @@ static void plan_row_scalar_numeric_extra_result_shape(
         out_expression->argument_count != 2U || out_expression->arguments == NULL ||
         out_expression->arguments[0].kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
         out_expression->arguments[1].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
-        !column_descriptor_is_decimal(&out_expression->arguments[0].column) ||
+        !column_descriptor_is_decimal(out_expression->arguments[0].column) ||
         decimal_type_info_for_logical_type(
-            out_expression->arguments[0].column.logical_type,
+            out_expression->arguments[0].column->logical_type,
             &info
         ) != MYLITE_OK) {
         return;

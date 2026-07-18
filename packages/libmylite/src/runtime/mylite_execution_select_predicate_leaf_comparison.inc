@@ -2970,7 +2970,7 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
         return expression->value.is_text;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return column_descriptor_uses_string_key_collation(&expression->column, true);
+        return column_descriptor_uses_string_key_collation(expression->column, true);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:

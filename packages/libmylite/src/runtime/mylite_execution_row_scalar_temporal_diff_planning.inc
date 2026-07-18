@@ -187,7 +187,9 @@ static int plan_row_scalar_datediff_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -423,7 +425,9 @@ static int plan_row_scalar_timediff_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -470,7 +474,8 @@ static int plan_row_scalar_addtime_subtime_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || !mylite_execution_is_time_arithmetic_function_kind(expression->kind) ||
+    if (expression == NULL ||
+        !mylite_execution_is_time_arithmetic_function_kind(expression->kind) ||
         mylite_sql_ast_node_child_count(expression) != 2U) {
         set_native_function_parameter_count_error(database, function_name);
         return MYLITE_ERROR;
@@ -638,9 +643,10 @@ static int plan_row_scalar_addtime_subtime_column(
             );
             return MYLITE_ERROR;
         }
-    } else if (!column_descriptor_is_time(&column) && !column_descriptor_is_datetime(&column) &&
-               !column_descriptor_is_timestamp(&column) &&
-               !column_descriptor_is_string_family(&column)) {
+    } else if (
+        !column_descriptor_is_time(&column) && !column_descriptor_is_datetime(&column) &&
+        !column_descriptor_is_timestamp(&column) && !column_descriptor_is_string_family(&column)
+    ) {
         set_unsupported_error(
             database,
             "ADDTIME()/SUBTIME() supports only TIME, DATETIME, TIMESTAMP, and string descriptor "
@@ -650,7 +656,9 @@ static int plan_row_scalar_addtime_subtime_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -932,7 +940,9 @@ static int plan_row_scalar_timestampdiff_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 

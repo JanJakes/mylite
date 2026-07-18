@@ -297,7 +297,8 @@ static int information_schema_exists_subquery_matches(
         rc = information_schema_matching_row_indexes(database, statement, &query, &rows, &indexes);
     }
     if (rc == MYLITE_OK) {
-        *out_matches = indexes.count != 0U && !(query.limit.has_limit && query.limit.row_count == 0);
+        *out_matches =
+            indexes.count != 0U && !(query.limit.has_limit && query.limit.row_count == 0);
     }
 
     information_schema_row_index_set_deinit(&indexes);
@@ -432,7 +433,9 @@ static int append_row_scalar_column_select_item(
         return MYLITE_MISUSE;
     }
     item.expression.kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    item.expression.column = *column;
+    if (retain_planned_row_scalar_column(database, &item.expression.column, column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     item.expression.column_has_source_index = plan->source_count != 0U;
     item.expression.column_source_index = source_index;
 

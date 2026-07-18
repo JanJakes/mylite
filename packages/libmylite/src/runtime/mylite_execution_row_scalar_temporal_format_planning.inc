@@ -188,7 +188,9 @@ static int plan_row_scalar_date_format_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -461,7 +463,9 @@ static int plan_row_scalar_time_format_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -821,7 +825,9 @@ static int plan_row_scalar_str_to_date_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -934,8 +940,9 @@ static int plan_row_scalar_date_format_numeric_comparison_expression(
         table_column_count,
         &out_expression->arguments[0]
     );
-    if (rc == MYLITE_OK &&
-        !planned_date_format_numeric_comparison_format_is_supported(&out_expression->arguments[0])) {
+    if (rc == MYLITE_OK && !planned_date_format_numeric_comparison_format_is_supported(
+                               &out_expression->arguments[0]
+                           )) {
         set_unsupported_error(
             database,
             "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, '%H.%i' or "

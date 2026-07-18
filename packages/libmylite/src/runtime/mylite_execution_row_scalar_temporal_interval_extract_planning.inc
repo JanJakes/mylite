@@ -17,12 +17,17 @@ static int plan_row_scalar_date_interval_second_expression(
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || !mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
+    if (expression == NULL ||
+        !mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
         set_native_function_parameter_count_error(database, function_name);
         return MYLITE_ERROR;
     }
     function_name = mylite_execution_date_interval_second_function_name(expression->kind);
-    rc = mylite_execution_validate_date_interval_second_function_shape(database, expression, function_name);
+    rc = mylite_execution_validate_date_interval_second_function_shape(
+        database,
+        expression,
+        function_name
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -219,7 +224,9 @@ static int plan_row_scalar_date_interval_second_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -328,7 +335,12 @@ static int set_row_scalar_date_interval_second_unsupported_error(
 ) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
 
-    if (!mylite_execution_date_interval_second_message(message, sizeof(message), function_name, suffix)) {
+    if (!mylite_execution_date_interval_second_message(
+            message,
+            sizeof(message),
+            function_name,
+            suffix
+        )) {
         set_runtime_error(database, "failed to format temporal function diagnostic");
         return MYLITE_ERROR;
     }
@@ -624,7 +636,9 @@ static int plan_row_scalar_temporal_extract_column(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->column, &column) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
     return MYLITE_OK;

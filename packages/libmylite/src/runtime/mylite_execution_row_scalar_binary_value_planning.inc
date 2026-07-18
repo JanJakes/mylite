@@ -154,7 +154,10 @@ static int plan_row_scalar_hex_column(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_HEX;
     out_expression->argument_count = 1U;
     out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->arguments[0].column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->arguments[0].column, &column) !=
+        MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -301,7 +304,10 @@ static int plan_row_scalar_unhex_column(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UNHEX;
     out_expression->argument_count = 1U;
     out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->arguments[0].column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->arguments[0].column, &column) !=
+        MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -461,7 +467,10 @@ static int plan_row_scalar_base64_column(
     out_expression->kind = expression_kind;
     out_expression->argument_count = 1U;
     out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->arguments[0].column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->arguments[0].column, &column) !=
+        MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     return MYLITE_OK;
 }
 
@@ -512,8 +521,7 @@ static int plan_row_scalar_registered_one_argument_expression(
 ) {
     const struct mylite_sql_ast_node *argument = NULL;
     const char *function_name = NULL;
-    enum planned_row_scalar_expression_kind expression_kind =
-        PLANNED_ROW_SCALAR_EXPRESSION_NONE;
+    enum planned_row_scalar_expression_kind expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_NONE;
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
@@ -750,7 +758,10 @@ static int plan_row_scalar_digest_column_expression(
     out_expression->digest_kind =
         row_scalar_digest_kind_from_ast(arguments->function_expression->kind);
     out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->arguments[0].column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->arguments[0].column, &column) !=
+        MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     out_expression->arguments[0].column_has_source_index =
         select_source_context_is_joined(source_context);
     out_expression->arguments[0].column_source_index = source_index;
@@ -881,12 +892,7 @@ static bool sha2_length_literal_algorithm(
         if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
             return false;
         }
-        return sha2_length_value_from_magnitude(
-            magnitude,
-            is_negative,
-            out_algorithm,
-            out_value
-        );
+        return sha2_length_value_from_magnitude(magnitude, is_negative, out_algorithm, out_value);
     default:
         break;
     }
@@ -1370,7 +1376,10 @@ static int plan_row_scalar_uuid_column_expression(
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID;
     }
     out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->arguments[0].column = column;
+    if (retain_planned_row_scalar_column(database, &out_expression->arguments[0].column, &column) !=
+        MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     if (request->swap_argument != NULL) {
         out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         out_expression->arguments[1].value.integer = 0;

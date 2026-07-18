@@ -36,6 +36,7 @@ enum runtime_stress_kind {
     runtime_stress_cold_open,
     runtime_stress_large_in,
     runtime_stress_large_or,
+    runtime_stress_scalar_projection,
     runtime_stress_wide_projection,
     runtime_stress_cache_saturation,
     runtime_stress_concurrent_read_write,
@@ -75,6 +76,12 @@ static int run_large_or_scenario(
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
+static int run_scalar_projection_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
 static int run_wide_projection_scenario(
     const struct runtime_stress_scenario *scenario,
     size_t iterations,
@@ -104,6 +111,7 @@ static int execute_stress_iterations(
 );
 static char *build_large_in_query(size_t value_count, size_t *out_length);
 static char *build_large_or_query(size_t term_count, size_t *out_length);
+static char *build_scalar_projection_query(size_t expression_count, size_t *out_length);
 static bool append_balanced_or_query(
     char *sql,
     size_t capacity,
@@ -139,6 +147,7 @@ static const struct runtime_stress_scenario runtime_stress_scenarios[] = {
     {"runtime.large_in_256", runtime_stress_large_in, 256U},
     {"runtime.large_in_4096", runtime_stress_large_in, 4096U},
     {"runtime.large_or_2048", runtime_stress_large_or, 2048U},
+    {"runtime.scalar_projection_128", runtime_stress_scalar_projection, 128U},
     {"runtime.wide_projection_16", runtime_stress_wide_projection, 16U},
     {"runtime.wide_projection_128", runtime_stress_wide_projection, 128U},
     {"runtime.catalog_cache_saturation", runtime_stress_cache_saturation, cache_table_count},
@@ -185,6 +194,13 @@ int mylite_benchmark_run_runtime_stress_scenario(
         return run_large_in_scenario(scenario, iterations, warmup_iterations, out_measurement);
     case runtime_stress_large_or:
         return run_large_or_scenario(scenario, iterations, warmup_iterations, out_measurement);
+    case runtime_stress_scalar_projection:
+        return run_scalar_projection_scenario(
+            scenario,
+            iterations,
+            warmup_iterations,
+            out_measurement
+        );
     case runtime_stress_wide_projection:
         return run_wide_projection_scenario(
             scenario,
@@ -366,6 +382,45 @@ static int run_wide_projection_scenario(
 cleanup:
     free(select_sql);
     free(create_sql);
+    mylite_close(database);
+    remove_stress_files(path);
+    return rc;
+}
+
+static int run_scalar_projection_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+) {
+    char path[stress_path_capacity];
+    char *query = NULL;
+    size_t query_length = 0U;
+    mylite_db *database = NULL;
+    uint64_t started = 0U;
+    int rc = 1;
+
+    if (make_stress_path(path, sizeof(path), scenario->name) != 0) {
+        return 1;
+    }
+    remove_stress_files(path);
+    query = build_scalar_projection_query(scenario->scale, &query_length);
+    if (query == NULL || prepare_stress_database(path, &database) != 0 ||
+        execute_stress_sql(
+            database,
+            "CREATE TABLE scalar_values (name VARCHAR(64))",
+            sizeof("CREATE TABLE scalar_values (name VARCHAR(64))") - 1U
+        ) != 0 ||
+        execute_stress_iterations(database, query, query_length, warmup_iterations, NULL) != 0) {
+        goto cleanup;
+    }
+
+    started = monotonic_now_ns();
+    rc = execute_stress_iterations(database, query, query_length, iterations, out_measurement);
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+
+cleanup:
+    free(query);
     mylite_close(database);
     remove_stress_files(path);
     return rc;
@@ -728,6 +783,36 @@ static bool append_balanced_or_query(
                term_count - left_count
            ) &&
            append_generated_sql(sql, capacity, length, ")");
+}
+
+static char *build_scalar_projection_query(size_t expression_count, size_t *out_length) {
+    size_t capacity = 0U;
+    size_t length = 0U;
+    char *sql = allocate_generated_sql(expression_count, &capacity);
+
+    if (sql == NULL || !append_generated_sql(sql, capacity, &length, "SELECT ")) {
+        free(sql);
+        return NULL;
+    }
+    for (size_t index = 0U; index < expression_count; ++index) {
+        if ((index != 0U && !append_generated_sql(sql, capacity, &length, ",")) ||
+            !append_generated_indexed_sql(
+                sql,
+                capacity,
+                &length,
+                "CONCAT(name,'x') AS value_%zu",
+                index
+            )) {
+            free(sql);
+            return NULL;
+        }
+    }
+    if (!append_generated_sql(sql, capacity, &length, " FROM scalar_values")) {
+        free(sql);
+        return NULL;
+    }
+    *out_length = length;
+    return sql;
 }
 
 static char *build_wide_table_statement(size_t column_count, size_t *out_length) {

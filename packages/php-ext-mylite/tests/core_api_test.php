@@ -138,3 +138,13 @@ expect_true($db->exec('USE app') >= 0, 'file USE failed');
 expect_true($db->exec('CREATE TABLE files (id INT PRIMARY KEY)') >= 0, 'file CREATE TABLE failed');
 expect_true($db->close(), 'file close failed');
 expect_true(file_exists($path), 'file database was not created');
+
+$db = mylite_open(':memory:');
+$releasedStatement = $db->prepare('SELECT 1');
+unset($releasedStatement);
+gc_collect_cycles();
+expect_true(
+    $db->query('SELECT 2 AS value')->fetchAssociative() === ['value' => '2'],
+    'connection failed after statement-first destruction'
+);
+expect_true($db->close(), 'statement-first connection close failed');

@@ -86,13 +86,29 @@ enum mylite_transaction_control_statement {
 
 MYLITE_API const char *mylite_version(void);
 
+/*
+ * A database handle and all statements created from it are single-threaded.
+ * Different database handles may be used concurrently. Callbacks into the same
+ * handle are not reentrant.
+ *
+ * On success, open stores a caller-owned handle in out_db. The path and SQL
+ * inputs are copied when they must outlive the call.
+ */
 MYLITE_API int mylite_open(const char *path, mylite_db **out_db);
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
-/* Live statements are detached and remain valid only for mylite_stmt_finalize(). */
+/*
+ * Close always consumes the database handle. Live statements are detached;
+ * every statement operation remains memory-safe, but only finalize is valid.
+ */
 MYLITE_API void mylite_close(mylite_db *database);
-/* On failure, the handle remains owned by the caller and may be closed again. */
+/*
+ * Checked close consumes the handle on success. On failure, the database
+ * remains caller-owned and may be closed again, but live statements have been
+ * detached and are valid only for finalize.
+ */
 MYLITE_API int mylite_close_checked(mylite_db *database);
 
+/* On success, out_result is caller-owned and must be released with result_free. */
 MYLITE_API int mylite_execute(
     mylite_db *database,
     const char *sql,
@@ -111,7 +127,12 @@ MYLITE_API int mylite_prepare(
     size_t sql_size,
     mylite_stmt **out_stmt
 );
-/* Buffered statements release the connection before rows are consumed. */
+/*
+ * Prepared statements are caller-owned until finalize. They retain their own
+ * SQL text and are registered with the database until finalized or detached by
+ * database close. Buffered statements release the connection before rows are
+ * consumed.
+ */
 MYLITE_API int mylite_prepare_buffered(
     mylite_db *database,
     const char *sql,
@@ -166,12 +187,19 @@ MYLITE_API uint32_t mylite_stmt_column_collation_id(const mylite_stmt *stmt, siz
 MYLITE_API uint64_t mylite_stmt_column_display_length(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API uint16_t mylite_stmt_column_decimals(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API int mylite_stmt_column_nullable(const mylite_stmt *stmt, size_t column_index);
-/* Value pointers remain valid until the next step, reset, or finalize. */
+/*
+ * Column metadata pointers are borrowed from the statement and remain valid
+ * until reset, finalize, or database close. Value access is valid only after
+ * step returns MYLITE_ROW. Value pointers remain valid until the next step,
+ * reset, finalize, or database close. SQL NULL is reported by value_is_null;
+ * empty text/blob is non-NULL, has size zero, and has a non-NULL bytes pointer.
+ */
 MYLITE_API int mylite_stmt_value_is_null(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API const void *mylite_stmt_value_bytes(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API size_t mylite_stmt_value_size(const mylite_stmt *stmt, size_t column_index);
 
+/* Results are independent of the database and remain valid until result_free. */
 MYLITE_API void mylite_result_free(mylite_result *result);
 MYLITE_API size_t mylite_result_column_count(const mylite_result *result);
 MYLITE_API const char *mylite_result_column_name(const mylite_result *result, size_t column_index);
@@ -214,7 +242,11 @@ MYLITE_API const char *mylite_result_value_text(
     size_t row_index,
     size_t column_index
 );
-/* Result value pointers remain valid until mylite_result_free(). */
+/*
+ * Result metadata and value pointers are borrowed from the result and remain
+ * valid until result_free. SQL NULL is reported by value_is_null; empty
+ * text/blob is non-NULL, has size zero, and has a non-NULL bytes pointer.
+ */
 MYLITE_API int mylite_result_value_is_null(
     const mylite_result *result,
     size_t row_index,
@@ -233,6 +265,7 @@ MYLITE_API uint64_t mylite_result_insert_id(const mylite_result *result);
 MYLITE_API size_t mylite_result_warning_count(const mylite_result *result);
 
 MYLITE_API int mylite_errcode(const mylite_db *database);
+/* SQLSTATE and message pointers remain valid until the next database API call. */
 MYLITE_API const char *mylite_sqlstate(const mylite_db *database);
 MYLITE_API const char *mylite_errmsg(const mylite_db *database);
 

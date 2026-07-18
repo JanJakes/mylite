@@ -114,3 +114,19 @@ expect_true($reset->close(), 'close statement');
 expect_false($reset->execute([3]), 'execute closed statement');
 
 expect_false($mysqli->prepare('SELECT * FROM missing_table'), 'prepare missing table');
+
+$closeFirstLink = open_mylite_mysqli();
+$closeFirstStatement = $closeFirstLink->prepare('SELECT ? AS value');
+expect_true($closeFirstLink->close(), 'close link before statement');
+expect_false($closeFirstStatement->execute([1]), 'execute statement after link close');
+expect_true($closeFirstStatement->close(), 'close statement after link close');
+
+$statementFirstLink = open_mylite_mysqli();
+$statementFirst = $statementFirstLink->prepare('SELECT 1 AS value');
+expect_true($statementFirst->close(), 'close statement before link');
+expect_same(
+    ['value' => '2'],
+    $statementFirstLink->query('SELECT 2 AS value')->fetch_assoc(),
+    'query after statement-first close'
+);
+expect_true($statementFirstLink->close(), 'close link after statement');

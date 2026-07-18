@@ -142,3 +142,34 @@ $errorInfo = $pdo->errorInfo();
 expect_true($errorInfo[0] !== '00000', 'PDO errorInfo SQLSTATE mismatch');
 expect_true($errorInfo[1] > 0, 'PDO errorInfo native code mismatch');
 expect_true($errorInfo[2] !== '', 'PDO errorInfo message mismatch');
+
+$statementFirstPdo = new PDO(
+    'mylite:' . mylite_pdo_test_path('statement-first'),
+    null,
+    null,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+);
+$releasedStatement = $statementFirstPdo->prepare('SELECT 1');
+unset($releasedStatement);
+gc_collect_cycles();
+expect_true(
+    $statementFirstPdo->query('SELECT 2')->fetchColumn() === '2',
+    'PDO connection failed after statement-first destruction'
+);
+unset($statementFirstPdo);
+
+$dbhReferencePdo = new PDO(
+    'mylite:' . mylite_pdo_test_path('dbh-reference'),
+    null,
+    null,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+);
+$dbhReferenceStatement = $dbhReferencePdo->prepare('SELECT ?');
+unset($dbhReferencePdo);
+gc_collect_cycles();
+expect_true(
+    $dbhReferenceStatement->execute([3]) && $dbhReferenceStatement->fetchColumn() === '3',
+    'PDO statement did not retain its database handle'
+);
+unset($dbhReferenceStatement);
+gc_collect_cycles();

@@ -72,10 +72,15 @@ complete.
 - [x] Register live statements and cursors with their owning connection.
 - [x] Define a fallible close contract or connection-core lifetime model and
   expose it consistently through the public ABI.
-- [ ] Make step, reset, finalize, metadata access, and adapter destruction safe
+- [x] Make step, reset, finalize, metadata access, and adapter destruction safe
   in every close order.
-- [ ] Distinguish SQL NULL from empty text/blob in the streaming value API.
-- [ ] Document database, statement, cursor, result, and returned-text lifetime.
+- [x] Distinguish SQL NULL from empty text/blob in the streaming value API.
+- [x] Document database, statement, cursor, result, and returned-text lifetime.
+  Live statements are registered and detached before connection destruction;
+  detached operations return documented sentinels or `MYLITE_MISUSE`, and
+  finalization remains valid. Core PHP and mysqli cover connection-first and
+  statement-first teardown, while PDO verifies its statement-held database
+  reference. The complete native close-order matrix passes under ASan+UBSan.
 
 ### Statement completion and diagnostics
 

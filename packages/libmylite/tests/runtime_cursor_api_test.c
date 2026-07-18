@@ -110,18 +110,65 @@ static int test_cursor_connection_close_order(void) {
     failures += expect_int(
         mylite_prepare(
             database,
-            "SELECT id FROM items ORDER BY id",
-            strlen("SELECT id FROM items ORDER BY id"),
+            "SELECT id FROM items WHERE id >= ? ORDER BY id",
+            strlen("SELECT id FROM items WHERE id >= ? ORDER BY id"),
             &stmt
         ),
         MYLITE_OK,
         "prepare streaming close-order cursor"
     );
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 0U, 1), MYLITE_OK, "bind close-order cursor");
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step before connection close");
     mylite_close(database);
     database = NULL;
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_MISUSE, "step detached cursor");
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_MISUSE, "reset detached cursor");
+    failures += expect_int(mylite_stmt_bind_null(stmt, 0U), MYLITE_MISUSE, "bind detached cursor");
+    failures += expect_int(
+        mylite_stmt_clear_bindings(stmt),
+        MYLITE_MISUSE,
+        "clear detached cursor bindings"
+    );
+    failures += expect_size(mylite_stmt_parameter_count(stmt), 0U, "detached parameter count");
+    failures += expect_true(mylite_stmt_affected_rows(stmt) == -1, "detached affected rows");
+    failures += expect_uint64(mylite_stmt_insert_id(stmt), 0U, "detached insert id");
     failures += expect_size(mylite_stmt_column_count(stmt), 0U, "detached cursor metadata");
+    failures += expect_true(mylite_stmt_column_name(stmt, 0U) == NULL, "detached column name");
+    failures +=
+        expect_true(mylite_stmt_column_schema_name(stmt, 0U) == NULL, "detached column schema");
+    failures +=
+        expect_true(mylite_stmt_column_table_name(stmt, 0U) == NULL, "detached column table");
+    failures += expect_true(
+        mylite_stmt_column_origin_schema_name(stmt, 0U) == NULL,
+        "detached column origin schema"
+    );
+    failures += expect_true(
+        mylite_stmt_column_origin_table_name(stmt, 0U) == NULL,
+        "detached column origin table"
+    );
+    failures += expect_true(
+        mylite_stmt_column_origin_name(stmt, 0U) == NULL,
+        "detached column origin name"
+    );
+    failures += expect_int(
+        mylite_stmt_column_type(stmt, 0U),
+        MYLITE_RESULT_COLUMN_TYPE_UNKNOWN,
+        "detached column type"
+    );
+    failures += expect_uint64(mylite_stmt_column_flags(stmt, 0U), 0U, "detached column flags");
+    failures +=
+        expect_uint64(mylite_stmt_column_charset_id(stmt, 0U), 0U, "detached column charset");
+    failures +=
+        expect_uint64(mylite_stmt_column_collation_id(stmt, 0U), 0U, "detached column collation");
+    failures +=
+        expect_uint64(mylite_stmt_column_display_length(stmt, 0U), 0U, "detached column length");
+    failures += expect_int(mylite_stmt_column_decimals(stmt, 0U), 0, "detached decimals");
+    failures += expect_int(mylite_stmt_column_nullable(stmt, 0U), 1, "detached nullable");
+    failures += expect_true(mylite_stmt_value_is_null(stmt, 0U), "detached value null sentinel");
+    failures += expect_true(mylite_stmt_value_text(stmt, 0U) == NULL, "detached value text");
+    failures += expect_true(mylite_stmt_value_bytes(stmt, 0U) == NULL, "detached value bytes");
+    failures += expect_size(mylite_stmt_value_size(stmt, 0U), 0U, "detached value size");
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize detached cursor");
     stmt = NULL;
     remove_related_files(path);

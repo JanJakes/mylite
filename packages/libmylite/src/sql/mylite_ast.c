@@ -52,6 +52,29 @@ void mylite_sql_ast_deinit(struct mylite_sql_ast *ast) {
     ast->first_chunk = NULL;
 }
 
+bool mylite_sql_ast_rebase_source_length(
+    struct mylite_sql_ast *ast,
+    const char *source,
+    size_t source_length,
+    size_t new_source_length
+) {
+    struct mylite_sql_ast_node_chunk *chunk = NULL;
+
+    if (new_source_length < source_length ||
+        !mylite_sql_ast_spans_are_within_source(ast, source, source_length)) {
+        return false;
+    }
+
+    for (chunk = ast->first_chunk; chunk != NULL; chunk = chunk->next) {
+        for (size_t index = 0U; index < chunk->used; ++index) {
+            if (chunk->nodes[index].span.text != NULL) {
+                chunk->nodes[index].span.source_length = new_source_length;
+            }
+        }
+    }
+    return true;
+}
+
 bool mylite_sql_ast_spans_are_within_source(
     const struct mylite_sql_ast *ast,
     const char *source,

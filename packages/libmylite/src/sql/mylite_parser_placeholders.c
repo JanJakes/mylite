@@ -161,7 +161,6 @@ static bool placeholder_scan_row_constructor_comparison_starts_at(
 static enum mylite_sql_parse_status scan_row_constructor_in_predicate_retries_at(
     const struct placeholder_statement_scan *scan,
     size_t row_index,
-    const char *placeholder_text,
     struct placeholder_row_arithmetic_subject_retries *out_retries,
     bool *out_can_retry,
     size_t *out_end_index
@@ -180,7 +179,6 @@ static enum mylite_sql_parse_status append_row_constructor_predicate_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     size_t end_index,
-    const char *placeholder_text,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry
 );

@@ -3191,6 +3191,19 @@ static int test_select_locking_clause(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1 FOR UPDATE",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "table select for update without terminator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("SELECT 1 FROM DUAL FOR SHARE;", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);

@@ -6381,6 +6381,7 @@ select_locking_clause_opt(A) ::= FOR(F) UPDATE(U) select_lock_wait_opt(W). {
             .text = F.text,
             .length = (end_token.offset + end_token.length) - F.offset,
             .offset = F.offset,
+            .source_length = F.source_length,
         },
     };
 }
@@ -6392,6 +6393,7 @@ select_locking_clause_opt(A) ::= FOR(F) SHARE(S) select_lock_wait_opt(W). {
             .text = F.text,
             .length = (end_token.offset + end_token.length) - F.offset,
             .offset = F.offset,
+            .source_length = F.source_length,
         },
     };
 }
@@ -6402,6 +6404,7 @@ select_locking_clause_opt(A) ::= LOCK(L) IN SHARE MODE(M). {
             .text = L.text,
             .length = (M.offset + M.length) - L.offset,
             .offset = L.offset,
+            .source_length = L.source_length,
         },
     };
 }
@@ -8154,6 +8157,9 @@ predicate_in_value(A) ::= SYSTEM_VARIABLE(T). {
 predicate_in_value(A) ::= user_variable(T). {
     A = T;
 }
+predicate_in_value(A) ::= qualified_identifier(V). {
+    A = V;
+}
 predicate_in_value(A) ::= predicate_row_scalar_expression(V). {
     A = V;
 }
@@ -8184,6 +8190,9 @@ predicate_range_value(A) ::= SYSTEM_VARIABLE(T). {
 }
 predicate_range_value(A) ::= user_variable(T). {
     A = T;
+}
+predicate_range_value(A) ::= qualified_identifier(V). {
+    A = V;
 }
 predicate_range_value(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
         COMMA expression(D) RPAREN(R). {

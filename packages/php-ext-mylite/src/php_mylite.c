@@ -5,7 +5,6 @@
 
 #include <php.h>
 #include <Zend/zend_exceptions.h>
-#include <Zend/zend_smart_str.h>
 #include <ext/standard/info.h>
 // clang-format on
 
@@ -33,9 +32,7 @@ typedef struct php_mylite_result {
 
 typedef struct php_mylite_statement {
     zval connection;
-    zend_string *sql;
-    zval *bindings;
-    uint32_t binding_capacity;
+    mylite_stmt *native;
     zval result;
     zend_object std;
 } php_mylite_statement;
@@ -67,6 +64,11 @@ static bool php_mylite_execute_result(
     zval *return_value
 );
 static bool php_mylite_result_from_native(const mylite_result *native, zval *return_value);
+static bool php_mylite_result_from_statement(
+    php_mylite_connection *connection,
+    mylite_stmt *native,
+    zval *return_value
+);
 static void php_mylite_cell_to_zval(
     const mylite_result *native,
     size_t row,
@@ -74,21 +76,21 @@ static void php_mylite_cell_to_zval(
     zval *value
 );
 static void php_mylite_fetch_assoc(php_mylite_result *result, zval *return_value);
-static zend_string *php_mylite_interpolate_statement(php_mylite_statement *statement);
-static zend_string *php_mylite_value_to_sql(zval *value);
-static zend_string *php_mylite_escape_string(const char *value, size_t length);
 static bool php_mylite_bind_statement_value(
     php_mylite_statement *statement,
     zend_ulong index,
     zval *value
 );
 static bool php_mylite_bind_array_values(php_mylite_statement *statement, zval *params);
-static void php_mylite_clear_statement_bindings(php_mylite_statement *statement);
 static void php_mylite_throw_db(mylite_db *db, int status, const char *fallback);
 static void php_mylite_throw_status(int status, const char *fallback);
 static void php_mylite_update_connection_status(
     php_mylite_connection *connection,
     const mylite_result *result
+);
+static void php_mylite_update_connection_statement_status(
+    php_mylite_connection *connection,
+    const mylite_stmt *statement
 );
 static void php_mylite_register_constants(int module_number);
 
@@ -249,6 +251,7 @@ PHP_METHOD(MyLite_Connection, query) {
 }
 
 PHP_METHOD(MyLite_Connection, prepare) {
+    php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(ZEND_THIS);
     char *sql = NULL;
     size_t sql_len = 0U;
 
@@ -256,10 +259,22 @@ PHP_METHOD(MyLite_Connection, prepare) {
     Z_PARAM_STRING(sql, sql_len)
     ZEND_PARSE_PARAMETERS_END();
 
+    mylite_db *db = php_mylite_require_db(connection);
+    if (db == NULL) {
+        RETURN_THROWS();
+    }
+
+    mylite_stmt *native = NULL;
+    const int status = mylite_prepare(db, sql, sql_len, &native);
+    if (status != MYLITE_OK) {
+        php_mylite_throw_db(db, status, "could not prepare MyLite SQL");
+        RETURN_THROWS();
+    }
+
     object_init_ex(return_value, php_mylite_statement_ce);
     php_mylite_statement *statement = Z_MYLITE_STATEMENT_P(return_value);
     ZVAL_OBJ_COPY(&statement->connection, Z_OBJ_P(ZEND_THIS));
-    statement->sql = zend_string_init(sql, sql_len, false);
+    statement->native = native;
 }
 
 PHP_METHOD(MyLite_Connection, changes) {
@@ -329,24 +344,32 @@ PHP_METHOD(MyLite_Statement, execute) {
     Z_PARAM_ARRAY_OR_NULL(params)
     ZEND_PARSE_PARAMETERS_END();
 
+    if (statement->native == NULL) {
+        zend_throw_exception(php_mylite_exception_ce, "MyLite statement is closed", MYLITE_MISUSE);
+        RETURN_THROWS();
+    }
+
+    php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(&statement->connection);
+    int status = mylite_stmt_reset(statement->native);
+    if (status != MYLITE_OK) {
+        php_mylite_throw_db(connection->db, status, "could not reset MyLite statement");
+        RETURN_THROWS();
+    }
     if (params != NULL) {
-        php_mylite_clear_statement_bindings(statement);
+        status = mylite_stmt_clear_bindings(statement->native);
+        if (status != MYLITE_OK) {
+            php_mylite_throw_db(connection->db, status, "could not clear MyLite bindings");
+            RETURN_THROWS();
+        }
         if (!php_mylite_bind_array_values(statement, params)) {
             RETURN_THROWS();
         }
     }
 
-    zend_string *sql = php_mylite_interpolate_statement(statement);
-    if (sql == NULL) {
-        RETURN_THROWS();
-    }
-
-    php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(&statement->connection);
     zval_ptr_dtor(&statement->result);
     ZVAL_UNDEF(&statement->result);
-    bool ok =
-        php_mylite_execute_result(connection, ZSTR_VAL(sql), ZSTR_LEN(sql), &statement->result);
-    zend_string_release(sql);
+    const bool ok =
+        php_mylite_result_from_statement(connection, statement->native, &statement->result);
     RETURN_BOOL(ok);
 }
 
@@ -527,9 +550,7 @@ static zend_object *php_mylite_statement_create(zend_class_entry *class_entry) {
     zend_object_std_init(&statement->std, class_entry);
     object_properties_init(&statement->std, class_entry);
     ZVAL_UNDEF(&statement->connection);
-    statement->sql = NULL;
-    statement->bindings = NULL;
-    statement->binding_capacity = 0U;
+    statement->native = NULL;
     ZVAL_UNDEF(&statement->result);
     statement->std.handlers = &php_mylite_statement_handlers;
     return &statement->std;
@@ -537,16 +558,13 @@ static zend_object *php_mylite_statement_create(zend_class_entry *class_entry) {
 
 static void php_mylite_statement_free(zend_object *object) {
     php_mylite_statement *statement = php_mylite_statement_from_object(object);
+    if (statement->native != NULL) {
+        mylite_stmt_finalize(statement->native);
+        statement->native = NULL;
+    }
     if (!Z_ISUNDEF(statement->connection)) {
         zval_ptr_dtor(&statement->connection);
     }
-    if (statement->sql != NULL) {
-        zend_string_release(statement->sql);
-    }
-    for (uint32_t index = 0U; index < statement->binding_capacity; ++index) {
-        zval_ptr_dtor(&statement->bindings[index]);
-    }
-    efree(statement->bindings);
     if (!Z_ISUNDEF(statement->result)) {
         zval_ptr_dtor(&statement->result);
     }
@@ -643,18 +661,62 @@ static bool php_mylite_result_from_native(const mylite_result *native, zval *ret
     return true;
 }
 
+static bool php_mylite_result_from_statement(
+    php_mylite_connection *connection,
+    mylite_stmt *native,
+    zval *return_value
+) {
+    object_init_ex(return_value, php_mylite_result_ce);
+    php_mylite_result *result = Z_MYLITE_RESULT_P(return_value);
+    int status = MYLITE_OK;
+
+    while ((status = mylite_stmt_step(native)) == MYLITE_ROW) {
+        zval row_value;
+        const size_t column_count = mylite_stmt_column_count(native);
+        array_init(&row_value);
+        for (size_t column = 0U; column < column_count; ++column) {
+            const char *name = mylite_stmt_column_name(native, column);
+            zval value;
+            if (mylite_stmt_value_is_null(native, column)) {
+                ZVAL_NULL(&value);
+            } else {
+                const void *bytes = mylite_stmt_value_bytes(native, column);
+                ZVAL_STRINGL(
+                    &value,
+                    bytes == NULL ? "" : (const char *)bytes,
+                    mylite_stmt_value_size(native, column)
+                );
+            }
+            add_assoc_zval(&row_value, name == NULL ? "" : name, &value);
+        }
+        add_next_index_zval(&result->rows, &row_value);
+    }
+    if (status != MYLITE_DONE) {
+        zval_ptr_dtor(return_value);
+        ZVAL_UNDEF(return_value);
+        php_mylite_throw_db(connection->db, status, "could not execute MyLite statement");
+        return false;
+    }
+    php_mylite_update_connection_statement_status(connection, native);
+    return true;
+}
+
 static void php_mylite_cell_to_zval(
     const mylite_result *native,
     size_t row,
     size_t column,
     zval *value
 ) {
-    const void *bytes = mylite_result_value_bytes(native, row, column);
-    if (bytes == NULL) {
+    if (mylite_result_value_is_null(native, row, column)) {
         ZVAL_NULL(value);
         return;
     }
-    ZVAL_STRINGL(value, (const char *)bytes, mylite_result_value_size(native, row, column));
+    const void *bytes = mylite_result_value_bytes(native, row, column);
+    ZVAL_STRINGL(
+        value,
+        bytes == NULL ? "" : (const char *)bytes,
+        mylite_result_value_size(native, row, column)
+    );
 }
 
 static void php_mylite_fetch_assoc(php_mylite_result *result, zval *return_value) {
@@ -666,129 +728,51 @@ static void php_mylite_fetch_assoc(php_mylite_result *result, zval *return_value
     ZVAL_COPY(return_value, row);
 }
 
-static zend_string *php_mylite_interpolate_statement(php_mylite_statement *statement) {
-    smart_str sql = {0};
-    zend_ulong marker = 1U;
-
-    if (statement->sql == NULL) {
-        zend_throw_exception(php_mylite_exception_ce, "MyLite statement is closed", MYLITE_MISUSE);
-        return NULL;
-    }
-
-    for (size_t index = 0U; index < ZSTR_LEN(statement->sql); ++index) {
-        char ch = ZSTR_VAL(statement->sql)[index];
-        if (ch != '?') {
-            smart_str_appendc(&sql, ch);
-            continue;
-        }
-        if (marker > statement->binding_capacity ||
-            Z_TYPE(statement->bindings[marker - 1U]) == IS_UNDEF) {
-            smart_str_free(&sql);
-            zend_throw_exception(
-                php_mylite_exception_ce,
-                "MyLite statement parameter is not bound",
-                MYLITE_MISUSE
-            );
-            return NULL;
-        }
-        zend_string *value = php_mylite_value_to_sql(&statement->bindings[marker - 1U]);
-        smart_str_append(&sql, value);
-        zend_string_release(value);
-        ++marker;
-    }
-    for (zend_ulong extra = marker; extra <= statement->binding_capacity; ++extra) {
-        if (Z_TYPE(statement->bindings[extra - 1U]) != IS_UNDEF) {
-            smart_str_free(&sql);
-            zend_throw_exception(
-                php_mylite_exception_ce,
-                "MyLite statement parameter count mismatch",
-                MYLITE_MISUSE
-            );
-            return NULL;
-        }
-    }
-    smart_str_0(&sql);
-    return sql.s == NULL ? zend_string_init("", 0, false) : sql.s;
-}
-
-static zend_string *php_mylite_value_to_sql(zval *value) {
-    switch (Z_TYPE_P(value)) {
-    case IS_NULL:
-        return zend_string_init("NULL", strlen("NULL"), false);
-    case IS_FALSE:
-        return zend_string_init("0", 1, false);
-    case IS_TRUE:
-        return zend_string_init("1", 1, false);
-    case IS_LONG:
-        return zend_strpprintf(0, ZEND_LONG_FMT, Z_LVAL_P(value));
-    case IS_DOUBLE:
-        return zend_strpprintf(0, "%.17g", Z_DVAL_P(value));
-    default:
-        break;
-    }
-
-    zend_string *text = zval_get_string(value);
-    zend_string *escaped = php_mylite_escape_string(ZSTR_VAL(text), ZSTR_LEN(text));
-    zend_string *quoted = zend_strpprintf(0, "'%s'", ZSTR_VAL(escaped));
-    zend_string_release(escaped);
-    zend_string_release(text);
-    return quoted;
-}
-
-static zend_string *php_mylite_escape_string(const char *value, size_t length) {
-    smart_str escaped = {0};
-
-    for (size_t index = 0U; index < length; ++index) {
-        switch (value[index]) {
-        case '\0':
-            smart_str_appendl(&escaped, "\\0", 2);
-            break;
-        case '\n':
-            smart_str_appendl(&escaped, "\\n", 2);
-            break;
-        case '\r':
-            smart_str_appendl(&escaped, "\\r", 2);
-            break;
-        case '\\':
-        case '\'':
-        case '"':
-            smart_str_appendc(&escaped, '\\');
-            smart_str_appendc(&escaped, value[index]);
-            break;
-        case '\032':
-            smart_str_appendl(&escaped, "\\Z", 2);
-            break;
-        default:
-            smart_str_appendc(&escaped, value[index]);
-            break;
-        }
-    }
-    smart_str_0(&escaped);
-    return escaped.s == NULL ? zend_string_init("", 0, false) : escaped.s;
-}
-
 static bool php_mylite_bind_statement_value(
     php_mylite_statement *statement,
     zend_ulong index,
     zval *value
 ) {
-    if (index == 0U || index > UINT32_MAX) {
+    if (statement->native == NULL || index == 0U) {
         zend_throw_exception(php_mylite_exception_ce, "invalid parameter index", MYLITE_MISUSE);
         return false;
     }
-    if (index > statement->binding_capacity) {
-        const uint32_t old_capacity = statement->binding_capacity;
-        const uint32_t new_capacity = (uint32_t)index;
-        statement->bindings =
-            safe_erealloc(statement->bindings, new_capacity, sizeof(*statement->bindings), 0);
-        for (uint32_t item = old_capacity; item < new_capacity; ++item) {
-            ZVAL_UNDEF(&statement->bindings[item]);
+    ZVAL_DEREF(value);
+    int status = MYLITE_OK;
+    switch (Z_TYPE_P(value)) {
+    case IS_NULL:
+        status = mylite_stmt_bind_null(statement->native, index - 1U);
+        break;
+    case IS_FALSE:
+    case IS_TRUE:
+        status = mylite_stmt_bind_int64(
+            statement->native,
+            index - 1U,
+            Z_TYPE_P(value) == IS_TRUE ? 1 : 0
+        );
+        break;
+    case IS_LONG:
+        status = mylite_stmt_bind_int64(statement->native, index - 1U, Z_LVAL_P(value));
+        break;
+    case IS_DOUBLE:
+        status = mylite_stmt_bind_double(statement->native, index - 1U, Z_DVAL_P(value));
+        break;
+    default: {
+        zend_string *text = zval_get_string(value);
+        if (UNEXPECTED(EG(exception) != NULL)) {
+            return false;
         }
-        statement->binding_capacity = new_capacity;
+        status =
+            mylite_stmt_bind_text(statement->native, index - 1U, ZSTR_VAL(text), ZSTR_LEN(text));
+        zend_string_release(text);
+        break;
     }
-
-    zval_ptr_dtor(&statement->bindings[index - 1U]);
-    ZVAL_COPY(&statement->bindings[index - 1U], value);
+    }
+    if (status != MYLITE_OK) {
+        php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(&statement->connection);
+        php_mylite_throw_db(connection->db, status, "could not bind MyLite parameter");
+        return false;
+    }
     return true;
 }
 
@@ -805,13 +789,6 @@ static bool php_mylite_bind_array_values(php_mylite_statement *statement, zval *
     ZEND_HASH_FOREACH_END();
 
     return true;
-}
-
-static void php_mylite_clear_statement_bindings(php_mylite_statement *statement) {
-    for (uint32_t index = 0U; index < statement->binding_capacity; ++index) {
-        zval_ptr_dtor(&statement->bindings[index]);
-        ZVAL_UNDEF(&statement->bindings[index]);
-    }
 }
 
 static void php_mylite_throw_db(mylite_db *db, int status, const char *fallback) {
@@ -839,6 +816,16 @@ static void php_mylite_update_connection_status(
     connection->affected_rows = affected_rows < 0 ? 0 : (zend_long)affected_rows;
     zend_string_release(connection->insert_id);
     connection->insert_id = zend_u64_to_str(mylite_result_insert_id(result));
+}
+
+static void php_mylite_update_connection_statement_status(
+    php_mylite_connection *connection,
+    const mylite_stmt *statement
+) {
+    const int64_t affected_rows = mylite_stmt_affected_rows(statement);
+    connection->affected_rows = affected_rows < 0 ? 0 : (zend_long)affected_rows;
+    zend_string_release(connection->insert_id);
+    connection->insert_id = zend_u64_to_str(mylite_stmt_insert_id(statement));
 }
 
 static void php_mylite_register_constants(int module_number) {

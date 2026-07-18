@@ -6,7 +6,7 @@
 - [x] Add typed public binding and reset APIs.
 - [x] Add parameter descriptors to analysis and lowering.
 - [x] Implement generation-safe reprepare and repeated execution.
-- [ ] Migrate the core PHP extension.
+- [x] Migrate the core PHP extension.
 - [ ] Migrate the mysqli replacement.
 - [ ] Migrate the PDO driver.
 - [ ] Add core, PHP, sanitizer, and performance coverage.

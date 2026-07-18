@@ -46,6 +46,13 @@ $result = $db->query('SELECT id, name FROM people ORDER BY id');
 expect_true($result instanceof MyLite\Result, 'query did not return a result');
 expect_true($result->fetchAssociative() === ['id' => '1', 'name' => 'Ada'], 'row mismatch');
 expect_true($result->fetchAssociative() === null, 'result should be exhausted');
+expect_true(
+    $db->query("SELECT NULL AS null_value, '' AS empty_value")->fetchAssociative() === [
+        'null_value' => null,
+        'empty_value' => '',
+    ],
+    'direct result NULL/empty distinction mismatch'
+);
 
 $stmt = $db->prepare('INSERT INTO people VALUES (?, ?)');
 expect_true($stmt instanceof MyLite\Statement, 'prepare did not return a statement');
@@ -57,6 +64,31 @@ $stmt = $db->prepare('SELECT name FROM people WHERE id = ?');
 expect_true($stmt->execute([2]), 'execute select statement');
 expect_true($stmt->fetchAssociative() === ['name' => 'Grace'], 'prepared row mismatch');
 expect_true($stmt->fetchAssociative() === null, 'prepared result should be exhausted');
+expect_true($stmt->execute([1]), 'repeat select statement');
+expect_true($stmt->fetchAssociative() === ['name' => 'Ada'], 'repeated prepared row mismatch');
+
+$stmt = $db->prepare('SELECT ? AS null_value, ? AS empty_value, ? AS binary_value');
+expect_true($stmt->execute([null, '', "a\0b"]), 'execute typed statement');
+expect_true(
+    $stmt->fetchAssociative() === [
+        'null_value' => null,
+        'empty_value' => '',
+        'binary_value' => "a\0b",
+    ],
+    'typed prepared row mismatch'
+);
+
+$hostile = "Grace'); DROP TABLE people; --";
+$stmt = $db->prepare('SELECT ? AS hostile_value');
+expect_true($stmt->execute([$hostile]), 'execute hostile text statement');
+expect_true(
+    $stmt->fetchAssociative() === ['hostile_value' => $hostile],
+    'prepared text was not bound verbatim'
+);
+expect_true(
+    $db->query('SELECT COUNT(*) AS count FROM people')->fetchAssociative() === ['count' => '2'],
+    'bound text changed the database'
+);
 
 $stmt = $db->prepare('SELECT ? AS first, ? AS second');
 expect_true($stmt->execute([1, 2]), 'execute two-parameter statement');
@@ -84,7 +116,16 @@ try {
     expect_true($db->errorMessage() !== '', 'error message should be populated');
 }
 
+try {
+    $db->prepare('SELECT * FROM missing_table');
+    throw new RuntimeException('invalid prepare did not throw');
+} catch (MyLite\Exception $exception) {
+    expect_true($exception->getCode() !== MYLITE_OK, 'prepare exception code should report failure');
+}
+
+$liveStatement = $db->prepare('SELECT 1');
 expect_true($db->close(), 'close failed');
+unset($liveStatement);
 
 $path = mylite_test_path('constructor');
 $db = new MyLite\Connection($path);

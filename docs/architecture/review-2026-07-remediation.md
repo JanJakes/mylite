@@ -35,7 +35,7 @@ complete.
 - [x] Make lowered plans carry parameter descriptors and verify generated
   placeholder count and order against SQLite.
 - [x] Parse and prepare at prepare time; execute without reconstructing SQL.
-- [ ] Migrate the core PHP statement API to native binding.
+- [x] Migrate the core PHP statement API to native binding.
 - [ ] Migrate the mysqli statement API to native binding and the cursor result
   path.
 - [ ] Migrate PDO to native binding while preserving PDO type and lifetime

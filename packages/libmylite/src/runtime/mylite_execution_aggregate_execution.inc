@@ -2109,7 +2109,19 @@ static int plan_column_group_concat_options(
         );
     }
 
-    (void)value_source_index;
+    if (rc == MYLITE_OK) {
+        rc = populate_group_concat_collation_name(
+            database,
+            source_context,
+            table,
+            out_plan->aggregate_uses_row_scalar_expression ? NULL : &out_plan->aggregate_column,
+            value_source_index,
+            out_plan->aggregate_uses_row_scalar_expression
+                ? &out_plan->aggregate_row_scalar_expression
+                : NULL,
+            out_plan->aggregate_collation_name
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = plan_group_concat_order_column(
             database,

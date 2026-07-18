@@ -35,7 +35,7 @@ struct expected_dml_result {
 static int test_create_time_string_key_metadata_and_dml(void);
 static int test_string_key_duplicate_semantics(void);
 static int test_nullable_unique_and_alter_add_primary_key(void);
-static int test_non_ascii_string_key_values_are_rejected(void);
+static int test_unicode_string_key_values(void);
 static int create_schema(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -67,7 +67,7 @@ int main(void) {
     failures += test_create_time_string_key_metadata_and_dml();
     failures += test_string_key_duplicate_semantics();
     failures += test_nullable_unique_and_alter_add_primary_key();
-    failures += test_non_ascii_string_key_values_are_rejected();
+    failures += test_unicode_string_key_values();
 
     return failures == 0 ? 0 : 1;
 }
@@ -337,7 +337,7 @@ static int test_nullable_unique_and_alter_add_primary_key(void) {
     return failures;
 }
 
-static int test_non_ascii_string_key_values_are_rejected(void) {
+static int test_unicode_string_key_values(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -345,13 +345,14 @@ static int test_non_ascii_string_key_values_are_rejected(void) {
         expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open non-ascii database");
     failures += create_schema(database);
     failures += expect_statement_ok(database, "CREATE TABLE non_ascii (v VARCHAR(5) UNIQUE)");
+    failures += expect_dml_ok(database, "INSERT INTO non_ascii VALUES ('\xC3\xA9')", 1);
     failures += execute_error(
         database,
-        "INSERT INTO non_ascii VALUES ('\xC3\xA9')",
+        "INSERT INTO non_ascii VALUES ('e')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "non-ASCII string key values are not supported",
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'e' for key 'non_ascii.v'",
         }
     );
     failures += expect_statement_ok(
@@ -359,14 +360,10 @@ static int test_non_ascii_string_key_values_are_rejected(void) {
         "CREATE TABLE non_ascii_update (id INT, v VARCHAR(5) UNIQUE)"
     );
     failures += expect_dml_ok(database, "INSERT INTO non_ascii_update VALUES (1, 'abc')", 1);
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "UPDATE non_ascii_update SET v = '\xC3\xA9' WHERE id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "non-ASCII string key values are not supported",
-        }
+        1
     );
 
     mylite_close(database);

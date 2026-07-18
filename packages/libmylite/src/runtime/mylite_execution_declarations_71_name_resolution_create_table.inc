@@ -1807,6 +1807,7 @@ static int validate_descriptor_string_key_column(
 );
 static int validate_string_key_value(struct mylite_db *database, const struct planned_value *value);
 static bool loaded_index_part_requires_string_key_validation(const struct loaded_index_part *part);
+static bool text_value_is_valid_string_key(const char *text, size_t text_length);
 static bool text_value_is_supported_string_key(const char *text, size_t text_length);
 static bool modify_column_integer_value_domain_matches(
     const struct mylite_catalog_column_descriptor *original_column,

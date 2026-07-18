@@ -1649,8 +1649,8 @@ static int validate_alter_table_add_primary_key_string_values(
             text = sqlite3_column_text(statement, (int)column_index);
             text_length = sqlite3_column_bytes(statement, (int)column_index);
             if (text_length < 0 ||
-                !text_value_is_supported_string_key((const char *)text, (size_t)text_length)) {
-                set_non_ascii_string_key_error(database);
+                !text_value_is_valid_string_key((const char *)text, (size_t)text_length)) {
+                set_unsupported_error(database, "string key values must be valid UTF-8");
                 rc = MYLITE_ERROR;
                 break;
             }

@@ -372,6 +372,18 @@ static int plan_grouped_group_concat_options(
     size_t table_column_count,
     struct planned_grouped_aggregate_item *out_item
 );
+static int populate_group_concat_collation_name(
+    struct mylite_db *database,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *single_source_table,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t column_source_index,
+    const struct planned_row_scalar_expression *expression,
+    char out_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY]
+);
+static const char *group_concat_row_scalar_collation_name(
+    const struct planned_row_scalar_expression *expression
+);
 static int plan_grouped_json_aggregate_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,

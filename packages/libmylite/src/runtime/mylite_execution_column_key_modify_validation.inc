@@ -77,8 +77,8 @@ static int validate_string_key_value(
     if (value->is_null) {
         return MYLITE_OK;
     }
-    if (!value->is_text || !text_value_is_supported_string_key(value->text, value->text_length)) {
-        set_non_ascii_string_key_error(database);
+    if (!value->is_text || !text_value_is_valid_string_key(value->text, value->text_length)) {
+        set_unsupported_error(database, "string key values must be valid UTF-8");
         return MYLITE_ERROR;
     }
 
@@ -98,6 +98,15 @@ static bool loaded_index_part_requires_string_key_validation(const struct loaded
     }
 
     return column_descriptor_is_text_family(&part->column);
+}
+
+static bool text_value_is_valid_string_key(const char *text, size_t text_length) {
+    size_t character_count = 0U;
+
+    if (text == NULL) {
+        return false;
+    }
+    return validate_utf8_text(text, text_length, &character_count) == MYLITE_OK;
 }
 
 static bool text_value_is_supported_string_key(const char *text, size_t text_length) {

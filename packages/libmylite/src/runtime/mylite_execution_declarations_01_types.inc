@@ -2203,6 +2203,7 @@ struct planned_column_aggregate {
     struct planned_row_scalar_expression aggregate_projection_rhs;
     struct planned_select_order aggregate_order;
     bool aggregate_is_distinct;
+    char aggregate_collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_spatial_wrapper;
     enum mylite_spatial_function_kind spatial_wrapper_kind;
     bool has_separator;
@@ -2271,6 +2272,7 @@ struct planned_grouped_aggregate_item {
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
     struct planned_select_order aggregate_order;
     bool aggregate_is_distinct;
+    char aggregate_collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_spatial_wrapper;
     enum mylite_spatial_function_kind spatial_wrapper_kind;
     bool has_separator;

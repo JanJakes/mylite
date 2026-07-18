@@ -75,7 +75,20 @@ run_mysql \
 ") CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
 "INSERT INTO people VALUES "\
 "(1, 'john', 'a'), (2, 'John', 'A'), (3, 'JOHN', 'b'), "\
-"(4, 'joel', 'B'), (5, NULL, NULL);" >/dev/null
+"(4, 'joel', 'B'), (5, NULL, NULL); "\
+"CREATE TABLE unicode_names (id INT NOT NULL, name VARCHAR(40)) "\
+"CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"INSERT INTO unicode_names VALUES "\
+"(1, 'é'), (2, 'e'), (3, 'é'), (4, 'A'), (5, 'a'), (6, 'a '), "\
+"(7, 'ß'), (8, 'ss'), (9, 'æ'), (10, 'ae'); "\
+"CREATE TABLE unique_unicode (name VARCHAR(40) UNIQUE) "\
+"CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"INSERT INTO unique_unicode VALUES ('é'); "\
+"CREATE TABLE unique_positioned (name VARCHAR(40) COLLATE utf8mb4_0900_as_ci UNIQUE) "\
+"CHARACTER SET utf8mb4; "\
+"CREATE TABLE positioned_accents (id INT, name VARCHAR(20)) "\
+"CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"INSERT INTO positioned_accents VALUES (1, 'áa'), (2, 'aá'), (3, 'áa');" >/dev/null
 
 expect_output \
     "right-side ai_ci collation equality" \
@@ -132,6 +145,67 @@ expect_output \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM people "\
 "WHERE latin1_name = CONVERT('a' USING latin1) COLLATE latin1_swedish_ci;" \
     "$DATABASE"
+
+expect_output \
+    "Unicode ai_ci accent and normalization equality" \
+    "1,2,3" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM unicode_names "\
+"WHERE name = 'e' COLLATE utf8mb4_0900_ai_ci;" \
+    "$DATABASE"
+
+expect_output \
+    "Unicode as_ci canonical equality" \
+    "1,3" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM unicode_names "\
+"WHERE name = 'é' COLLATE utf8mb4_0900_as_ci;" \
+    "$DATABASE"
+
+expect_output \
+    "Unicode as_ci accent position" \
+    "1,3" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM positioned_accents "\
+"WHERE name = 'áa' COLLATE utf8mb4_0900_as_ci;" \
+    "$DATABASE"
+
+expect_output \
+    "Unicode as_cs canonical equality" \
+    "1,3" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM unicode_names "\
+"WHERE name = 'é' COLLATE utf8mb4_0900_as_cs;" \
+    "$DATABASE"
+
+expect_output \
+    "Unicode binary byte equality" \
+    "1" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM unicode_names "\
+"WHERE name = 'é' COLLATE utf8mb4_0900_bin;" \
+    "$DATABASE"
+
+expect_output \
+    "Unicode default collation grouping" \
+    "1:3,4:2,6:1,7:2,9:2" \
+    "SELECT GROUP_CONCAT(CONCAT(min_id, ':', row_count) ORDER BY min_id) FROM ("\
+"SELECT MIN(id) AS min_id, COUNT(*) AS row_count FROM unicode_names GROUP BY name"\
+") AS grouped_names;" \
+    "$DATABASE"
+
+expect_error \
+    "Unicode unique key collation" \
+    1062 \
+    23000 \
+    "Duplicate entry 'e' for key 'unique_unicode.name'" \
+    "INSERT INTO unique_unicode VALUES ('e');" \
+    "$DATABASE"
+
+run_mysql "SET NAMES utf8mb4; INSERT INTO unique_positioned VALUES ('áa');" "$DATABASE" >/dev/null
+expect_error \
+    "Unicode canonical accent unique key" \
+    1062 \
+    23000 \
+    "Duplicate entry 'áa' for key 'unique_positioned.name'" \
+    "SET NAMES utf8mb4; INSERT INTO unique_positioned VALUES ('áa');" \
+    "$DATABASE"
+run_mysql "SET NAMES utf8mb4; INSERT INTO unique_positioned VALUES ('aá');" "$DATABASE" >/dev/null
 
 expect_error \
     "utf8mb4 literal rejects latin1 collation" \

@@ -360,15 +360,17 @@ static int test_create_time_composite_string_primary_key(void) {
             .context = "composite string rows after duplicate paths",
         }
     );
+    failures += expect_dml_ok(database, "INSERT INTO cspk VALUES ('\xC3\xA9','x',5)", 1);
     failures += execute_error(
         database,
-        "INSERT INTO cspk VALUES ('\xC3\xA9','x',5)",
+        "INSERT INTO cspk VALUES ('e','x',6)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "non-ASCII string key values are not supported",
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'e-x' for key 'cspk.PRIMARY'",
         }
     );
+    failures += expect_dml_ok(database, "DELETE FROM cspk WHERE v = 5", 1);
     failures += expect_statement_ok(database, "CREATE TABLE clone_cspk LIKE cspk");
     failures += expect_query_values(
         database,

@@ -16,6 +16,7 @@ enum {
     ordered_people_row_count = 5,
     mysql_error_invalid_collation_charset = 1253,
     mysql_error_unknown_collation = 1273,
+    mysql_error_duplicate_key = 1062,
 };
 
 struct expected_sql_error {
@@ -86,6 +87,22 @@ static int test_expression_collate_predicates(void) {
         "JOHN",
     };
     static const char *const latin1_equal_ids[] = {"1", "2"};
+    static const char *const unicode_ai_ci_equal_ids[] = {"1", "2", "3"};
+    static const char *const unicode_as_equal_ids[] = {"1", "3"};
+    static const char *const unicode_binary_equal_ids[] = {"1"};
+    static const char *const positioned_accent_ids[] = {"1", "3"};
+    static const char *const unicode_group_values[] = {
+        "1",
+        "3",
+        "4",
+        "2",
+        "6",
+        "1",
+        "7",
+        "2",
+        "9",
+        "2",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -181,6 +198,92 @@ static int test_expression_collate_predicates(void) {
             .context = "latin1 converted literal collation",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM unicode_names "
+                   "WHERE name = 'e' COLLATE utf8mb4_0900_ai_ci ORDER BY id",
+            .values = unicode_ai_ci_equal_ids,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "Unicode ai_ci accent and normalization equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM positioned_accents "
+                   "WHERE name = 'áa' COLLATE utf8mb4_0900_as_ci ORDER BY id",
+            .values = positioned_accent_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "accent-sensitive comparison preserves accent position",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM unicode_names "
+                   "WHERE name = 'é' COLLATE utf8mb4_0900_as_ci ORDER BY id",
+            .values = unicode_as_equal_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "Unicode as_ci canonical equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM unicode_names "
+                   "WHERE name = 'é' COLLATE utf8mb4_0900_as_cs ORDER BY id",
+            .values = unicode_as_equal_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "Unicode as_cs canonical equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM unicode_names "
+                   "WHERE name = 'é' COLLATE utf8mb4_0900_bin ORDER BY id",
+            .values = unicode_binary_equal_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "Unicode binary byte equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT MIN(id), COUNT(*) FROM unicode_names "
+                   "GROUP BY name ORDER BY MIN(id)",
+            .values = unicode_group_values,
+            .column_count = 2U,
+            .row_count = 5U,
+            .context = "Unicode default collation grouping",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO unique_unicode VALUES ('e')",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'e' for key 'unique_unicode.name'",
+        }
+    );
+    failures += execute_ok(database, "INSERT INTO unique_positioned VALUES ('áa')", NULL);
+    failures += execute_error(
+        database,
+        "INSERT INTO unique_positioned VALUES ('áa')",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'áa' for key 'unique_positioned.name'",
+        }
+    );
+    failures += execute_ok(database, "INSERT INTO unique_positioned VALUES ('aá')", NULL);
     failures += execute_error(
         database,
         "SELECT id FROM people WHERE firstname = 'john' COLLATE latin1_swedish_ci",
@@ -227,6 +330,44 @@ static int populate_people(mylite_db *database) {
         "(3, 'JOHN', 'b'), "
         "(4, 'joel', 'B'), "
         "(5, NULL, NULL)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unicode_names (id INT NOT NULL, name VARCHAR(40)) "
+        "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO unicode_names VALUES "
+        "(1, 'é'), (2, 'e'), (3, 'é'), (4, 'A'), (5, 'a'), (6, 'a '), "
+        "(7, 'ß'), (8, 'ss'), (9, 'æ'), (10, 'ae')",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unique_unicode (name VARCHAR(40) UNIQUE) "
+        "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO unique_unicode VALUES ('é')", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unique_positioned ("
+        "name VARCHAR(40) COLLATE utf8mb4_0900_as_ci UNIQUE) "
+        "CHARACTER SET utf8mb4",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE positioned_accents (id INT, name VARCHAR(20))"
+        " CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO positioned_accents VALUES (1, 'áa'), (2, 'aá'), (3, 'áa')",
         NULL
     );
     return failures;

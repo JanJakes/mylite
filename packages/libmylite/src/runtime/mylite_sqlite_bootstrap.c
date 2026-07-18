@@ -5,6 +5,7 @@
 #include "mylite_bitwise.h"
 #include "mylite_bitwise_aggregate.h"
 #include "mylite_cast_convert.h"
+#include "mylite_collation.h"
 #include "mylite_convert_tz.h"
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
@@ -88,22 +89,34 @@ static int initialize_collation_registration_surface(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
 );
-static int compare_utf8mb4_0900_ai_ci_ascii(
+static int compare_utf8mb4_0900_ai_ci(
     void *application_data,
     int left_size,
     const void *left,
     int right_size,
     const void *right
 );
-static int compare_utf8mb4_0900_as_cs_ascii(
+static int compare_utf8mb4_0900_as_ci(
     void *application_data,
     int left_size,
     const void *left,
     int right_size,
     const void *right
 );
-static unsigned char ascii_collation_fold(unsigned char byte);
-static unsigned char ascii_collation_case_weight(unsigned char byte);
+static int compare_utf8mb4_0900_as_cs(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+);
+static int compare_registered_collation(
+    enum mylite_collation_kind kind,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+);
 static void initialize_hook_registration_surface(struct mylite_sqlite_bootstrap_state *state);
 static void clear_hook_registration_surface(
     sqlite3 *sqlite,
@@ -467,14 +480,21 @@ static int initialize_collation_registration_surface(
             .name = "utf8mb4_0900_ai_ci",
             .text_representation = SQLITE_UTF8,
             .application_data = NULL,
-            .compare_callback = compare_utf8mb4_0900_ai_ci_ascii,
+            .compare_callback = compare_utf8mb4_0900_ai_ci,
+            .destroy_callback = NULL,
+        },
+        {
+            .name = "utf8mb4_0900_as_ci",
+            .text_representation = SQLITE_UTF8,
+            .application_data = NULL,
+            .compare_callback = compare_utf8mb4_0900_as_ci,
             .destroy_callback = NULL,
         },
         {
             .name = "utf8mb4_0900_as_cs",
             .text_representation = SQLITE_UTF8,
             .application_data = NULL,
-            .compare_callback = compare_utf8mb4_0900_as_cs_ascii,
+            .compare_callback = compare_utf8mb4_0900_as_cs,
             .destroy_callback = NULL,
         },
     };
@@ -493,95 +513,68 @@ static int initialize_collation_registration_surface(
     return MYLITE_OK;
 }
 
-static int compare_utf8mb4_0900_ai_ci_ascii(
+static int compare_utf8mb4_0900_ai_ci(
     void *application_data,
     int left_size,
     const void *left,
     int right_size,
     const void *right
 ) {
-    const unsigned char *left_text = left;
-    const unsigned char *right_text = right;
-    int shared_size = left_size < right_size ? left_size : right_size;
-
     (void)application_data;
-    for (int index = 0; index < shared_size; ++index) {
-        unsigned char left_byte = ascii_collation_fold(left_text[index]);
-        unsigned char right_byte = ascii_collation_fold(right_text[index]);
-
-        if (left_byte < right_byte) {
-            return -1;
-        }
-        if (left_byte > right_byte) {
-            return 1;
-        }
-    }
-    if (left_size < right_size) {
-        return -1;
-    }
-    if (left_size > right_size) {
-        return 1;
-    }
-    return 0;
+    return compare_registered_collation(
+        MYLITE_COLLATION_UTF8MB4_0900_AI_CI,
+        left_size,
+        left,
+        right_size,
+        right
+    );
 }
 
-static int compare_utf8mb4_0900_as_cs_ascii(
+static int compare_utf8mb4_0900_as_ci(
     void *application_data,
     int left_size,
     const void *left,
     int right_size,
     const void *right
 ) {
-    const unsigned char *left_text = left;
-    const unsigned char *right_text = right;
-    int shared_size = left_size < right_size ? left_size : right_size;
-
     (void)application_data;
-    for (int index = 0; index < shared_size; ++index) {
-        unsigned char left_byte = ascii_collation_fold(left_text[index]);
-        unsigned char right_byte = ascii_collation_fold(right_text[index]);
-
-        if (left_byte < right_byte) {
-            return -1;
-        }
-        if (left_byte > right_byte) {
-            return 1;
-        }
-    }
-    if (left_size < right_size) {
-        return -1;
-    }
-    if (left_size > right_size) {
-        return 1;
-    }
-
-    for (int index = 0; index < shared_size; ++index) {
-        unsigned char left_weight = ascii_collation_case_weight(left_text[index]);
-        unsigned char right_weight = ascii_collation_case_weight(right_text[index]);
-
-        if (left_weight < right_weight) {
-            return -1;
-        }
-        if (left_weight > right_weight) {
-            return 1;
-        }
-    }
-    return 0;
+    return compare_registered_collation(
+        MYLITE_COLLATION_UTF8MB4_0900_AS_CI,
+        left_size,
+        left,
+        right_size,
+        right
+    );
 }
 
-static unsigned char ascii_collation_fold(unsigned char byte) {
-    if (byte >= 'A' && byte <= 'Z') {
-        return (unsigned char)(byte + ('a' - 'A'));
-    }
-
-    return byte;
+static int compare_utf8mb4_0900_as_cs(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+) {
+    (void)application_data;
+    return compare_registered_collation(
+        MYLITE_COLLATION_UTF8MB4_0900_AS_CS,
+        left_size,
+        left,
+        right_size,
+        right
+    );
 }
 
-static unsigned char ascii_collation_case_weight(unsigned char byte) {
-    if (byte >= 'A' && byte <= 'Z') {
-        return 1U;
+static int compare_registered_collation(
+    enum mylite_collation_kind kind,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+) {
+    if (left_size < 0 || right_size < 0) {
+        return 0;
     }
-    return 0U;
+    return mylite_collation_compare(kind, left, (size_t)left_size, right, (size_t)right_size);
 }
 
 static void initialize_hook_registration_surface(struct mylite_sqlite_bootstrap_state *state) {

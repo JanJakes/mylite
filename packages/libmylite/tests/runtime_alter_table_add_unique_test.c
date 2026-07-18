@@ -535,13 +535,15 @@ static int test_alter_add_unique_validation_dml_and_drop(void) {
 
     failures += expect_statement_ok(database, "CREATE TABLE non_ascii (name VARCHAR(10))");
     failures += expect_dml_ok(database, "INSERT INTO non_ascii VALUES ('é')", 1);
+    failures +=
+        expect_alter_unique_ok(database, "ALTER TABLE non_ascii ADD UNIQUE u_name (name)");
     failures += execute_error(
         database,
-        "ALTER TABLE non_ascii ADD UNIQUE u_name (name)",
+        "INSERT INTO non_ascii VALUES ('e')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "non-ASCII string key values are not supported",
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'e' for key 'non_ascii.u_name'",
         }
     );
 

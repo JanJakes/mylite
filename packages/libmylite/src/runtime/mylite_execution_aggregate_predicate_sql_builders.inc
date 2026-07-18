@@ -341,6 +341,7 @@ static int append_column_aggregate_select_item_sql(
                 &item->aggregate_order,
                 item->aggregate_is_distinct,
                 item->has_separator,
+                item->aggregate_collation_name,
                 next_parameter
             );
         }
@@ -352,6 +353,7 @@ static int append_column_aggregate_select_item_sql(
             false,
             item->aggregate_is_distinct,
             item->has_separator,
+            item->aggregate_collation_name,
             next_parameter
         );
     }
@@ -571,6 +573,7 @@ static int append_group_concat_call_sql(
     bool qualify_column_references,
     bool is_distinct,
     bool has_separator,
+    const char *collation_name,
     size_t *next_parameter
 ) {
     int rc = mylite_dynamic_string_append(
@@ -586,14 +589,23 @@ static int append_group_concat_call_sql(
             qualify_column_references
         );
     }
-    if (rc == MYLITE_OK && has_separator) {
+    if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, ", ");
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && has_separator) {
             rc = append_numbered_parameter(string, *next_parameter);
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && has_separator) {
             ++(*next_parameter);
         }
+        if (rc == MYLITE_OK && !has_separator) {
+            rc = append_mysql_quoted_text(string, ",");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_quoted_text(string, collation_name);
     }
     if (rc == MYLITE_OK && order != NULL && order->has_order) {
         rc = mylite_dynamic_string_append(string, " ORDER BY ");
@@ -626,6 +638,7 @@ static int append_group_concat_expression_call_sql(
     const struct planned_select_order *order,
     bool is_distinct,
     bool has_separator,
+    const char *collation_name,
     size_t *next_parameter
 ) {
     int rc = mylite_dynamic_string_append(
@@ -636,14 +649,23 @@ static int append_group_concat_expression_call_sql(
     if (rc == MYLITE_OK) {
         rc = append_row_scalar_expression_sql(string, value_expression, next_parameter);
     }
-    if (rc == MYLITE_OK && has_separator) {
+    if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, ", ");
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && has_separator) {
             rc = append_numbered_parameter(string, *next_parameter);
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && has_separator) {
             ++(*next_parameter);
         }
+        if (rc == MYLITE_OK && !has_separator) {
+            rc = append_mysql_quoted_text(string, ",");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_quoted_text(string, collation_name);
     }
     if (rc == MYLITE_OK && order != NULL && order->has_order) {
         rc = mylite_dynamic_string_append(string, " ORDER BY ");
@@ -1121,6 +1143,7 @@ static int append_grouped_aggregate_select_item_sql(
                 &item->aggregate_order,
                 item->aggregate_is_distinct,
                 item->has_separator,
+                item->aggregate_collation_name,
                 next_parameter
             );
         } else {
@@ -1132,6 +1155,7 @@ static int append_grouped_aggregate_select_item_sql(
                 qualify,
                 item->aggregate_is_distinct,
                 item->has_separator,
+                item->aggregate_collation_name,
                 next_parameter
             );
         }

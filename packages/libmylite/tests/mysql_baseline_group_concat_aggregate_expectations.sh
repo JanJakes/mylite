@@ -124,14 +124,22 @@ grouped_distinct	1	alpha:beta
 grouped_distinct	2	delta:echo
 grouped_distinct_expr	1	alpha:beta
 grouped_distinct_expr	2	delta:echo
+unicode_ai_ci	A|é|ß|æ|a__TRAILING_SPACE__
+unicode_as_ci	A|é|e|ß|ss|æ|ae|a__TRAILING_SPACE__
+unicode_as_cs	A|a|é|e|ß|ss|æ|ae|a__TRAILING_SPACE__
+unicode_binary	A|a|é|e|é|ß|ss|æ|ae|a__TRAILING_SPACE__
+legacy_case_sensitive	A|a
+positioned_accents	áa|aá
 status	-1	0
 space_ignore	alpha,beta,delta,echo
 EXPECTED
 )
+supported_expected=$(printf '%s' "$supported_expected" | sed 's/__TRAILING_SPACE__/ /g')
 expect_output \
     "supported group concat subset" \
     "$supported_expected" \
-    "CREATE TABLE t(g INT, id INT, name VARCHAR(20), notes TEXT, sort_n INT NOT NULL) "\
+    "SET NAMES utf8mb4; "\
+"CREATE TABLE t(g INT, id INT, name VARCHAR(20), notes TEXT, sort_n INT NOT NULL) "\
 "ENGINE=InnoDB; "\
 "INSERT INTO t VALUES "\
 "(1,2,'beta','B',0), "\
@@ -150,6 +158,13 @@ expect_output \
 "(2,5,'echo',4), "\
 "(2,6,'delta',3), "\
 "(2,7,NULL,5); "\
+"CREATE TABLE unicode_names(name VARCHAR(40), sort_n INT NOT NULL) "\
+"CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"INSERT INTO unicode_names VALUES "\
+"('A',1),('a',2),('é',3),('e',4),('é',5),('ß',6),('ss',7),('æ',8),('ae',9),('a ',10); "\
+"CREATE TABLE positioned_accents(name VARCHAR(20), sort_n INT NOT NULL) "\
+"CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "\
+"INSERT INTO positioned_accents VALUES ('áa',1),('aá',2),('áa',3); "\
 "CREATE TABLE case_names(g INT, id INT NOT NULL, name VARCHAR(20)) ENGINE=InnoDB; "\
 "INSERT INTO case_names VALUES (1,1,'Bravo'), (2,1,'alpha'), (3,1,NULL); "\
 "SELECT 'ids_default', GROUP_CONCAT(id ORDER BY id) FROM t; "\
@@ -212,6 +227,23 @@ expect_output \
 "SELECT 'grouped_distinct_expr', g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') "\
 "FROM duplicate_names GROUP BY g "\
 "ORDER BY GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':'); "\
+"SELECT 'unicode_ai_ci', GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR '|') "\
+"FROM unicode_names; "\
+"SELECT 'unicode_as_ci', "\
+"GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_as_ci) ORDER BY sort_n SEPARATOR '|') "\
+"FROM unicode_names; "\
+"SELECT 'unicode_as_cs', "\
+"GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_as_cs) ORDER BY sort_n SEPARATOR '|') "\
+"FROM unicode_names; "\
+"SELECT 'unicode_binary', "\
+"GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_bin) ORDER BY sort_n SEPARATOR '|') "\
+"FROM unicode_names; "\
+"SELECT 'legacy_case_sensitive', "\
+"GROUP_CONCAT(DISTINCT (CONVERT(name USING latin1) COLLATE latin1_general_cs) "\
+"ORDER BY sort_n SEPARATOR '|') FROM unicode_names WHERE sort_n <= 2; "\
+"SELECT 'positioned_accents', "\
+"GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_as_ci) ORDER BY sort_n SEPARATOR '|') "\
+"FROM positioned_accents; "\
 "SELECT 'status', ROW_COUNT(), @@warning_count; "\
 "SET SESSION sql_mode = 'IGNORE_SPACE'; "\
 "SELECT 'space_ignore', GROUP_CONCAT (name ORDER BY id) FROM t;" \

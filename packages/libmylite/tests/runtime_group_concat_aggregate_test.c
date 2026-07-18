@@ -92,7 +92,8 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     static const char *const pipe_values[] = {"alpha|beta|delta|echo"};
     static const char *const note_columns[] = {"GROUP_CONCAT(note ORDER BY id SEPARATOR ':')"};
     static const char *const note_values[] = {"A:B:D:E"};
-    static const char *const asc_columns[] = {"GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':')"
+    static const char *const asc_columns[] = {
+        "GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':')"
     };
     static const char *const asc_values[] = {"delta:beta:alpha:echo"};
     static const char *const desc_columns[] = {
@@ -210,6 +211,13 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     static const char *const all_empty_values[] = {","};
     static const char *const all_empty_join_columns[] = {"empty_join"};
     static const char *const all_empty_join_values[] = {""};
+    static const char *const unicode_distinct_columns[] = {"names"};
+    static const char *const unicode_ai_ci_values[] = {"A|é|ß|æ|a "};
+    static const char *const unicode_as_ci_values[] = {"A|é|e|ß|ss|æ|ae|a "};
+    static const char *const unicode_as_cs_values[] = {"A|a|é|e|ß|ss|æ|ae|a "};
+    static const char *const unicode_binary_values[] = {"A|a|é|e|é|ß|ss|æ|ae|a "};
+    static const char *const legacy_case_sensitive_values[] = {"A|a"};
+    static const char *const positioned_accent_values[] = {"áa|aá"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -257,6 +265,25 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         "(2, 5, 'echo', 4), "
         "(2, 6, 'delta', 3), "
         "(2, 7, NULL, 5)"
+    );
+    failures += execute_discard(
+        database,
+        "CREATE TABLE unicode_names (name VARCHAR(40), sort_n INT NOT NULL) "
+        "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+    );
+    failures += execute_discard(
+        database,
+        "INSERT INTO unicode_names VALUES "
+        "('A', 1), ('a', 2), ('é', 3), ('e', 4), ('é', 5), "
+        "('ß', 6), ('ss', 7), ('æ', 8), ('ae', 9), ('a ', 10)"
+    );
+    failures += execute_discard(
+        database,
+        "CREATE TABLE positioned_accents (name VARCHAR(20), sort_n INT NOT NULL)"
+    );
+    failures += execute_discard(
+        database,
+        "INSERT INTO positioned_accents VALUES ('áa', 1), ('aá', 2), ('áa', 3)"
     );
 
     catalog = mylite_connection_catalog_for_test(database);
@@ -434,6 +461,80 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = distinct_ifnull_values,
             .row_count = 1U,
             .context = "distinct row-scalar value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR '|') AS names "
+                   "FROM unicode_names",
+            .columns = unicode_distinct_columns,
+            .column_count = 1U,
+            .values = unicode_ai_ci_values,
+            .row_count = 1U,
+            .context = "Unicode ai_ci distinct equivalence",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_as_ci) "
+                   "ORDER BY sort_n SEPARATOR '|') AS names FROM unicode_names",
+            .columns = unicode_distinct_columns,
+            .column_count = 1U,
+            .values = unicode_as_ci_values,
+            .row_count = 1U,
+            .context = "Unicode as_ci distinct equivalence",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_as_cs) "
+                   "ORDER BY sort_n SEPARATOR '|') AS names FROM unicode_names",
+            .columns = unicode_distinct_columns,
+            .column_count = 1U,
+            .values = unicode_as_cs_values,
+            .row_count = 1U,
+            .context = "Unicode as_cs distinct equivalence",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_bin) "
+                   "ORDER BY sort_n SEPARATOR '|') AS names FROM unicode_names",
+            .columns = unicode_distinct_columns,
+            .column_count = 1U,
+            .values = unicode_binary_values,
+            .row_count = 1U,
+            .context = "Unicode binary distinct equivalence",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT "
+                   "(CONVERT(name USING latin1) COLLATE latin1_general_cs) "
+                   "ORDER BY sort_n SEPARATOR '|') AS names FROM unicode_names "
+                   "WHERE sort_n <= 2",
+            .columns = unicode_distinct_columns,
+            .column_count = 1U,
+            .values = legacy_case_sensitive_values,
+            .row_count = 1U,
+            .context = "legacy case-sensitive distinct equivalence",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT (name COLLATE utf8mb4_0900_as_ci) "
+                   "ORDER BY sort_n SEPARATOR '|') AS names FROM positioned_accents",
+            .columns = unicode_distinct_columns,
+            .column_count = 1U,
+            .values = positioned_accent_values,
+            .row_count = 1U,
+            .context = "Unicode as_ci distinct preserves accent position",
         }
     );
     failures += expect_query(

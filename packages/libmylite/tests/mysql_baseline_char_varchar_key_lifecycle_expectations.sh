@@ -206,7 +206,7 @@ expect_error \
     "$DATABASE"
 
 expect_error \
-    "accent-insensitive duplicate is broader than MyLite first slice" \
+    "accent-insensitive duplicate" \
     1062 \
     "23000" \
     "Duplicate entry 'e' for key 'accent_unique.v'" \

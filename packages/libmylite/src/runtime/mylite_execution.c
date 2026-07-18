@@ -7,6 +7,7 @@
 #include "mylite_ast.h"
 #include "mylite_catalog.h"
 #include "mylite_connection.h"
+#include "mylite_collation.h"
 #include "mylite_convert_tz.h"
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"

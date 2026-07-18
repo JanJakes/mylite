@@ -1,5 +1,6 @@
 #include "mylite_group_concat_aggregate.h"
 
+#include "mylite_collation.h"
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_sqlite_bootstrap.h"
@@ -15,6 +16,7 @@
 enum {
     mysql_warning_group_concat_cut = 1260,
     group_concat_initial_capacity = 32,
+    group_concat_distinct_initial_capacity = 16,
     utf8_ascii_upper_bound = 0x80,
     utf8_two_byte_lead_min = 0xc2,
     utf8_two_byte_lead_max = 0xdf,
@@ -30,18 +32,22 @@ struct mylite_group_concat_config {
     bool is_distinct;
 };
 
-struct mylite_group_concat_distinct_value {
-    char *bytes;
-    size_t size;
-    struct mylite_group_concat_distinct_value *next;
+struct mylite_group_concat_distinct_entry {
+    unsigned char *key;
+    size_t key_size;
+    uint64_t hash;
+    bool occupied;
 };
 
 struct mylite_group_concat_state {
     char *bytes;
     size_t size;
     size_t capacity;
-    struct mylite_group_concat_distinct_value *distinct_values;
-    struct mylite_group_concat_distinct_value *last_distinct_value;
+    struct mylite_group_concat_distinct_entry *distinct_entries;
+    size_t distinct_count;
+    size_t distinct_capacity;
+    enum mylite_collation_kind distinct_collation;
+    bool distinct_collation_is_initialized;
     uint64_t cut_ordinal;
     bool saw_value;
     bool truncated;
@@ -61,14 +67,29 @@ static int group_concat_append_value(
     struct mylite_group_concat_state *state,
     sqlite3_value *value,
     sqlite3_value *separator,
+    enum mylite_collation_kind collation,
     const struct mylite_group_concat_config *config
 );
 static int group_concat_record_distinct_value(
     struct mylite_group_concat_state *state,
     const unsigned char *bytes,
     size_t byte_count,
+    enum mylite_collation_kind collation,
     bool *out_duplicate
 );
+static int group_concat_distinct_reserve(
+    struct mylite_group_concat_state *state,
+    size_t required_count
+);
+static size_t group_concat_distinct_slot(
+    const struct mylite_group_concat_distinct_entry *entries,
+    size_t capacity,
+    uint64_t hash,
+    const unsigned char *key,
+    size_t key_size,
+    bool *out_found
+);
+static uint64_t group_concat_distinct_hash(const unsigned char *key, size_t key_size);
 static int group_concat_append_bytes(
     struct mylite_group_concat_state *state,
     struct group_concat_append_request request,
@@ -90,20 +111,7 @@ int mylite_sqlite_register_group_concat_aggregate_function(sqlite3 *sqlite) {
         {
             .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
             .name = "_mylite_group_concat",
-            .argument_count = 1,
-            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
-            .application_data = &plain_config,
-            .scalar_callback = NULL,
-            .step_callback = group_concat_step,
-            .final_callback = group_concat_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
-            .destroy_callback = NULL,
-        },
-        {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
-            .name = "_mylite_group_concat",
-            .argument_count = 2,
+            .argument_count = 3,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = &plain_config,
             .scalar_callback = NULL,
@@ -116,20 +124,7 @@ int mylite_sqlite_register_group_concat_aggregate_function(sqlite3 *sqlite) {
         {
             .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
             .name = "_mylite_group_concat_distinct",
-            .argument_count = 1,
-            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
-            .application_data = &distinct_config,
-            .scalar_callback = NULL,
-            .step_callback = group_concat_step,
-            .final_callback = group_concat_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
-            .destroy_callback = NULL,
-        },
-        {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
-            .name = "_mylite_group_concat_distinct",
-            .argument_count = 2,
+            .argument_count = 3,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = &distinct_config,
             .scalar_callback = NULL,
@@ -153,13 +148,15 @@ static void group_concat_step(sqlite3_context *context, int argc, sqlite3_value 
     struct mylite_db *database = NULL;
     struct mylite_group_concat_state *state = NULL;
     sqlite3_value *separator = NULL;
+    const unsigned char *collation_name = NULL;
+    enum mylite_collation_kind collation = MYLITE_COLLATION_UTF8MB4_0900_AI_CI;
     int value_type = SQLITE_NULL;
     int rc = MYLITE_OK;
 
     if (context == NULL) {
         return;
     }
-    if ((argc != 1 && argc != 2) || argv == NULL || argv[0] == NULL) {
+    if (argc != 3 || argv == NULL || argv[0] == NULL || argv[1] == NULL || argv[2] == NULL) {
         sqlite3_result_error(context, "invalid MyLite GROUP_CONCAT callback", -1);
         return;
     }
@@ -190,10 +187,18 @@ static void group_concat_step(sqlite3_context *context, int argc, sqlite3_value 
     }
     ++database->session.group_concat_value_ordinal;
 
-    if (argc == 2) {
-        separator = argv[1];
+    separator = argv[1];
+    if (sqlite3_value_type(argv[2]) == SQLITE_NULL) {
+        sqlite3_result_error(context, "missing MyLite GROUP_CONCAT collation", -1);
+        return;
     }
-    rc = group_concat_append_value(context, database, state, argv[0], separator, config);
+    collation_name = sqlite3_value_text(argv[2]);
+    if (collation_name == NULL ||
+        mylite_collation_kind_from_name((const char *)collation_name, &collation) != MYLITE_OK) {
+        sqlite3_result_error(context, "invalid MyLite GROUP_CONCAT collation", -1);
+        return;
+    }
+    rc = group_concat_append_value(context, database, state, argv[0], separator, collation, config);
     if (rc == MYLITE_NOMEM) {
         sqlite3_result_error_nomem(context);
     } else if (rc != MYLITE_OK) {
@@ -251,6 +256,7 @@ static int group_concat_append_value(
     struct mylite_group_concat_state *state,
     sqlite3_value *value,
     sqlite3_value *separator,
+    enum mylite_collation_kind collation,
     const struct mylite_group_concat_config *config
 ) {
     static const unsigned char default_separator[] = ",";
@@ -291,6 +297,7 @@ static int group_concat_append_value(
             state,
             value_bytes,
             (size_t)value_byte_count,
+            collation,
             &duplicate
         );
         if (rc != MYLITE_OK || duplicate) {
@@ -342,49 +349,142 @@ static int group_concat_record_distinct_value(
     struct mylite_group_concat_state *state,
     const unsigned char *bytes,
     size_t byte_count,
+    enum mylite_collation_kind collation,
     bool *out_duplicate
 ) {
-    struct mylite_group_concat_distinct_value *current = NULL;
-    struct mylite_group_concat_distinct_value *entry = NULL;
-    size_t allocation_size = byte_count == 0U ? 1U : byte_count;
+    unsigned char *key = NULL;
+    size_t key_size = 0U;
+    size_t slot = 0U;
+    uint64_t hash = 0U;
+    bool found = false;
+    int rc = MYLITE_OK;
 
     if (state == NULL || out_duplicate == NULL || (bytes == NULL && byte_count != 0U)) {
         return MYLITE_MISUSE;
     }
     *out_duplicate = false;
-
-    current = state->distinct_values;
-    while (current != NULL) {
-        if (current->size == byte_count &&
-            (byte_count == 0U || memcmp(current->bytes, bytes, byte_count) == 0)) {
-            *out_duplicate = true;
-            return MYLITE_OK;
-        }
-        current = current->next;
+    if (state->distinct_collation_is_initialized && state->distinct_collation != collation) {
+        return MYLITE_ERROR;
     }
+    state->distinct_collation = collation;
+    state->distinct_collation_is_initialized = true;
 
-    entry = malloc(sizeof(*entry));
-    if (entry == NULL) {
+    rc = mylite_collation_make_key(collation, bytes, byte_count, &key, &key_size);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    hash = group_concat_distinct_hash(key, key_size);
+    if (state->distinct_count == SIZE_MAX) {
+        free(key);
         return MYLITE_NOMEM;
     }
-    *entry = (struct mylite_group_concat_distinct_value){0};
-    entry->bytes = malloc(allocation_size);
-    if (entry->bytes == NULL) {
-        free(entry);
-        return MYLITE_NOMEM;
+    rc = group_concat_distinct_reserve(state, state->distinct_count + 1U);
+    if (rc != MYLITE_OK) {
+        free(key);
+        return rc;
     }
-    if (byte_count != 0U) {
-        memcpy(entry->bytes, bytes, byte_count);
+    slot = group_concat_distinct_slot(
+        state->distinct_entries,
+        state->distinct_capacity,
+        hash,
+        key,
+        key_size,
+        &found
+    );
+    if (found) {
+        free(key);
+        *out_duplicate = true;
+        return MYLITE_OK;
     }
-    entry->size = byte_count;
-
-    if (state->last_distinct_value == NULL) {
-        state->distinct_values = entry;
-    } else {
-        state->last_distinct_value->next = entry;
-    }
-    state->last_distinct_value = entry;
+    state->distinct_entries[slot] = (struct mylite_group_concat_distinct_entry){
+        .key = key,
+        .key_size = key_size,
+        .hash = hash,
+        .occupied = true,
+    };
+    ++state->distinct_count;
     return MYLITE_OK;
+}
+
+static int group_concat_distinct_reserve(
+    struct mylite_group_concat_state *state,
+    size_t required_count
+) {
+    struct mylite_group_concat_distinct_entry *entries = NULL;
+    size_t capacity = 0U;
+
+    if (state == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (state->distinct_capacity != 0U &&
+        required_count <= state->distinct_capacity - state->distinct_capacity / 4U) {
+        return MYLITE_OK;
+    }
+    capacity = state->distinct_capacity == 0U ? (size_t)group_concat_distinct_initial_capacity
+                                              : state->distinct_capacity * 2U;
+    if (capacity < state->distinct_capacity || capacity > SIZE_MAX / sizeof(*entries)) {
+        return MYLITE_NOMEM;
+    }
+    entries = calloc(capacity, sizeof(*entries));
+    if (entries == NULL) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < state->distinct_capacity; ++index) {
+        struct mylite_group_concat_distinct_entry *entry = &state->distinct_entries[index];
+        bool found = false;
+        size_t slot = 0U;
+
+        if (!entry->occupied) {
+            continue;
+        }
+        slot = group_concat_distinct_slot(
+            entries,
+            capacity,
+            entry->hash,
+            entry->key,
+            entry->key_size,
+            &found
+        );
+        entries[slot] = *entry;
+    }
+    free(state->distinct_entries);
+    state->distinct_entries = entries;
+    state->distinct_capacity = capacity;
+    return MYLITE_OK;
+}
+
+static size_t group_concat_distinct_slot(
+    const struct mylite_group_concat_distinct_entry *entries,
+    size_t capacity,
+    uint64_t hash,
+    const unsigned char *key,
+    size_t key_size,
+    bool *out_found
+) {
+    size_t slot = (size_t)(hash & (uint64_t)(capacity - 1U));
+
+    *out_found = false;
+    while (entries[slot].occupied) {
+        const struct mylite_group_concat_distinct_entry *entry = &entries[slot];
+
+        if (entry->hash == hash && entry->key_size == key_size &&
+            (key_size == 0U || memcmp(entry->key, key, key_size) == 0)) {
+            *out_found = true;
+            return slot;
+        }
+        slot = (slot + 1U) & (capacity - 1U);
+    }
+    return slot;
+}
+
+static uint64_t group_concat_distinct_hash(const unsigned char *key, size_t key_size) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+
+    for (size_t index = 0U; index < key_size; ++index) {
+        hash ^= key[index];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
 }
 
 static int group_concat_append_bytes(
@@ -530,19 +630,13 @@ static int group_concat_append_cut_warning(
 }
 
 static void group_concat_state_deinit(struct mylite_group_concat_state *state) {
-    struct mylite_group_concat_distinct_value *current = NULL;
-
     if (state == NULL) {
         return;
     }
-    current = state->distinct_values;
-    while (current != NULL) {
-        struct mylite_group_concat_distinct_value *next = current->next;
-
-        free(current->bytes);
-        free(current);
-        current = next;
+    for (size_t index = 0U; index < state->distinct_capacity; ++index) {
+        free(state->distinct_entries[index].key);
     }
+    free(state->distinct_entries);
     free(state->bytes);
     *state = (struct mylite_group_concat_state){0};
 }

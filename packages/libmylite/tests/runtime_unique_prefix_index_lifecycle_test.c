@@ -1404,14 +1404,19 @@ static int test_unique_prefix_diagnostics(void) {
         database,
         "CREATE TABLE non_ascii (v VARCHAR(20), UNIQUE KEY u_v (v(3)))"
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "INSERT INTO non_ascii VALUES ('\xC3\xA9"
         "abc')",
+        1
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO non_ascii VALUES ('eabz')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "non-ASCII string key values are not supported",
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'eab' for key 'non_ascii.u_v'",
         }
     );
 

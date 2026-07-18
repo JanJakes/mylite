@@ -549,6 +549,10 @@ static const char *row_scalar_sql_collation_name(const char *collation_name) {
     if (row_scalar_mysql_collation_is_case_sensitive(collation_name)) {
         return ascii_case_sensitive_collation_name;
     }
+    if (collation_name != NULL &&
+        text_has_ascii_case_insensitive_suffix(collation_name, "_as_ci")) {
+        return "utf8mb4_0900_as_ci";
+    }
     return string_key_collation_name;
 }
 

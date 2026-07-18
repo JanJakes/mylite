@@ -605,13 +605,6 @@ void mylite_execution_diagnostics_set_index_comment_too_long_error(
     );
 }
 
-void mylite_execution_diagnostics_set_non_ascii_string_key_error(struct mylite_db *database) {
-    mylite_execution_diagnostics_set_unsupported_error(
-        database,
-        "non-ASCII string key values are not supported"
-    );
-}
-
 void mylite_execution_diagnostics_set_duplicate_key_error(
     struct mylite_db *database,
     const char *table_name,

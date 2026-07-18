@@ -391,6 +391,19 @@ static int plan_grouped_group_concat_options(
     }
 
     if (rc == MYLITE_OK) {
+        rc = populate_group_concat_collation_name(
+            database,
+            source_context,
+            NULL,
+            out_item->aggregate_uses_row_scalar_expression ? NULL : &out_item->aggregate_column,
+            out_item->aggregate_column_source_index,
+            out_item->aggregate_uses_row_scalar_expression
+                ? &out_item->aggregate_row_scalar_expression
+                : NULL,
+            out_item->aggregate_collation_name
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_group_concat_order_column(
             database,
             function,
@@ -411,6 +424,75 @@ static int plan_grouped_group_concat_options(
     }
 
     return rc;
+}
+
+static int populate_group_concat_collation_name(
+    struct mylite_db *database,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *single_source_table,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t column_source_index,
+    const struct planned_row_scalar_expression *expression,
+    char out_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY]
+) {
+    struct mylite_catalog_table_descriptor loaded_single_source_table = {0};
+    const struct mylite_catalog_table_descriptor *table = single_source_table;
+    const char *name = group_concat_row_scalar_collation_name(expression);
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || out_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (name == NULL && column != NULL && table == NULL) {
+        rc = row_scalar_column_source_table(
+            database,
+            source_context,
+            column_source_index,
+            &loaded_single_source_table,
+            &table
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (name == NULL && column != NULL) {
+        name = column_effective_collation_name(table, column);
+    }
+    if (name == NULL || name[0] == '\0') {
+        name = MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+    }
+    written = snprintf(out_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY, "%s", name);
+    if (written < 0 || (size_t)written >= MYLITE_CATALOG_IDENTIFIER_CAPACITY) {
+        set_runtime_error(database, "GROUP_CONCAT collation name exceeds internal capacity");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static const char *group_concat_row_scalar_collation_name(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    if (expression->collation_name != NULL && expression->collation_name[0] != '\0') {
+        return expression->collation_name;
+    }
+    if (expression->column_effective_collation[0] != '\0') {
+        return expression->column_effective_collation;
+    }
+    if (expression->conversion_collation != NULL && expression->conversion_collation[0] != '\0') {
+        return expression->conversion_collation;
+    }
+    for (size_t index = 0U; index < expression->argument_count; ++index) {
+        const char *name = group_concat_row_scalar_collation_name(&expression->arguments[index]);
+
+        if (name != NULL) {
+            return name;
+        }
+    }
+    return NULL;
 }
 
 static int plan_grouped_json_aggregate_options(

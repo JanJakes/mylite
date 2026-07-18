@@ -347,7 +347,6 @@ void mylite_execution_diagnostics_set_index_comment_too_long_error(
     struct mylite_db *database,
     const char *index_name
 );
-void mylite_execution_diagnostics_set_non_ascii_string_key_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_duplicate_key_error(
     struct mylite_db *database,
     const char *table_name,
@@ -956,7 +955,6 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
       mylite_execution_diagnostics_set_column_comment_too_long_error
 #  define set_index_comment_too_long_error                                                         \
       mylite_execution_diagnostics_set_index_comment_too_long_error
-#  define set_non_ascii_string_key_error mylite_execution_diagnostics_set_non_ascii_string_key_error
 #  define set_duplicate_key_error mylite_execution_diagnostics_set_duplicate_key_error
 #  define set_no_referenced_row_error mylite_execution_diagnostics_set_no_referenced_row_error
 #  define set_row_is_referenced_error mylite_execution_diagnostics_set_row_is_referenced_error

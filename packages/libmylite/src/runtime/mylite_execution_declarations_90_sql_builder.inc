@@ -829,6 +829,10 @@ static bool column_descriptor_uses_string_key_collation(
 );
 static bool string_key_collation_name_is_binary(const char *name);
 static int append_string_key_collation_sql(struct mylite_dynamic_string *string);
+static int append_named_string_key_collation_sql(
+    struct mylite_dynamic_string *string,
+    const char *collation_name
+);
 static int append_select_projection_column_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select *plan,
@@ -2130,6 +2134,7 @@ static int append_group_concat_call_sql(
     bool qualify_column_references,
     bool is_distinct,
     bool has_separator,
+    const char *collation_name,
     size_t *next_parameter
 );
 static int append_group_concat_expression_call_sql(
@@ -2138,6 +2143,7 @@ static int append_group_concat_expression_call_sql(
     const struct planned_select_order *order,
     bool is_distinct,
     bool has_separator,
+    const char *collation_name,
     size_t *next_parameter
 );
 static int append_spatial_collect_projection_sql(

@@ -39,11 +39,13 @@ endif()
 
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
+  "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/ext/fts3/fts3_unicode2.c"
   src/runtime/mylite_aes.c
   src/runtime/mylite_base_conversion.c
   src/runtime/mylite_bitwise.c
   src/runtime/mylite_bitwise_aggregate.c
   src/runtime/mylite_cast_convert.c
+  src/runtime/mylite_collation.c
   src/runtime/mylite_catalog.c
   src/runtime/mylite_catalog_column_mutation.c
   src/runtime/mylite_catalog_column_values.c
@@ -227,6 +229,23 @@ add_library(mylite STATIC
   src/version.c
 )
 add_library(MyLite::mylite ALIAS mylite)
+
+set_source_files_properties(
+  "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/ext/fts3/fts3_unicode2.c"
+  PROPERTIES
+    COMPILE_DEFINITIONS SQLITE_ENABLE_FTS3=1
+)
+if(MSVC)
+  set_source_files_properties(
+    "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/ext/fts3/fts3_unicode2.c"
+    PROPERTIES COMPILE_OPTIONS /w
+  )
+else()
+  set_source_files_properties(
+    "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/ext/fts3/fts3_unicode2.c"
+    PROPERTIES COMPILE_OPTIONS -w
+  )
+endif()
 
 if(MYLITE_ENABLE_PROFILING)
   target_sources(mylite PRIVATE src/runtime/mylite_profile.c)

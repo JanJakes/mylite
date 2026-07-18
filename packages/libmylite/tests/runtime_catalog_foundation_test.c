@@ -1199,7 +1199,7 @@ static int tamper_delete_catalog_column(sqlite3 *sqlite) {
 static int tamper_replace_physical_index_definition(sqlite3 *sqlite) {
     char index_name[sql_buffer_capacity];
     char table_name[sql_buffer_capacity];
-    char sql[sql_buffer_capacity * 2];
+    char sql[(sql_buffer_capacity * 3) + 64];
     int rc = query_single_text(
         sqlite,
         "SELECT physical_name FROM _mylite_catalog_indexes WHERE name = 'idx_value'",

@@ -31,4 +31,31 @@ function(mylite_configure_c_target target)
       target_compile_options("${target}" PRIVATE -Werror)
     endif()
   endif()
+
+  if(MYLITE_ENABLE_ASAN_UBSAN)
+    target_compile_options("${target}" PRIVATE
+      -fsanitize=address,undefined
+      -fno-omit-frame-pointer
+      -fno-sanitize-recover=all
+    )
+    mylite_configure_sanitizer_link_options("${target}" -fsanitize=address,undefined)
+  elseif(MYLITE_ENABLE_TSAN)
+    target_compile_options("${target}" PRIVATE
+      -fsanitize=thread
+      -fno-omit-frame-pointer
+      -fno-sanitize-recover=all
+    )
+    mylite_configure_sanitizer_link_options("${target}" -fsanitize=thread)
+  endif()
+endfunction()
+
+function(mylite_configure_sanitizer_link_options target sanitizer_option)
+  get_target_property(target_type "${target}" TYPE)
+  if(target_type STREQUAL "STATIC_LIBRARY"
+     OR target_type STREQUAL "OBJECT_LIBRARY"
+     OR target_type STREQUAL "INTERFACE_LIBRARY")
+    target_link_options("${target}" INTERFACE "${sanitizer_option}")
+  else()
+    target_link_options("${target}" PRIVATE "${sanitizer_option}")
+  endif()
 endfunction()

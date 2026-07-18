@@ -206,6 +206,10 @@
     NAME libmylite.runtime.show_processlist_introspection
     COMMAND mylite_runtime_show_processlist_introspection_test
   )
+  set_tests_properties(
+    libmylite.runtime.show_processlist_introspection
+    PROPERTIES LABELS "runtime;concurrency" TIMEOUT 120
+  )
   add_test(
     NAME libmylite.runtime.show_grants
     COMMAND mylite_runtime_show_grants_test
@@ -873,6 +877,10 @@
   add_test(
     NAME libmylite.runtime.transaction_lifecycle
     COMMAND mylite_runtime_transaction_lifecycle_test
+  )
+  set_tests_properties(
+    libmylite.runtime.transaction_lifecycle
+    PROPERTIES LABELS "runtime;concurrency" TIMEOUT 120
   )
   add_test(
     NAME libmylite.runtime.dml_default_keyword_values

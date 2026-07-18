@@ -52,6 +52,26 @@
       "cacheVariables": {
         "MYLITE_ENABLE_PROFILING": "ON"
       }
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/asan-ubsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MYLITE_ENABLE_ASAN_UBSAN": "ON"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "Debug build with ThreadSanitizer",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MYLITE_ENABLE_TSAN": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -74,6 +94,14 @@
     {
       "name": "perf-profile",
       "configurePreset": "perf-profile"
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
     },
     {
       "name": "format",
@@ -131,6 +159,32 @@
       "configurePreset": "perf-profile",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1:strict_string_checks=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "filter": {
+        "include": {
+          "label": "concurrency"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
       }
     }
   ],

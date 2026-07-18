@@ -223,8 +223,12 @@ complete.
 ## Phase 6: Release qualification
 
 - [ ] Add assertion-enabled Debug jobs and representative Release jobs.
-- [ ] Add reproducible ASan+UBSan presets and run the complete core suite.
-- [ ] Add focused LSan and deterministic TSan concurrency tiers.
+- [ ] Add reproducible ASan+UBSan presets and run the complete core suite. The
+  preset and focused prepared-statement qualification are complete; the full
+  suite remains to be run in CI.
+- [ ] Add focused LSan and deterministic TSan concurrency tiers. Leak detection
+  and a labeled two-test TSan tier pass locally; remaining sleep-based test
+  coordination and CI coverage remain open.
 - [ ] Add first-party fuzz targets for the lexer/parser, normalizer, JSON,
   geometry, preamble, and catalog inputs.
 - [ ] Add model-based DDL/DML, metamorphic rollback/reopen, multi-process crash,

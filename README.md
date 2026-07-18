@@ -142,6 +142,19 @@ cmake --build --preset dev  # build the default targets
 ctest --preset dev          # run tests and print failures
 ```
 
+Memory, undefined-behavior, and thread sanitizer builds are explicit Debug
+modes:
+
+```sh
+cmake --preset asan-ubsan
+cmake --build --preset asan-ubsan
+ctest --preset asan-ubsan
+
+cmake --preset tsan
+cmake --build --preset tsan
+ctest --preset tsan
+```
+
 Run all local checks:
 
 ```sh

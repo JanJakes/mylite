@@ -21,6 +21,17 @@ option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
 option(MYLITE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(MYLITE_BUILD_PHP_EXTENSIONS "Build MyLite PHP extensions" OFF)
 option(MYLITE_ENABLE_PROFILING "Enable opt-in runtime profiling instrumentation" OFF)
+option(MYLITE_ENABLE_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(MYLITE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+
+if(MYLITE_ENABLE_ASAN_UBSAN AND MYLITE_ENABLE_TSAN)
+  message(FATAL_ERROR "MYLITE_ENABLE_ASAN_UBSAN and MYLITE_ENABLE_TSAN are mutually exclusive")
+endif()
+
+if((MYLITE_ENABLE_ASAN_UBSAN OR MYLITE_ENABLE_TSAN)
+   AND NOT CMAKE_C_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+  message(FATAL_ERROR "MyLite sanitizer modes require Clang, AppleClang, or GCC")
+endif()
 
 if(MYLITE_BUILD_PHP_EXTENSIONS)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)

@@ -694,21 +694,14 @@ static int resolve_order_alias(
     }
 
     for (size_t column_index = 0U; column_index < select_plan->column_count; ++column_index) {
-        const struct mylite_sql_ast_node *alias = select_plan->column_aliases[column_index];
-        char *alias_text = NULL;
+        const char *alias = select_plan->column_aliases[column_index];
 
         if (alias == NULL) {
             continue;
         }
 
-        rc = copy_select_item_alias_text(database, alias, &alias_text);
-        if (rc != MYLITE_OK) {
-            free(order_name);
-            return rc;
-        }
-        if (text_equals_ascii_case_insensitive(alias_text, order_name)) {
+        if (text_equals_ascii_case_insensitive(alias, order_name)) {
             if (found) {
-                free(alias_text);
                 set_ambiguous_order_column_error(database, order_name);
                 free(order_name);
                 return MYLITE_ERROR;
@@ -719,7 +712,6 @@ static int resolve_order_alias(
             }
             found = true;
         }
-        free(alias_text);
     }
 
     free(order_name);

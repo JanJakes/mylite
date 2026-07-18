@@ -1581,28 +1581,16 @@ static int validate_derived_select_output_columns(
     for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
         if (derived_plan->column_aliases != NULL &&
             derived_plan->column_aliases[column_index] != NULL) {
-            char *alias_text = NULL;
-            int rc = copy_select_item_alias_text(
-                database,
-                derived_plan->column_aliases[column_index],
-                &alias_text
-            );
-
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
             if (!text_equals_ascii_case_insensitive(
-                    alias_text,
+                    derived_plan->column_aliases[column_index],
                     derived_plan->columns[column_index].name
                 )) {
-                free(alias_text);
                 set_unsupported_error(
                     database,
                     "joined source derived descriptor tables support only same-name output aliases"
                 );
                 return MYLITE_ERROR;
             }
-            free(alias_text);
         }
     }
     return MYLITE_OK;
@@ -1634,29 +1622,16 @@ static int copy_derived_select_source_columns(
     for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
         if (derived_plan->column_aliases != NULL &&
             derived_plan->column_aliases[column_index] != NULL) {
-            char *alias_text = NULL;
-            int rc = copy_select_item_alias_text(
-                database,
-                derived_plan->column_aliases[column_index],
-                &alias_text
-            );
-
-            if (rc != MYLITE_OK) {
-                free(out_source->columns);
-                out_source->columns = NULL;
-                return rc;
-            }
+            const char *alias_text = derived_plan->column_aliases[column_index];
             size_t alias_size = strlen(alias_text);
 
             if (alias_size >= sizeof(out_source->columns[column_index].name)) {
-                free(alias_text);
                 free(out_source->columns);
                 out_source->columns = NULL;
                 set_identifier_too_long_error(database, "alias");
                 return MYLITE_ERROR;
             }
             memcpy(out_source->columns[column_index].name, alias_text, alias_size + 1U);
-            free(alias_text);
         }
     }
     out_source->column_count = derived_plan->column_count;
@@ -2559,7 +2534,10 @@ static void planned_select_deinit_shallow(struct planned_select *plan) {
         plan->source_columns
     );
     free(plan->columns);
-    free((void *)plan->column_aliases);
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        free(plan->column_aliases[column_index]);
+    }
+    free(plan->column_aliases);
     free(plan->column_source_indexes);
     free(plan->join_kinds);
     if (plan->join_conditions != NULL) {

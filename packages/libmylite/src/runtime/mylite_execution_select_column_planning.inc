@@ -368,6 +368,7 @@ static int append_select_column_from_source(
     size_t source_index,
     const struct mylite_sql_ast_node *alias
 ) {
+    char *alias_text = NULL;
     size_t required_count = 0U;
     int rc = MYLITE_OK;
 
@@ -380,9 +381,15 @@ static int append_select_column_from_source(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (alias != NULL) {
+        rc = copy_select_item_alias_text(database, alias, &alias_text);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
 
     plan->columns[plan->column_count] = *column;
-    plan->column_aliases[plan->column_count] = alias;
+    plan->column_aliases[plan->column_count] = alias_text;
     plan->column_source_indexes[plan->column_count] = source_index;
     plan->column_count = required_count;
 
@@ -397,7 +404,7 @@ static int reserve_select_columns(
     enum { initial_select_column_capacity = 4 };
 
     struct mylite_catalog_column_descriptor *columns = NULL;
-    const struct mylite_sql_ast_node **aliases = NULL;
+    char **aliases = NULL;
     size_t *source_indexes = NULL;
     size_t capacity = plan->column_capacity;
 
@@ -426,8 +433,7 @@ static int reserve_select_columns(
         return MYLITE_NOMEM;
     }
     plan->columns = columns;
-    aliases = (const struct mylite_sql_ast_node **)
-        realloc((void *)plan->column_aliases, capacity * sizeof(*aliases));
+    aliases = realloc(plan->column_aliases, capacity * sizeof(*aliases));
     if (aliases == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -486,17 +492,12 @@ static int append_select_result_column(
     size_t column_index
 ) {
     const char *column_name = plan->columns[column_index].name;
-    const struct mylite_sql_ast_node *alias = plan->column_aliases[column_index];
+    const char *alias = plan->column_aliases[column_index];
     struct mylite_result_column_descriptor descriptor = {0};
-    char *alias_text = NULL;
     int rc = MYLITE_OK;
 
     if (alias != NULL) {
-        rc = copy_select_item_alias_text(database, alias, &alias_text);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        column_name = alias_text;
+        column_name = alias;
     }
 
     rc = make_select_result_column_descriptor(
@@ -515,8 +516,6 @@ static int append_select_result_column(
             set_nomem_error(database);
         }
     }
-    free(alias_text);
-
     return rc;
 }
 

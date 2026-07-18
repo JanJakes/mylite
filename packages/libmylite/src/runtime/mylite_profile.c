@@ -100,6 +100,30 @@ void mylite_profile_record_parse(mylite_db *database, uint64_t started_ns) {
     }
 }
 
+void mylite_profile_record_select_plan(mylite_db *database, uint64_t started_ns, bool cache_hit) {
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    if (cache_hit) {
+        ++database->profile.select_plan_cache_hit_count;
+        return;
+    }
+    database->profile.select_plan_ns += elapsed_since(started_ns);
+    ++database->profile.select_plan_count;
+}
+
+void mylite_profile_record_select_lowering(mylite_db *database, uint64_t started_ns, bool cache_hit) {
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    if (cache_hit) {
+        ++database->profile.select_lowering_cache_hit_count;
+        return;
+    }
+    database->profile.select_lowering_ns += elapsed_since(started_ns);
+    ++database->profile.select_lowering_count;
+}
+
 void mylite_profile_record_result_buffer(uint64_t started_ns, bool completed, size_t value_bytes) {
     mylite_db *database = active_api_database;
 

@@ -1045,8 +1045,8 @@ int mylite_stmt_step(mylite_stmt *stmt) {
             stmt->database,
             stmt->sqlite_statement,
             mylite_result_column_count(stmt->metadata_result),
-            stmt->select_plan.columns,
-            stmt->select_plan.column_count,
+            stmt->analyzed_select.plan.columns,
+            stmt->analyzed_select.plan.column_count,
             &stmt->row_storage
         );
         if (rc != MYLITE_OK) {
@@ -1748,48 +1748,65 @@ static int publish_buffered_statement_completion(mylite_stmt *stmt) {
 
 static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *stmt, int *out_rc) {
     struct mylite_db *database = stmt->database;
+    struct planned_select *plan = &stmt->analyzed_select.plan;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_lowering_started_ns = 0U;
+#endif
     bool unsupported = false;
     int rc = MYLITE_OK;
 
     database->cursor_plan_attempt_active = true;
     database->cursor_plan_attempt_unsupported = false;
-    rc = plan_select(database, stmt->statement, true, &stmt->select_plan);
+    rc = analyze_prepared_select(stmt);
     unsupported = rc != MYLITE_OK && database->cursor_plan_attempt_unsupported;
     database->cursor_plan_attempt_active = false;
     database->cursor_plan_attempt_unsupported = false;
 
     if (rc == MYLITE_OK) {
-        stmt->has_select_plan = true;
         rc = mylite_result_create(&stmt->metadata_result);
     }
     if (rc == MYLITE_OK) {
         rc = load_result_column_metadata_context(
             database,
-            &stmt->select_plan,
+            plan,
             &stmt->metadata_context
         );
     }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < stmt->select_plan.column_count;
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
         rc = append_select_result_column(
             database,
             stmt->metadata_result,
-            &stmt->select_plan,
+            plan,
             &stmt->metadata_context,
             column_index
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = build_select_sql(&stmt->select_plan, &stmt->sqlite_sql);
+    if (rc == MYLITE_OK && stmt->analyzed_select.lowered_sql == NULL) {
+#ifdef MYLITE_ENABLE_PROFILING
+        profile_lowering_started_ns = mylite_profile_now_ns();
+#endif
+        rc = build_select_sql(plan, &stmt->analyzed_select.lowered_sql);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_select_lowering(database, profile_lowering_started_ns, false);
+#endif
+#ifdef MYLITE_ENABLE_PROFILING
+    } else if (rc == MYLITE_OK) {
+        mylite_profile_record_select_lowering(database, 0U, true);
+#endif
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_cached_sqlite_statement(database, stmt->sqlite_sql, &stmt->sqlite_statement);
+        rc = prepare_cached_sqlite_statement(
+            database,
+            stmt->analyzed_select.lowered_sql,
+            &stmt->sqlite_statement
+        );
         if (rc == MYLITE_OK) {
             stmt->sqlite_statement_is_cached = true;
         }
     }
     if (rc == MYLITE_OK) {
-        rc = bind_select_parameters(stmt->sqlite_statement, &stmt->select_plan);
+        rc = bind_select_parameters(stmt->sqlite_statement, plan);
     }
     if (rc != MYLITE_OK && stmt->sqlite_statement != NULL) {
         rc = finish_cursor_sqlite_statement(stmt, rc);
@@ -1810,6 +1827,54 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
     return unsupported ? CURSOR_PLAN_ATTEMPT_UNSUPPORTED : CURSOR_PLAN_ATTEMPT_FAILED;
 }
 
+static int analyze_prepared_select(mylite_stmt *stmt) {
+    struct mylite_analyzed_select_plan *analyzed = &stmt->analyzed_select;
+    struct mylite_db *database = stmt->database;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_plan_started_ns = 0U;
+#endif
+    int rc = MYLITE_OK;
+
+    if (analyzed->valid &&
+        (stmt->parameter_count != 0U ||
+         analyzed->catalog_generation != database->session.catalog_generation ||
+         analyzed->sqlite_schema_generation != database->session.sqlite_schema_generation)) {
+        deinit_analyzed_select_plan(analyzed);
+    }
+    if (analyzed->valid) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_select_plan(database, 0U, true);
+#endif
+        return MYLITE_OK;
+    }
+
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_plan_started_ns = mylite_profile_now_ns();
+#endif
+    rc = plan_select(database, stmt->statement, true, &analyzed->plan);
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_select_plan(database, profile_plan_started_ns, false);
+#endif
+    if (rc != MYLITE_OK) {
+        planned_select_deinit(&analyzed->plan);
+        return rc;
+    }
+    analyzed->catalog_generation = database->session.catalog_generation;
+    analyzed->sqlite_schema_generation = database->session.sqlite_schema_generation;
+    analyzed->valid = true;
+    return MYLITE_OK;
+}
+
+static void deinit_analyzed_select_plan(struct mylite_analyzed_select_plan *analyzed) {
+    if (analyzed == NULL) {
+        return;
+    }
+
+    planned_select_deinit(&analyzed->plan);
+    free(analyzed->lowered_sql);
+    *analyzed = (struct mylite_analyzed_select_plan){0};
+}
+
 static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc) {
     if (stmt->sqlite_statement != NULL) {
         if (stmt->sqlite_statement_is_cached) {
@@ -1825,13 +1890,10 @@ static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc) {
 
 static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
     (void)finish_cursor_sqlite_statement(stmt, rc);
-    free(stmt->sqlite_sql);
-    stmt->sqlite_sql = NULL;
-    sqlite_result_row_storage_deinit(&stmt->row_storage);
-    if (stmt->has_select_plan) {
-        planned_select_deinit(&stmt->select_plan);
-        stmt->has_select_plan = false;
+    if (stmt->parameter_count != 0U) {
+        deinit_analyzed_select_plan(&stmt->analyzed_select);
     }
+    sqlite_result_row_storage_deinit(&stmt->row_storage);
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
     mylite_result_free(stmt->completed_result);
@@ -1984,14 +2046,9 @@ static void release_cursor_statement_resources(mylite_stmt *stmt) {
         (void)finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
     (void)rollback_statement_transaction(stmt->database, &stmt->read_transaction, MYLITE_OK);
-    free(stmt->sqlite_sql);
-    stmt->sqlite_sql = NULL;
+    deinit_analyzed_select_plan(&stmt->analyzed_select);
     sqlite_result_row_storage_deinit(&stmt->row_storage);
     result_column_metadata_context_deinit(&stmt->metadata_context);
-    if (stmt->has_select_plan) {
-        planned_select_deinit(&stmt->select_plan);
-        stmt->has_select_plan = false;
-    }
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
     mylite_result_free(stmt->completed_result);
@@ -2057,8 +2114,8 @@ static int set_cursor_found_row_count(mylite_stmt *stmt) {
     uint64_t found_row_count = 0U;
     int rc = MYLITE_OK;
 
-    if (stmt->select_plan.calc_found_rows) {
-        rc = read_select_found_row_count(stmt->database, &stmt->select_plan, &count);
+    if (stmt->analyzed_select.plan.calc_found_rows) {
+        rc = read_select_found_row_count(stmt->database, &stmt->analyzed_select.plan, &count);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -2072,7 +2129,7 @@ static int set_cursor_found_row_count(mylite_stmt *stmt) {
 
     rc = found_row_count_for_select_limit_envelope(
         stmt->database,
-        &stmt->select_plan,
+        &stmt->analyzed_select.plan,
         stmt->row_count,
         &found_row_count
     );

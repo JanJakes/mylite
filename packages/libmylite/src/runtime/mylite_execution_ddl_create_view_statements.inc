@@ -788,10 +788,10 @@ static int copy_create_view_inferred_column_name(
     size_t column_index,
     char **out_name
 ) {
-    const struct mylite_sql_ast_node *alias = plan->source.column_aliases[column_index];
+    const char *alias = plan->source.column_aliases[column_index];
 
     if (alias != NULL) {
-        return copy_select_item_alias_text(database, alias, out_name);
+        return duplicate_text(database, alias, out_name);
     }
     return duplicate_text(database, plan->source.columns[column_index].name, out_name);
 }

@@ -1465,7 +1465,7 @@ struct planned_select {
     size_t source_column_count;
     struct loaded_table_columns_cache_entry *source_columns_cache_entry;
     struct mylite_catalog_column_descriptor *columns;
-    const struct mylite_sql_ast_node **column_aliases;
+    char **column_aliases;
     size_t *column_source_indexes;
     size_t column_count;
     size_t column_capacity;
@@ -2585,6 +2585,14 @@ struct mylite_stmt_binding {
     size_t capacity;
 };
 
+struct mylite_analyzed_select_plan {
+    struct planned_select plan;
+    char *lowered_sql;
+    uint64_t catalog_generation;
+    uint64_t sqlite_schema_generation;
+    bool valid;
+};
+
 struct mylite_stmt {
     struct mylite_db *database;
     struct mylite_stmt *next_live_statement;
@@ -2593,7 +2601,7 @@ struct mylite_stmt {
     struct mylite_sql_parse_result parse_result;
     struct mylite_execution_normalized_sql normalized_sql;
     const struct mylite_sql_ast_node *statement;
-    struct planned_select select_plan;
+    struct mylite_analyzed_select_plan analyzed_select;
     struct result_column_metadata_context metadata_context;
     struct sqlite_result_row_storage row_storage;
     struct mylite_statement_transaction read_transaction;
@@ -2601,7 +2609,6 @@ struct mylite_stmt {
     mylite_result *metadata_result;
     mylite_result *completed_result;
     struct mylite_stmt_binding *bindings;
-    char *sqlite_sql;
     uint64_t statement_id;
     size_t parameter_count;
     size_t row_count;
@@ -2610,7 +2617,6 @@ struct mylite_stmt {
     bool has_context;
     bool has_parse_result;
     bool has_normalized_sql;
-    bool has_select_plan;
     bool has_materialized_rows;
     bool buffered_results;
     bool returns_rows;

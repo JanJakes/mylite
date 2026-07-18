@@ -3188,6 +3188,8 @@ static int append_profile_json(
 
     unattributed_ns = subtract_saturating(unattributed_ns, profile->normalization_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->parse_ns);
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->select_plan_ns);
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->select_lowering_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->sqlite_step_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->result_buffer_ns);
     file = fopen(path, "ab");
@@ -3199,11 +3201,17 @@ static int append_profile_json(
         file,
         "{\"scenario\":\"%s\",\"kind\":\"%s\",\"sample\":%zu,"
         "\"operations\":%zu,\"wall_ns\":%" PRIu64 ",\"statement_api_ns\":%" PRIu64
-        ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64 ",\"sqlite_step_ns\":%" PRIu64
+        ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64
+        ",\"select_plan_ns\":%" PRIu64 ",\"select_lowering_ns\":%" PRIu64
+        ",\"sqlite_step_ns\":%" PRIu64
         ",\"result_buffer_ns\":%" PRIu64 ",\"cursor_step_ns\":%" PRIu64
         ",\"cursor_finalize_ns\":%" PRIu64 ",\"unattributed_ns\":%" PRIu64
         ",\"statement_count\":%" PRIu64 ",\"normalization_count\":%" PRIu64
-        ",\"parse_count\":%" PRIu64 ",\"sqlite_step_count\":%" PRIu64
+        ",\"parse_count\":%" PRIu64 ",\"select_plan_count\":%" PRIu64
+        ",\"select_plan_cache_hit_count\":%" PRIu64
+        ",\"select_lowering_count\":%" PRIu64
+        ",\"select_lowering_cache_hit_count\":%" PRIu64
+        ",\"sqlite_step_count\":%" PRIu64
         ",\"result_row_count\":%" PRIu64 ",\"result_value_bytes\":%" PRIu64
         ",\"cursor_row_count\":%" PRIu64 ",\"cursor_value_bytes\":%" PRIu64
         ",\"cursor_finalize_count\":%" PRIu64 "}\n",
@@ -3215,6 +3223,8 @@ static int append_profile_json(
         profile->statement_api_ns,
         profile->normalization_ns,
         profile->parse_ns,
+        profile->select_plan_ns,
+        profile->select_lowering_ns,
         profile->sqlite_step_ns,
         profile->result_buffer_ns,
         profile->cursor_step_ns,
@@ -3223,6 +3233,10 @@ static int append_profile_json(
         profile->statement_count,
         profile->normalization_count,
         profile->parse_count,
+        profile->select_plan_count,
+        profile->select_plan_cache_hit_count,
+        profile->select_lowering_count,
+        profile->select_lowering_cache_hit_count,
         profile->sqlite_step_count,
         profile->result_row_count,
         profile->result_value_bytes,

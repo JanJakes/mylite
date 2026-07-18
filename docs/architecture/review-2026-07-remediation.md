@@ -234,15 +234,20 @@ complete.
 
 - [ ] Add allocation, descriptor-copy, metadata-step, parser-retry, statement-
   cache, and plan-cache counters to the benchmark/profile surface.
-  Normalization and parse invocation counters are complete; the remaining
-  counters are still open.
+  Normalization, parse, SELECT-plan, SELECT-lowering, and retained-plan cache
+  counters are complete; the remaining allocation, descriptor-copy,
+  metadata-step, parser-retry, and statement-cache counters are still open.
 - [ ] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
   separately owned/interned cold strings.
 - [ ] Budget caches by bytes and use generation-safe borrowed/pinned spans.
 - [ ] Bound invalid-SQL parser recovery work and make nested-parenthesis scans
   linear after measuring current scaling.
 - [ ] Reuse analyzed prepared plans by schema generation and relevant session
-  state after native binding is complete.
+  state after native binding is complete. Zero-parameter native prepared
+  SELECTs now retain AST-independent aliases, analyzed plans, and lowered SQL
+  across reset, with catalog and SQLite schema generation invalidation.
+  Parameterized plans remain open because the current analyzer embeds bound
+  values and must first separate value binding from semantic analysis.
 - [ ] Measure and correct administrative cache/concurrency scaling.
 
 ### Build, size, and packaging

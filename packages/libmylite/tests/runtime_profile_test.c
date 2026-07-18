@@ -20,6 +20,7 @@ enum {
 static int test_buffered_profile(void);
 static int test_cursor_profile(void);
 static int test_repeated_prepared_profile(void);
+static int test_prepared_plan_cache_profile(void);
 static int test_connection_attribution(void);
 static int test_transaction_control_profile(void);
 static int test_close_active_profile(void);
@@ -36,6 +37,7 @@ int main(void) {
     failures += test_buffered_profile();
     failures += test_cursor_profile();
     failures += test_repeated_prepared_profile();
+    failures += test_prepared_plan_cache_profile();
     failures += test_connection_attribution();
     failures += test_transaction_control_profile();
     failures += test_close_active_profile();
@@ -198,6 +200,11 @@ static int test_cursor_profile(void) {
     failures += expect_true(snapshot.statement_api_ns > 0U, "cursor prepare time");
     failures += expect_true(snapshot.normalization_count == 1U, "cursor normalization count");
     failures += expect_true(snapshot.parse_count == 1U, "cursor parse count");
+    failures += expect_true(snapshot.select_plan_count == 1U, "cursor plan count");
+    failures += expect_true(snapshot.select_plan_cache_hit_count == 0U, "cursor plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 1U, "cursor lowering count");
+    failures +=
+        expect_true(snapshot.select_lowering_cache_hit_count == 0U, "cursor lowering hit count");
     failures += expect_true(snapshot.cursor_step_ns > 0U, "cursor step time");
     failures += expect_true(snapshot.cursor_row_count == 1U, "cursor profiled rows");
     failures += expect_true(snapshot.cursor_value_bytes == 1U, "cursor profiled bytes");
@@ -288,6 +295,14 @@ static int test_repeated_prepared_profile(void) {
     failures +=
         expect_true(snapshot.normalization_count == 0U, "repeated execution normalization count");
     failures += expect_true(snapshot.parse_count == 0U, "repeated execution parse count");
+    failures += expect_true(snapshot.select_plan_count == 3U, "repeated execution plan count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 0U, "repeated execution plan hits");
+    failures += expect_true(snapshot.select_lowering_count == 0U, "repeated lowering count");
+    failures += expect_true(
+        snapshot.select_lowering_cache_hit_count == 0U,
+        "repeated lowering hits"
+    );
     failures += expect_true(snapshot.cursor_row_count == 3U, "repeated profile row count");
     failures += expect_true(snapshot.cursor_step_ns > 0U, "repeated profile step time");
 
@@ -317,6 +332,119 @@ static int test_repeated_prepared_profile(void) {
     failures +=
         expect_int(mylite_stmt_finalize(dml_stmt), MYLITE_OK, "finalize materialized profile");
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize repeated profile");
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_prepared_plan_cache_profile(void) {
+    struct mylite_profile_snapshot snapshot = {0};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "plan_cache") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open plan cache database");
+    failures += expect_int(
+        mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
+        MYLITE_OK,
+        "create plan cache database"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(database, "USE app", strlen("USE app"), &result),
+        MYLITE_OK,
+        "select plan cache database"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "CREATE TABLE t (id INT)",
+            strlen("CREATE TABLE t (id INT)"),
+            &result
+        ),
+        MYLITE_OK,
+        "create plan cache table"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(database, "INSERT INTO t VALUES (1)", strlen("INSERT INTO t VALUES (1)"), &result),
+        MYLITE_OK,
+        "insert plan cache row"
+    );
+    mylite_result_free(result);
+    failures += expect_int(
+        mylite_prepare(database, "SELECT id FROM t", strlen("SELECT id FROM t"), &stmt),
+        MYLITE_OK,
+        "prepare cached plan query"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step initial cached plan row");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step initial cached plan done");
+
+    failures += expect_int(mylite_profile_start(database), MYLITE_OK, "start plan cache profile");
+    for (int iteration = 0; iteration < 3; ++iteration) {
+        failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset cached plan query");
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step cached plan row");
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step cached plan done");
+    }
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop plan cache profile"
+    );
+    failures += expect_true(snapshot.select_plan_count == 0U, "cached plan build count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 3U, "cached plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 0U, "cached lowering build count");
+    failures += expect_true(
+        snapshot.select_lowering_cache_hit_count == 3U,
+        "cached lowering hit count"
+    );
+
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "ALTER TABLE t ADD COLUMN label VARCHAR(10)",
+            strlen("ALTER TABLE t ADD COLUMN label VARCHAR(10)"),
+            &result
+        ),
+        MYLITE_OK,
+        "invalidate cached plan schema"
+    );
+    mylite_result_free(result);
+    failures += expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start invalidated plan profile"
+    );
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset invalidated plan query");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step invalidated plan row");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step invalidated plan done");
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop invalidated plan profile"
+    );
+    failures += expect_true(snapshot.select_plan_count == 1U, "invalidated plan build count");
+    failures +=
+        expect_true(snapshot.select_plan_cache_hit_count == 0U, "invalidated plan hit count");
+    failures += expect_true(snapshot.select_lowering_count == 1U, "invalidated lowering count");
+    failures += expect_true(
+        snapshot.select_lowering_cache_hit_count == 0U,
+        "invalidated lowering hit count"
+    );
+
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cached plan query");
     mylite_close(database);
     remove_related_files(path);
     return failures;

@@ -800,33 +800,27 @@ static int copy_create_table_select_column_name(
     size_t column_index,
     struct planned_column *out_column
 ) {
-    const struct mylite_sql_ast_node *alias = source->column_aliases[column_index];
-    char *alias_text = NULL;
-    int rc = MYLITE_OK;
+    const char *alias_text = source->column_aliases[column_index];
 
-    if (alias == NULL) {
+    if (alias_text == NULL) {
         return MYLITE_OK;
     }
 
-    rc = copy_select_item_alias_text(database, alias, &alias_text);
-    if (rc == MYLITE_OK && alias_text[0] == '\0') {
+    if (alias_text[0] == '\0') {
         set_reserved_name_error(database, "column", alias_text);
-        rc = MYLITE_ERROR;
+        return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && strlen(alias_text) >= sizeof(out_column->name)) {
+    if (strlen(alias_text) >= sizeof(out_column->name)) {
         set_identifier_too_long_error(database, "column");
-        rc = MYLITE_ERROR;
+        return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(alias_text)) {
+    if (mylite_catalog_name_is_reserved(alias_text)) {
         set_reserved_name_error(database, "column", alias_text);
-        rc = MYLITE_ERROR;
+        return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK) {
-        snprintf(out_column->name, sizeof(out_column->name), "%s", alias_text);
-    }
-    free(alias_text);
+    snprintf(out_column->name, sizeof(out_column->name), "%s", alias_text);
 
-    return rc;
+    return MYLITE_OK;
 }
 
 static int execute_create_table_select_copy(

@@ -186,14 +186,14 @@ static int plan_count(
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
     const struct mylite_sql_ast_node *count_expression = NULL;
+    const struct mylite_sql_ast_node *alias = NULL;
     struct planned_count_source_nodes source_nodes = {0};
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_count){false};
     out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
     expression = child_at(select_item, 0U);
-    out_plan->expression = expression;
-    out_plan->alias = child_at(select_item, 1U);
+    alias = child_at(select_item, 1U);
     count_expression = unwrap_parenthesized_expression(expression);
     out_plan->function = count_function_from_expression(count_expression);
     out_plan->count_is_distinct = aggregate_function_is_distinct(count_expression);
@@ -204,6 +204,10 @@ static int plan_count(
     if (out_plan->function == PLANNED_COUNT_NONE) {
         set_unsupported_error(database, count_exactly_one_message(out_plan->function));
         return MYLITE_ERROR;
+    }
+    rc = copy_planned_aggregate_result_label(database, expression, alias, &out_plan->result_label);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     if (out_plan->function == PLANNED_COUNT_LITERAL) {
         rc = plan_count_literal(database, count_expression, &out_plan->count_literal);
@@ -268,6 +272,7 @@ static void planned_count_deinit(struct planned_count *plan) {
     }
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->count_literal);
+    free(plan->result_label);
     *plan = (struct planned_count){false};
 }
 
@@ -883,24 +888,28 @@ static int append_count_result_column(
     mylite_result *result,
     const struct planned_count *plan
 ) {
-    char *column_name = NULL;
-    int rc = MYLITE_OK;
+    int rc = mylite_result_append_column(result, plan->result_label);
 
-    if (plan->alias != NULL) {
-        rc = copy_select_item_alias_text(database, plan->alias, &column_name);
-    } else {
-        rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
     }
-
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, column_name);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
-    }
-
-    free(column_name);
     return rc;
+}
+
+static int copy_planned_aggregate_result_label(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    char **out_label
+) {
+    if (alias != NULL) {
+        return copy_select_item_alias_text(database, alias, out_label);
+    }
+    return copy_aggregate_result_column_name(
+        database,
+        expression == NULL ? NULL : &expression->span,
+        out_label
+    );
 }
 
 static int copy_aggregate_result_column_name(
@@ -1333,6 +1342,8 @@ static int plan_column_aggregate_select_item(
     const struct mylite_sql_ast_node *from_clause = NULL;
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *source_expression = NULL;
+    const struct mylite_sql_ast_node *alias = NULL;
     const struct mylite_sql_ast_node *aggregate_expression = NULL;
     const struct mylite_sql_ast_node *rhs_expression = NULL;
     enum mylite_sql_ast_operator projection_operator = MYLITE_SQL_AST_OPERATOR_NONE;
@@ -1352,10 +1363,9 @@ static int plan_column_aggregate_select_item(
         return MYLITE_ERROR;
     }
 
-    expression = child_at(select_item, 0U);
-    out_item->expression = expression;
-    out_item->alias = child_at(select_item, 1U);
-    expression = unwrap_parenthesized_expression(expression);
+    source_expression = child_at(select_item, 0U);
+    alias = child_at(select_item, 1U);
+    expression = unwrap_parenthesized_expression(source_expression);
     if (spatial_collect_wrapper_from_expression(
             expression,
             &out_item->spatial_wrapper_kind,
@@ -1372,6 +1382,15 @@ static int plan_column_aggregate_select_item(
     if (out_item->function == PLANNED_COLUMN_AGGREGATE_NONE) {
         set_unsupported_error(database, "aggregate SELECT supports only aggregate select items");
         return MYLITE_ERROR;
+    }
+    rc = copy_planned_aggregate_result_label(
+        database,
+        source_expression,
+        alias,
+        &out_item->result_label
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     out_item->aggregate_is_distinct = aggregate_function_is_distinct(aggregate_expression);
 
@@ -1627,6 +1646,7 @@ static void planned_column_aggregate_deinit(struct planned_column_aggregate *pla
     planned_row_scalar_expression_deinit(&plan->aggregate_key_row_scalar_expression);
     planned_row_scalar_expression_deinit(&plan->aggregate_row_scalar_expression);
     planned_row_scalar_expression_deinit(&plan->aggregate_projection_rhs);
+    free(plan->result_label);
     *plan = (struct planned_column_aggregate){0};
 }
 
@@ -2319,31 +2339,23 @@ static int append_column_aggregate_result_column(
     mylite_result *result,
     const struct planned_column_aggregate *plan
 ) {
-    char *column_name = NULL;
     int rc = MYLITE_OK;
-
-    if (plan->alias != NULL) {
-        rc = copy_select_item_alias_text(database, plan->alias, &column_name);
-    } else {
-        rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
-    }
 
     if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
         rc = append_spatial_collect_result_column(
             database,
             result,
-            column_name,
+            plan->result_label,
             plan->has_spatial_wrapper,
             plan->spatial_wrapper_kind
         );
     } else if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, column_name);
+        rc = mylite_result_append_column(result, plan->result_label);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
     }
 
-    free(column_name);
     return rc;
 }
 

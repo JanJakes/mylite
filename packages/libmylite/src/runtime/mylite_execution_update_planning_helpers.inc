@@ -1368,8 +1368,6 @@ static int plan_update_scalar_aggregate_subquery_source(
     const struct mylite_sql_ast_node *aggregate_expression,
     struct planned_update *out_plan
 ) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
     const struct mylite_sql_ast_node *where_clause = NULL;
@@ -1407,8 +1405,6 @@ static int plan_update_scalar_aggregate_subquery_source(
         return MYLITE_ERROR;
     }
 
-    out_plan->assignment_scalar_aggregate.expression = child_at(select_item, 0U);
-    out_plan->assignment_scalar_aggregate.alias = child_at(select_item, 1U);
     out_plan->assignment_scalar_aggregate.function = function;
     rc = resolve_visible_table_reference(
         database,

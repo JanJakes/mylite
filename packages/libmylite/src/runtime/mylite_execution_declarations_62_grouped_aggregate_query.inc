@@ -1001,6 +1001,12 @@ static int append_column_aggregate_result_column(
     mylite_result *result,
     const struct planned_column_aggregate *plan
 );
+static int copy_planned_aggregate_result_label(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    char **out_label
+);
 static int append_spatial_collect_result_column(
     struct mylite_db *database,
     mylite_result *result,

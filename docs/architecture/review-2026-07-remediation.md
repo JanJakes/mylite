@@ -229,7 +229,9 @@ complete.
   source-metadata shapes; SQL lowering, result metadata, derived-source
   construction, and ORDER BY alias resolution no longer dereference their
   source-expression or alias AST nodes. Result setup also avoids the former
-  per-execution label allocation.
+  per-execution label allocation. Standalone COUNT and column-aggregate plans
+  likewise own their normalized result labels; aggregate execution no longer
+  retains expression/alias AST nodes or allocates labels for those families.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization.
 - [ ] Separate mutable session publication from statement-owned collections.

@@ -2163,8 +2163,7 @@ struct planned_count {
     bool has_source;
     bool calc_found_rows;
     enum planned_count_source_kind source_kind;
-    const struct mylite_sql_ast_node *expression;
-    const struct mylite_sql_ast_node *alias;
+    char *result_label;
     enum planned_count_function function;
     bool count_is_distinct;
     struct table_name_resolution source;
@@ -2242,8 +2241,7 @@ struct planned_scalar_aggregate_subquery {
 };
 
 struct planned_column_aggregate {
-    const struct mylite_sql_ast_node *expression;
-    const struct mylite_sql_ast_node *alias;
+    char *result_label;
     enum planned_column_aggregate_function function;
     bool has_source;
     struct table_name_resolution source;

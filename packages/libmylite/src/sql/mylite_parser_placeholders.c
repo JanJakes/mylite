@@ -23,6 +23,7 @@ enum placeholder_statement_kind {
 
 struct placeholder_statement_scan {
     const struct mylite_sql_token *tokens;
+    uint8_t *predicate_context_flags;
     size_t token_count;
     bool has_non_trailing_semicolon;
 };
@@ -73,6 +74,8 @@ enum {
     cte_placeholder_min_token_count = 5,
     alter_table_partition_min_token_count = 5,
     row_bitwise_order_by_min_token_count = 5,
+    placeholder_predicate_context_in_where = 1U << 0,
+    placeholder_predicate_context_top_level_where = 1U << 1,
 };
 
 enum placeholder_row_bitwise_order_key_end_mode {
@@ -152,6 +155,9 @@ static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
 static bool placeholder_scan_row_constructor_predicate_is_in_where_context(
     const struct placeholder_statement_scan *scan,
     size_t index
+);
+static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
+    struct placeholder_statement_scan *scan
 );
 static bool placeholder_scan_row_constructor_comparison_starts_at(
     const struct placeholder_statement_scan *scan,

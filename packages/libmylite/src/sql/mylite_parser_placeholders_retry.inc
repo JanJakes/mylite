@@ -370,14 +370,21 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predica
         return status;
     }
     scan.tokens = tokens;
+    status = placeholder_scan_prepare_predicate_contexts(&scan);
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
     status = scan_row_constructor_predicate_retries(&scan, &retries, &can_retry);
     if (status != MYLITE_SQL_PARSE_OK) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(scan.predicate_context_flags);
         free(tokens);
         return status;
     }
     if (!can_retry) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(scan.predicate_context_flags);
         free(tokens);
         return MYLITE_SQL_PARSE_OK;
     }
@@ -390,12 +397,14 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predica
         *result = retry_result;
         *out_handled = true;
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(scan.predicate_context_flags);
         free(tokens);
         return status;
     }
 
     mylite_sql_parse_result_deinit(&retry_result);
     placeholder_row_arithmetic_subject_retries_deinit(&retries);
+    free(scan.predicate_context_flags);
     free(tokens);
     if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         result->status = status;
@@ -497,18 +506,7 @@ static bool placeholder_scan_row_constructor_predicate_is_in_where_context(
     if (!placeholder_scan_token_continues_row_arithmetic_predicate_subject(scan, cursor, false)) {
         return false;
     }
-    while (cursor > 0U) {
-        --cursor;
-        if (placeholder_scan_token_text_equals(scan, cursor, "WHERE")) {
-            return true;
-        }
-        if (placeholder_scan_token_text_equals(scan, cursor, "ON") ||
-            placeholder_scan_token_text_equals(scan, cursor, "HAVING") ||
-            placeholder_scan_token_stops_predicate_clause_search(scan, cursor)) {
-            return false;
-        }
-    }
-    return false;
+    return placeholder_scan_token_is_in_where_predicate_context(scan, cursor);
 }
 
 static bool placeholder_scan_row_constructor_comparison_starts_at(
@@ -766,6 +764,11 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arith
         return status;
     }
     scan.tokens = tokens;
+    status = placeholder_scan_prepare_predicate_contexts(&scan);
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
     status = scan_parenthesized_row_arithmetic_predicate_retries(
         &scan,
         &retries,
@@ -774,11 +777,13 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arith
     );
     if (status != MYLITE_SQL_PARSE_OK) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(scan.predicate_context_flags);
         free(tokens);
         return status;
     }
     if (!can_retry) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(scan.predicate_context_flags);
         free(tokens);
         return MYLITE_SQL_PARSE_OK;
     }
@@ -791,17 +796,86 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arith
         *result = retry_result;
         *out_handled = true;
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(scan.predicate_context_flags);
         free(tokens);
         return status;
     }
 
     mylite_sql_parse_result_deinit(&retry_result);
     placeholder_row_arithmetic_subject_retries_deinit(&retries);
+    free(scan.predicate_context_flags);
     free(tokens);
     if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         result->status = status;
         *out_handled = true;
         return status;
+    }
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
+    struct placeholder_statement_scan *scan
+) {
+    bool in_where = false;
+    bool top_level_where_disqualified = false;
+    bool top_level_where_valid = false;
+    int top_level_where_depth = 0;
+
+    if (scan == NULL || scan->tokens == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (scan->token_count == 0U) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    scan->predicate_context_flags = (uint8_t *)malloc(scan->token_count * sizeof(uint8_t));
+    if (scan->predicate_context_flags == NULL) {
+        return MYLITE_SQL_PARSE_NOMEM;
+    }
+
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        uint8_t context_flags = 0U;
+        bool starts_predicate_clause = false;
+        bool stops_predicate_clause_search = false;
+
+        if (in_where) {
+            context_flags |= placeholder_predicate_context_in_where;
+        }
+        if (top_level_where_valid && top_level_where_depth == 0) {
+            context_flags |= placeholder_predicate_context_top_level_where;
+        }
+        scan->predicate_context_flags[index] = context_flags;
+
+        if (placeholder_scan_token_text_equals(scan, index, "WHERE")) {
+            in_where = true;
+            if (!top_level_where_disqualified) {
+                top_level_where_valid = true;
+                top_level_where_depth = 0;
+            }
+            continue;
+        }
+        starts_predicate_clause = placeholder_scan_token_starts_predicate_clause(scan, index);
+        stops_predicate_clause_search =
+            placeholder_scan_token_stops_predicate_clause_search(scan, index);
+        if (starts_predicate_clause || stops_predicate_clause_search) {
+            in_where = false;
+        }
+        if (!top_level_where_valid) {
+            continue;
+        }
+        if (stops_predicate_clause_search) {
+            top_level_where_valid = false;
+            top_level_where_disqualified = true;
+            continue;
+        }
+        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
+            ++top_level_where_depth;
+        } else if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
+            --top_level_where_depth;
+            if (top_level_where_depth < 0) {
+                top_level_where_valid = false;
+                top_level_where_disqualified = true;
+            }
+        }
     }
     return MYLITE_SQL_PARSE_OK;
 }
@@ -1313,6 +1387,10 @@ static bool placeholder_scan_token_is_top_level_where_predicate_context(
 
     if (scan == NULL || index >= scan->token_count) {
         return false;
+    }
+    if (scan->predicate_context_flags != NULL) {
+        return (scan->predicate_context_flags[index] &
+                placeholder_predicate_context_top_level_where) != 0U;
     }
     for (size_t cursor = 0U; cursor < index; ++cursor) {
         if (placeholder_scan_token_text_equals(scan, cursor, "WHERE")) {
@@ -2657,6 +2735,10 @@ static bool placeholder_scan_token_is_in_where_predicate_context(
 ) {
     if (scan == NULL || index >= scan->token_count) {
         return false;
+    }
+    if (scan->predicate_context_flags != NULL) {
+        return (scan->predicate_context_flags[index] & placeholder_predicate_context_in_where) !=
+               0U;
     }
     while (index > 0U) {
         --index;

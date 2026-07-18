@@ -1,15 +1,18 @@
 #include "parser_test_support.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int test_syntax_errors(void);
+static int test_large_nested_syntax_error(void);
 static int test_lexer_errors(void);
 
 int main(void) {
     int failures = 0;
 
     failures += test_syntax_errors();
+    failures += test_large_nested_syntax_error();
     failures += test_lexer_errors();
 
     return failures == 0 ? 0 : 1;
@@ -1792,6 +1795,48 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("UPDATE t AS x SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_large_nested_syntax_error(void) {
+    enum {
+        expression_count = 64,
+        parenthesis_depth = 128,
+    };
+    static const char prefix[] = "SELECT ";
+    static const char separator[] = ", ";
+    static const char suffix[] = " +;";
+    size_t expression_size = (size_t)parenthesis_depth * 2U + 1U;
+    size_t sql_size = sizeof(prefix) - 1U + (size_t)expression_count * expression_size +
+                      (size_t)(expression_count - 1) * (sizeof(separator) - 1U) +
+                      sizeof(suffix) - 1U;
+    char *sql = (char *)malloc(sql_size + 1U);
+    char *cursor = sql;
+    struct mylite_sql_parse_result result;
+    int failures = 0;
+
+    if (sql == NULL) {
+        fprintf(stderr, "failed to allocate nested syntax-error fixture\n");
+        return 1;
+    }
+    memcpy(cursor, prefix, sizeof(prefix) - 1U);
+    cursor += sizeof(prefix) - 1U;
+    for (size_t expression = 0U; expression < expression_count; ++expression) {
+        memset(cursor, '(', parenthesis_depth);
+        cursor += parenthesis_depth;
+        *cursor++ = '1';
+        memset(cursor, ')', parenthesis_depth);
+        cursor += parenthesis_depth;
+        if (expression + 1U < expression_count) {
+            memcpy(cursor, separator, sizeof(separator) - 1U);
+            cursor += sizeof(separator) - 1U;
+        }
+    }
+    memcpy(cursor, suffix, sizeof(suffix));
+
+    failures += parser_test_parse_sql(sql, MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    free(sql);
     return failures;
 }
 

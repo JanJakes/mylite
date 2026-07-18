@@ -240,8 +240,15 @@ complete.
 - [ ] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
   separately owned/interned cold strings.
 - [ ] Budget caches by bytes and use generation-safe borrowed/pinned spans.
-- [ ] Bound invalid-SQL parser recovery work and make nested-parenthesis scans
-  linear after measuring current scaling.
+- [x] Bound invalid-SQL parser recovery work and make nested-parenthesis scans
+  linear after measuring current scaling. Predicate retries now precompute one
+  byte of WHERE-clause context per token instead of repeatedly rescanning the
+  token prefix. A 64-expression malformed SELECT with 128 balanced parenthesis
+  levels per expression fell from 23.551 seconds to 0.096 seconds in the same
+  Debug build (about 245x), and remains covered under ASan+UBSan. Reusing the
+  fixed Lemon parser allocation was also prototyped but showed no reliable
+  normal-allocator improvement, so that added lifetime complexity was not
+  retained.
 - [ ] Reuse analyzed prepared plans by schema generation and relevant session
   state after native binding is complete. Zero-parameter native prepared
   SELECTs now retain AST-independent aliases, analyzed plans, and lowered SQL

@@ -151,8 +151,10 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && generic_rejected_native_function_name(expression)) ||
-             expression_is_supported_row_scalar_system_function(expression) ||
-             expression_contains_supported_row_scalar_system_function(expression) ||
+             (has_row_source && expression_is_supported_row_scalar_system_function(expression)) ||
+             (has_row_source &&
+              expression_contains_supported_row_scalar_system_function(expression)) ||
+             (!has_row_source && expression_contains_qualified_sys_function(expression)) ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
@@ -237,6 +239,45 @@ static bool expression_contains_supported_row_scalar_system_function(
     }
     scalar_arithmetic_node_stack_deinit(&stack);
     return found;
+}
+
+static bool expression_contains_qualified_sys_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+
+        if (expression_is_qualified_sys_function(current)) {
+            found = true;
+            break;
+        }
+        if (!scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return false;
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
+}
+
+static bool expression_is_qualified_sys_function(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *schema_identifier = NULL;
+    const struct mylite_sql_ast_node *function_identifier = NULL;
+    enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
+
+    if (!generic_sys_function_kind(expression, &kind) ||
+        generic_function_identifier_nodes(expression, &schema_identifier, &function_identifier) !=
+            MYLITE_OK) {
+        return false;
+    }
+    return schema_identifier != NULL && function_identifier != NULL;
 }
 
 static bool select_statement_optional_clauses_contain_row_scalar_function(

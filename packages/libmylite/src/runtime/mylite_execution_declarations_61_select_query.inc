@@ -371,6 +371,10 @@ static bool expression_is_supported_row_scalar_system_function(
 static bool expression_contains_supported_row_scalar_system_function(
     const struct mylite_sql_ast_node *expression
 );
+static bool expression_contains_qualified_sys_function(
+    const struct mylite_sql_ast_node *expression
+);
+static bool expression_is_qualified_sys_function(const struct mylite_sql_ast_node *expression);
 static bool select_statement_optional_clauses_contain_row_scalar_function(
     const struct mylite_sql_ast_node *statement
 );

@@ -1710,6 +1710,7 @@ static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
             mylite_result_affected_rows(stmt->metadata_result),
             stmt->completion.found_rows,
             mylite_result_insert_id(stmt->metadata_result),
+            mylite_result_warning_count(stmt->metadata_result),
             true,
             false
         );
@@ -1929,6 +1930,7 @@ static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
             mylite_result_affected_rows(stmt->metadata_result),
             stmt->completion.found_rows,
             mylite_result_insert_id(stmt->metadata_result),
+            mylite_result_warning_count(stmt->metadata_result),
             true,
             false
         );
@@ -2162,6 +2164,7 @@ static int finish_parse_failure(
         -1,
         database->session.found_rows,
         0U,
+        mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database)),
         false,
         false
     );

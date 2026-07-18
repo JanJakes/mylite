@@ -34,6 +34,7 @@ int mylite_statement_completion_capture(
     int64_t affected_rows,
     uint64_t found_rows,
     uint64_t insert_id,
+    size_t warning_count,
     bool updates_found_rows,
     bool preserves_diagnostics_snapshot
 );

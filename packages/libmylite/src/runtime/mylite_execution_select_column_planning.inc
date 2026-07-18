@@ -72,7 +72,6 @@ static int plan_select_columns(
             child_at(item, 1U)
         );
         if (rc != MYLITE_OK) {
-            set_nomem_error(database);
             return rc;
         }
         item = item->next_sibling;
@@ -278,7 +277,6 @@ static int append_visible_select_columns_from_source(
             NULL
         );
         if (rc != MYLITE_OK) {
-            set_nomem_error(database);
             return rc;
         }
     }

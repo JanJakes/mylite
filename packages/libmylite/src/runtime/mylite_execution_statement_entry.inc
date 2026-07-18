@@ -26,6 +26,7 @@ static int finish_failed_statement(
         -1,
         database->session.found_rows,
         0U,
+        mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database)),
         false,
         false
     );
@@ -55,6 +56,10 @@ static int finish_completed_statement(
     uint64_t found_rows = database->session.found_rows;
     int64_t affected_rows = *out_result == NULL ? -1 : mylite_result_affected_rows(*out_result);
     uint64_t insert_id = *out_result == NULL ? 0U : mylite_result_insert_id(*out_result);
+    size_t warning_count =
+        *out_result == NULL
+            ? mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database))
+            : mylite_result_warning_count(*out_result);
     bool owns_completion = false;
     int rc = MYLITE_OK;
 
@@ -81,6 +86,7 @@ static int finish_completed_statement(
         affected_rows,
         found_rows,
         insert_id,
+        warning_count,
         completed_statement_is_select,
         preserve_diagnostics_snapshot
     );

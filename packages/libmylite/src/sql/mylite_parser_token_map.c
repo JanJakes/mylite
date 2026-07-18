@@ -35,8 +35,10 @@ static bool lexer_token_has_immediate_left_paren(
 );
 static bool lexer_token_starts_qualified_function(
     const struct mylite_sql_lexer *lexer,
-    const struct mylite_sql_token *token
+    const struct mylite_sql_token *token,
+    int previous_parser_token
 );
+static bool previous_token_expects_schema_object_name(int parser_token);
 static bool token_is_sys_schema_identifier(const struct mylite_sql_token *token);
 static bool lexer_next_non_comment_token(
     struct mylite_sql_lexer *lexer,
@@ -85,7 +87,8 @@ bool mylite_sql_parser_map_lexer_token(
         return true;
     }
 
-    if (!previous_token_was_dot && lexer_token_starts_qualified_function(lexer, token)) {
+    if (!previous_token_was_dot &&
+        lexer_token_starts_qualified_function(lexer, token, previous_parser_token)) {
         *out_map = (struct mylite_sql_parser_token_map){
             .parser_token = MYLITE_SQL_PARSE_QUALIFIED_FUNCTION_SCHEMA,
             .previous_token_was_dot = false,
@@ -132,12 +135,14 @@ bool mylite_sql_parser_map_lexer_token(
 
 static bool lexer_token_starts_qualified_function(
     const struct mylite_sql_lexer *lexer,
-    const struct mylite_sql_token *token
+    const struct mylite_sql_token *token,
+    int previous_parser_token
 ) {
     struct mylite_sql_lexer lookahead;
     struct mylite_sql_token next = {0};
 
-    if (lexer == NULL || !token_is_sys_schema_identifier(token)) {
+    if (lexer == NULL || previous_token_expects_schema_object_name(previous_parser_token) ||
+        !token_is_sys_schema_identifier(token)) {
         return false;
     }
 
@@ -154,6 +159,18 @@ static bool lexer_token_starts_qualified_function(
     }
     return lexer_next_non_comment_token(&lookahead, &next) &&
            mylite_sql_parser_token_is_left_paren(&next);
+}
+
+static bool previous_token_expects_schema_object_name(int parser_token) {
+    return parser_token == MYLITE_SQL_PARSE_CALL || parser_token == MYLITE_SQL_PARSE_EXISTS ||
+           parser_token == MYLITE_SQL_PARSE_DATABASE || parser_token == MYLITE_SQL_PARSE_EVENT ||
+           parser_token == MYLITE_SQL_PARSE_FROM || parser_token == MYLITE_SQL_PARSE_FUNCTION ||
+           parser_token == MYLITE_SQL_PARSE_INTO || parser_token == MYLITE_SQL_PARSE_JOIN ||
+           parser_token == MYLITE_SQL_PARSE_ON || parser_token == MYLITE_SQL_PARSE_PROCEDURE ||
+           parser_token == MYLITE_SQL_PARSE_REFERENCES ||
+           parser_token == MYLITE_SQL_PARSE_REPLACE || parser_token == MYLITE_SQL_PARSE_SCHEMA ||
+           parser_token == MYLITE_SQL_PARSE_TABLE || parser_token == MYLITE_SQL_PARSE_TRIGGER ||
+           parser_token == MYLITE_SQL_PARSE_UPDATE || parser_token == MYLITE_SQL_PARSE_VIEW;
 }
 
 static bool token_is_sys_schema_identifier(const struct mylite_sql_token *token) {

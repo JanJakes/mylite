@@ -100,7 +100,7 @@ static bool sql_auto_is_null_lookup_applies(
     if (database == NULL || options == NULL || node == NULL ||
         !options->allow_sql_auto_is_null_lookup ||
         node->operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NULL ||
-        !column_descriptor_is_auto_increment(&node->column) ||
+        !column_descriptor_is_auto_increment(node->column) ||
         database->session.last_insert_id > (uint64_t)INT64_MAX) {
         return false;
     }
@@ -346,7 +346,7 @@ static int plan_is_boolean_predicate(
 
         rc = integer_range_for_column(
             database,
-            &node.column,
+            node.column,
             "WHERE supports only integer boolean predicate columns",
             &range
         );
@@ -483,20 +483,20 @@ static int plan_between_predicate(
     );
 
     if (rc == MYLITE_OK) {
-        if (column_descriptor_is_enum(&node.column)) {
+        if (column_descriptor_is_enum(node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support BETWEEN");
             return MYLITE_ERROR;
         }
-        if (column_descriptor_is_set(&node.column)) {
+        if (column_descriptor_is_set(node.column)) {
             set_unsupported_error(database, "WHERE set predicates do not yet support BETWEEN");
             return MYLITE_ERROR;
         }
-        if (column_descriptor_is_date(&node.column)) {
+        if (column_descriptor_is_date(node.column)) {
             rc = convert_predicate_date_between_values(
                 database,
                 child_at(predicate_node, 1U),
                 child_at(predicate_node, 2U),
-                &node.column,
+                node.column,
                 &node.value,
                 &node.upper_value,
                 &node.compare_date_as_datetime
@@ -565,7 +565,7 @@ static int plan_between_predicate_bound(
     return convert_predicate_value(
         database,
         bound_node,
-        &node->column,
+        node->column,
         upper_bound ? &node->upper_value : &node->value
     );
 }
@@ -655,11 +655,11 @@ static int plan_in_predicate(
         &node.column_source_index
     );
     if (rc == MYLITE_OK) {
-        if (column_descriptor_is_enum(&node.column)) {
+        if (column_descriptor_is_enum(node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
             return MYLITE_ERROR;
         }
-        if (column_descriptor_is_set(&node.column)) {
+        if (column_descriptor_is_set(node.column)) {
             set_unsupported_error(database, "WHERE set predicates do not yet support IN");
             return MYLITE_ERROR;
         }
@@ -743,17 +743,11 @@ static int plan_quantified_subquery_predicate(
         return MYLITE_ERROR;
     }
     if (options == NULL || !options->allow_quantified_subquery) {
-        set_unsupported_error(
-            database,
-            "quantified subqueries are supported only in SELECT WHERE"
-        );
+        set_unsupported_error(database, "quantified subqueries are supported only in SELECT WHERE");
         return MYLITE_ERROR;
     }
     if (source_context == NULL) {
-        set_unsupported_error(
-            database,
-            "quantified subqueries support only an outer table source"
-        );
+        set_unsupported_error(database, "quantified subqueries support only an outer table source");
         return MYLITE_ERROR;
     }
 
@@ -766,14 +760,14 @@ static int plan_quantified_subquery_predicate(
         &node.column,
         &node.column_source_index
     );
-    if (rc == MYLITE_OK && column_descriptor_is_enum(&node.column)) {
+    if (rc == MYLITE_OK && column_descriptor_is_enum(node.column)) {
         set_unsupported_error(
             database,
             "WHERE enum predicates do not yet support quantified subqueries"
         );
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && column_descriptor_is_set(&node.column)) {
+    if (rc == MYLITE_OK && column_descriptor_is_set(node.column)) {
         set_unsupported_error(
             database,
             "WHERE set predicates do not yet support quantified subqueries"
@@ -850,8 +844,7 @@ static int plan_row_constructor_in_predicate(
     }
     value_node = value_list->first_child;
     for (size_t value_index = 0U; value_index < value_count && rc == MYLITE_OK; ++value_index) {
-        const struct mylite_sql_ast_node *right_node =
-            unwrap_parenthesized_predicate(value_node);
+        const struct mylite_sql_ast_node *right_node = unwrap_parenthesized_predicate(value_node);
         size_t value_root_index = SIZE_MAX;
 
         if (!predicate_node_is_row_constructor(right_node)) {
@@ -978,7 +971,8 @@ static int plan_row_scalar_expression_in_predicate(
         free(node.values);
         if (node.row_scalar_value_expressions != NULL) {
             for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
-                planned_row_scalar_expression_deinit(&node.row_scalar_value_expressions[value_index]
+                planned_row_scalar_expression_deinit(
+                    &node.row_scalar_value_expressions[value_index]
                 );
             }
         }
@@ -1053,26 +1047,26 @@ static int plan_in_literal_predicate(
         &node.column_source_index
     );
     if (rc == MYLITE_OK) {
-        if (column_descriptor_is_enum(&node.column)) {
+        if (column_descriptor_is_enum(node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
             return MYLITE_ERROR;
         }
-        if (column_descriptor_is_set(&node.column)) {
+        if (column_descriptor_is_set(node.column)) {
             set_unsupported_error(database, "WHERE set predicates do not yet support IN");
             return MYLITE_ERROR;
         }
-        if (column_descriptor_is_date(&node.column)) {
+        if (column_descriptor_is_date(node.column)) {
             rc = convert_predicate_date_in_value_list(
                 database,
                 child_at(predicate_node, 1U),
-                &node.column,
+                node.column,
                 &node.values,
                 &node.value_count,
                 &node.compare_date_as_datetime
             );
-        } else if (predicate_value_list_contains_row_scalar_predicate_value(
-                       child_at(predicate_node, 1U)
-                   )) {
+        } else if (
+            predicate_value_list_contains_row_scalar_predicate_value(child_at(predicate_node, 1U))
+        ) {
             rc = plan_descriptor_in_value_list(
                 database,
                 child_at(predicate_node, 1U),
@@ -1085,7 +1079,7 @@ static int plan_in_literal_predicate(
             rc = convert_predicate_in_value_list(
                 database,
                 child_at(predicate_node, 1U),
-                &node.column,
+                node.column,
                 &node.values,
                 &node.value_count
             );
@@ -1099,7 +1093,8 @@ static int plan_in_literal_predicate(
         free(node.values);
         if (node.row_scalar_value_expressions != NULL) {
             for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
-                planned_row_scalar_expression_deinit(&node.row_scalar_value_expressions[value_index]
+                planned_row_scalar_expression_deinit(
+                    &node.row_scalar_value_expressions[value_index]
                 );
             }
         }
@@ -1171,8 +1166,7 @@ static int plan_descriptor_in_value_list(
     node->value_count = value_count;
     value_node = value_list->first_child;
 
-    for (size_t value_index = 0U;
-         rc == MYLITE_OK && value_index < value_count;
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count;
          ++value_index, value_node = value_node->next_sibling) {
         rc = plan_descriptor_in_value(
             database,
@@ -1212,7 +1206,7 @@ static int plan_descriptor_in_value(
     return convert_predicate_in_value(
         database,
         value_node,
-        &node->column,
+        node->column,
         &node->values[value_index]
     );
 }
@@ -1352,7 +1346,7 @@ static int plan_in_subquery_predicate(
         outer_source_count,
         subquery
     );
-    if (rc == MYLITE_OK && !in_subquery_columns_are_compatible(&node->column, &subquery->column)) {
+    if (rc == MYLITE_OK && !in_subquery_columns_are_compatible(node->column, &subquery->column)) {
         set_unsupported_error(
             database,
             "IN subqueries support same-family integer or string descriptor columns"
@@ -1736,8 +1730,7 @@ static int plan_row_scalar_in_value_list(
     node->value_count = value_count;
     value_node = value_list->first_child;
 
-    for (size_t value_index = 0U;
-         rc == MYLITE_OK && value_index < value_count;
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count;
          ++value_index, value_node = value_node->next_sibling) {
         rc = plan_row_scalar_in_value(
             database,
@@ -1833,15 +1826,9 @@ static int convert_predicate_in_value_list(
     }
     value_node = value_list->first_child;
 
-    for (size_t value_index = 0U;
-         rc == MYLITE_OK && value_index < value_count;
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count;
          ++value_index, value_node = value_node->next_sibling) {
-        rc = convert_predicate_in_value(
-            database,
-            value_node,
-            column,
-            &values[value_index]
-        );
+        rc = convert_predicate_in_value(database, value_node, column, &values[value_index]);
     }
     if (rc != MYLITE_OK) {
         for (size_t cleanup_index = 0U; cleanup_index < value_count; ++cleanup_index) {
@@ -1895,8 +1882,7 @@ static int convert_predicate_year_in_value_list(
         return MYLITE_NOMEM;
     }
     value_node = value_list->first_child;
-    for (size_t value_index = 0U;
-         rc == MYLITE_OK && value_index < value_count;
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count;
          ++value_index, value_node = value_node->next_sibling) {
 
         if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
@@ -1935,15 +1921,14 @@ static bool year_in_value_list_uses_string_conversion(
         const struct mylite_sql_ast_node *unwrapped_value_node =
             unwrap_parenthesized_expression(value_node);
 
-        if (unwrapped_value_node != NULL &&
-            unwrapped_value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        if (unwrapped_value_node != NULL && unwrapped_value_node->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(unwrapped_value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
             value_node = value_node->next_sibling;
             continue;
         }
-        if (unwrapped_value_node == NULL ||
-            unwrapped_value_node->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(unwrapped_value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        if (unwrapped_value_node == NULL || unwrapped_value_node->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(unwrapped_value_node) !=
+                MYLITE_SQL_AST_LITERAL_STRING) {
             return false;
         }
         value_node = value_node->next_sibling;

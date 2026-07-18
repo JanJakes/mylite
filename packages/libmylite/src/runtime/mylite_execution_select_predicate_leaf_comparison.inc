@@ -649,7 +649,7 @@ static int plan_comparison_predicate(
         rc = validate_comparison_predicate_column(database, &node);
     }
     if (rc == MYLITE_OK && comparison_operator_is_regexp(node.operator_kind) &&
-        !column_descriptor_is_string_family(&node.column)) {
+        !column_descriptor_is_string_family(node.column)) {
         node.regexp_cast_subject_as_text = true;
     }
     if (rc == MYLITE_OK) {
@@ -1512,9 +1512,8 @@ static int plan_row_constructor_order_predicate(
         &root_index
     );
 
-    if (rc == MYLITE_OK &&
-        (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL ||
-         operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL)) {
+    if (rc == MYLITE_OK && (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL ||
+                            operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL)) {
         size_t equality_index = SIZE_MAX;
 
         rc = plan_row_constructor_equality_predicate(
@@ -1738,20 +1737,20 @@ static int plan_row_constructor_element_value(
         node->value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return MYLITE_OK;
     }
-    if (column_descriptor_is_string_family(&node->column) &&
+    if (column_descriptor_is_string_family(node->column) &&
         predicate_value_is_integer_literal(value_node)) {
         node->compare_string_as_integer = true;
         return convert_predicate_string_numeric_literal(
             database,
             value_node,
-            &node->column,
+            node->column,
             &node->value
         );
     }
     return convert_predicate_value_with_date_comparison_mode(
         database,
         value_node,
-        &node->column,
+        node->column,
         &node->value,
         &node->compare_date_as_datetime
     );
@@ -1968,20 +1967,20 @@ static int plan_comparison_predicate_value(
         node->value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return MYLITE_OK;
     }
-    if (column_descriptor_is_string_family(&node->column) &&
+    if (column_descriptor_is_string_family(node->column) &&
         predicate_value_is_integer_literal(child_at(predicate_node, 1U))) {
         node->compare_string_as_integer = true;
         return convert_predicate_string_numeric_literal(
             database,
             child_at(predicate_node, 1U),
-            &node->column,
+            node->column,
             &node->value
         );
     }
     return convert_predicate_value_with_date_comparison_mode(
         database,
         child_at(predicate_node, 1U),
-        &node->column,
+        node->column,
         &node->value,
         &node->compare_date_as_datetime
     );
@@ -2036,9 +2035,8 @@ static int like_escape_character_from_predicate(
         return MYLITE_MISUSE;
     }
     *out_escape_character =
-        (lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U
-            ? '\0'
-            : '\\';
+        (lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U ? '\0'
+                                                                                           : '\\';
     if (escape_node == NULL) {
         return MYLITE_OK;
     }
@@ -2086,15 +2084,15 @@ static bool comparison_predicate_rhs_requires_row_scalar_value(
         return true;
     }
     if (rhs->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
-        return column_descriptor_is_string_family(&node->column) ||
-               column_descriptor_is_datetime(&node->column) ||
-               column_descriptor_is_timestamp(&node->column);
+        return column_descriptor_is_string_family(node->column) ||
+               column_descriptor_is_datetime(node->column) ||
+               column_descriptor_is_timestamp(node->column);
     }
-    if (column_descriptor_is_string_family(&node->column) &&
+    if (column_descriptor_is_string_family(node->column) &&
         predicate_value_is_integer_literal(rhs)) {
         return false;
     }
-    return column_descriptor_is_string_family(&node->column) && rhs->kind != MYLITE_SQL_AST_LITERAL;
+    return column_descriptor_is_string_family(node->column) && rhs->kind != MYLITE_SQL_AST_LITERAL;
 }
 
 static bool predicate_value_is_integer_literal(const struct mylite_sql_ast_node *value_node) {
@@ -2511,12 +2509,14 @@ static int plan_row_scalar_expression_comparison_predicate(
                 child_at(predicate_node, 1U),
                 &node.value
             );
-        } else if (predicate_node_is_supported_row_scalar_predicate_value_expression(
-                       child_at(predicate_node, 1U)
-                   ) ||
-                   (child_at(predicate_node, 1U) != NULL &&
-                    node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
-                    child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)) {
+        } else if (
+            predicate_node_is_supported_row_scalar_predicate_value_expression(
+                child_at(predicate_node, 1U)
+            ) ||
+            (child_at(predicate_node, 1U) != NULL &&
+             node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
+             child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)
+        ) {
             rc = plan_predicate_row_scalar_value_expression(
                 database,
                 child_at(predicate_node, 1U),
@@ -2784,7 +2784,7 @@ static int plan_literal_left_column_comparison_predicate(
             rc = convert_predicate_value_with_date_comparison_mode(
                 database,
                 child_at(predicate_node, 0U),
-                &node.column,
+                node.column,
                 &node.value,
                 &node.compare_date_as_datetime
             );
@@ -2862,7 +2862,7 @@ static int plan_same_scope_column_comparison_predicate(
 static bool same_scope_column_comparison_is_supported(
     const struct planned_select_predicate_node *node
 ) {
-    return join_condition_columns_are_compatible(&node->column, &node->value_column);
+    return join_condition_columns_are_compatible(node->column, node->value_column);
 }
 
 static int plan_scalar_literal_is_predicate(
@@ -3144,8 +3144,7 @@ static bool row_scalar_expression_needs_real_comparison_context(
     if (row_scalar_numeric_extra_expression_needs_real_sql_context(expression)) {
         return true;
     }
-    return expression != NULL &&
-           expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION &&
+    return expression != NULL && expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION &&
            expression->sys_function_kind == MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH;
 }
 
@@ -3523,6 +3522,7 @@ static int resolve_literal_left_predicate_context_column(
     struct mylite_catalog_column_descriptor *out_column,
     bool *out_found
 ) {
+    const struct mylite_catalog_column_descriptor *resolved_column = NULL;
     size_t column_source_index = SIZE_MAX;
 
     if (out_column == NULL || out_found == NULL) {
@@ -3540,10 +3540,11 @@ static int resolve_literal_left_predicate_context_column(
         source_context,
         table_columns,
         table_column_count,
-        out_column,
+        &resolved_column,
         &column_source_index
     );
     if (rc == MYLITE_OK) {
+        *out_column = *resolved_column;
         *out_found = true;
     }
     return rc;

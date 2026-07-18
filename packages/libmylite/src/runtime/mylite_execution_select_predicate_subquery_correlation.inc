@@ -12,27 +12,27 @@ static int validate_comparison_predicate_column(
     const struct planned_select_predicate_node *node
 ) {
     if (comparison_operator_is_like(node->operator_kind) &&
-        column_descriptor_is_enum(&node->column)) {
+        column_descriptor_is_enum(node->column)) {
         set_unsupported_error(database, "WHERE enum predicates support only =, <=>, <>, and !=");
         return MYLITE_ERROR;
     }
     if (comparison_operator_is_like(node->operator_kind) &&
-        column_descriptor_is_set(&node->column)) {
+        column_descriptor_is_set(node->column)) {
         set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
         return MYLITE_ERROR;
     }
     if (comparison_operator_is_like(node->operator_kind) &&
-        !column_descriptor_is_string_family(&node->column)) {
+        !column_descriptor_is_string_family(node->column)) {
         set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
         return MYLITE_ERROR;
     }
     if (comparison_operator_is_regexp(node->operator_kind) &&
-        !column_descriptor_is_string_family(&node->column) &&
-        !join_condition_column_is_integer_family(&node->column)) {
+        !column_descriptor_is_string_family(node->column) &&
+        !join_condition_column_is_integer_family(node->column)) {
         set_unsupported_error(database, "WHERE REGEXP predicates support only string columns");
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_string_family(&node->column) &&
+    if (column_descriptor_is_string_family(node->column) &&
         !comparison_operator_is_string_predicate(node->operator_kind)) {
         set_unsupported_error(
             database,
@@ -41,12 +41,12 @@ static int validate_comparison_predicate_column(
         );
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_enum(&node->column) &&
+    if (column_descriptor_is_enum(node->column) &&
         !comparison_operator_is_enum_predicate(node->operator_kind)) {
         set_unsupported_error(database, "WHERE enum predicates support only =, <=>, <>, and !=");
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_set(&node->column) &&
+    if (column_descriptor_is_set(node->column) &&
         !comparison_operator_is_enum_predicate(node->operator_kind)) {
         set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
         return MYLITE_ERROR;
@@ -576,7 +576,7 @@ static int resolve_exists_column_reference(
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
     const struct select_predicate_plan_options *options,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 ) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -585,7 +585,7 @@ static int resolve_exists_column_reference(
     bool resolved = false;
     int rc = MYLITE_OK;
 
-    *out_column = (struct mylite_catalog_column_descriptor){0};
+    *out_column = NULL;
     *out_source_index = 0U;
     if (column_node == NULL || (column_node->kind != MYLITE_SQL_AST_IDENTIFIER &&
                                 column_node->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
@@ -653,7 +653,7 @@ static int resolve_exists_column_reference_in_source(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index,
     bool *out_resolved
 ) {
@@ -687,7 +687,7 @@ static int resolve_exists_column_reference_in_source(
         return MYLITE_OK;
     }
 
-    *out_column = columns[column_index];
+    *out_column = &columns[column_index];
     *out_source_index = 0U;
     *out_resolved = true;
     return MYLITE_OK;
@@ -699,7 +699,7 @@ static int resolve_exists_column_reference_in_joined_source(
     size_t part_count,
     const char *column_name,
     const struct select_source_context *source_context,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index,
     bool *out_resolved
 ) {
@@ -748,7 +748,7 @@ static int resolve_exists_column_reference_in_joined_source(
         return MYLITE_OK;
     }
 
-    *out_column = source_context->sources[matching_source_index].columns[matching_column_index];
+    *out_column = &source_context->sources[matching_source_index].columns[matching_column_index];
     *out_source_index = matching_source_index;
     *out_resolved = true;
     return MYLITE_OK;
@@ -773,10 +773,10 @@ static bool exists_correlated_column_comparison_is_supported(
     if (left_is_inner == right_is_inner) {
         return false;
     }
-    if (!join_condition_column_is_integer_family(&node->column)) {
+    if (!join_condition_column_is_integer_family(node->column)) {
         return false;
     }
-    return join_condition_column_is_integer_family(&node->value_column);
+    return join_condition_column_is_integer_family(node->value_column);
 }
 
 static bool exists_source_index_is_inner(

@@ -118,7 +118,7 @@ static int resolve_joined_select_having_alias_column(
     const struct mylite_sql_ast_node *select_list,
     const struct mylite_sql_ast_node *alias_reference,
     const struct select_source_context *source_context,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 );
 static int reject_joined_select_having_reference_error(
@@ -573,7 +573,8 @@ static int plan_row_scalar_select_exists_filter(
     const struct mylite_sql_ast_node *where_clause,
     struct planned_row_scalar_select *out_plan
 );
-static bool row_scalar_select_where_is_exists_filter(const struct mylite_sql_ast_node *where_clause
+static bool row_scalar_select_where_is_exists_filter(
+    const struct mylite_sql_ast_node *where_clause
 );
 static int plan_row_scalar_select_scalar_filter(
     struct mylite_db *database,
@@ -751,9 +752,11 @@ static int row_scalar_integer_width_enter_frame(
     struct row_scalar_integer_width_stack *stack,
     const struct mylite_sql_ast_node *expression
 );
-static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(
+    struct row_scalar_integer_width_stack *stack
 );
-static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(
+    struct row_scalar_integer_width_stack *stack
 );
 static int row_scalar_integer_width_push_frame(
     struct row_scalar_integer_width_stack *stack,

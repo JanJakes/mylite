@@ -41,36 +41,36 @@ static bool sql_safe_updates_predicate_uses_key(
 
     node = &predicate->nodes[node_index];
     switch (node->kind) {
-        case PLANNED_SELECT_PREDICATE_AND:
-            return sql_safe_updates_predicate_uses_key(
-                       predicate,
-                       node->left_index,
-                       indexes,
-                       index_count
-                   ) ||
-                   sql_safe_updates_predicate_uses_key(
-                       predicate,
-                       node->right_index,
-                       indexes,
-                       index_count
-                   );
+    case PLANNED_SELECT_PREDICATE_AND:
+        return sql_safe_updates_predicate_uses_key(
+                   predicate,
+                   node->left_index,
+                   indexes,
+                   index_count
+               ) ||
+               sql_safe_updates_predicate_uses_key(
+                   predicate,
+                   node->right_index,
+                   indexes,
+                   index_count
+               );
 
-        case PLANNED_SELECT_PREDICATE_OR:
-            return sql_safe_updates_predicate_uses_key(
-                       predicate,
-                       node->left_index,
-                       indexes,
-                       index_count
-                   ) &&
-                   sql_safe_updates_predicate_uses_key(
-                       predicate,
-                       node->right_index,
-                       indexes,
-                       index_count
-                   );
+    case PLANNED_SELECT_PREDICATE_OR:
+        return sql_safe_updates_predicate_uses_key(
+                   predicate,
+                   node->left_index,
+                   indexes,
+                   index_count
+               ) &&
+               sql_safe_updates_predicate_uses_key(
+                   predicate,
+                   node->right_index,
+                   indexes,
+                   index_count
+               );
 
-        default:
-            return sql_safe_updates_leaf_node_uses_key(node, indexes, index_count);
+    default:
+        return sql_safe_updates_leaf_node_uses_key(node, indexes, index_count);
     }
 }
 
@@ -84,28 +84,23 @@ static bool sql_safe_updates_leaf_node_uses_key(
     }
 
     switch (node->kind) {
-        case PLANNED_SELECT_PREDICATE_COMPARISON:
-        case PLANNED_SELECT_PREDICATE_IS_NULL:
-        case PLANNED_SELECT_PREDICATE_BETWEEN:
-        case PLANNED_SELECT_PREDICATE_IN:
-        case PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY:
-        case PLANNED_SELECT_PREDICATE_IS_BOOLEAN:
-            if (sql_safe_updates_column_id_is_keyed(
-                    node->column.column_id,
-                    indexes,
-                    index_count
-                )) {
-                return true;
-            }
-            return node->value_is_column_reference &&
-                   sql_safe_updates_column_id_is_keyed(
-                       node->value_column.column_id,
-                       indexes,
-                       index_count
-                   );
+    case PLANNED_SELECT_PREDICATE_COMPARISON:
+    case PLANNED_SELECT_PREDICATE_IS_NULL:
+    case PLANNED_SELECT_PREDICATE_BETWEEN:
+    case PLANNED_SELECT_PREDICATE_IN:
+    case PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY:
+    case PLANNED_SELECT_PREDICATE_IS_BOOLEAN:
+        if (sql_safe_updates_column_id_is_keyed(node->column->column_id, indexes, index_count)) {
+            return true;
+        }
+        return node->value_is_column_reference && sql_safe_updates_column_id_is_keyed(
+                                                      node->value_column->column_id,
+                                                      indexes,
+                                                      index_count
+                                                  );
 
-        default:
-            return false;
+    default:
+        return false;
     }
 }
 

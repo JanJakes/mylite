@@ -149,7 +149,8 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         }
         free(predicate->nodes[node_index].row_scalar_value_expressions);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
-            planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
+            planned_row_scalar_expression_deinit(
+                predicate->nodes[node_index].row_scalar_expression
             );
         }
         free(predicate->nodes[node_index].row_scalar_expression);
@@ -173,14 +174,17 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
             predicate->nodes[node_index].subject_scalar_subquery
         );
         free(predicate->nodes[node_index].subject_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].value_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].value_scalar_subquery
         );
         free(predicate->nodes[node_index].value_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].upper_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].upper_scalar_subquery
         );
         free(predicate->nodes[node_index].upper_scalar_subquery);
     }
     free(predicate->nodes);
+    planned_select_predicate_owned_columns_deinit(predicate);
     *predicate = (struct planned_select_predicate){0};
 }
 
@@ -209,7 +213,8 @@ static void planned_select_predicate_deinit_without_exists(
         }
         free(predicate->nodes[node_index].row_scalar_value_expressions);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
-            planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
+            planned_row_scalar_expression_deinit(
+                predicate->nodes[node_index].row_scalar_expression
             );
         }
         free(predicate->nodes[node_index].row_scalar_expression);
@@ -229,15 +234,30 @@ static void planned_select_predicate_deinit_without_exists(
             predicate->nodes[node_index].subject_scalar_subquery
         );
         free(predicate->nodes[node_index].subject_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].value_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].value_scalar_subquery
         );
         free(predicate->nodes[node_index].value_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].upper_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].upper_scalar_subquery
         );
         free(predicate->nodes[node_index].upper_scalar_subquery);
     }
     free(predicate->nodes);
+    planned_select_predicate_owned_columns_deinit(predicate);
     *predicate = (struct planned_select_predicate){0};
+}
+
+static void planned_select_predicate_owned_columns_deinit(
+    struct planned_select_predicate *predicate
+) {
+    for (size_t index = 0U; index < predicate->owned_column_count; ++index) {
+        free(predicate->owned_columns[index]);
+    }
+    free(predicate->owned_columns);
+    predicate->owned_columns = NULL;
+    predicate->owned_column_count = 0U;
+    predicate->owned_column_capacity = 0U;
 }
 
 static void planned_exists_subquery_deinit(struct planned_exists_subquery *subquery) {
@@ -318,14 +338,37 @@ static int merge_select_predicate_with_and(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
+    if (addition->owned_column_count > SIZE_MAX - target->owned_column_count) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
 
     addition_qualifies = addition->qualify_column_references;
     original_count = target->node_count;
     merged_count = target->node_count + addition->node_count;
-    rc = reserve_planned_select_predicate_nodes(database, target, merged_count + 1U);
+    rc = reserve_planned_select_predicate_columns(
+        database,
+        target,
+        target->owned_column_count + addition->owned_column_count
+    );
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_select_predicate_nodes(database, target, merged_count + 1U);
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (addition->owned_column_count > 0U) {
+        memcpy(
+            &target->owned_columns[target->owned_column_count],
+            addition->owned_columns,
+            addition->owned_column_count * sizeof(*addition->owned_columns)
+        );
+        target->owned_column_count += addition->owned_column_count;
+    }
+    free(addition->owned_columns);
+    addition->owned_columns = NULL;
+    addition->owned_column_count = 0U;
+    addition->owned_column_capacity = 0U;
     memcpy(
         &target->nodes[target->node_count],
         addition->nodes,

@@ -784,7 +784,7 @@ static int resolve_joined_select_having_alias_column(
     const struct mylite_sql_ast_node *select_list,
     const struct mylite_sql_ast_node *alias_reference,
     const struct select_source_context *source_context,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 ) {
     const struct mylite_sql_ast_node *expression = NULL;
@@ -798,7 +798,7 @@ static int resolve_joined_select_having_alias_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    return resolve_descriptor_column_reference_with_source_index(
+    return resolve_descriptor_column_reference_pointer_with_source_index(
         database,
         expression,
         source_context,
@@ -999,9 +999,8 @@ static bool select_item_is_literal_projection(const struct mylite_sql_ast_node *
     }
 
     expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
-    return expression != NULL &&
-           (expression->kind == MYLITE_SQL_AST_LITERAL ||
-            expression->kind == MYLITE_SQL_AST_PARAMETER);
+    return expression != NULL && (expression->kind == MYLITE_SQL_AST_LITERAL ||
+                                  expression->kind == MYLITE_SQL_AST_PARAMETER);
 }
 
 static int prepare_joined_select_plan(
@@ -2527,10 +2526,7 @@ static void planned_select_deinit_shallow(struct planned_select *plan) {
         planned_select_source_deinit_shallow(&plan->sources[source_index]);
     }
     free(plan->sources);
-    mylite_execution_release_table_columns(
-        plan->source_columns_cache_entry,
-        plan->source_columns
-    );
+    mylite_execution_release_table_columns(plan->source_columns_cache_entry, plan->source_columns);
     free(plan->columns);
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         free(plan->column_aliases[column_index]);

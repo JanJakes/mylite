@@ -35,6 +35,7 @@ enum {
 enum runtime_stress_kind {
     runtime_stress_cold_open,
     runtime_stress_large_in,
+    runtime_stress_large_or,
     runtime_stress_wide_projection,
     runtime_stress_cache_saturation,
     runtime_stress_concurrent_read_write,
@@ -68,6 +69,12 @@ static int run_large_in_scenario(
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
+static int run_large_or_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
 static int run_wide_projection_scenario(
     const struct runtime_stress_scenario *scenario,
     size_t iterations,
@@ -96,6 +103,14 @@ static int execute_stress_iterations(
     struct mylite_benchmark_runtime_stress_measurement *measurement
 );
 static char *build_large_in_query(size_t value_count, size_t *out_length);
+static char *build_large_or_query(size_t term_count, size_t *out_length);
+static bool append_balanced_or_query(
+    char *sql,
+    size_t capacity,
+    size_t *length,
+    size_t first_term,
+    size_t term_count
+);
 static char *build_wide_table_statement(size_t column_count, size_t *out_length);
 static char *build_wide_select_statement(size_t column_count, size_t *out_length);
 static char *allocate_generated_sql(size_t item_count, size_t *out_capacity);
@@ -123,6 +138,7 @@ static const struct runtime_stress_scenario runtime_stress_scenarios[] = {
     {"runtime.cold_open", runtime_stress_cold_open, 0U},
     {"runtime.large_in_256", runtime_stress_large_in, 256U},
     {"runtime.large_in_4096", runtime_stress_large_in, 4096U},
+    {"runtime.large_or_2048", runtime_stress_large_or, 2048U},
     {"runtime.wide_projection_16", runtime_stress_wide_projection, 16U},
     {"runtime.wide_projection_128", runtime_stress_wide_projection, 128U},
     {"runtime.catalog_cache_saturation", runtime_stress_cache_saturation, cache_table_count},
@@ -167,6 +183,8 @@ int mylite_benchmark_run_runtime_stress_scenario(
         return run_cold_open_scenario(scenario, iterations, warmup_iterations, out_measurement);
     case runtime_stress_large_in:
         return run_large_in_scenario(scenario, iterations, warmup_iterations, out_measurement);
+    case runtime_stress_large_or:
+        return run_large_or_scenario(scenario, iterations, warmup_iterations, out_measurement);
     case runtime_stress_wide_projection:
         return run_wide_projection_scenario(
             scenario,
@@ -257,6 +275,45 @@ static int run_large_in_scenario(
             database,
             "CREATE TABLE benchmark_values (id BIGINT PRIMARY KEY)",
             sizeof("CREATE TABLE benchmark_values (id BIGINT PRIMARY KEY)") - 1U
+        ) != 0 ||
+        execute_stress_iterations(database, query, query_length, warmup_iterations, NULL) != 0) {
+        goto cleanup;
+    }
+
+    started = monotonic_now_ns();
+    rc = execute_stress_iterations(database, query, query_length, iterations, out_measurement);
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+
+cleanup:
+    free(query);
+    mylite_close(database);
+    remove_stress_files(path);
+    return rc;
+}
+
+static int run_large_or_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+) {
+    char path[stress_path_capacity];
+    char *query = NULL;
+    size_t query_length = 0U;
+    mylite_db *database = NULL;
+    uint64_t started = 0U;
+    int rc = 1;
+
+    if (make_stress_path(path, sizeof(path), scenario->name) != 0) {
+        return 1;
+    }
+    remove_stress_files(path);
+    query = build_large_or_query(scenario->scale, &query_length);
+    if (query == NULL || prepare_stress_database(path, &database) != 0 ||
+        execute_stress_sql(
+            database,
+            "CREATE TABLE predicate_values (id BIGINT PRIMARY KEY)",
+            sizeof("CREATE TABLE predicate_values (id BIGINT PRIMARY KEY)") - 1U
         ) != 0 ||
         execute_stress_iterations(database, query, query_length, warmup_iterations, NULL) != 0) {
         goto cleanup;
@@ -624,6 +681,53 @@ static char *build_large_in_query(size_t value_count, size_t *out_length) {
     }
     *out_length = length;
     return sql;
+}
+
+static char *build_large_or_query(size_t term_count, size_t *out_length) {
+    size_t capacity = 0U;
+    size_t length = 0U;
+    char *sql = allocate_generated_sql(term_count, &capacity);
+
+    if (sql == NULL ||
+        !append_generated_sql(sql, capacity, &length, "SELECT id FROM predicate_values WHERE ")) {
+        free(sql);
+        return NULL;
+    }
+    if (!append_balanced_or_query(sql, capacity, &length, 0U, term_count)) {
+        free(sql);
+        return NULL;
+    }
+    *out_length = length;
+    return sql;
+}
+
+static bool append_balanced_or_query(
+    char *sql,
+    size_t capacity,
+    size_t *length,
+    size_t first_term,
+    size_t term_count
+) {
+    size_t left_count = 0U;
+
+    if (term_count == 0U) {
+        return false;
+    }
+    if (term_count == 1U) {
+        return append_generated_indexed_sql(sql, capacity, length, "id = %zu", first_term);
+    }
+    left_count = term_count / 2U;
+    return append_generated_sql(sql, capacity, length, "(") &&
+           append_balanced_or_query(sql, capacity, length, first_term, left_count) &&
+           append_generated_sql(sql, capacity, length, " OR ") &&
+           append_balanced_or_query(
+               sql,
+               capacity,
+               length,
+               first_term + left_count,
+               term_count - left_count
+           ) &&
+           append_generated_sql(sql, capacity, length, ")");
 }
 
 static char *build_wide_table_statement(size_t column_count, size_t *out_length) {

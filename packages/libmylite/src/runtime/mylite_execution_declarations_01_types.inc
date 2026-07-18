@@ -1142,8 +1142,8 @@ struct planned_select_predicate_node {
     struct planned_row_scalar_expression *row_scalar_value_expressions;
     struct planned_value value;
     struct planned_value upper_value;
-    struct mylite_catalog_column_descriptor column;
-    struct mylite_catalog_column_descriptor value_column;
+    const struct mylite_catalog_column_descriptor *column;
+    const struct mylite_catalog_column_descriptor *value_column;
     enum planned_select_predicate_kind kind;
     enum mylite_sql_ast_operator operator_kind;
     enum mylite_sql_ast_node_kind quantified_subquery_kind;
@@ -1157,10 +1157,18 @@ struct planned_select_predicate_node {
     char like_escape_character;
 };
 
+_Static_assert(
+    sizeof(struct planned_select_predicate_node) <= 512U,
+    "planned predicate nodes must retain compact column references"
+);
+
 struct planned_select_predicate {
     struct planned_select_predicate_node *nodes;
     size_t node_count;
     size_t node_capacity;
+    struct mylite_catalog_column_descriptor **owned_columns;
+    size_t owned_column_count;
+    size_t owned_column_capacity;
     size_t root_index;
     bool has_root;
     bool qualify_column_references;

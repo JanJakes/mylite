@@ -520,10 +520,7 @@ static int append_column_aggregate_count_sql(
     return rc;
 }
 
-static int append_aggregate_distinct_sql(
-    struct mylite_dynamic_string *string,
-    bool is_distinct
-) {
+static int append_aggregate_distinct_sql(struct mylite_dynamic_string *string, bool is_distinct) {
     if (!is_distinct) {
         return MYLITE_OK;
     }
@@ -543,11 +540,8 @@ static int append_json_aggregate_call_sql(
     );
 
     if (rc == MYLITE_OK && is_object) {
-        rc = append_row_scalar_json_constructor_argument_sql(
-            string,
-            key_expression,
-            next_parameter
-        );
+        rc =
+            append_row_scalar_json_constructor_argument_sql(string, key_expression, next_parameter);
     }
     if (rc == MYLITE_OK && is_object) {
         rc = mylite_dynamic_string_append(string, ", ");
@@ -902,13 +896,8 @@ static int append_grouped_aggregate_rollup_query_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_grouped_aggregate_select_item_sql(
-                string,
-                plan,
-                item,
-                next_parameter,
-                false
-            );
+            rc =
+                append_grouped_aggregate_select_item_sql(string, plan, item, next_parameter, false);
         }
         if (rc == MYLITE_OK) {
             has_output_item = true;
@@ -1358,8 +1347,7 @@ static int append_grouped_aggregate_expression_sql(
             qualify
         );
     }
-    if (rc == MYLITE_OK &&
-        item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN &&
+    if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN &&
         column_descriptor_uses_string_key_collation(&item->aggregate_column, true)) {
         rc = append_string_key_collation_sql(string);
     }
@@ -1526,13 +1514,7 @@ static int append_grouped_having_aggregate_sql(
         return append_grouped_bitwise_having_operand_sql(string, plan, item, next_parameter);
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        return append_grouped_aggregate_select_item_sql(
-            string,
-            plan,
-            item,
-            next_parameter,
-            false
-        );
+        return append_grouped_aggregate_select_item_sql(string, plan, item, next_parameter, false);
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         return append_grouped_avg_having_operand_sql(string, plan, item, next_parameter);
@@ -3372,7 +3354,7 @@ static int append_select_predicate_subject_sql(
     if (node->compare_string_as_integer) {
         return append_string_integer_value_sql_for_source(
             string,
-            &node->column,
+            node->column,
             node->column_source_index,
             qualify
         );
@@ -3380,7 +3362,7 @@ static int append_select_predicate_subject_sql(
     if (node->compare_date_as_datetime) {
         return append_date_midnight_value_sql_for_source(
             string,
-            &node->column,
+            node->column,
             node->column_source_index,
             qualify
         );
@@ -3388,7 +3370,7 @@ static int append_select_predicate_subject_sql(
     if (suppress_default_string_collation) {
         return append_descriptor_column_name_sql_for_source(
             string,
-            &node->column,
+            node->column,
             node->column_source_index,
             qualify
         );
@@ -3396,7 +3378,7 @@ static int append_select_predicate_subject_sql(
 
     return append_descriptor_value_sql_for_source(
         string,
-        &node->column,
+        node->column,
         node->column_source_index,
         qualify
     );
@@ -3640,7 +3622,7 @@ static int append_select_comparison_predicate_term_sql(
         if (node->value_is_column_reference) {
             rc = append_descriptor_value_sql_for_source(
                 string,
-                &node->value_column,
+                node->value_column,
                 node->value_column_source_index,
                 qualify_column
             );
@@ -3711,7 +3693,7 @@ static int append_select_regexp_predicate_sql(
     if (rc == MYLITE_OK) {
         rc = append_descriptor_value_sql_for_source(
             string,
-            &node->column,
+            node->column,
             node->column_source_index,
             qualify_column
         );
@@ -3810,7 +3792,7 @@ static int append_is_boolean_rhs_term_sql(
     if (rc == MYLITE_OK) {
         rc = append_descriptor_column_name_sql_for_source(
             string,
-            &node->column,
+            node->column,
             node->column_source_index,
             qualify_column
         );

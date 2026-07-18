@@ -252,8 +252,13 @@ complete.
   from 108.6 MB to 93.0 MB over 50 requests (14.4%) and reduced the Release
   128-column projection median from 268.7 us to 116.6 us (56.6%). Explicit
   name resolution returns a source reference directly; copy-returning callers
-  keep their existing owned semantics. The descriptor representation itself
-  remains open for predicate, expression, ordering, and aggregate plan fields.
+  keep their existing owned semantics. Predicate nodes now retain references
+  to a predicate-owned, identity-deduplicated descriptor set instead of
+  embedding two descriptors in every node; a compile-time bound keeps nodes at
+  512 bytes or less. A balanced 2,048-leaf OR scenario fell from 75.7 ms to
+  10.2 ms median in controlled Release builds (7.4x). The descriptor
+  representation itself remains open for expression, ordering, and aggregate
+  plan fields.
 - [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
   Column and deep key-metadata payloads now have independent 8 MiB limits in
   addition to their 64-entry caps. Insertion evicts only unpinned LRU entries;

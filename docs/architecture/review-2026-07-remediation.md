@@ -267,8 +267,14 @@ complete.
   item growth, preserving planner-family lifetimes while reducing order items
   from 15,920 bytes to 304 bytes and order state from 15,664 bytes to 56 bytes.
   A controlled 128-key ORDER BY scenario fell from 1.651 ms to 0.998 ms median
-  (39.6%). The descriptor representation itself remains open for the remaining
-  aggregate/group plan fields.
+  (39.6%). Grouped keys and projections now use the same stable owned-reference
+  model, grouped projection arrays grow geometrically, and aggregate items use
+  an item-level ownership boundary shared by stored and temporary plans. Grouped
+  keys/projections fell from 16,296 bytes to 680 bytes, grouped aggregate items
+  from 17,128 bytes to 1,512 bytes, and column aggregates from 26,952 bytes to
+  11,336 bytes. A controlled 128-projection grouped query fell from 2.719 ms to
+  1.365 ms median (49.8%). The underlying catalog descriptor representation
+  itself remains open for compact hot metadata and separately owned cold text.
 - [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
   Column and deep key-metadata payloads now have independent 8 MiB limits in
   addition to their 64-entry caps. Insertion evicts only unpinned LRU entries;

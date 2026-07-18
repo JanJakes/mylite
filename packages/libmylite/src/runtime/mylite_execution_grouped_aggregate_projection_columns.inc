@@ -178,24 +178,21 @@ static int append_grouped_projection_column(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 ) {
-    struct planned_grouped_projection *projections = NULL;
+    struct mylite_catalog_column_descriptor *column_copy = NULL;
     size_t required_count = plan->projection_count + 1U;
+    int rc = reserve_grouped_projections(database, plan, required_count);
 
-    if (required_count > SIZE_MAX / sizeof(*projections)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_column_descriptor(database, column, &column_copy);
     }
-    projections = realloc(plan->projections, required_count * sizeof(*projections));
-    if (projections == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
-    plan->projections = projections;
     plan->projections[plan->projection_count] = (struct planned_grouped_projection){
         .expression = expression,
         .alias = alias,
-        .column = *column,
+        .column = column_copy,
         .column_source_index = source_index,
     };
     plan->projection_count = required_count;
@@ -209,22 +206,14 @@ static int append_grouped_projection_row_scalar_expression(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 ) {
-    struct planned_grouped_projection *projections = NULL;
     size_t required_count = plan->projection_count + 1U;
+    int rc = reserve_grouped_projections(database, plan, required_count);
 
-    if (required_count > SIZE_MAX / sizeof(*projections)) {
+    if (rc != MYLITE_OK) {
         planned_row_scalar_expression_deinit(row_scalar_expression);
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    projections = realloc(plan->projections, required_count * sizeof(*projections));
-    if (projections == NULL) {
-        planned_row_scalar_expression_deinit(row_scalar_expression);
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+        return rc;
     }
 
-    plan->projections = projections;
     plan->projections[plan->projection_count] = (struct planned_grouped_projection){
         .expression = expression,
         .alias = alias,
@@ -242,26 +231,56 @@ static int append_grouped_projection_grouping_marker(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 ) {
-    struct planned_grouped_projection *projections = NULL;
     size_t required_count = plan->projection_count + 1U;
+    int rc = reserve_grouped_projections(database, plan, required_count);
 
-    if (required_count > SIZE_MAX / sizeof(*projections)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    projections = realloc(plan->projections, required_count * sizeof(*projections));
-    if (projections == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
-    plan->projections = projections;
     plan->projections[plan->projection_count] = (struct planned_grouped_projection){
         .expression = expression,
         .alias = alias,
         .is_grouping_marker = true,
     };
     plan->projection_count = required_count;
+    return MYLITE_OK;
+}
+
+static int reserve_grouped_projections(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    size_t required_capacity
+) {
+    enum { initial_grouped_projection_capacity = 4 };
+
+    struct planned_grouped_projection *projections = NULL;
+    size_t capacity = plan->projection_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_grouped_projection_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*projections)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    projections = realloc(plan->projections, capacity * sizeof(*projections));
+    if (projections == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->projections = projections;
+    plan->projection_capacity = capacity;
     return MYLITE_OK;
 }
 
@@ -403,9 +422,9 @@ static bool grouping_projection_column_matches_group_key(
     if (group == NULL || column == NULL || group->uses_row_scalar_expression) {
         return false;
     }
-    return group->column_source_index == source_index &&
-           group->column.table_id == column->table_id &&
-           group->column.column_id == column->column_id;
+    return group->column != NULL && group->column_source_index == source_index &&
+           group->column->table_id == column->table_id &&
+           group->column->column_id == column->column_id;
 }
 
 static void set_grouping_invalid_use_error(struct mylite_db *database) {

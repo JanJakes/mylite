@@ -1720,7 +1720,7 @@ static int validate_select_order_field_expression(
     const struct planned_row_scalar_expression *expression
 );
 static void planned_select_order_item_deinit(struct planned_select_order_item *item);
-static int copy_planned_select_order_column(
+static int copy_planned_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *source,
     struct mylite_catalog_column_descriptor **out_column

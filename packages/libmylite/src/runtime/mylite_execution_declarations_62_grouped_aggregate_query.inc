@@ -4,6 +4,7 @@ static int plan_grouped_aggregate(
     struct planned_grouped_aggregate *out_plan
 );
 static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *plan);
+static void planned_grouped_aggregate_item_deinit(struct planned_grouped_aggregate_item *item);
 static int collect_grouped_aggregate_clauses(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -135,6 +136,11 @@ static int append_grouped_projection_grouping_marker(
     struct planned_grouped_aggregate *plan,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
+);
+static int reserve_grouped_projections(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    size_t required_capacity
 );
 static int plan_grouped_aggregate_temporal_projection(
     struct mylite_db *database,

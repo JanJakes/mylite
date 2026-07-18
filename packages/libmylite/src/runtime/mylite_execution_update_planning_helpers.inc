@@ -1373,6 +1373,7 @@ static int plan_update_scalar_aggregate_subquery_source(
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
     const struct mylite_sql_ast_node *where_clause = NULL;
+    struct mylite_catalog_column_descriptor aggregate_column = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
@@ -1451,8 +1452,15 @@ static int plan_update_scalar_aggregate_subquery_source(
             &source_context,
             table_columns,
             table_column_count,
-            &out_plan->assignment_scalar_aggregate.aggregate_column
+            &aggregate_column
         );
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_plan->assignment_scalar_aggregate.aggregate_column
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_predicate(
@@ -1876,8 +1884,7 @@ static int convert_statement_time_value_for_column(
                     value_node,
                     (struct mylite_execution_temporal_fractional_precision_context){
                         .subject_name = "curtime",
-                        .unsupported_message =
-                            "fractional CURRENT_TIME precision is not supported",
+                        .unsupported_message = "fractional CURRENT_TIME precision is not supported",
                     }
                 ) != MYLITE_OK) {
                 return MYLITE_ERROR;
@@ -1917,8 +1924,7 @@ static int convert_statement_time_value_for_column(
                     value_node,
                     (struct mylite_execution_temporal_fractional_precision_context){
                         .subject_name = "utc_time",
-                        .unsupported_message =
-                            "fractional UTC_TIME precision is not supported",
+                        .unsupported_message = "fractional UTC_TIME precision is not supported",
                     }
                 ) != MYLITE_OK) {
                 return MYLITE_ERROR;

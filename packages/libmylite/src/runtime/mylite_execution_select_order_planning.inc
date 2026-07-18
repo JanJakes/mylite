@@ -86,7 +86,7 @@ static int plan_select_order(
     if (out_order->item_count > 0U) {
         out_order->has_order = true;
         if (out_order->items[0U].kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
-            rc = copy_planned_select_order_column(
+            rc = copy_planned_column_descriptor(
                 database,
                 out_order->items[0U].column,
                 &out_order->column
@@ -297,7 +297,7 @@ static int plan_select_order_ast_item(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = copy_planned_select_order_column(database, resolved_column, &out_item->column);
+    rc = copy_planned_column_descriptor(database, resolved_column, &out_item->column);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -666,7 +666,7 @@ static void planned_select_order_item_deinit(struct planned_select_order_item *i
     *item = (struct planned_select_order_item){0};
 }
 
-static int copy_planned_select_order_column(
+static int copy_planned_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *source,
     struct mylite_catalog_column_descriptor **out_column

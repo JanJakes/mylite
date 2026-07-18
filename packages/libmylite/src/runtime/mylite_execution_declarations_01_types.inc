@@ -2233,7 +2233,7 @@ struct planned_column_aggregate {
     bool has_source;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
-    struct mylite_catalog_column_descriptor aggregate_column;
+    struct mylite_catalog_column_descriptor *aggregate_column;
     bool aggregate_uses_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_key_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
@@ -2304,7 +2304,7 @@ struct planned_grouped_aggregate_item {
     const struct mylite_sql_ast_node *alias;
     enum planned_grouped_aggregate_function function;
     bool is_hidden_order_key;
-    struct mylite_catalog_column_descriptor aggregate_column;
+    struct mylite_catalog_column_descriptor *aggregate_column;
     size_t aggregate_column_source_index;
     bool aggregate_uses_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_key_row_scalar_expression;
@@ -2323,7 +2323,7 @@ struct planned_grouped_key {
     const struct mylite_sql_ast_node *alias;
     bool uses_row_scalar_expression;
     struct planned_row_scalar_expression row_scalar_expression;
-    struct mylite_catalog_column_descriptor column;
+    struct mylite_catalog_column_descriptor *column;
     size_t column_source_index;
 };
 
@@ -2346,7 +2346,7 @@ struct planned_grouped_projection {
     bool is_grouping_marker;
     bool uses_row_scalar_expression;
     struct planned_row_scalar_expression row_scalar_expression;
-    struct mylite_catalog_column_descriptor column;
+    struct mylite_catalog_column_descriptor *column;
     size_t column_source_index;
 };
 
@@ -2355,6 +2355,7 @@ struct planned_grouped_aggregate {
     size_t group_count;
     struct planned_grouped_projection *projections;
     size_t projection_count;
+    size_t projection_capacity;
     struct planned_grouped_aggregate_item *aggregates;
     size_t aggregate_count;
     struct table_name_resolution source;
@@ -2378,6 +2379,26 @@ struct planned_grouped_aggregate {
     bool calc_found_rows;
     struct planned_select_limit limit;
 };
+
+_Static_assert(
+    sizeof(struct planned_grouped_key) <= 1024U,
+    "planned grouped keys must retain compact column references"
+);
+
+_Static_assert(
+    sizeof(struct planned_grouped_projection) <= 1024U,
+    "planned grouped projections must retain compact column references"
+);
+
+_Static_assert(
+    sizeof(struct planned_grouped_aggregate_item) <= 2048U,
+    "planned grouped aggregate items must retain compact column references"
+);
+
+_Static_assert(
+    sizeof(struct planned_column_aggregate) <= 16384U,
+    "planned column aggregates must retain compact column references"
+);
 
 enum planned_view_statement_kind {
     PLANNED_VIEW_CREATE = 0,

@@ -116,6 +116,7 @@ static int plan_grouped_aggregate_expression(
         unwrap_parenthesized_expression(aggregate_expression);
     const struct mylite_sql_ast_node *aggregate_function_expression = unwrapped_expression;
     const struct mylite_sql_ast_node *collect_expression = NULL;
+    struct mylite_catalog_column_descriptor aggregate_column = {0};
     int rc = MYLITE_OK;
 
     *out_item = (struct planned_grouped_aggregate_item){0};
@@ -193,25 +194,40 @@ static int plan_grouped_aggregate_expression(
             source_context,
             table_columns,
             table_column_count,
-            &out_item->aggregate_column,
+            &aggregate_column,
             &out_item->aggregate_column_source_index
         );
         if (rc == MYLITE_OK &&
             out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
-            rc = validate_count_distinct_column_descriptor(database, &out_item->aggregate_column);
+            rc = validate_count_distinct_column_descriptor(database, &aggregate_column);
+        }
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_item->aggregate_column
+            );
         }
         return rc;
     }
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
-        return plan_grouped_any_value_column(
+        rc = plan_grouped_any_value_column(
             database,
             aggregate_function_expression,
             source_context,
             table_columns,
             table_column_count,
-            &out_item->aggregate_column,
+            &aggregate_column,
             &out_item->aggregate_column_source_index
         );
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_item->aggregate_column
+            );
+        }
+        return rc;
     }
     if (out_item->function != PLANNED_GROUPED_AGGREGATE_ST_COLLECT &&
         column_aggregate_argument_is_row_scalar_expression(aggregate_function_expression)) {
@@ -225,16 +241,24 @@ static int plan_grouped_aggregate_expression(
         );
     }
 
-    return plan_grouped_column_aggregate_column(
+    rc = plan_grouped_column_aggregate_column(
         database,
         aggregate_function_expression,
         grouped_column_aggregate_function(out_item->function),
         source_context,
         table_columns,
         table_column_count,
-        &out_item->aggregate_column,
+        &aggregate_column,
         &out_item->aggregate_column_source_index
     );
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_column_descriptor(
+            database,
+            &aggregate_column,
+            &out_item->aggregate_column
+        );
+    }
+    return rc;
 }
 
 static int plan_grouped_aggregate_row_scalar_expression(
@@ -354,6 +378,7 @@ static int plan_grouped_group_concat_options(
     size_t table_column_count,
     struct planned_grouped_aggregate_item *out_item
 ) {
+    struct mylite_catalog_column_descriptor aggregate_column = {0};
     int rc = MYLITE_OK;
 
     function = unwrap_parenthesized_expression(function);
@@ -378,9 +403,16 @@ static int plan_grouped_group_concat_options(
             source_context,
             table_columns,
             table_column_count,
-            &out_item->aggregate_column,
+            &aggregate_column,
             &out_item->aggregate_column_source_index
         );
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_item->aggregate_column
+            );
+        }
     }
 
     if (rc == MYLITE_OK) {
@@ -388,7 +420,7 @@ static int plan_grouped_group_concat_options(
             database,
             source_context,
             NULL,
-            out_item->aggregate_uses_row_scalar_expression ? NULL : &out_item->aggregate_column,
+            out_item->aggregate_uses_row_scalar_expression ? NULL : out_item->aggregate_column,
             out_item->aggregate_column_source_index,
             out_item->aggregate_uses_row_scalar_expression
                 ? &out_item->aggregate_row_scalar_expression
@@ -636,7 +668,7 @@ static int plan_group_concat_order_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = copy_planned_select_order_column(database, order_column, &out_order->column);
+    rc = copy_planned_column_descriptor(database, order_column, &out_order->column);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -933,7 +965,8 @@ static bool planned_grouped_aggregate_columns_match(
     const struct mylite_catalog_column_descriptor *right_column,
     size_t right_source_index
 ) {
-    return (left_column->column_id == right_column->column_id &&
+    return (left_column != NULL && right_column != NULL &&
+            left_column->column_id == right_column->column_id &&
             left_source_index == right_source_index) != 0;
 }
 
@@ -947,7 +980,7 @@ static bool find_matching_grouped_key(
         if (planned_grouped_aggregate_columns_match(
                 column,
                 source_index,
-                &plan->groups[group_index].column,
+                plan->groups[group_index].column,
                 plan->groups[group_index].column_source_index
             )) {
             *out_group_index = group_index;
@@ -968,7 +1001,8 @@ static bool find_grouped_key_by_unqualified_name(
 
     *out_ambiguous = false;
     for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
-        if (text_equals_ascii_case_insensitive(name, plan->groups[group_index].column.name)) {
+        if (plan->groups[group_index].column != NULL &&
+            text_equals_ascii_case_insensitive(name, plan->groups[group_index].column->name)) {
             if (matched) {
                 *out_ambiguous = true;
                 return false;
@@ -992,9 +1026,10 @@ static bool find_grouped_projection_by_unqualified_name(
     *out_ambiguous = false;
     for (size_t projection_index = 0U; projection_index < plan->projection_count;
          ++projection_index) {
-        if (text_equals_ascii_case_insensitive(
+        if (plan->projections[projection_index].column != NULL &&
+            text_equals_ascii_case_insensitive(
                 name,
-                plan->projections[projection_index].column.name
+                plan->projections[projection_index].column->name
             )) {
             if (matched) {
                 *out_ambiguous = true;

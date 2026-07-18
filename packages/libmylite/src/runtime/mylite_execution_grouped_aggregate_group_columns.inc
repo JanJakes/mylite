@@ -49,6 +49,7 @@ static int resolve_grouped_aggregate_group_column(
     size_t table_column_count,
     struct planned_grouped_key *out_key
 ) {
+    const struct mylite_catalog_column_descriptor *resolved_column = NULL;
     size_t source_column_match_count = 0U;
     bool matched_alias = false;
     int rc = count_grouped_source_columns_by_unqualified_name(
@@ -94,7 +95,7 @@ static int resolve_grouped_aggregate_group_column(
         }
     }
 
-    rc = resolve_descriptor_column_reference_with_source_index(
+    rc = resolve_descriptor_column_reference_pointer_with_source_index(
         database,
         group_key,
         source_context,
@@ -102,11 +103,14 @@ static int resolve_grouped_aggregate_group_column(
         "GROUP BY supports only descriptor group columns",
         table_columns,
         table_column_count,
-        &out_key->column,
+        &resolved_column,
         &out_key->column_source_index
     );
     if (rc == MYLITE_OK) {
-        rc = validate_grouped_aggregate_group_column(database, &out_key->column);
+        rc = validate_grouped_aggregate_group_column(database, resolved_column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_column_descriptor(database, resolved_column, &out_key->column);
     }
     if (rc == MYLITE_OK) {
         out_key->expression = group_key;
@@ -152,6 +156,7 @@ static int resolve_grouped_select_alias_group_column(
     const struct mylite_sql_ast_node *matched_expression = NULL;
     const struct mylite_sql_ast_node *matched_alias = NULL;
     bool matches_alias = false;
+    const struct mylite_catalog_column_descriptor *resolved_column = NULL;
     int rc = MYLITE_OK;
 
     *out_matched = false;
@@ -219,7 +224,7 @@ static int resolve_grouped_select_alias_group_column(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_descriptor_column_reference_with_source_index(
+    rc = resolve_descriptor_column_reference_pointer_with_source_index(
         database,
         matched_expression,
         resolution->source_context,
@@ -227,11 +232,14 @@ static int resolve_grouped_select_alias_group_column(
         "GROUP BY supports selected descriptor-column aliases only",
         resolution->table_columns,
         resolution->table_column_count,
-        &out_key->column,
+        &resolved_column,
         &out_key->column_source_index
     );
     if (rc == MYLITE_OK) {
-        rc = validate_grouped_aggregate_group_column(database, &out_key->column);
+        rc = validate_grouped_aggregate_group_column(database, resolved_column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_column_descriptor(database, resolved_column, &out_key->column);
     }
     if (rc == MYLITE_OK) {
         out_key->expression = matched_expression;

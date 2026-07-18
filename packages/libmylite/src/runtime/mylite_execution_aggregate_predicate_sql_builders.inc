@@ -347,7 +347,7 @@ static int append_column_aggregate_select_item_sql(
         }
         return append_group_concat_call_sql(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             0U,
             &item->aggregate_order,
             false,
@@ -368,12 +368,12 @@ static int append_column_aggregate_select_item_sql(
         );
     }
     if (item->function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
-        return mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+        return mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column->name);
     }
     if (item->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
         return append_spatial_collect_projection_sql(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             0U,
             false,
             item->aggregate_is_distinct,
@@ -428,8 +428,10 @@ static int append_column_aggregate_select_item_sql(
             rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
         }
         if (rc == MYLITE_OK) {
-            rc =
-                mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+            rc = mylite_dynamic_string_append_quoted_identifier(
+                string,
+                item->aggregate_column->name
+            );
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, "), COUNT(");
@@ -438,8 +440,10 @@ static int append_column_aggregate_select_item_sql(
             rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
         }
         if (rc == MYLITE_OK) {
-            rc =
-                mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+            rc = mylite_dynamic_string_append_quoted_identifier(
+                string,
+                item->aggregate_column->name
+            );
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');
@@ -455,7 +459,7 @@ static int append_column_aggregate_select_item_sql(
         rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column->name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
@@ -489,16 +493,18 @@ static int append_column_aggregate_count_sql(
         rc = mylite_dynamic_string_append_char(string, '*');
     }
     if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column->name);
     }
     if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN) {
         rc = mylite_dynamic_string_append(string, "DISTINCT ");
         if (rc == MYLITE_OK) {
-            rc =
-                mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+            rc = mylite_dynamic_string_append_quoted_identifier(
+                string,
+                item->aggregate_column->name
+            );
         }
         if (rc == MYLITE_OK &&
-            column_descriptor_uses_string_key_collation(&item->aggregate_column, true)) {
+            column_descriptor_uses_string_key_collation(item->aggregate_column, true)) {
             rc = append_string_key_collation_sql(string);
         }
     }
@@ -994,7 +1000,7 @@ static int append_grouped_group_key_sql(
     }
     return append_descriptor_value_sql_for_source(
         string,
-        &group->column,
+        group->column,
         group->column_source_index,
         plan->source_count > 0U
     );
@@ -1103,7 +1109,7 @@ static int append_grouped_projection_sql(
     } else {
         rc = append_descriptor_column_name_sql_for_source(
             string,
-            &projection->column,
+            projection->column,
             projection->column_source_index,
             qualify
         );
@@ -1138,7 +1144,7 @@ static int append_grouped_aggregate_select_item_sql(
         } else {
             rc = append_group_concat_call_sql(
                 string,
-                &item->aggregate_column,
+                item->aggregate_column,
                 item->aggregate_column_source_index,
                 &item->aggregate_order,
                 qualify,
@@ -1168,7 +1174,7 @@ static int append_grouped_aggregate_select_item_sql(
         if (rc == MYLITE_OK) {
             rc = append_descriptor_column_name_sql_for_source(
                 string,
-                &item->aggregate_column,
+                item->aggregate_column,
                 item->aggregate_column_source_index,
                 qualify
             );
@@ -1182,7 +1188,7 @@ static int append_grouped_aggregate_select_item_sql(
         if (rc == MYLITE_OK) {
             rc = append_descriptor_column_name_sql_for_source(
                 string,
-                &item->aggregate_column,
+                item->aggregate_column,
                 item->aggregate_column_source_index,
                 qualify
             );
@@ -1248,7 +1254,7 @@ static int append_grouped_aggregate_expression_sql(
     if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return append_descriptor_column_name_sql_for_source(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             item->aggregate_column_source_index,
             qualify
         );
@@ -1256,7 +1262,7 @@ static int append_grouped_aggregate_expression_sql(
     if (item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
         return append_spatial_collect_projection_sql(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             item->aggregate_column_source_index,
             qualify,
             item->aggregate_is_distinct,
@@ -1342,13 +1348,13 @@ static int append_grouped_aggregate_expression_sql(
     if (rc == MYLITE_OK) {
         rc = append_descriptor_column_name_sql_for_source(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             item->aggregate_column_source_index,
             qualify
         );
     }
     if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN &&
-        column_descriptor_uses_string_key_collation(&item->aggregate_column, true)) {
+        column_descriptor_uses_string_key_collation(item->aggregate_column, true)) {
         rc = append_string_key_collation_sql(string);
     }
     if (rc == MYLITE_OK) {
@@ -1480,7 +1486,7 @@ static int append_grouped_having_operand_sql(
         }
         return append_descriptor_value_sql_for_source(
             string,
-            &plan->groups[plan->having.group_index].column,
+            plan->groups[plan->having.group_index].column,
             plan->groups[plan->having.group_index].column_source_index,
             plan->source_count > 0U
         );
@@ -1522,7 +1528,7 @@ static int append_grouped_having_aggregate_sql(
     if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return append_descriptor_value_sql_for_source(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             item->aggregate_column_source_index,
             plan->source_count > 0U
         );
@@ -1576,7 +1582,7 @@ static int append_grouped_avg_having_operand_sql(
     if (rc == MYLITE_OK && !item->aggregate_uses_row_scalar_expression) {
         rc = append_descriptor_column_name_sql_for_source(
             string,
-            &item->aggregate_column,
+            item->aggregate_column,
             item->aggregate_column_source_index,
             qualify
         );
@@ -1746,7 +1752,7 @@ static int append_grouped_avg_order_argument_sql(
     }
     return append_descriptor_column_name_sql_for_source(
         string,
-        &item->aggregate_column,
+        item->aggregate_column,
         item->aggregate_column_source_index,
         qualify
     );

@@ -316,9 +316,9 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        rc = copy_planned_select_order_column(
+        rc = copy_planned_column_descriptor(
             database,
-            &out_plan->projections[matched_index].column,
+            out_plan->projections[matched_index].column,
             &out_item->column
         );
         if (rc != MYLITE_OK) {
@@ -346,9 +346,9 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        rc = copy_planned_select_order_column(
+        rc = copy_planned_column_descriptor(
             database,
-            &out_plan->groups[matched_index].column,
+            out_plan->groups[matched_index].column,
             &out_item->column
         );
         if (rc != MYLITE_OK) {
@@ -369,9 +369,9 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        rc = copy_planned_select_order_column(
+        rc = copy_planned_column_descriptor(
             database,
-            &out_plan->projections[matched_index].column,
+            out_plan->projections[matched_index].column,
             &out_item->column
         );
         if (rc != MYLITE_OK) {
@@ -392,9 +392,9 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        rc = copy_planned_select_order_column(
+        rc = copy_planned_column_descriptor(
             database,
-            &out_plan->groups[matched_index].column,
+            out_plan->groups[matched_index].column,
             &out_item->column
         );
         if (rc != MYLITE_OK) {
@@ -466,7 +466,7 @@ static int resolve_grouped_order_key(
         &order_source_index
     );
     if (rc == MYLITE_OK) {
-        rc = copy_planned_select_order_column(database, resolved_column, &out_item->column);
+        rc = copy_planned_column_descriptor(database, resolved_column, &out_item->column);
     }
     if (rc == MYLITE_OK) {
         out_item->column_source_index = order_source_index;
@@ -490,7 +490,7 @@ static int append_planned_grouped_order_item(
     int rc = MYLITE_OK;
 
     if (item_index == 0U && !uses_aggregate && item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
-        rc = copy_planned_select_order_column(database, item.column, &primary_column);
+        rc = copy_planned_column_descriptor(database, item.column, &primary_column);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -727,9 +727,7 @@ static int find_grouped_order_aggregate_expression(
     *out_aggregate_index = matched_index;
 
 cleanup:
-    planned_row_scalar_expression_deinit(&order_item.aggregate_row_scalar_expression);
-    planned_select_order_deinit(&order_item.aggregate_order);
-    planned_value_deinit(&order_item.separator);
+    planned_grouped_aggregate_item_deinit(&order_item);
     return rc;
 }
 
@@ -794,9 +792,9 @@ static bool grouped_order_aggregate_items_match(
             return false;
         }
         return planned_grouped_aggregate_columns_match(
-            &left->aggregate_column,
+            left->aggregate_column,
             left->aggregate_column_source_index,
-            &right->aggregate_column,
+            right->aggregate_column,
             right->aggregate_column_source_index
         );
     }
@@ -810,9 +808,9 @@ static bool grouped_order_aggregate_items_match(
         return false;
     }
     return planned_grouped_aggregate_columns_match(
-        &left->aggregate_column,
+        left->aggregate_column,
         left->aggregate_column_source_index,
-        &right->aggregate_column,
+        right->aggregate_column,
         right->aggregate_column_source_index
     );
 }
@@ -839,9 +837,9 @@ static bool grouped_order_group_concat_items_match(
         return false;
     }
     return planned_grouped_aggregate_columns_match(
-        &left->aggregate_column,
+        left->aggregate_column,
         left->aggregate_column_source_index,
-        &right->aggregate_column,
+        right->aggregate_column,
         right->aggregate_column_source_index
     );
 }

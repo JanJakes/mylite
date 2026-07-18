@@ -104,7 +104,8 @@ static int append_grouped_aggregate_result_columns(
     for (size_t projection_index = 0U; rc == MYLITE_OK && projection_index < plan->projection_count;
          ++projection_index) {
         const struct planned_grouped_projection *projection = &plan->projections[projection_index];
-        const char *projection_column_name = projection->column.name;
+        const char *projection_column_name =
+            projection->column != NULL ? projection->column->name : "";
         char *projection_alias_text = NULL;
 
         if (projection->alias != NULL) {
@@ -1335,6 +1336,7 @@ static int plan_column_aggregate_select_item(
     const struct mylite_sql_ast_node *aggregate_expression = NULL;
     const struct mylite_sql_ast_node *rhs_expression = NULL;
     enum mylite_sql_ast_operator projection_operator = MYLITE_SQL_AST_OPERATOR_NONE;
+    struct mylite_catalog_column_descriptor aggregate_column = {0};
     int rc = MYLITE_OK;
 
     *out_item = (struct planned_column_aggregate){0};
@@ -1429,12 +1431,21 @@ static int plan_column_aggregate_select_item(
                 input->source_context,
                 input->table_columns,
                 input->table_column_count,
-                &out_item->aggregate_column
+                &aggregate_column
             );
         }
         if (rc == MYLITE_OK &&
             out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN) {
-            rc = validate_count_distinct_column_descriptor(database, &out_item->aggregate_column);
+            rc = validate_count_distinct_column_descriptor(database, &aggregate_column);
+        }
+        if (rc == MYLITE_OK &&
+            (out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN ||
+             out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN)) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_item->aggregate_column
+            );
         }
         return rc;
     }
@@ -1487,9 +1498,11 @@ static int plan_column_aggregate_select_item(
             input->table_column_count,
             out_item
         );
-    } else if (out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
-               out_item->function != PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
-               column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+    } else if (
+        out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
+        out_item->function != PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
+        column_aggregate_argument_is_row_scalar_expression(aggregate_expression)
+    ) {
         rc = plan_column_aggregate_row_scalar_expression(
             database,
             aggregate_expression,
@@ -1507,8 +1520,15 @@ static int plan_column_aggregate_select_item(
             input->source_context,
             input->table_columns,
             input->table_column_count,
-            &out_item->aggregate_column
+            &aggregate_column
         );
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_item->aggregate_column
+            );
+        }
     }
     if (rc == MYLITE_OK && rhs_expression != NULL) {
         rc = plan_row_scalar_expression(
@@ -1540,8 +1560,8 @@ static int plan_column_aggregate_without_source(
     int rc = MYLITE_OK;
 
     if (where_clause != NULL || argument == NULL ||
-        (!column_aggregate_function_is_json(function) &&
-         function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX &&
+        (!column_aggregate_function_is_json(function) && function != PLANNED_COLUMN_AGGREGATE_MIN &&
+         function != PLANNED_COLUMN_AGGREGATE_MAX &&
          !column_aggregate_function_is_statistical(function)) ||
         (!column_aggregate_function_is_json(function) &&
          !column_aggregate_argument_is_row_scalar_expression(aggregate_expression))) {
@@ -1599,6 +1619,7 @@ static void planned_column_aggregate_deinit(struct planned_column_aggregate *pla
         return;
     }
 
+    free(plan->aggregate_column);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_order_deinit(&plan->aggregate_order);
     planned_value_deinit(&plan->separator);
@@ -2001,7 +2022,8 @@ static int validate_count_distinct_column_descriptor(
     return integer_range_for_column(
         database,
         column,
-        "COUNT(DISTINCT column) supports only integer, string, and binary string descriptor columns",
+        "COUNT(DISTINCT column) supports only integer, string, and binary string descriptor "
+        "columns",
         &range
     );
 }
@@ -2080,6 +2102,7 @@ static int plan_column_group_concat_options(
     size_t table_column_count,
     struct planned_column_aggregate *out_plan
 ) {
+    struct mylite_catalog_column_descriptor aggregate_column = {0};
     size_t value_source_index = 0U;
     int rc = MYLITE_OK;
 
@@ -2106,9 +2129,16 @@ static int plan_column_group_concat_options(
             source_context,
             table_columns,
             table_column_count,
-            &out_plan->aggregate_column,
+            &aggregate_column,
             &value_source_index
         );
+        if (rc == MYLITE_OK) {
+            rc = copy_planned_column_descriptor(
+                database,
+                &aggregate_column,
+                &out_plan->aggregate_column
+            );
+        }
     }
 
     if (rc == MYLITE_OK) {
@@ -2116,7 +2146,7 @@ static int plan_column_group_concat_options(
             database,
             source_context,
             table,
-            out_plan->aggregate_uses_row_scalar_expression ? NULL : &out_plan->aggregate_column,
+            out_plan->aggregate_uses_row_scalar_expression ? NULL : out_plan->aggregate_column,
             value_source_index,
             out_plan->aggregate_uses_row_scalar_expression
                 ? &out_plan->aggregate_row_scalar_expression
@@ -2649,7 +2679,7 @@ static int append_column_aggregate_sqlite_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
-            item->has_spatial_wrapper ? NULL : &item->aggregate_column,
+            item->has_spatial_wrapper ? NULL : item->aggregate_column,
             buffer,
             buffer_size,
             out_cell
@@ -2664,7 +2694,7 @@ static int append_column_aggregate_sqlite_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
-            &item->aggregate_column,
+            item->aggregate_column,
             buffer,
             buffer_size,
             out_cell
@@ -2897,7 +2927,11 @@ static int append_grouped_aggregate_rollup_sqlite_row(
 
     for (size_t projection_index = 0U; projection_index < plan->projection_count;
          ++projection_index) {
-        append_grouped_aggregate_rollup_projection_cell(plan, projection_index, &cells[projection_index]);
+        append_grouped_aggregate_rollup_projection_cell(
+            plan,
+            projection_index,
+            &cells[projection_index]
+        );
     }
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
@@ -2978,7 +3012,7 @@ static int append_grouped_aggregate_projection_cell(
         database,
         statement,
         projection_index,
-        &plan->projections[projection_index].column,
+        plan->projections[projection_index].column,
         buffer,
         buffer_size,
         out_cell
@@ -3015,7 +3049,7 @@ static int append_grouped_aggregate_sqlite_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
-            item->has_spatial_wrapper ? NULL : &item->aggregate_column,
+            item->has_spatial_wrapper ? NULL : item->aggregate_column,
             buffer,
             buffer_size,
             out_cell
@@ -3030,7 +3064,7 @@ static int append_grouped_aggregate_sqlite_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
-            &item->aggregate_column,
+            item->aggregate_column,
             buffer,
             buffer_size,
             out_cell
@@ -3040,12 +3074,12 @@ static int append_grouped_aggregate_sqlite_cell(
     }
     if ((item->function == PLANNED_GROUPED_AGGREGATE_MIN ||
          item->function == PLANNED_GROUPED_AGGREGATE_MAX) &&
-        column_descriptor_is_string_family(&item->aggregate_column)) {
+        column_descriptor_is_string_family(item->aggregate_column)) {
         rc = append_selected_sqlite_row_value_with_descriptor(
             database,
             statement,
             (size_t)*sqlite_column_index,
-            &item->aggregate_column,
+            item->aggregate_column,
             buffer,
             buffer_size,
             out_cell
@@ -3428,10 +3462,7 @@ static int map_json_aggregate_step_error(
         return MYLITE_ERROR;
     }
     if (strcmp(message, "Unsupported JSON value in JSON constructor") == 0) {
-        set_unsupported_error(
-            database,
-            "JSON constructors support only baseline JSON values"
-        );
+        set_unsupported_error(database, "JSON constructors support only baseline JSON values");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

@@ -1871,7 +1871,11 @@ static int copy_derived_grouped_projection_source_column(
     size_t output_index,
     struct mylite_catalog_column_descriptor *out_column
 ) {
-    *out_column = projection->column;
+    if (projection->column != NULL) {
+        *out_column = *projection->column;
+    } else {
+        *out_column = (struct mylite_catalog_column_descriptor){0};
+    }
     out_column->table_id = 0;
     out_column->column_id = (int64_t)output_index + 1;
     out_column->ordinal_position = (int64_t)output_index + 1;
@@ -1903,7 +1907,7 @@ static int make_derived_grouped_aggregate_source_column(
     if (item->function == PLANNED_GROUPED_AGGREGATE_MIN ||
         item->function == PLANNED_GROUPED_AGGREGATE_MAX ||
         item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
-        *out_column = item->aggregate_column;
+        *out_column = *item->aggregate_column;
         out_column->table_id = 0;
         out_column->column_id = (int64_t)output_index + 1;
         out_column->ordinal_position = (int64_t)output_index + 1;

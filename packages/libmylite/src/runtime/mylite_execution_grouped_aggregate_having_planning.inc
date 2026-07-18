@@ -490,7 +490,7 @@ static int find_grouped_having_projection_alias_operand(
         }
         if (!find_matching_grouped_key(
                 plan,
-                &projection->column,
+                projection->column,
                 projection->column_source_index,
                 &matched_group_index
             )) {
@@ -706,7 +706,7 @@ static int plan_grouped_having_aggregate_operand(
         if (item->function == function && planned_grouped_aggregate_columns_match(
                                               &column,
                                               source_index,
-                                              &item->aggregate_column,
+                                              item->aggregate_column,
                                               item->aggregate_column_source_index
                                           )) {
             selected_index = aggregate_index;
@@ -722,9 +722,7 @@ static int plan_grouped_having_aggregate_operand(
     }
 
 cleanup:
-    planned_row_scalar_expression_deinit(&having_item.aggregate_row_scalar_expression);
-    planned_select_order_deinit(&having_item.aggregate_order);
-    planned_value_deinit(&having_item.separator);
+    planned_grouped_aggregate_item_deinit(&having_item);
     return rc;
 }
 
@@ -808,9 +806,8 @@ static int convert_grouped_having_comparison_value(
     struct planned_value *out_value
 ) {
     const struct mylite_catalog_column_descriptor *group_column =
-        plan->having.group_index < plan->group_count
-            ? &plan->groups[plan->having.group_index].column
-            : NULL;
+        plan->having.group_index < plan->group_count ? plan->groups[plan->having.group_index].column
+                                                     : NULL;
     const char *operand_name =
         (operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN && group_column != NULL)
             ? group_column->name
@@ -968,14 +965,14 @@ static int convert_grouped_having_any_value_alias_value(
     }
 
     *out_handled = true;
-    if (column_descriptor_is_string_family(&item->aggregate_column)) {
+    if (column_descriptor_is_string_family(item->aggregate_column)) {
         return convert_grouped_having_string_value(database, value_node, out_value);
     }
 
     rc = parse_grouped_having_integer_literal(
         database,
         value_node,
-        item->aggregate_column.name,
+        item->aggregate_column->name,
         &is_negative,
         &magnitude
     );
@@ -986,7 +983,7 @@ static int convert_grouped_having_any_value_alias_value(
         database,
         magnitude,
         is_negative,
-        &item->aggregate_column,
+        item->aggregate_column,
         out_value
     );
 }

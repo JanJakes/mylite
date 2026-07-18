@@ -213,23 +213,18 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
         planned_select_join_condition_deinit(&plan->join_conditions[join_index]);
     }
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
-        planned_row_scalar_expression_deinit(
-            &plan->aggregates[aggregate_index].aggregate_key_row_scalar_expression
-        );
-        planned_row_scalar_expression_deinit(
-            &plan->aggregates[aggregate_index].aggregate_row_scalar_expression
-        );
-        planned_select_order_deinit(&plan->aggregates[aggregate_index].aggregate_order);
-        planned_value_deinit(&plan->aggregates[aggregate_index].separator);
+        planned_grouped_aggregate_item_deinit(&plan->aggregates[aggregate_index]);
     }
     for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
         planned_row_scalar_expression_deinit(&plan->groups[group_index].row_scalar_expression);
+        free(plan->groups[group_index].column);
     }
     for (size_t projection_index = 0U; projection_index < plan->projection_count;
          ++projection_index) {
         planned_row_scalar_expression_deinit(
             &plan->projections[projection_index].row_scalar_expression
         );
+        free(plan->projections[projection_index].column);
     }
     free(plan->aggregates);
     free(plan->projections);
@@ -247,6 +242,19 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     free(plan->having.values);
     planned_select_order_deinit(&plan->order);
     *plan = (struct planned_grouped_aggregate){0};
+}
+
+static void planned_grouped_aggregate_item_deinit(struct planned_grouped_aggregate_item *item) {
+    if (item == NULL) {
+        return;
+    }
+
+    free(item->aggregate_column);
+    planned_row_scalar_expression_deinit(&item->aggregate_key_row_scalar_expression);
+    planned_row_scalar_expression_deinit(&item->aggregate_row_scalar_expression);
+    planned_select_order_deinit(&item->aggregate_order);
+    planned_value_deinit(&item->separator);
+    *item = (struct planned_grouped_aggregate_item){0};
 }
 
 static int collect_grouped_aggregate_clauses(
@@ -294,7 +302,8 @@ static int collect_grouped_aggregate_clauses(
     return MYLITE_OK;
 }
 
-static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
+static bool grouped_aggregate_group_clause_has_rollup(
+    const struct mylite_sql_ast_node *group_clause
 ) {
     for (const struct mylite_sql_ast_node *group_key =
              group_clause == NULL ? NULL : group_clause->first_child;

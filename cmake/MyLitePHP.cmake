@@ -8,6 +8,11 @@ set(MYLITE_PHP_EXECUTABLE
   CACHE FILEPATH
   "PHP CLI executable used to test MyLite PHP extensions"
 )
+set(MYLITE_PHP_INSTALL_DIR
+  "${CMAKE_INSTALL_LIBDIR}/mylite/php"
+  CACHE PATH
+  "Install directory for MyLite PHP extension modules"
+)
 
 function(mylite_configure_php)
   if(DEFINED MYLITE_PHP_INCLUDE_DIRS)

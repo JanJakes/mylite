@@ -39,7 +39,16 @@ else()
   )
 endif()
 
-add_library(mylite STATIC
+add_library(mylite_headers INTERFACE)
+add_library(MyLite::headers ALIAS mylite_headers)
+set_target_properties(mylite_headers PROPERTIES EXPORT_NAME headers)
+target_include_directories(mylite_headers INTERFACE
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+)
+
+add_library(mylite
   "${MYLITE_SQL_PARSE_C}"
   "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/ext/fts3/fts3_unicode2.c"
   src/runtime/mylite_aes.c
@@ -235,6 +244,16 @@ add_library(mylite STATIC
 )
 add_library(MyLite::mylite ALIAS mylite)
 
+set_target_properties(mylite PROPERTIES
+  EXPORT_NAME mylite
+  VERSION "${PROJECT_VERSION}"
+  SOVERSION "${PROJECT_VERSION_MAJOR}"
+)
+if(BUILD_SHARED_LIBS)
+  target_compile_definitions(mylite PRIVATE MYLITE_BUILDING_SHARED_LIBRARY=1)
+  target_compile_definitions(mylite INTERFACE MYLITE_USING_SHARED_LIBRARY=1)
+endif()
+
 set_source_files_properties(
   "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/ext/fts3/fts3_unicode2.c"
   PROPERTIES
@@ -287,7 +306,7 @@ target_include_directories(mylite
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-    "$<INSTALL_INTERFACE:include>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
@@ -308,3 +327,110 @@ if(WIN32)
 endif()
 
 mylite_configure_c_target(mylite)
+
+include(CMakePackageConfigHelpers)
+
+set(MYLITE_CONFIG_DEPENDENCIES "")
+if(NOT BUILD_SHARED_LIBS)
+  set(MYLITE_CONFIG_DEPENDENCIES
+    "find_dependency(Threads)\nfind_dependency(ZLIB)"
+  )
+endif()
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MyLiteConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/MyLiteConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MyLite"
+)
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/MyLiteConfigVersion.cmake"
+  VERSION "${PROJECT_VERSION}"
+  COMPATIBILITY SameMajorVersion
+)
+
+set(MYLITE_PKGCONFIG_PRIVATE_LIBS "")
+if(NOT BUILD_SHARED_LIBS)
+  set(MYLITE_PKGCONFIG_PRIVATE_LIBS "-lmylite_sqlite -lz")
+  if(UNIX AND NOT APPLE)
+    string(APPEND MYLITE_PKGCONFIG_PRIVATE_LIBS " -lm")
+  endif()
+  if(CMAKE_THREAD_LIBS_INIT)
+    string(APPEND MYLITE_PKGCONFIG_PRIVATE_LIBS " ${CMAKE_THREAD_LIBS_INIT}")
+  endif()
+  foreach(mylite_dl_library IN LISTS CMAKE_DL_LIBS)
+    if(IS_ABSOLUTE "${mylite_dl_library}" OR mylite_dl_library MATCHES "^-")
+      string(APPEND MYLITE_PKGCONFIG_PRIVATE_LIBS " ${mylite_dl_library}")
+    else()
+      string(APPEND MYLITE_PKGCONFIG_PRIVATE_LIBS " -l${mylite_dl_library}")
+    endif()
+  endforeach()
+endif()
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/mylite.pc.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/mylite.pc"
+  @ONLY
+)
+
+set(mylite_install_targets mylite mylite_headers)
+if(NOT BUILD_SHARED_LIBS)
+  list(APPEND mylite_install_targets mylite_sqlite)
+endif()
+install(
+  TARGETS ${mylite_install_targets}
+  EXPORT MyLiteTargets
+  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(
+  FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/mylite/mylite.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/mylite/version.h"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/mylite"
+)
+install(
+  EXPORT MyLiteTargets
+  FILE MyLiteTargets.cmake
+  NAMESPACE MyLite::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MyLite"
+)
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/MyLiteConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/MyLiteConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/MyLite"
+)
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/mylite.pc"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+)
+
+if(NOT CMAKE_SIZE)
+  find_program(CMAKE_SIZE NAMES llvm-size size)
+endif()
+if(CMAKE_SIZE)
+  add_custom_target(mylite_size_report
+    COMMAND "${CMAKE_COMMAND}"
+      "-DSIZE_TOOL=${CMAKE_SIZE}"
+      "-DNM_TOOL=${CMAKE_NM}"
+      "-DINPUT=$<TARGET_FILE:mylite>"
+      "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/mylite-size-report.txt"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MyLiteSizeReport.cmake"
+    DEPENDS mylite
+    COMMENT "Writing reproducible MyLite object, section, and symbol size report"
+    VERBATIM
+  )
+endif()
+
+if(BUILD_SHARED_LIBS AND UNIX AND NOT APPLE AND CMAKE_NM)
+  add_custom_target(mylite_abi_check
+    COMMAND "${CMAKE_COMMAND}"
+      "-DNM_TOOL=${CMAKE_NM}"
+      "-DLIBRARY=$<TARGET_FILE:mylite>"
+      "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/abi/libmylite-0.symbols"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MyLiteAbiCheck.cmake"
+    DEPENDS mylite
+    COMMENT "Checking the public libmylite ABI symbol manifest"
+    VERBATIM
+  )
+endif()

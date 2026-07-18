@@ -161,6 +161,14 @@ Run all local checks:
 cmake --workflow --preset check  # configure, format-check, build, test, tidy
 ```
 
+Build and install the optimized production package:
+
+```sh
+cmake --preset production
+cmake --build --preset production
+cmake --install build/production --prefix /path/to/prefix --strip
+```
+
 Run formatting and static-analysis checks individually:
 
 ```sh
@@ -171,7 +179,9 @@ cmake --build --preset tidy          # run clang-tidy
 See [docs/architecture/monorepo.md](docs/architecture/monorepo.md) for the
 current layout contract and
 [docs/architecture/engineering-standards.md](docs/architecture/engineering-standards.md)
-for the coding, ABI, dependency, test, and compatibility rules.
+for the coding, ABI, dependency, test, and compatibility rules. The installed
+library, shared-library ABI, and PHP packaging contracts are documented in
+[docs/architecture/embedding-and-abi.md](docs/architecture/embedding-and-abi.md).
 
 ## References
 

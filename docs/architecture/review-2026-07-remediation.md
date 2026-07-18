@@ -345,15 +345,28 @@ complete.
 
 ### Build, size, and packaging
 
-- [ ] Add reproducible per-object and per-section size reports.
-- [ ] Add controlled production LTO, function/data sections, linker garbage
-  collection, and stripping profiles across supported toolchains.
+- [x] Add reproducible per-object and per-section size reports. The
+  `mylite_size_report` target records decimal section/object sizes and a sorted
+  symbol inventory without embedding checkout-specific artifact paths.
+- [x] Add controlled production LTO, function/data sections, linker garbage
+  collection, and stripping profiles across supported toolchains. The retained
+  production profile uses section GC and install-time stripping. In a
+  controlled GCC comparison, section GC reduced the core PHP module from
+  9,125,944 to 9,017,288 bytes and its loaded sections from 8,633,107 to
+  8,536,167 bytes. Install stripping reduced the packaged module to 8,544,368
+  bytes. LTO increased the module and loaded-section sizes by about 1.9% and
+  2.6%, respectively, so it remains opt-in instead of being enabled by the
+  production preset.
 - [ ] Compact generated metadata and measure parser state/table contributors.
 - [x] Add `lempar.c` as a parser-generation dependency and include first-party
   `.inc` files in format validation.
-- [ ] Add installable headers, exported CMake/pkg-config targets, clean consumer
+- [x] Add installable headers, exported CMake/pkg-config targets, clean consumer
   tests, shared-library policy, ABI checks, and PHP packaging independent of
-  checkout build paths.
+  checkout build paths. Static and shared packages build and execute clean
+  CMake and pkg-config consumers from an isolated install prefix. Shared builds
+  are versioned with SOVERSION 0 and checked against an explicit public-symbol
+  manifest. PHP modules install to a configurable package directory and consume
+  the exported public-header target.
 
 ## Phase 6: Release qualification
 

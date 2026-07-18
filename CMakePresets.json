@@ -45,6 +45,36 @@
       }
     },
     {
+      "name": "production",
+      "displayName": "Optimized production library",
+      "inherits": "ci",
+      "binaryDir": "${sourceDir}/build/production",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "MYLITE_BUILD_TOOLS": "OFF",
+        "MYLITE_ENABLE_LTO": "OFF",
+        "MYLITE_ENABLE_SECTION_GC": "ON"
+      }
+    },
+    {
+      "name": "php-production",
+      "displayName": "Optimized production PHP extensions",
+      "inherits": "production",
+      "binaryDir": "${sourceDir}/build/php-production",
+      "cacheVariables": {
+        "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
+      }
+    },
+    {
+      "name": "shared-abi",
+      "displayName": "Optimized shared library ABI qualification",
+      "inherits": "production",
+      "binaryDir": "${sourceDir}/build/shared-abi",
+      "cacheVariables": {
+        "BUILD_SHARED_LIBS": "ON"
+      }
+    },
+    {
       "name": "perf-profile",
       "displayName": "Release build with profiling instrumentation",
       "inherits": "ci",
@@ -100,6 +130,18 @@
     {
       "name": "php-ci",
       "configurePreset": "php-ci"
+    },
+    {
+      "name": "production",
+      "configurePreset": "production"
+    },
+    {
+      "name": "php-production",
+      "configurePreset": "php-production"
+    },
+    {
+      "name": "shared-abi",
+      "configurePreset": "shared-abi"
     },
     {
       "name": "perf-profile",

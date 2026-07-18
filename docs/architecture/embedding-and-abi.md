@@ -1,0 +1,79 @@
+# Embedding, Packaging, and ABI
+
+MyLite builds a static core library by default. A versioned shared library is
+available for hosts that need a process-wide runtime. Both forms expose the
+same public C API from `mylite/mylite.h`.
+
+## Production builds
+
+The production presets enable function/data sections and linker dead-code
+elimination. Link-time optimization remains an explicit option because the
+controlled GCC artifact comparison made the PHP modules larger.
+
+```sh
+cmake --preset production
+cmake --build --preset production
+cmake --install build/production --prefix /path/to/prefix --strip
+```
+
+Use `php-production` to include the PHP modules and `shared-abi` to build the
+versioned shared library. `MYLITE_ENABLE_LTO=ON` is available for toolchain- and
+host-specific measurement; it is not part of the default production profile.
+
+The `mylite_size_report` target writes a reproducible section/object and sorted
+symbol report beside the library. Production packaging should strip installed
+artifacts, not the build-tree artifacts that tests and ABI checks inspect.
+
+## CMake consumers
+
+The installed CMake package exports `MyLite::mylite` and `MyLite::headers`.
+Static packages also export the private bundled SQLite target needed to carry
+the complete link contract.
+
+```cmake
+find_package(MyLite 0.1 CONFIG REQUIRED)
+target_link_libraries(application PRIVATE MyLite::mylite)
+```
+
+The installed `mylite.pc` provides the equivalent pkg-config contract. Static
+consumers must request private dependencies:
+
+```sh
+cc application.c $(pkg-config --cflags --libs --static mylite)
+```
+
+The integration suite installs the current build into an empty prefix, builds
+and runs a clean CMake consumer, and builds and runs a pkg-config consumer. It
+does not use checkout-relative include or library paths.
+
+## Ownership and threading
+
+Database, statement, result, and returned-value ownership is defined beside the
+public declarations in `mylite/mylite.h`. A database handle and statements
+created from it are single-threaded and non-reentrant. Independent handles may
+be used concurrently. Applications must finalize statements and free results
+according to the documented lifetime boundaries.
+
+## Shared-library ABI
+
+Shared builds use the project major version as `SOVERSION`; the current ABI is
+`libmylite.so.0`. Only declarations marked `MYLITE_API` are public. Windows
+consumers outside the exported CMake target define
+`MYLITE_USING_SHARED_LIBRARY` so the header imports those declarations; the
+exported target propagates it automatically.
+
+Linux shared builds expose `mylite_abi_check`. It compares dynamic exports with
+`packages/libmylite/abi/libmylite-0.symbols`. Adding, removing, or changing a
+public declaration requires an intentional ABI review. An incompatible change
+requires a new major/SOVERSION and a new manifest rather than editing the old
+contract silently.
+
+## PHP modules
+
+PHP builds install `mylite`, the mysqli replacement, and `pdo_mylite` under
+`${CMAKE_INSTALL_LIBDIR}/mylite/php` by default. The directory is configurable
+with `MYLITE_PHP_INSTALL_DIR`. Load the core `mylite` module before either
+adapter, and build all modules from the same MyLite and PHP configuration.
+
+The adapter targets consume the core public-header target; their build no
+longer depends on source-tree or generated-header paths from the checkout.

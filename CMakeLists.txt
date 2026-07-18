@@ -6,6 +6,8 @@ project(MyLite
   LANGUAGES C
 )
 
+include(GNUInstallDirs)
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -20,7 +22,10 @@ include(MyLitePHP)
 option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
 option(MYLITE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(MYLITE_BUILD_PHP_EXTENSIONS "Build MyLite PHP extensions" OFF)
+option(BUILD_SHARED_LIBS "Build libmylite as a versioned shared library" OFF)
 option(MYLITE_ENABLE_PROFILING "Enable opt-in runtime profiling instrumentation" OFF)
+option(MYLITE_ENABLE_LTO "Enable supported interprocedural optimization" OFF)
+option(MYLITE_ENABLE_SECTION_GC "Enable function/data sections and linker dead stripping" OFF)
 option(MYLITE_ENABLE_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(MYLITE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(
@@ -41,6 +46,15 @@ if(MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS AND NOT BUILD_TESTING)
   message(FATAL_ERROR "Allocator failpoints require BUILD_TESTING")
 endif()
 
+if(MYLITE_ENABLE_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT mylite_ipo_supported OUTPUT mylite_ipo_error LANGUAGES C)
+  if(NOT mylite_ipo_supported)
+    message(FATAL_ERROR "MYLITE_ENABLE_LTO is unsupported: ${mylite_ipo_error}")
+  endif()
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+endif()
+
 if((MYLITE_ENABLE_ASAN_UBSAN OR MYLITE_ENABLE_TSAN)
    AND NOT CMAKE_C_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
   message(FATAL_ERROR "MyLite sanitizer modes require Clang, AppleClang, or GCC")
@@ -53,6 +67,10 @@ endif()
 add_subdirectory(third_party/sqlite)
 add_subdirectory(tools/lemon)
 add_subdirectory(packages/libmylite)
+
+if(MYLITE_ENABLE_SECTION_GC)
+  mylite_configure_section_gc(mylite_sqlite)
+endif()
 
 if(MYLITE_BUILD_PHP_EXTENSIONS)
   add_subdirectory(packages/php-ext-mylite)

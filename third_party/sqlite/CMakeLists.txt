@@ -7,7 +7,7 @@ add_library(MyLite::sqlite ALIAS mylite_sqlite)
 
 target_include_directories(mylite_sqlite
   SYSTEM PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/amalgamation"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/amalgamation>"
 )
 
 target_compile_definitions(mylite_sqlite
@@ -22,6 +22,7 @@ target_link_libraries(mylite_sqlite
 )
 
 set_target_properties(mylite_sqlite PROPERTIES
+  EXPORT_NAME sqlite
   C_STANDARD 17
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF

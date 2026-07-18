@@ -1,2 +1,18 @@
-# Cross-package and integration test suites are added here as they become
-# buildable.
+add_test(
+  NAME mylite.install.consumer
+  COMMAND "${CMAKE_COMMAND}"
+    "-DMYLITE_BUILD_DIR=${PROJECT_BINARY_DIR}"
+    "-DMYLITE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+    "-DMYLITE_INSTALL_CONFIG=$<CONFIG>"
+    "-DMYLITE_GENERATOR=${CMAKE_GENERATOR}"
+    "-DMYLITE_C_COMPILER=${CMAKE_C_COMPILER}"
+    "-DMYLITE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
+    "-DMYLITE_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/install-consumer/run.cmake"
+)
+set_tests_properties(
+  mylite.install.consumer
+  PROPERTIES
+    LABELS "install;integration"
+    TIMEOUT 180
+)

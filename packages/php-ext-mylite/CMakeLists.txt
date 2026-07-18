@@ -9,6 +9,11 @@ mylite_configure_c_target(mylite_php_extension)
 if(NOT MSVC)
   target_compile_options(mylite_php_extension PRIVATE -Wno-unused-parameter)
 endif()
+install(
+  TARGETS mylite_php_extension
+  LIBRARY DESTINATION "${MYLITE_PHP_INSTALL_DIR}"
+  RUNTIME DESTINATION "${MYLITE_PHP_INSTALL_DIR}"
+)
 
 if(BUILD_TESTING)
   mylite_add_php_test(

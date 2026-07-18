@@ -1,10 +1,7 @@
 add_library(mylite_php_pdo_extension MODULE
   src/php_pdo_mylite.c
 )
-target_include_directories(mylite_php_pdo_extension PRIVATE
-  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/packages/libmylite/include>"
-  "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/packages/libmylite/include>"
-)
+target_link_libraries(mylite_php_pdo_extension PRIVATE MyLite::headers)
 add_dependencies(mylite_php_pdo_extension mylite_php_extension)
 target_compile_definitions(mylite_php_pdo_extension PRIVATE COMPILE_DL_PDO_MYLITE=1)
 mylite_configure_php_extension(mylite_php_pdo_extension)
@@ -13,6 +10,11 @@ mylite_configure_c_target(mylite_php_pdo_extension)
 if(NOT MSVC)
   target_compile_options(mylite_php_pdo_extension PRIVATE -Wno-unused-parameter)
 endif()
+install(
+  TARGETS mylite_php_pdo_extension
+  LIBRARY DESTINATION "${MYLITE_PHP_INSTALL_DIR}"
+  RUNTIME DESTINATION "${MYLITE_PHP_INSTALL_DIR}"
+)
 
 if(BUILD_TESTING)
   mylite_add_php_test(

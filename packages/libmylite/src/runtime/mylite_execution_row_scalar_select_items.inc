@@ -509,6 +509,7 @@ static int finalize_planned_row_scalar_select_item(
         rc = copy_select_item_alias_text(database, alias, &label);
         if (rc == MYLITE_OK) {
             item->has_alias = true;
+            item->alias_is_identifier = alias->kind == MYLITE_SQL_AST_IDENTIFIER;
         }
     } else if (
         unwrapped_expression != NULL &&

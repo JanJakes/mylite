@@ -104,29 +104,7 @@ static int append_grouped_aggregate_result_columns(
     for (size_t projection_index = 0U; rc == MYLITE_OK && projection_index < plan->projection_count;
          ++projection_index) {
         const struct planned_grouped_projection *projection = &plan->projections[projection_index];
-        const char *projection_column_name =
-            projection->column != NULL ? projection->column->name : "";
-        char *projection_alias_text = NULL;
-
-        if (projection->alias != NULL) {
-            rc = copy_select_item_alias_text(database, projection->alias, &projection_alias_text);
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            projection_column_name = projection_alias_text;
-        } else if (projection->is_grouping_marker || projection->uses_row_scalar_expression) {
-            rc = copy_scalar_projection_column_name(
-                database,
-                projection->expression,
-                &projection_alias_text
-            );
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            projection_column_name = projection_alias_text;
-        }
-        rc = mylite_result_append_column(result, projection_column_name);
-        free(projection_alias_text);
+        rc = mylite_result_append_column(result, projection->result_label);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -134,36 +112,25 @@ static int append_grouped_aggregate_result_columns(
 
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
-        char *aggregate_column_name = NULL;
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
 
         if (item->is_hidden_order_key) {
             continue;
         }
-        if (item->alias != NULL) {
-            rc = copy_select_item_alias_text(database, item->alias, &aggregate_column_name);
-        } else {
-            rc = copy_aggregate_result_column_name(
-                database,
-                &item->expression->span,
-                &aggregate_column_name
-            );
-        }
         if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
             rc = append_spatial_collect_result_column(
                 database,
                 result,
-                aggregate_column_name,
+                item->result_label,
                 item->has_spatial_wrapper,
                 item->spatial_wrapper_kind
             );
         } else if (rc == MYLITE_OK) {
-            rc = mylite_result_append_column(result, aggregate_column_name);
+            rc = mylite_result_append_column(result, item->result_label);
             if (rc != MYLITE_OK) {
                 set_nomem_error(database);
             }
         }
-        free(aggregate_column_name);
         if (rc != MYLITE_OK) {
             return rc;
         }

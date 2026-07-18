@@ -1980,6 +1980,7 @@ struct planned_row_scalar_select_item {
     char *result_label;
     struct planned_result_column_shape source_result_shape;
     bool has_alias;
+    bool alias_is_identifier;
     bool has_source_result_shape;
     bool is_exists_expression;
     struct planned_exists_subquery exists_subquery;
@@ -2312,9 +2313,10 @@ enum { grouped_aggregate_max_results = 16 };
 enum { grouped_aggregate_max_group_keys = 4 };
 
 struct planned_grouped_aggregate_item {
-    const struct mylite_sql_ast_node *expression;
-    const struct mylite_sql_ast_node *alias;
+    char *result_label;
     enum planned_grouped_aggregate_function function;
+    bool has_alias;
+    bool alias_is_identifier;
     bool is_hidden_order_key;
     struct mylite_catalog_column_descriptor *aggregate_column;
     size_t aggregate_column_source_index;
@@ -2331,8 +2333,7 @@ struct planned_grouped_aggregate_item {
 };
 
 struct planned_grouped_key {
-    const struct mylite_sql_ast_node *expression;
-    const struct mylite_sql_ast_node *alias;
+    char *alias;
     bool uses_row_scalar_expression;
     struct planned_row_scalar_expression row_scalar_expression;
     struct mylite_catalog_column_descriptor *column;
@@ -2353,8 +2354,9 @@ struct planned_compound_select {
 };
 
 struct planned_grouped_projection {
-    const struct mylite_sql_ast_node *expression;
-    const struct mylite_sql_ast_node *alias;
+    char *result_label;
+    bool has_alias;
+    bool alias_is_identifier;
     bool is_grouping_marker;
     bool uses_row_scalar_expression;
     struct planned_row_scalar_expression row_scalar_expression;

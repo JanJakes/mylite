@@ -1710,6 +1710,13 @@ static int make_derived_row_scalar_source_column(
     }
 
     if (item->has_alias) {
+        if (!item->alias_is_identifier) {
+            set_unsupported_error(
+                database,
+                "joined source derived row-scalar tables support only identifier output aliases"
+            );
+            return MYLITE_ERROR;
+        }
         size_t alias_size = strlen(item->result_label);
 
         if (alias_size >= sizeof(out_column->name)) {
@@ -1772,7 +1779,7 @@ static int validate_derived_grouped_aggregate_output_columns(
             );
             return MYLITE_ERROR;
         }
-        if (projection->alias != NULL && projection->alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        if (projection->has_alias && !projection->alias_is_identifier) {
             set_unsupported_error(
                 database,
                 "joined source derived grouped tables support only identifier output aliases"
@@ -1786,14 +1793,14 @@ static int validate_derived_grouped_aggregate_output_columns(
         const struct planned_grouped_aggregate_item *item =
             &derived_plan->aggregates[aggregate_index];
 
-        if (item->alias == NULL) {
+        if (!item->has_alias) {
             set_unsupported_error(
                 database,
                 "joined source derived grouped tables require aggregate output aliases"
             );
             return MYLITE_ERROR;
         }
-        if (item->alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        if (!item->alias_is_identifier) {
             set_unsupported_error(
                 database,
                 "joined source derived grouped tables support only identifier output aliases"
@@ -1877,10 +1884,10 @@ static int copy_derived_grouped_projection_source_column(
     out_column->table_id = 0;
     out_column->column_id = (int64_t)output_index + 1;
     out_column->ordinal_position = (int64_t)output_index + 1;
-    if (projection->alias != NULL) {
+    if (projection->has_alias) {
         return copy_derived_grouped_output_alias(
             database,
-            projection->alias,
+            projection->result_label,
             out_column->name,
             sizeof(out_column->name)
         );
@@ -1924,10 +1931,10 @@ static int make_derived_grouped_aggregate_source_column(
         snprintf(out_column->logical_type, sizeof(out_column->logical_type), "BIGINT");
         snprintf(out_column->physical_type, sizeof(out_column->physical_type), "INTEGER");
     }
-    if (item->alias != NULL) {
+    if (item->has_alias) {
         return copy_derived_grouped_output_alias(
             database,
-            item->alias,
+            item->result_label,
             out_column->name,
             sizeof(out_column->name)
         );
@@ -1941,18 +1948,26 @@ static int make_derived_grouped_aggregate_source_column(
 
 static int copy_derived_grouped_output_alias(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *alias,
+    const char *alias,
     char *destination,
     size_t destination_size
 ) {
-    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+    size_t alias_size = 0U;
+
+    if (alias == NULL) {
         set_unsupported_error(
             database,
             "joined source derived grouped tables support only identifier output aliases"
         );
         return MYLITE_ERROR;
     }
-    return copy_identifier_text(alias, destination, destination_size, database);
+    alias_size = strlen(alias);
+    if (alias_size >= destination_size) {
+        set_identifier_too_long_error(database, "alias");
+        return MYLITE_ERROR;
+    }
+    memcpy(destination, alias, alias_size + 1U);
+    return MYLITE_OK;
 }
 
 static const struct mylite_sql_ast_node *from_table_alias_node(

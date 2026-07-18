@@ -234,6 +234,10 @@ complete.
   retains expression/alias AST nodes or allocates labels for those families.
   Multi-item COUNT-expression aggregates use the same analyzed-label
   ownership and release it through every partial-planning failure path.
+  Grouped projections, GROUP BY keys, and grouped aggregate items now retain
+  typed columns/scalar expressions plus owned normalized labels only. GROUP
+  BY, HAVING, ORDER BY, derived-source construction, lowering, and result
+  metadata consume those analyzed names without expression/alias AST access.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization.
 - [ ] Separate mutable session publication from statement-owned collections.

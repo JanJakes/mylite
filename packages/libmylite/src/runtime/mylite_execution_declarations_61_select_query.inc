@@ -264,7 +264,7 @@ static int make_derived_grouped_aggregate_source_column(
 );
 static int copy_derived_grouped_output_alias(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *alias,
+    const char *alias,
     char *destination,
     size_t destination_size
 );

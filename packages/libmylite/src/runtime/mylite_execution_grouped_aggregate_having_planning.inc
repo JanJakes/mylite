@@ -472,10 +472,10 @@ static int find_grouped_having_projection_alias_operand(
          ++projection_index) {
         const struct planned_grouped_projection *projection = &plan->projections[projection_index];
 
-        rc = order_identifier_matches_alias(
+        rc = order_identifier_matches_alias_text(
             database,
             operand_node,
-            projection->alias,
+            projection->has_alias ? projection->result_label : NULL,
             &matches_alias
         );
         if (rc != MYLITE_OK) {
@@ -523,7 +523,7 @@ static int find_grouped_having_group_alias_operand(
     *out_matched = false;
     *out_group_index = 0U;
     for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
-        rc = order_identifier_matches_alias(
+        rc = order_identifier_matches_alias_text(
             database,
             operand_node,
             plan->groups[group_index].alias,
@@ -591,7 +591,6 @@ static int plan_grouped_having_aggregate_operand(
             table_columns,
             table_column_count,
             out_plan,
-            NULL,
             &having_item
         );
         if (rc != MYLITE_OK) {
@@ -644,7 +643,6 @@ static int plan_grouped_having_aggregate_operand(
             table_columns,
             table_column_count,
             out_plan,
-            NULL,
             &having_item
         );
         if (rc != MYLITE_OK) {
@@ -773,7 +771,12 @@ static int find_grouped_having_aggregate_alias_operand(
          ++aggregate_index) {
         const struct planned_grouped_aggregate_item *item = &out_plan->aggregates[aggregate_index];
 
-        rc = order_identifier_matches_alias(database, operand_node, item->alias, &matches_alias);
+        rc = order_identifier_matches_alias_text(
+            database,
+            operand_node,
+            item->has_alias ? item->result_label : NULL,
+            &matches_alias
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }

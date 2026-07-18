@@ -217,6 +217,7 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     }
     for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
         planned_row_scalar_expression_deinit(&plan->groups[group_index].row_scalar_expression);
+        free(plan->groups[group_index].alias);
         free(plan->groups[group_index].column);
     }
     for (size_t projection_index = 0U; projection_index < plan->projection_count;
@@ -224,6 +225,7 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
         planned_row_scalar_expression_deinit(
             &plan->projections[projection_index].row_scalar_expression
         );
+        free(plan->projections[projection_index].result_label);
         free(plan->projections[projection_index].column);
     }
     free(plan->aggregates);
@@ -250,6 +252,7 @@ static void planned_grouped_aggregate_item_deinit(struct planned_grouped_aggrega
     }
 
     free(item->aggregate_column);
+    free(item->result_label);
     planned_row_scalar_expression_deinit(&item->aggregate_key_row_scalar_expression);
     planned_row_scalar_expression_deinit(&item->aggregate_row_scalar_expression);
     planned_select_order_deinit(&item->aggregate_order);

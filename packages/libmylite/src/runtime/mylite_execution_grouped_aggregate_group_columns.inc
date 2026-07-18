@@ -112,11 +112,6 @@ static int resolve_grouped_aggregate_group_column(
     if (rc == MYLITE_OK) {
         rc = copy_planned_column_descriptor(database, resolved_column, &out_key->column);
     }
-    if (rc == MYLITE_OK) {
-        out_key->expression = group_key;
-        out_key->alias = NULL;
-    }
-
     return rc;
 }
 
@@ -138,8 +133,6 @@ static int resolve_grouped_aggregate_group_temporal_expression(
     );
 
     if (rc == MYLITE_OK) {
-        out_key->expression = group_key;
-        out_key->alias = NULL;
         out_key->uses_row_scalar_expression = true;
     }
     return rc;
@@ -242,8 +235,9 @@ static int resolve_grouped_select_alias_group_column(
         rc = copy_planned_column_descriptor(database, resolved_column, &out_key->column);
     }
     if (rc == MYLITE_OK) {
-        out_key->expression = matched_expression;
-        out_key->alias = matched_alias;
+        rc = copy_select_item_alias_text(database, matched_alias, &out_key->alias);
+    }
+    if (rc == MYLITE_OK) {
         *out_matched = true;
     }
 
@@ -270,10 +264,11 @@ static int resolve_grouped_select_alias_group_temporal_expression(
     );
 
     if (rc == MYLITE_OK) {
-        out_key->expression = matched_expression;
-        out_key->alias = matched_alias;
-        out_key->uses_row_scalar_expression = true;
-        *out_matched = true;
+        rc = copy_select_item_alias_text(database, matched_alias, &out_key->alias);
+        if (rc == MYLITE_OK) {
+            out_key->uses_row_scalar_expression = true;
+            *out_matched = true;
+        }
     }
     return rc;
 }

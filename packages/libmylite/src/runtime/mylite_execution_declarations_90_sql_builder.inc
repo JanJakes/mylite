@@ -2215,7 +2215,7 @@ static int append_grouped_aggregate_select_item_sql(
 );
 static int append_grouped_identifier_alias_sql(
     struct mylite_dynamic_string *string,
-    const struct mylite_sql_ast_node *alias
+    const char *alias
 );
 static int append_grouped_aggregate_expression_sql(
     struct mylite_dynamic_string *string,

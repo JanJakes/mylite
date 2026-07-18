@@ -545,7 +545,7 @@ static int find_grouped_order_group_alias(
     *out_matched = false;
     *out_group_index = 0U;
     for (size_t group_index = 0U; group_index < plan->group_count; ++group_index) {
-        rc = order_identifier_matches_alias(
+        rc = order_identifier_matches_alias_text(
             database,
             order_key,
             plan->groups[group_index].alias,
@@ -590,10 +590,12 @@ static int find_grouped_order_projection_alias(
     *out_projection_index = 0U;
     for (size_t projection_index = 0U; projection_index < plan->projection_count;
          ++projection_index) {
-        rc = order_identifier_matches_alias(
+        rc = order_identifier_matches_alias_text(
             database,
             order_key,
-            plan->projections[projection_index].alias,
+            plan->projections[projection_index].has_alias
+                ? plan->projections[projection_index].result_label
+                : NULL,
             &matches_alias
         );
         if (rc != MYLITE_OK) {
@@ -636,7 +638,12 @@ static int find_grouped_order_aggregate_alias(
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
 
-        rc = order_identifier_matches_alias(database, order_key, item->alias, &matches_alias);
+        rc = order_identifier_matches_alias_text(
+            database,
+            order_key,
+            item->has_alias ? item->result_label : NULL,
+            &matches_alias
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -696,7 +703,6 @@ static int find_grouped_order_aggregate_expression(
         table_columns,
         table_column_count,
         plan,
-        NULL,
         &order_item
     );
     if (rc != MYLITE_OK) {
@@ -1053,6 +1059,27 @@ static int order_identifier_matches_alias(
 
     free(order_name);
     free(alias_text);
+    return rc;
+}
+
+static int order_identifier_matches_alias_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const char *alias,
+    bool *out_matches
+) {
+    char *order_name = NULL;
+    int rc = MYLITE_OK;
+
+    *out_matches = false;
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER || alias == NULL) {
+        return MYLITE_OK;
+    }
+    rc = copy_select_item_identifier_alias_text(database, column_node, &order_name);
+    if (rc == MYLITE_OK) {
+        *out_matches = text_equals_ascii_case_insensitive(order_name, alias);
+    }
+    free(order_name);
     return rc;
 }
 

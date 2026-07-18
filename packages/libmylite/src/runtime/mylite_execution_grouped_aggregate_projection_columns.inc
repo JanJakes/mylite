@@ -179,19 +179,31 @@ static int append_grouped_projection_column(
     const struct mylite_sql_ast_node *alias
 ) {
     struct mylite_catalog_column_descriptor *column_copy = NULL;
+    char *result_label = NULL;
     size_t required_count = plan->projection_count + 1U;
     int rc = reserve_grouped_projections(database, plan, required_count);
 
     if (rc == MYLITE_OK) {
         rc = copy_planned_column_descriptor(database, column, &column_copy);
     }
+    if (rc == MYLITE_OK) {
+        rc = copy_grouped_projection_result_label(
+            database,
+            expression,
+            alias,
+            column,
+            &result_label
+        );
+    }
     if (rc != MYLITE_OK) {
+        free(column_copy);
         return rc;
     }
 
     plan->projections[plan->projection_count] = (struct planned_grouped_projection){
-        .expression = expression,
-        .alias = alias,
+        .result_label = result_label,
+        .has_alias = alias != NULL,
+        .alias_is_identifier = alias != NULL && alias->kind == MYLITE_SQL_AST_IDENTIFIER,
         .column = column_copy,
         .column_source_index = source_index,
     };
@@ -206,17 +218,23 @@ static int append_grouped_projection_row_scalar_expression(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 ) {
+    char *result_label = NULL;
     size_t required_count = plan->projection_count + 1U;
-    int rc = reserve_grouped_projections(database, plan, required_count);
+    int rc = copy_grouped_projection_result_label(database, expression, alias, NULL, &result_label);
 
+    if (rc == MYLITE_OK) {
+        rc = reserve_grouped_projections(database, plan, required_count);
+    }
     if (rc != MYLITE_OK) {
+        free(result_label);
         planned_row_scalar_expression_deinit(row_scalar_expression);
         return rc;
     }
 
     plan->projections[plan->projection_count] = (struct planned_grouped_projection){
-        .expression = expression,
-        .alias = alias,
+        .result_label = result_label,
+        .has_alias = alias != NULL,
+        .alias_is_identifier = alias != NULL && alias->kind == MYLITE_SQL_AST_IDENTIFIER,
         .uses_row_scalar_expression = true,
         .row_scalar_expression = *row_scalar_expression,
     };
@@ -231,20 +249,42 @@ static int append_grouped_projection_grouping_marker(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 ) {
+    char *result_label = NULL;
     size_t required_count = plan->projection_count + 1U;
-    int rc = reserve_grouped_projections(database, plan, required_count);
+    int rc = copy_grouped_projection_result_label(database, expression, alias, NULL, &result_label);
 
+    if (rc == MYLITE_OK) {
+        rc = reserve_grouped_projections(database, plan, required_count);
+    }
     if (rc != MYLITE_OK) {
+        free(result_label);
         return rc;
     }
 
     plan->projections[plan->projection_count] = (struct planned_grouped_projection){
-        .expression = expression,
-        .alias = alias,
+        .result_label = result_label,
+        .has_alias = alias != NULL,
+        .alias_is_identifier = alias != NULL && alias->kind == MYLITE_SQL_AST_IDENTIFIER,
         .is_grouping_marker = true,
     };
     plan->projection_count = required_count;
     return MYLITE_OK;
+}
+
+static int copy_grouped_projection_result_label(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct mylite_catalog_column_descriptor *column,
+    char **out_label
+) {
+    if (alias != NULL) {
+        return copy_select_item_alias_text(database, alias, out_label);
+    }
+    if (column != NULL) {
+        return duplicate_text(database, column->name, out_label);
+    }
+    return copy_scalar_projection_column_name(database, expression, out_label);
 }
 
 static int reserve_grouped_projections(

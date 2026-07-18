@@ -1114,8 +1114,12 @@ static int append_grouped_projection_sql(
             qualify
         );
     }
-    if (rc == MYLITE_OK && include_aliases && projection->alias != NULL) {
-        rc = append_grouped_identifier_alias_sql(string, projection->alias);
+    if (rc == MYLITE_OK && include_aliases && projection->has_alias &&
+        !projection->alias_is_identifier) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && include_aliases && projection->has_alias) {
+        rc = append_grouped_identifier_alias_sql(string, projection->result_label);
     }
     return rc;
 }
@@ -1130,6 +1134,9 @@ static int append_grouped_aggregate_select_item_sql(
     bool qualify = plan->source_count > 0U;
     int rc = MYLITE_OK;
 
+    if (include_aliases && item->has_alias && !item->alias_is_identifier) {
+        return MYLITE_ERROR;
+    }
     if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
         if (item->aggregate_uses_row_scalar_expression) {
             rc = append_group_concat_expression_call_sql(
@@ -1154,15 +1161,15 @@ static int append_grouped_aggregate_select_item_sql(
                 next_parameter
             );
         }
-        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
-            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        if (rc == MYLITE_OK && include_aliases && item->has_alias) {
+            rc = append_grouped_identifier_alias_sql(string, item->result_label);
         }
         return rc;
     }
     if (item->aggregate_uses_row_scalar_expression) {
         rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
-        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
-            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        if (rc == MYLITE_OK && include_aliases && item->has_alias) {
+            rc = append_grouped_identifier_alias_sql(string, item->result_label);
         }
         return rc;
     }
@@ -1196,45 +1203,30 @@ static int append_grouped_aggregate_select_item_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
-        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
-            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        if (rc == MYLITE_OK && include_aliases && item->has_alias) {
+            rc = append_grouped_identifier_alias_sql(string, item->result_label);
         }
         return rc;
     }
     rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
-    if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
-        rc = append_grouped_identifier_alias_sql(string, item->alias);
+    if (rc == MYLITE_OK && include_aliases && item->has_alias) {
+        rc = append_grouped_identifier_alias_sql(string, item->result_label);
     }
     return rc;
 }
 
 static int append_grouped_identifier_alias_sql(
     struct mylite_dynamic_string *string,
-    const struct mylite_sql_ast_node *alias
+    const char *alias
 ) {
-    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    const char *source = NULL;
-    size_t source_size = 0U;
     int rc = MYLITE_OK;
 
-    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+    if (alias == NULL || alias[0] == '\0') {
         return MYLITE_ERROR;
     }
-    source = alias->span.text;
-    source_size = alias->span.length;
-    if (source == NULL || source_size == 0U) {
-        return MYLITE_ERROR;
-    }
-    if (source[0] == '`' || source[0] == '"') {
-        rc = copy_quoted_identifier_text(source, source_size, identifier, sizeof(identifier));
-    } else {
-        rc = copy_unquoted_identifier_text(source, source_size, identifier, sizeof(identifier));
-    }
+    rc = mylite_dynamic_string_append(string, " AS ");
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, identifier);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, alias);
     }
     return rc;
 }

@@ -52,6 +52,7 @@ static int plan_grouped_aggregate_item(
     struct planned_grouped_aggregate_item *out_item
 ) {
     const struct mylite_sql_ast_node *aggregate_expression = child_at(aggregate_item, 0U);
+    const struct mylite_sql_ast_node *alias = child_at(aggregate_item, 1U);
     struct mylite_catalog_column_descriptor selected_column = {0};
     size_t selected_source_index = 0U;
     int rc = plan_grouped_aggregate_expression(
@@ -61,7 +62,6 @@ static int plan_grouped_aggregate_item(
         table_columns,
         table_column_count,
         out_plan,
-        child_at(aggregate_item, 1U),
         out_item
     );
 
@@ -99,6 +99,18 @@ static int plan_grouped_aggregate_item(
         }
         return rc;
     }
+    rc = copy_planned_aggregate_result_label(
+        database,
+        aggregate_expression,
+        alias,
+        &out_item->result_label
+    );
+    if (rc != MYLITE_OK) {
+        planned_grouped_aggregate_item_deinit(out_item);
+        return rc;
+    }
+    out_item->has_alias = alias != NULL;
+    out_item->alias_is_identifier = alias != NULL && alias->kind == MYLITE_SQL_AST_IDENTIFIER;
     return MYLITE_OK;
 }
 
@@ -109,7 +121,6 @@ static int plan_grouped_aggregate_expression(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan,
-    const struct mylite_sql_ast_node *alias,
     struct planned_grouped_aggregate_item *out_item
 ) {
     const struct mylite_sql_ast_node *unwrapped_expression =
@@ -120,8 +131,6 @@ static int plan_grouped_aggregate_expression(
     int rc = MYLITE_OK;
 
     *out_item = (struct planned_grouped_aggregate_item){0};
-    out_item->expression = aggregate_expression;
-    out_item->alias = alias;
     out_item->function = grouped_aggregate_function_from_expression(unwrapped_expression);
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_NONE) {
         return MYLITE_OK;

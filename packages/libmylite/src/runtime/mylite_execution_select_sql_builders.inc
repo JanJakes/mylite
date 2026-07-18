@@ -639,6 +639,10 @@ static int append_row_scalar_select_query_sql(
                 next_parameter
             );
         }
+        if (rc == MYLITE_OK && plan->items[item_index].has_alias &&
+            !plan->items[item_index].alias_is_identifier) {
+            rc = MYLITE_ERROR;
+        }
         if (rc == MYLITE_OK && plan->items[item_index].has_alias) {
             rc = append_row_scalar_select_identifier_alias_sql(
                 string,

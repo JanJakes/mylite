@@ -137,6 +137,13 @@ static int append_grouped_projection_grouping_marker(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 );
+static int copy_grouped_projection_result_label(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct mylite_catalog_column_descriptor *column,
+    char **out_label
+);
 static int reserve_grouped_projections(
     struct mylite_db *database,
     struct planned_grouped_aggregate *plan,
@@ -332,7 +339,6 @@ static int plan_grouped_aggregate_expression(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan,
-    const struct mylite_sql_ast_node *alias,
     struct planned_grouped_aggregate_item *out_item
 );
 static int plan_grouped_count_column(
@@ -692,6 +698,12 @@ static int order_identifier_matches_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     const struct mylite_sql_ast_node *alias,
+    bool *out_matches
+);
+static int order_identifier_matches_alias_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const char *alias,
     bool *out_matches
 );
 static int order_identifier_matches_unaliased_group_column(

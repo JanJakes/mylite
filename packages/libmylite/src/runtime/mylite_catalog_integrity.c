@@ -352,7 +352,7 @@ static int validate_catalog_table_shape(sqlite3 *sqlite, const struct catalog_ta
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_bind_text(statement, 1, spec->name);
     }
-    while (rc == MYLITE_OK && (sqlite_rc = sqlite3_step(statement)) == SQLITE_ROW) {
+    while (rc == MYLITE_OK && (sqlite_rc = mylite_catalog_sqlite3_step(statement)) == SQLITE_ROW) {
         const char *name = NULL;
         const char *type = NULL;
         const char *expected_type = NULL;
@@ -423,7 +423,7 @@ static int validate_catalog_table_checks(sqlite3 *sqlite, const struct catalog_t
         rc = mylite_catalog_bind_text(statement, 1, spec->name);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_ROW || sqlite3_column_type(statement, 0) != SQLITE_TEXT) {
             rc = sqlite_rc == SQLITE_ROW || sqlite_rc == SQLITE_DONE
                      ? MYLITE_ERROR
@@ -442,7 +442,7 @@ static int validate_catalog_table_checks(sqlite3 *sqlite, const struct catalog_t
         }
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_DONE) {
             rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
         }
@@ -598,7 +598,7 @@ static int validate_catalog_index(sqlite3 *sqlite, const struct catalog_index_sp
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_bind_text(statement, 1, spec->table_name);
     }
-    while (rc == MYLITE_OK && (sqlite_rc = sqlite3_step(statement)) == SQLITE_ROW) {
+    while (rc == MYLITE_OK && (sqlite_rc = mylite_catalog_sqlite3_step(statement)) == SQLITE_ROW) {
         const char *name = NULL;
         bool columns_match = false;
 
@@ -648,7 +648,7 @@ static int catalog_index_columns_match(
     for (size_t index = 0U; rc == MYLITE_OK && index < spec->column_count; ++index) {
         const char *name = NULL;
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             matches = false;
             break;
@@ -667,7 +667,7 @@ static int catalog_index_columns_match(
         }
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_DONE && sqlite_rc != SQLITE_ROW) {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         } else if (sqlite_rc == SQLITE_ROW) {
@@ -782,7 +782,7 @@ static int validate_catalog_has_no_matching_row(sqlite3 *sqlite, const char *sql
     int rc = mylite_catalog_prepare_statement(sqlite, sql, &statement);
 
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_DONE) {
             rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
         }

@@ -1,5 +1,7 @@
 #include "mylite_profile_internal.h"
 
+#include "mylite_profile_allocator.h"
+
 #include "mylite_connection.h"
 #include "sqlite3.h"
 
@@ -17,6 +19,8 @@
 #endif
 
 static uint64_t elapsed_since(uint64_t started_ns);
+static void record_allocation(size_t bytes);
+static int profile_sqlite3_step(sqlite3_stmt *statement, bool is_metadata);
 
 static MYLITE_PROFILE_THREAD_LOCAL mylite_db *active_api_database = NULL;
 
@@ -72,6 +76,37 @@ uint64_t mylite_profile_now_ns(void) {
 #endif
 }
 
+void *mylite_profile_malloc(size_t size) {
+    void *allocation = malloc(size);
+
+    if (allocation != NULL) {
+        record_allocation(size);
+    }
+    return allocation;
+}
+
+void *mylite_profile_calloc(size_t count, size_t size) {
+    void *allocation = calloc(count, size);
+
+    if (allocation != NULL) {
+        record_allocation(count > 0U && size > SIZE_MAX / count ? SIZE_MAX : count * size);
+    }
+    return allocation;
+}
+
+void *mylite_profile_realloc(void *allocation, size_t size) {
+    void *resized = realloc(allocation, size);
+
+    if (resized != NULL) {
+        record_allocation(size);
+    }
+    return resized;
+}
+
+void mylite_profile_free(void *allocation) {
+    free(allocation);
+}
+
 void mylite_profile_enter_api(mylite_db *database) {
     active_api_database = database != NULL && database->profile_active ? database : NULL;
 }
@@ -93,10 +128,17 @@ void mylite_profile_record_normalization(mylite_db *database, uint64_t started_n
     }
 }
 
-void mylite_profile_record_parse(mylite_db *database, uint64_t started_ns) {
+void mylite_profile_record_parse(
+    mylite_db *database,
+    uint64_t started_ns,
+    size_t retry_callback_count,
+    size_t retry_handled_count
+) {
     if (database != NULL && database->profile_active) {
         database->profile.parse_ns += elapsed_since(started_ns);
         ++database->profile.parse_count;
+        database->profile.parser_retry_callback_count += (uint64_t)retry_callback_count;
+        database->profile.parser_retry_handled_count += (uint64_t)retry_handled_count;
     }
 }
 
@@ -167,15 +209,50 @@ void mylite_profile_record_cursor_finalize(mylite_db *database, uint64_t started
 }
 
 int mylite_profile_sqlite3_step(sqlite3_stmt *statement) {
-    mylite_db *database = active_api_database;
-    uint64_t started_ns = mylite_profile_now_ns();
-    int rc = sqlite3_step(statement);
+    return profile_sqlite3_step(statement, false);
+}
 
-    if (database != NULL && database->profile_active) {
-        database->profile.sqlite_step_ns += elapsed_since(started_ns);
-        ++database->profile.sqlite_step_count;
+int mylite_profile_catalog_sqlite3_step(sqlite3_stmt *statement) {
+    return profile_sqlite3_step(statement, true);
+}
+
+void mylite_profile_record_descriptor_copy(mylite_db *database, size_t bytes) {
+    if (database == NULL || !database->profile_active || bytes == 0U) {
+        return;
     }
-    return rc;
+    ++database->profile.descriptor_copy_count;
+    database->profile.descriptor_copy_bytes += (uint64_t)bytes;
+}
+
+void mylite_profile_record_statement_cache_event(
+    mylite_db *database,
+    enum mylite_profile_statement_cache_kind kind,
+    enum mylite_profile_statement_cache_event event
+) {
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    if (kind == MYLITE_PROFILE_EXECUTION_STATEMENT_CACHE) {
+        if (event == MYLITE_PROFILE_STATEMENT_CACHE_HIT) {
+            ++database->profile.execution_statement_cache_hit_count;
+        } else if (event == MYLITE_PROFILE_STATEMENT_CACHE_MISS) {
+            ++database->profile.execution_statement_cache_miss_count;
+        } else if (event == MYLITE_PROFILE_STATEMENT_CACHE_EVICTION) {
+            ++database->profile.execution_statement_cache_eviction_count;
+        } else if (event == MYLITE_PROFILE_STATEMENT_CACHE_UNCACHED_PREPARE) {
+            ++database->profile.execution_statement_cache_uncached_prepare_count;
+        }
+        return;
+    }
+    if (kind == MYLITE_PROFILE_CATALOG_STATEMENT_CACHE) {
+        if (event == MYLITE_PROFILE_STATEMENT_CACHE_HIT) {
+            ++database->profile.catalog_statement_cache_hit_count;
+        } else if (event == MYLITE_PROFILE_STATEMENT_CACHE_MISS) {
+            ++database->profile.catalog_statement_cache_miss_count;
+        } else if (event == MYLITE_PROFILE_STATEMENT_CACHE_UNCACHED_PREPARE) {
+            ++database->profile.catalog_statement_cache_uncached_prepare_count;
+        }
+    }
 }
 
 void mylite_profile_detach(mylite_db *database) {
@@ -186,6 +263,38 @@ void mylite_profile_detach(mylite_db *database) {
     if (active_api_database == database) {
         active_api_database = NULL;
     }
+}
+
+static void record_allocation(size_t bytes) {
+    mylite_db *database = active_api_database;
+
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    ++database->profile.allocation_count;
+    if ((uint64_t)bytes > UINT64_MAX - database->profile.allocation_bytes) {
+        database->profile.allocation_bytes = UINT64_MAX;
+    } else {
+        database->profile.allocation_bytes += (uint64_t)bytes;
+    }
+}
+
+static int profile_sqlite3_step(sqlite3_stmt *statement, bool is_metadata) {
+    mylite_db *database = active_api_database;
+    uint64_t started_ns = mylite_profile_now_ns();
+    int rc = sqlite3_step(statement);
+
+    if (database != NULL && database->profile_active) {
+        uint64_t elapsed_ns = elapsed_since(started_ns);
+
+        database->profile.sqlite_step_ns += elapsed_ns;
+        ++database->profile.sqlite_step_count;
+        if (is_metadata) {
+            database->profile.metadata_step_ns += elapsed_ns;
+            ++database->profile.metadata_step_count;
+        }
+    }
+    return rc;
 }
 
 static uint64_t elapsed_since(uint64_t started_ns) {

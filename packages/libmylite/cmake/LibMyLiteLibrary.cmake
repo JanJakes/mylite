@@ -254,7 +254,18 @@ endif()
 
 if(MYLITE_ENABLE_PROFILING)
   target_sources(mylite PRIVATE src/runtime/mylite_profile.c)
-  target_compile_definitions(mylite PRIVATE MYLITE_ENABLE_PROFILING=1)
+  target_compile_definitions(mylite PUBLIC MYLITE_ENABLE_PROFILING=1)
+  set(mylite_profile_allocator
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/mylite_profile_allocator.h"
+  )
+  if(MSVC)
+    target_compile_options(mylite PRIVATE "/FI${mylite_profile_allocator}")
+  else()
+    target_compile_options(mylite PRIVATE -include "${mylite_profile_allocator}")
+  endif()
+  set_source_files_properties(src/runtime/mylite_profile.c PROPERTIES
+    COMPILE_DEFINITIONS MYLITE_PROFILE_ALLOCATOR_IMPLEMENTATION=1
+  )
 endif()
 
 target_include_directories(mylite

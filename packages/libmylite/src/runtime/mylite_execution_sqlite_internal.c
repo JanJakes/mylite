@@ -122,10 +122,24 @@ int mylite_execution_prepare_cached_sqlite_statement(
     prune_stale_cached_sqlite_statements(database);
     entry = find_available_cached_sqlite_statement(database, sql);
     if (entry != NULL) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement_cache_event(
+            database,
+            MYLITE_PROFILE_EXECUTION_STATEMENT_CACHE,
+            MYLITE_PROFILE_STATEMENT_CACHE_HIT
+        );
+#endif
         entry->in_use = true;
         *out_statement = entry->statement;
         return MYLITE_OK;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement_cache_event(
+        database,
+        MYLITE_PROFILE_EXECUTION_STATEMENT_CACHE,
+        MYLITE_PROFILE_STATEMENT_CACHE_MISS
+    );
+#endif
     if (database->execution_statement_cache_count >= MYLITE_EXECUTION_STATEMENT_CACHE_LIMIT) {
         evict_available_cached_sqlite_statement(database);
     }
@@ -133,6 +147,13 @@ int mylite_execution_prepare_cached_sqlite_statement(
         return append_cached_sqlite_statement(database, sql, out_statement);
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement_cache_event(
+        database,
+        MYLITE_PROFILE_EXECUTION_STATEMENT_CACHE,
+        MYLITE_PROFILE_STATEMENT_CACHE_UNCACHED_PREPARE
+    );
+#endif
     return prepare_uncached_sqlite_statement(database->sqlite, sql, 0U, out_statement);
 }
 
@@ -296,6 +317,13 @@ static void evict_available_cached_sqlite_statement(struct mylite_db *database) 
 
     for (size_t index = 0U; index < database->execution_statement_cache_count; ++index) {
         if (!database->execution_statement_cache[index].in_use) {
+#ifdef MYLITE_ENABLE_PROFILING
+            mylite_profile_record_statement_cache_event(
+                database,
+                MYLITE_PROFILE_EXECUTION_STATEMENT_CACHE,
+                MYLITE_PROFILE_STATEMENT_CACHE_EVICTION
+            );
+#endif
             remove_cached_sqlite_statement(database, index);
             return;
         }

@@ -220,7 +220,12 @@ int mylite_execute(
         &parse_result
     ));
 #ifdef MYLITE_ENABLE_PROFILING
-    mylite_profile_record_parse(database, profile_phase_started_ns);
+    mylite_profile_record_parse(
+        database,
+        profile_phase_started_ns,
+        parse_result.retry_callback_count,
+        parse_result.retry_handled_count
+    );
 #endif
     if (rc != MYLITE_OK) {
         rc = finish_parse_failure(database, &parse_result, rc);
@@ -1380,7 +1385,12 @@ static int prepare_cursor_select_statement(
         &stmt->parse_result
     ));
 #ifdef MYLITE_ENABLE_PROFILING
-    mylite_profile_record_parse(database, profile_phase_started_ns);
+    mylite_profile_record_parse(
+        database,
+        profile_phase_started_ns,
+        stmt->parse_result.retry_callback_count,
+        stmt->parse_result.retry_handled_count
+    );
 #endif
     stmt->has_parse_result = true;
     if (rc != MYLITE_OK) {

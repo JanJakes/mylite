@@ -22,7 +22,7 @@ int mylite_catalog_read_next_table_id(sqlite3 *sqlite, int64_t *out_table_id) {
 
     *out_table_id = 0;
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = mylite_catalog_checked_column_i64(
                 statement,
@@ -52,7 +52,7 @@ int mylite_catalog_read_next_index_id(sqlite3 *sqlite, int64_t *out_index_id) {
 
     *out_index_id = 0;
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = mylite_catalog_checked_column_i64(statement, 0, out_index_id);
         } else {
@@ -78,7 +78,7 @@ int mylite_catalog_read_next_foreign_key_id(sqlite3 *sqlite, int64_t *out_foreig
 
     *out_foreign_key_id = 0;
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = mylite_catalog_checked_column_i64(statement, 0, out_foreign_key_id);
         } else {
@@ -108,7 +108,7 @@ int mylite_catalog_read_next_check_constraint_id(
 
     *out_check_constraint_id = 0;
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = mylite_catalog_checked_column_i64(statement, 0, out_check_constraint_id);
         } else {

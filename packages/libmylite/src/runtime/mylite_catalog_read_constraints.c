@@ -103,7 +103,7 @@ int mylite_catalog_for_each_foreign_key_in_child_table(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_foreign_key_descriptor foreign_key = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -157,7 +157,7 @@ int mylite_catalog_for_each_foreign_key_for_parent_table(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_foreign_key_descriptor foreign_key = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -218,11 +218,11 @@ int mylite_catalog_read_table_foreign_key_roles(
         rc = mylite_catalog_bind_i64(statement, 1, table_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             *out_has_child_foreign_keys = sqlite3_column_int(statement, 0) != 0;
             *out_has_parent_foreign_keys = sqlite3_column_int(statement, 1) != 0;
-            sqlite_rc = sqlite3_step(statement);
+            sqlite_rc = mylite_catalog_sqlite3_step(statement);
             if (sqlite_rc != SQLITE_DONE) {
                 rc = mylite_sqlite_status_to_mylite(sqlite_rc);
             }
@@ -279,7 +279,7 @@ int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_foreign_key_column_descriptor foreign_key_column = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -332,7 +332,7 @@ int mylite_catalog_for_each_check_constraint_in_table(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_check_constraint_descriptor check_constraint = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -387,7 +387,7 @@ int mylite_catalog_for_each_check_constraint_in_schema(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_check_constraint_descriptor check_constraint = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -454,7 +454,7 @@ int mylite_catalog_try_read_check_constraint_by_physical_name(
         rc = mylite_catalog_bind_text(statement, 2, physical_name);
     }
     if (rc == MYLITE_OK) {
-        int sqlite_rc = sqlite3_step(statement);
+        int sqlite_rc = mylite_catalog_sqlite3_step(statement);
 
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_check_constraint(statement, out_check_constraint);
@@ -490,7 +490,7 @@ int mylite_catalog_read_inserted_foreign_key(
         rc = mylite_catalog_bind_text(statement, 2, name);
     }
     if (rc == MYLITE_OK) {
-        int sqlite_rc = sqlite3_step(statement);
+        int sqlite_rc = mylite_catalog_sqlite3_step(statement);
 
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_foreign_key(statement, out_foreign_key);
@@ -529,7 +529,7 @@ int mylite_catalog_read_inserted_foreign_key_column(
         rc = mylite_catalog_bind_i64(statement, 2, ordinal_position);
     }
     if (rc == MYLITE_OK) {
-        int sqlite_rc = sqlite3_step(statement);
+        int sqlite_rc = mylite_catalog_sqlite3_step(statement);
 
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_foreign_key_column(statement, out_foreign_key_column);
@@ -568,7 +568,7 @@ int mylite_catalog_read_inserted_check_constraint(
         rc = mylite_catalog_bind_text(statement, 2, name);
     }
     if (rc == MYLITE_OK) {
-        int sqlite_rc = sqlite3_step(statement);
+        int sqlite_rc = mylite_catalog_sqlite3_step(statement);
 
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_check_constraint(statement, out_check_constraint);

@@ -102,15 +102,36 @@ static int prepare_cached_statement(
         find_available_cached_statement(&database->catalog, sql);
 
     if (entry != NULL) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement_cache_event(
+            database,
+            MYLITE_PROFILE_CATALOG_STATEMENT_CACHE,
+            MYLITE_PROFILE_STATEMENT_CACHE_HIT
+        );
+#endif
         entry->in_use = true;
         *out_statement = entry->statement;
         return MYLITE_OK;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement_cache_event(
+        database,
+        MYLITE_PROFILE_CATALOG_STATEMENT_CACHE,
+        MYLITE_PROFILE_STATEMENT_CACHE_MISS
+    );
+#endif
 
     if (database->catalog.statement_cache_count < MYLITE_CATALOG_STATEMENT_CACHE_LIMIT) {
         return append_cached_statement(database, sql, out_statement);
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement_cache_event(
+        database,
+        MYLITE_PROFILE_CATALOG_STATEMENT_CACHE,
+        MYLITE_PROFILE_STATEMENT_CACHE_UNCACHED_PREPARE
+    );
+#endif
     return prepare_uncached_statement(database->sqlite, sql, out_statement);
 }
 
@@ -262,7 +283,7 @@ int64_t mylite_catalog_bool_value(bool value) {
 }
 
 int mylite_catalog_step_done(sqlite3_stmt *statement) {
-    int sqlite_rc = sqlite3_step(statement);
+    int sqlite_rc = mylite_catalog_sqlite3_step(statement);
 
     if (sqlite_rc != SQLITE_DONE) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);

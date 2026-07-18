@@ -98,7 +98,7 @@ int mylite_catalog_for_each_column_in_table(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_column_descriptor column = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -174,7 +174,7 @@ int mylite_catalog_read_column_by_name_from_sqlite(
         rc = mylite_catalog_bind_text(statement, 2, name);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_column(statement, out_column);
         } else {

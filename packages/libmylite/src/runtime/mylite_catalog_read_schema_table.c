@@ -230,7 +230,7 @@ int mylite_catalog_for_each_schema(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_schema_descriptor schema = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -289,7 +289,7 @@ int mylite_catalog_for_each_table_in_schema(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_table_descriptor table = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -544,7 +544,7 @@ int mylite_catalog_read_table_auto_increment_next(
         rc = mylite_catalog_bind_i64(statement, 1, table_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW && sqlite3_column_type(statement, 0) == SQLITE_INTEGER) {
             *out_auto_increment_next = sqlite3_column_int64(statement, 0);
             if (*out_auto_increment_next <= 0) {
@@ -978,7 +978,7 @@ static int try_read_schema_by_name(
         rc = mylite_catalog_bind_text(statement, 1, name);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_schema(statement, out_schema);
             if (rc == MYLITE_OK) {
@@ -1015,7 +1015,7 @@ int mylite_catalog_read_schema_by_id_from_sqlite(
         rc = mylite_catalog_bind_i64(statement, 1, schema_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_schema(statement, out_schema);
         } else {
@@ -1079,7 +1079,7 @@ static int try_read_table_by_name(
         rc = mylite_catalog_bind_text(statement, 2, name);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_table(statement, out_table);
             if (rc == MYLITE_OK) {
@@ -1122,7 +1122,7 @@ static int try_read_table_kind_by_schema_table_name(
         rc = mylite_catalog_bind_text(statement, 2, table_name);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             int64_t kind = 0;
 
@@ -1172,7 +1172,7 @@ int mylite_catalog_read_table_by_id_from_sqlite(
         rc = mylite_catalog_bind_i64(statement, 1, table_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_table(statement, out_table);
         } else {
@@ -1206,7 +1206,7 @@ int mylite_catalog_read_view_by_table_id_from_sqlite(
         rc = mylite_catalog_bind_i64(statement, 1, table_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_view(statement, out_view);
         } else {

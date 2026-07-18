@@ -18,6 +18,7 @@ enum {
 };
 
 static int test_buffered_profile(void);
+static int test_parser_retry_profile(void);
 static int test_cursor_profile(void);
 static int test_repeated_prepared_profile(void);
 static int test_prepared_plan_cache_profile(void);
@@ -35,6 +36,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_buffered_profile();
+    failures += test_parser_retry_profile();
     failures += test_cursor_profile();
     failures += test_repeated_prepared_profile();
     failures += test_prepared_plan_cache_profile();
@@ -117,6 +119,30 @@ static int test_buffered_profile(void) {
     failures += expect_true(snapshot.parse_count == 1U, "buffered parse count");
     failures += expect_true(snapshot.sqlite_step_count > 0U, "buffered SQLite steps");
     failures += expect_true(snapshot.sqlite_step_ns > 0U, "buffered SQLite step time");
+    failures += expect_true(snapshot.metadata_step_count > 0U, "buffered metadata steps");
+    failures += expect_true(
+        snapshot.metadata_step_count <= snapshot.sqlite_step_count,
+        "metadata steps bounded by SQLite steps"
+    );
+    failures += expect_true(snapshot.metadata_step_ns > 0U, "buffered metadata step time");
+    failures += expect_true(
+        snapshot.metadata_step_ns <= snapshot.sqlite_step_ns,
+        "metadata time bounded by SQLite time"
+    );
+    failures += expect_true(snapshot.allocation_count > 0U, "buffered allocation count");
+    failures += expect_true(snapshot.allocation_bytes > 0U, "buffered allocation bytes");
+    failures += expect_true(
+        snapshot.execution_statement_cache_miss_count > 0U,
+        "buffered execution statement cache misses"
+    );
+    failures += expect_true(
+        snapshot.catalog_statement_cache_hit_count > 0U,
+        "buffered catalog statement cache hits"
+    );
+    failures += expect_true(
+        snapshot.parser_retry_callback_count == 0U,
+        "buffered successful parse retry count"
+    );
     failures += expect_true(snapshot.result_row_count >= 1U, "buffered profiled rows");
     failures += expect_true(snapshot.result_value_bytes >= 1U, "buffered profiled bytes");
     failures += expect_int(
@@ -126,6 +152,65 @@ static int test_buffered_profile(void) {
     );
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int test_parser_retry_profile(void) {
+    struct mylite_profile_snapshot snapshot = {0};
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open parser profile database");
+    failures += expect_int(mylite_profile_start(database), MYLITE_OK, "start parser profile");
+    failures += expect_int(
+        mylite_execute(database, "SELECT 1 +", strlen("SELECT 1 +"), &result),
+        MYLITE_ERROR,
+        "profile rejected parser retry query"
+    );
+    mylite_result_free(result);
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop rejected parser profile"
+    );
+    failures += expect_true(snapshot.parse_count == 1U, "rejected parser parse count");
+    failures += expect_true(
+        snapshot.parser_retry_callback_count > 0U,
+        "rejected parser retry callback count"
+    );
+    failures += expect_true(
+        snapshot.parser_retry_handled_count == 0U,
+        "rejected parser handled count"
+    );
+
+    result = NULL;
+    failures += expect_int(mylite_profile_start(database), MYLITE_OK, "restart parser profile");
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "SELECT (1, 2) = (1, 2)",
+            strlen("SELECT (1, 2) = (1, 2)"),
+            &result
+        ),
+        MYLITE_OK,
+        "profile handled parser retry query"
+    );
+    mylite_result_free(result);
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop handled parser profile"
+    );
+    failures += expect_true(
+        snapshot.parser_retry_callback_count > 0U,
+        "handled parser retry callback count"
+    );
+    failures += expect_true(
+        snapshot.parser_retry_handled_count > 0U,
+        "handled parser retry count"
+    );
+    mylite_close(database);
     return failures;
 }
 
@@ -326,6 +411,8 @@ static int test_repeated_prepared_profile(void) {
     );
     failures += expect_true(snapshot.cursor_step_ns > 0U, "materialized profile step time");
     failures += expect_true(snapshot.sqlite_step_count > 0U, "materialized profile SQLite steps");
+    failures += expect_true(snapshot.descriptor_copy_count > 0U, "materialized descriptor copies");
+    failures += expect_true(snapshot.descriptor_copy_bytes > 0U, "materialized descriptor bytes");
     failures += expect_true(snapshot.normalization_count == 0U, "materialized normalization count");
     failures += expect_true(snapshot.parse_count == 0U, "materialized parse count");
 

@@ -209,8 +209,12 @@ static enum mylite_sql_parse_status retry_parse_with_callback(
     mylite_sql_parse_retry_callback callback
 ) {
     bool handled = false;
+    size_t retry_callback_count = result->retry_callback_count + 1U;
+    size_t retry_handled_count = result->retry_handled_count;
     enum mylite_sql_parse_status retry_status = callback(config, result, &handled);
 
+    result->retry_callback_count = retry_callback_count;
+    result->retry_handled_count = retry_handled_count + (handled ? 1U : 0U);
     if (!handled) {
         return status;
     }
@@ -304,6 +308,8 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
 void mylite_sql_parser_reset_parse_result(struct mylite_sql_parse_result *out_result) {
     out_result->root = NULL;
     out_result->parameter_count = 0U;
+    out_result->retry_callback_count = 0U;
+    out_result->retry_handled_count = 0U;
     out_result->status = MYLITE_SQL_PARSE_OK;
     out_result->error_token = (struct mylite_sql_token){0};
     out_result->parser_token = 0;

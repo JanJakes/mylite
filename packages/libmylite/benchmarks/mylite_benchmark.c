@@ -3203,15 +3203,26 @@ static int append_profile_json(
         "\"operations\":%zu,\"wall_ns\":%" PRIu64 ",\"statement_api_ns\":%" PRIu64
         ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64
         ",\"select_plan_ns\":%" PRIu64 ",\"select_lowering_ns\":%" PRIu64
-        ",\"sqlite_step_ns\":%" PRIu64
+        ",\"sqlite_step_ns\":%" PRIu64 ",\"metadata_step_ns\":%" PRIu64
         ",\"result_buffer_ns\":%" PRIu64 ",\"cursor_step_ns\":%" PRIu64
         ",\"cursor_finalize_ns\":%" PRIu64 ",\"unattributed_ns\":%" PRIu64
         ",\"statement_count\":%" PRIu64 ",\"normalization_count\":%" PRIu64
         ",\"parse_count\":%" PRIu64 ",\"select_plan_count\":%" PRIu64
+        ",\"parser_retry_callback_count\":%" PRIu64
+        ",\"parser_retry_handled_count\":%" PRIu64
         ",\"select_plan_cache_hit_count\":%" PRIu64
         ",\"select_lowering_count\":%" PRIu64
         ",\"select_lowering_cache_hit_count\":%" PRIu64
-        ",\"sqlite_step_count\":%" PRIu64
+        ",\"sqlite_step_count\":%" PRIu64 ",\"metadata_step_count\":%" PRIu64
+        ",\"allocation_count\":%" PRIu64 ",\"allocation_bytes\":%" PRIu64
+        ",\"descriptor_copy_count\":%" PRIu64 ",\"descriptor_copy_bytes\":%" PRIu64
+        ",\"execution_statement_cache_hit_count\":%" PRIu64
+        ",\"execution_statement_cache_miss_count\":%" PRIu64
+        ",\"execution_statement_cache_eviction_count\":%" PRIu64
+        ",\"execution_statement_cache_uncached_prepare_count\":%" PRIu64
+        ",\"catalog_statement_cache_hit_count\":%" PRIu64
+        ",\"catalog_statement_cache_miss_count\":%" PRIu64
+        ",\"catalog_statement_cache_uncached_prepare_count\":%" PRIu64
         ",\"result_row_count\":%" PRIu64 ",\"result_value_bytes\":%" PRIu64
         ",\"cursor_row_count\":%" PRIu64 ",\"cursor_value_bytes\":%" PRIu64
         ",\"cursor_finalize_count\":%" PRIu64 "}\n",
@@ -3226,6 +3237,7 @@ static int append_profile_json(
         profile->select_plan_ns,
         profile->select_lowering_ns,
         profile->sqlite_step_ns,
+        profile->metadata_step_ns,
         profile->result_buffer_ns,
         profile->cursor_step_ns,
         profile->cursor_finalize_ns,
@@ -3234,10 +3246,24 @@ static int append_profile_json(
         profile->normalization_count,
         profile->parse_count,
         profile->select_plan_count,
+        profile->parser_retry_callback_count,
+        profile->parser_retry_handled_count,
         profile->select_plan_cache_hit_count,
         profile->select_lowering_count,
         profile->select_lowering_cache_hit_count,
         profile->sqlite_step_count,
+        profile->metadata_step_count,
+        profile->allocation_count,
+        profile->allocation_bytes,
+        profile->descriptor_copy_count,
+        profile->descriptor_copy_bytes,
+        profile->execution_statement_cache_hit_count,
+        profile->execution_statement_cache_miss_count,
+        profile->execution_statement_cache_eviction_count,
+        profile->execution_statement_cache_uncached_prepare_count,
+        profile->catalog_statement_cache_hit_count,
+        profile->catalog_statement_cache_miss_count,
+        profile->catalog_statement_cache_uncached_prepare_count,
         profile->result_row_count,
         profile->result_value_bytes,
         profile->cursor_row_count,

@@ -232,11 +232,14 @@ complete.
 
 ### Measured performance work
 
-- [ ] Add allocation, descriptor-copy, metadata-step, parser-retry, statement-
+- [x] Add allocation, descriptor-copy, metadata-step, parser-retry, statement-
   cache, and plan-cache counters to the benchmark/profile surface.
   Normalization, parse, SELECT-plan, SELECT-lowering, and retained-plan cache
-  counters are complete; the remaining allocation, descriptor-copy,
-  metadata-step, parser-retry, and statement-cache counters are still open.
+  counters were already present. Descriptor-copy bytes, catalog metadata
+  steps, parser retry attempts/acceptances, and execution/catalog statement
+  cache outcomes are now included in runtime snapshots and benchmark JSON with
+  focused tests. Profiling builds force-include a portable allocator shim for
+  the MyLite target, while production builds retain direct libc allocation.
 - [ ] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
   separately owned/interned cold strings.
 - [ ] Budget caches by bytes and use generation-safe borrowed/pinned spans.

@@ -110,8 +110,20 @@ measured sample. Each object includes wall time and these cumulative counters:
   lex/parse time.
 - `normalization_count` and `parse_count`: phase invocation counts used to
   detect reparsing independently of timer noise.
+- `parser_retry_callback_count` and `parser_retry_handled_count`: parser
+  recovery callbacks attempted and statements accepted by a retry path.
 - `sqlite_step_ns`: time spent inside runtime `sqlite3_step()` calls, measured
   with MyLite's monotonic clock.
+- `metadata_step_ns` and `metadata_step_count`: the subset of SQLite stepping
+  performed by MyLite catalog and physical-schema metadata access.
+- `allocation_count` and `allocation_bytes`: successful libc allocation calls
+  and requested bytes from the instrumented MyLite target. Reallocations count
+  their newly requested size; frees do not subtract from the cumulative total.
+- `descriptor_copy_count` and `descriptor_copy_bytes`: full catalog-column
+  descriptor copies performed while loading or cloning planning metadata.
+- `execution_statement_cache_*` and `catalog_statement_cache_*`: cache hits,
+  misses, evictions, and uncached prepares for generated runtime SQL and
+  MyLite catalog SQL, respectively.
 - `result_buffer_ns`: time copying rows into buffered MyLite results.
 - `cursor_step_ns`: time spent stepping cursor results.
 - `cursor_finalize_ns`: time finalizing cursor statements and their transaction

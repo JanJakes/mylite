@@ -82,7 +82,7 @@ int mylite_catalog_for_each_index_in_table(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_index_descriptor index = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -133,11 +133,11 @@ int mylite_catalog_read_index_by_id(
         rc = mylite_catalog_bind_i64(statement, 1, index_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_index(statement, out_index);
             if (rc == MYLITE_OK) {
-                sqlite_rc = sqlite3_step(statement);
+                sqlite_rc = mylite_catalog_sqlite3_step(statement);
                 if (sqlite_rc != SQLITE_DONE) {
                     rc = mylite_sqlite_status_to_mylite(sqlite_rc);
                 }
@@ -187,7 +187,7 @@ int mylite_catalog_for_each_index_column_in_index(
     while (rc == MYLITE_OK) {
         struct mylite_catalog_index_column_descriptor index_column = {0};
 
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
             break;
         }
@@ -258,7 +258,7 @@ int mylite_catalog_read_inserted_index_column(
         rc = mylite_catalog_bind_i64(statement, 2, ordinal_position);
     }
     if (rc == MYLITE_OK) {
-        int sqlite_rc = sqlite3_step(statement);
+        int sqlite_rc = mylite_catalog_sqlite3_step(statement);
 
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_index_column(statement, out_index_column);
@@ -296,7 +296,7 @@ int mylite_catalog_try_read_primary_index_by_table_id_from_sqlite(
         rc = mylite_catalog_bind_i64(statement, 1, table_id);
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_index(statement, out_index);
             if (rc == MYLITE_OK) {

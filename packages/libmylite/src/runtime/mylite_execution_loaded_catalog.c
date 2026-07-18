@@ -14,6 +14,7 @@
 #include <string.h>
 
 struct load_columns_context {
+    struct mylite_db *database;
     struct mylite_catalog_column_descriptor *columns;
     size_t count;
     size_t capacity;
@@ -180,6 +181,7 @@ static int load_table_columns_uncached(
     size_t *out_column_count
 );
 static int copy_loaded_table_columns(
+    struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
     struct mylite_catalog_column_descriptor **out_columns,
@@ -306,6 +308,7 @@ int mylite_execution_load_table_columns(
     entry = find_table_columns_cache_entry(database, table_id);
     if (entry != NULL) {
         rc = copy_loaded_table_columns(
+            database,
             entry->columns,
             entry->column_count,
             out_columns,
@@ -357,7 +360,7 @@ static int load_table_columns_uncached(
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
 ) {
-    struct load_columns_context context = {0};
+    struct load_columns_context context = {.database = database};
     int rc = MYLITE_OK;
 
     *out_columns = NULL;
@@ -399,6 +402,7 @@ static int load_table_columns_uncached(
 }
 
 static int copy_loaded_table_columns(
+    struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
     struct mylite_catalog_column_descriptor **out_columns,
@@ -419,6 +423,11 @@ static int copy_loaded_table_columns(
         return MYLITE_NOMEM;
     }
     memcpy(copy, columns, column_count * sizeof(*copy));
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_descriptor_copy(database, column_count * sizeof(*copy));
+#else
+    (void)database;
+#endif
     *out_columns = copy;
     *out_column_count = column_count;
     return MYLITE_OK;
@@ -443,6 +452,9 @@ static void maybe_cache_loaded_table_columns(
         return;
     }
     memcpy(copy, columns, column_count * sizeof(*copy));
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_descriptor_copy(database, column_count * sizeof(*copy));
+#endif
 
     entry = prepare_table_columns_cache_entry(database);
     if (entry == NULL) {
@@ -656,6 +668,9 @@ static int append_loaded_column(
     }
 
     context->columns[context->count] = *column;
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_descriptor_copy(context->database, sizeof(*column));
+#endif
     ++context->count;
 
     return MYLITE_OK;

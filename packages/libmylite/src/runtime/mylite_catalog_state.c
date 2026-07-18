@@ -681,7 +681,7 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
         );
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             *out_count = sqlite3_column_int(statement, 0);
         } else {
@@ -710,7 +710,7 @@ static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog) {
 
     *catalog = (struct mylite_catalog){.initialized = false};
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_ROW) {
             rc =
                 sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -752,7 +752,7 @@ static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog) {
         );
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_DONE) {
             rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
         }
@@ -791,7 +791,7 @@ static int read_catalog_generation(sqlite3 *sqlite, uint64_t *out_generation) {
 
     *out_generation = 0U;
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = mylite_catalog_checked_column_u64(statement, 0, out_generation);
         } else {
@@ -800,7 +800,7 @@ static int read_catalog_generation(sqlite3 *sqlite, uint64_t *out_generation) {
         }
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_DONE) {
             rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
         }
@@ -819,7 +819,7 @@ static int read_data_version(sqlite3 *sqlite, uint64_t *out_data_version) {
 
     *out_data_version = 0U;
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = mylite_catalog_checked_column_u64(statement, 0, out_data_version);
         } else {
@@ -828,7 +828,7 @@ static int read_data_version(sqlite3 *sqlite, uint64_t *out_data_version) {
         }
     }
     if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
         if (sqlite_rc != SQLITE_DONE) {
             rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
         }

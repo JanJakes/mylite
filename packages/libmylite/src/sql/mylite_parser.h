@@ -27,6 +27,8 @@ struct mylite_sql_parse_result {
     struct mylite_sql_ast ast;
     struct mylite_sql_ast_node *root;
     size_t parameter_count;
+    size_t retry_callback_count;
+    size_t retry_handled_count;
     enum mylite_sql_parse_status status;
     struct mylite_sql_token error_token;
     int parser_token;

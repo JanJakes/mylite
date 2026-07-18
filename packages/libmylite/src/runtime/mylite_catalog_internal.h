@@ -107,6 +107,12 @@ int mylite_catalog_bind_nullable_i64(
 int mylite_catalog_bind_u64(sqlite3_stmt *statement, int index, uint64_t value);
 int64_t mylite_catalog_bool_value(bool value);
 int mylite_catalog_step_done(sqlite3_stmt *statement);
+#ifdef MYLITE_ENABLE_PROFILING
+int mylite_profile_catalog_sqlite3_step(sqlite3_stmt *statement);
+#  define mylite_catalog_sqlite3_step(statement) mylite_profile_catalog_sqlite3_step(statement)
+#else
+#  define mylite_catalog_sqlite3_step(statement) sqlite3_step(statement)
+#endif
 int mylite_catalog_require_changed_row(sqlite3 *sqlite);
 int mylite_catalog_finalize_statement(sqlite3_stmt *statement, int rc);
 int mylite_catalog_checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value);

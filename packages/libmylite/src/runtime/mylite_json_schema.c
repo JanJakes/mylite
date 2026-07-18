@@ -2,6 +2,7 @@
 
 #include "mylite_json.h"
 #include "mylite_json_internal.h"
+#include "mylite_numeric_locale.h"
 
 #include <errno.h>
 #include <stdbool.h>
@@ -126,7 +127,8 @@ static int parse_json_schema_document(
     struct mylite_json_normalize_result *out_result
 );
 
-void mylite_json_schema_validation_result_deinit(struct mylite_json_schema_validation_result *result
+void mylite_json_schema_validation_result_deinit(
+    struct mylite_json_schema_validation_result *result
 ) {
     if (result == NULL) {
         return;
@@ -603,7 +605,7 @@ static int json_schema_number_value(const struct json_value *value, long double 
         return MYLITE_MISUSE;
     }
     errno = 0;
-    *out_number = strtold(value->payload.text.text, &end);
+    *out_number = mylite_numeric_parse_long_double(value->payload.text.text, &end);
     if (errno == ERANGE || end == value->payload.text.text ||
         end != value->payload.text.text + value->payload.text.length) {
         return MYLITE_ERROR;

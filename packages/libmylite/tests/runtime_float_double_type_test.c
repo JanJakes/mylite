@@ -1,7 +1,9 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_numeric_locale.h"
 #include "storage/mylite_file_format.h"
 
+#include <errno.h>
 #include <locale.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -874,6 +876,17 @@ static int test_float_double_locale_independent_numeric_io(void) {
         "cs_CZ.utf8",
     };
     static const char *const locale_rows[] = {"1.25", "3.1415926535", "2.5"};
+    static const char *const scalar_rows[] = {
+        "1",
+        "POINT(1.25 2.5)",
+        "{\"type\": \"Point\", \"coordinates\": [1.25, 2.5]}",
+        "1.25",
+        "1,234.50",
+        "1.50 KiB",
+    };
+    char *parse_end = NULL;
+    char locale_format[32];
+    char native_format[32];
     char original_locale[locale_name_capacity];
     char path[test_path_capacity] = {0};
     const char *current_locale = setlocale(LC_NUMERIC, NULL);
@@ -898,6 +911,26 @@ static int test_float_double_locale_independent_numeric_io(void) {
     }
     if (!changed_locale) {
         return 0;
+    }
+    written = snprintf(native_format, sizeof(native_format), "%.2f", 1.25);
+    if (written < 0 || (size_t)written >= sizeof(native_format) ||
+        strchr(native_format, ',') == NULL) {
+        fprintf(stderr, "selected LC_NUMERIC locale does not use a comma decimal separator\n");
+        failures += 1;
+        goto cleanup;
+    }
+    errno = 0;
+    if (mylite_numeric_parse_double("1.25tail", &parse_end) != 1.25 || errno != 0 ||
+        parse_end == NULL || strcmp(parse_end, "tail") != 0) {
+        fprintf(stderr, "C-locale partial numeric parse contract failed\n");
+        failures += 1;
+        goto cleanup;
+    }
+    written = mylite_numeric_format(locale_format, sizeof(locale_format), "%.2Lf", 1.25L);
+    if (written != 4 || strcmp(locale_format, "1.25") != 0) {
+        fprintf(stderr, "C-locale numeric format contract failed\n");
+        failures += 1;
+        goto cleanup;
     }
 
     if (make_test_path(path, sizeof(path), "locale") != 0) {
@@ -926,6 +959,31 @@ static int test_float_double_locale_independent_numeric_io(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "approximate C-locale numeric IO",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT JSON_VALID('1.25'), "
+                   "ST_AsText(ST_GeomFromText('POINT(1.25 2.5)')), "
+                   "ST_AsGeoJSON(ST_GeomFromText('POINT(1.25 2.5)')), "
+                   "CAST('1.25' AS DECIMAL(5,2)), FORMAT(1234.5,2), "
+                   "sys.format_bytes(1536)",
+            .values = scalar_rows,
+            .column_count = sizeof(scalar_rows) / sizeof(scalar_rows[0]),
+            .row_count = 1U,
+            .context = "scalar C-locale numeric IO",
+        }
+    );
+    failures += expect_statement_ok(database, "SET SESSION long_query_time = 1.2345678");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@SESSION.long_query_time",
+            .values = (const char *const[]){"1.234568"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "system variable C-locale numeric IO",
         }
     );
 

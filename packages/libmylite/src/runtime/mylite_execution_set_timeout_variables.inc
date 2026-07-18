@@ -668,7 +668,7 @@ static int parse_long_query_time_text(
     memcpy(buffer, text, text_size);
     buffer[text_size] = '\0';
     errno = 0;
-    seconds = strtold(buffer, &end);
+    seconds = mylite_numeric_parse_long_double(buffer, &end);
     if (end == buffer || (end != NULL && *end != '\0')) {
         return set_incorrect_system_variable_argument_type_error(database, variable_name);
     }

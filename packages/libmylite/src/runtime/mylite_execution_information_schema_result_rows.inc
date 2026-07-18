@@ -120,7 +120,8 @@ static int information_schema_make_source_column_descriptor(
     }
 
     *out_descriptor = unknown_result_column_descriptor(query->projection_names[projection_index]);
-    out_descriptor->schema_name = query->source_schema_name == NULL ? "" : query->source_schema_name;
+    out_descriptor->schema_name =
+        query->source_schema_name == NULL ? "" : query->source_schema_name;
     out_descriptor->table_name = query->has_alias ? query->alias : query->definition->name;
     out_descriptor->origin_schema_name = out_descriptor->schema_name;
     out_descriptor->origin_table_name = query->definition->name;
@@ -177,25 +178,31 @@ static int information_schema_initialize_catalog_column_descriptor(
         strcmp(column_definition->data_type, "int") == 0 ||
         strcmp(column_definition->data_type, "bigint") == 0) {
         physical_type = "INTEGER";
-    } else if (strcmp(column_definition->data_type, "float") == 0 ||
-               strcmp(column_definition->data_type, "double") == 0) {
+    } else if (
+        strcmp(column_definition->data_type, "float") == 0 ||
+        strcmp(column_definition->data_type, "double") == 0
+    ) {
         physical_type = "REAL";
-    } else if (strcmp(column_definition->data_type, "binary") == 0 ||
-               strcmp(column_definition->data_type, "varbinary") == 0 ||
-               strcmp(column_definition->data_type, "tinyblob") == 0 ||
-               strcmp(column_definition->data_type, "blob") == 0 ||
-               strcmp(column_definition->data_type, "mediumblob") == 0 ||
-               strcmp(column_definition->data_type, "longblob") == 0 ||
-               strcmp(column_definition->data_type, "bit") == 0) {
+    } else if (
+        strcmp(column_definition->data_type, "binary") == 0 ||
+        strcmp(column_definition->data_type, "varbinary") == 0 ||
+        strcmp(column_definition->data_type, "tinyblob") == 0 ||
+        strcmp(column_definition->data_type, "blob") == 0 ||
+        strcmp(column_definition->data_type, "mediumblob") == 0 ||
+        strcmp(column_definition->data_type, "longblob") == 0 ||
+        strcmp(column_definition->data_type, "bit") == 0
+    ) {
         physical_type = "BLOB";
-    } else if (strcmp(column_definition->data_type, "geometry") == 0 ||
-               strcmp(column_definition->data_type, "point") == 0 ||
-               strcmp(column_definition->data_type, "linestring") == 0 ||
-               strcmp(column_definition->data_type, "polygon") == 0 ||
-               strcmp(column_definition->data_type, "multipoint") == 0 ||
-               strcmp(column_definition->data_type, "multilinestring") == 0 ||
-               strcmp(column_definition->data_type, "multipolygon") == 0 ||
-               strcmp(column_definition->data_type, "geomcollection") == 0) {
+    } else if (
+        strcmp(column_definition->data_type, "geometry") == 0 ||
+        strcmp(column_definition->data_type, "point") == 0 ||
+        strcmp(column_definition->data_type, "linestring") == 0 ||
+        strcmp(column_definition->data_type, "polygon") == 0 ||
+        strcmp(column_definition->data_type, "multipoint") == 0 ||
+        strcmp(column_definition->data_type, "multilinestring") == 0 ||
+        strcmp(column_definition->data_type, "multipolygon") == 0 ||
+        strcmp(column_definition->data_type, "geomcollection") == 0
+    ) {
         physical_type = "BLOB";
         preserve_lowercase_logical_type = true;
     }
@@ -300,9 +307,8 @@ static void information_schema_apply_connection_text_metadata(
     if (parse_unsigned_integer_literal(&length_span, &character_count) != MYLITE_OK) {
         return;
     }
-    max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
-        database->session.collation_connection
-    );
+    max_bytes_per_character =
+        result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
     descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
     descriptor->collation_id = descriptor->charset_id;
     if (column_definition->column_type != NULL &&
@@ -312,14 +318,12 @@ static void information_schema_apply_connection_text_metadata(
             .text = column_definition->character_octet_length,
             .length = strlen(column_definition->character_octet_length),
         };
-        source_max_bytes_per_character = character_set_max_bytes_per_character(
-            column_definition->character_set_name
-        );
+        source_max_bytes_per_character =
+            character_set_max_bytes_per_character(column_definition->character_set_name);
         if (parse_unsigned_integer_literal(&octet_length_span, &octet_length) == MYLITE_OK &&
             source_max_bytes_per_character != 0U &&
             octet_length <= UINT64_MAX / source_max_bytes_per_character &&
-            octet_length * source_max_bytes_per_character <=
-                UINT64_MAX / max_bytes_per_character) {
+            octet_length * source_max_bytes_per_character <= UINT64_MAX / max_bytes_per_character) {
             descriptor->display_length = result_metadata_display_length_cap(
                 octet_length * source_max_bytes_per_character * max_bytes_per_character
             );
@@ -329,9 +333,8 @@ static void information_schema_apply_connection_text_metadata(
     if (character_count > UINT64_MAX / max_bytes_per_character) {
         descriptor->display_length = UINT32_MAX;
     } else {
-        descriptor->display_length = result_metadata_display_length_cap(
-            character_count * max_bytes_per_character
-        );
+        descriptor->display_length =
+            result_metadata_display_length_cap(character_count * max_bytes_per_character);
     }
 }
 
@@ -360,8 +363,10 @@ static void information_schema_apply_temporal_precision_metadata(
     }
     if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIME) {
         descriptor->display_length = time_text_maximum_length + precision + 1U;
-    } else if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_DATETIME ||
-               descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIMESTAMP) {
+    } else if (
+        descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_DATETIME ||
+        descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TIMESTAMP
+    ) {
         descriptor->display_length = datetime_text_length + precision + 1U;
     }
 }
@@ -409,8 +414,7 @@ static void information_schema_make_count_result_column_descriptor(
 ) {
     *out_descriptor = unknown_result_column_descriptor(label);
     out_descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
-    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
-                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
                             MYLITE_RESULT_COLUMN_FLAG_NUM;
     out_descriptor->charset_id = mysql_collation_binary_id;
     out_descriptor->collation_id = mysql_collation_binary_id;
@@ -424,8 +428,7 @@ static void information_schema_make_unsigned_result_column_descriptor(
 ) {
     *out_descriptor = unknown_result_column_descriptor(label);
     out_descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
-    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
-                            MYLITE_RESULT_COLUMN_FLAG_BINARY |
+    out_descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
                             MYLITE_RESULT_COLUMN_FLAG_NUM;
     out_descriptor->charset_id = mysql_collation_binary_id;
     out_descriptor->collation_id = mysql_collation_binary_id;
@@ -437,17 +440,15 @@ static void information_schema_make_group_concat_result_column_descriptor(
     const char *label,
     struct mylite_result_column_descriptor *out_descriptor
 ) {
-    const uint64_t max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
-        database->session.collation_connection
-    );
+    const uint64_t max_bytes_per_character =
+        result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
 
     *out_descriptor = unknown_result_column_descriptor(label);
     out_descriptor->logical_type = database->session.group_concat_max_len > 512U
                                        ? MYLITE_RESULT_LOGICAL_TYPE_BLOB
                                        : MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
-    out_descriptor->charset_id = result_metadata_collation_id(
-        database->session.collation_connection
-    );
+    out_descriptor->charset_id =
+        result_metadata_collation_id(database->session.collation_connection);
     out_descriptor->collation_id = out_descriptor->charset_id;
     if (database->session.group_concat_max_len > UINT64_MAX / max_bytes_per_character) {
         out_descriptor->display_length = UINT32_MAX;
@@ -481,9 +482,8 @@ static int information_schema_append_result_rows(
     mylite_result *result,
     size_t *out_read_row_count
 ) {
-    const struct mylite_sql_ast_node *where_clause = information_schema_statement_where_clause(
-        statement
-    );
+    const struct mylite_sql_ast_node *where_clause =
+        information_schema_statement_where_clause(statement);
     struct information_schema_row_index_set indexes = {0};
     size_t visible_count = 0U;
     struct information_schema_result_projection_buffers buffers = {0};
@@ -602,8 +602,7 @@ static bool information_schema_result_rows_can_stream(
     const struct mylite_sql_ast_node *where_clause
 ) {
     return query != NULL && query->definition != NULL && where_clause == NULL &&
-           !query->has_order &&
-           query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES;
+           !query->has_order && query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES;
 }
 
 static int information_schema_append_grouped_statistics_result_rows(
@@ -647,13 +646,12 @@ static int information_schema_append_grouped_statistics_result_rows(
     for (size_t start_index = 0U; rc == MYLITE_OK && start_index < indexes.count;) {
         size_t end_index = start_index + 1U;
 
-        while (end_index < indexes.count &&
-               information_schema_grouped_statistics_rows_same_group(
-                   query,
-                   rows,
-                   indexes.items[start_index],
-                   indexes.items[end_index]
-               )) {
+        while (end_index < indexes.count && information_schema_grouped_statistics_rows_same_group(
+                                                query,
+                                                rows,
+                                                indexes.items[start_index],
+                                                indexes.items[end_index]
+                                            )) {
             ++end_index;
         }
         if (query->limit.has_offset &&
@@ -770,8 +768,7 @@ static void information_schema_insertion_sort_row_indexes_by(
         size_t position = index;
 
         while (position > 0U &&
-               information_schema_compare_row_index_sort(sort, indexes[position - 1U], value) >
-                   0) {
+               information_schema_compare_row_index_sort(sort, indexes[position - 1U], value) > 0) {
             indexes[position] = indexes[position - 1U];
             --position;
         }
@@ -978,8 +975,8 @@ static int information_schema_append_grouped_statistics_projected_row(
             return MYLITE_NOMEM;
         }
     }
-    for (size_t projection_index = 0U; rc == MYLITE_OK &&
-                                      projection_index < query->projection_count;
+    for (size_t projection_index = 0U;
+         rc == MYLITE_OK && projection_index < query->projection_count;
          ++projection_index) {
         size_t column_index = query->projection_indexes[projection_index];
 
@@ -1050,8 +1047,7 @@ static int information_schema_result_projection_buffers_init(
             set_nomem_error(database);
             return MYLITE_NOMEM;
         }
-        buffers->values =
-            (const char **)malloc(query->projection_count * sizeof(*buffers->values));
+        buffers->values = (const char **)malloc(query->projection_count * sizeof(*buffers->values));
         if (buffers->values == NULL) {
             set_nomem_error(database);
             return MYLITE_NOMEM;
@@ -1568,7 +1564,7 @@ static int information_schema_numeric_text_value(
     }
 
     errno = 0;
-    *out_value = strtod(text, &end);
+    *out_value = mylite_numeric_parse_double(text, &end);
     if (errno == ERANGE || end == text || (end != NULL && *end != '\0')) {
         set_unsupported_error(
             database,
@@ -1625,12 +1621,8 @@ static int information_schema_append_count_result(
         emits_count_row = false;
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_format_i64(
-            database,
-            (int64_t)count,
-            count_text,
-            sizeof(count_text)
-        );
+        rc =
+            information_schema_format_i64(database, (int64_t)count, count_text, sizeof(count_text));
     }
     if (rc == MYLITE_OK && emits_count_row) {
         rc = mylite_result_append_text_row(result, values);
@@ -1713,7 +1705,9 @@ static const struct mylite_sql_ast_node *information_schema_statement_where_clau
     return NULL;
 }
 
-static void information_schema_row_index_set_init(struct information_schema_row_index_set *indexes) {
+static void information_schema_row_index_set_init(
+    struct information_schema_row_index_set *indexes
+) {
     *indexes = (struct information_schema_row_index_set){
         .items = indexes->stack_items,
         .count = 0U,
@@ -1833,9 +1827,11 @@ static int information_schema_predicate_includes_connection_control_failed_login
                 predicate,
                 out_includes_table
             );
-        } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-                   predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-                   predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
+        } else if (
+            predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+            predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+            predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE
+        ) {
             rc = information_schema_predicate_stack_push_binary_children(
                 database,
                 &stack,
@@ -2024,11 +2020,11 @@ static int information_schema_compare_rows(
     size_t order_count = query->order_count == 0U ? 1U : query->order_count;
 
     for (size_t order_index = 0U; order_index < order_count; ++order_index) {
-        size_t column_index = query->order_count == 0U ? query->order_index
-                                                       : query->order_indexes[order_index];
-        enum planned_select_order_direction direction =
-            query->order_count == 0U ? query->order_direction
-                                     : query->order_directions[order_index];
+        size_t column_index =
+            query->order_count == 0U ? query->order_index : query->order_indexes[order_index];
+        enum planned_select_order_direction direction = query->order_count == 0U
+                                                            ? query->order_direction
+                                                            : query->order_directions[order_index];
         int comparison = information_schema_compare_rows_by_column(
             query,
             rows,
@@ -2074,8 +2070,10 @@ static int information_schema_compare_rows_by_column(
             comparison =
                 information_schema_compare_text(query->definition, order.column_index, left, right);
         }
-    } else if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_COLLATIONS &&
-               order.column_index == information_schema_collations_name_column) {
+    } else if (
+        query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_COLLATIONS &&
+        order.column_index == information_schema_collations_name_column
+    ) {
         size_t left_index = 0U;
         size_t right_index = 0U;
         bool left_known = mylite_execution_catalog_mysql_collation_index_by_name(left, &left_index);
@@ -2089,7 +2087,8 @@ static int information_schema_compare_rows_by_column(
                 information_schema_compare_text(query->definition, order.column_index, left, right);
         }
     } else {
-        comparison = information_schema_compare_text(query->definition, order.column_index, left, right);
+        comparison =
+            information_schema_compare_text(query->definition, order.column_index, left, right);
     }
     if (order.direction == PLANNED_SELECT_ORDER_DESC) {
         comparison = -comparison;

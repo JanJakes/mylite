@@ -239,8 +239,12 @@ static int format_sys_schema_auto_increment_columns_ratio(
         return MYLITE_ERROR;
     }
 
-    written =
-        snprintf(buffer, buffer_size, "%.4f", (double)(uint64_t)auto_increment / (double)max_value);
+    written = mylite_numeric_format(
+        buffer,
+        buffer_size,
+        "%.4f",
+        (double)(uint64_t)auto_increment / (double)max_value
+    );
     if (written < 0 || (size_t)written >= buffer_size) {
         set_runtime_error(database, "failed to format sys.schema_auto_increment_columns ratio");
         return MYLITE_ERROR;
@@ -280,8 +284,8 @@ static int compare_sys_schema_auto_increment_columns_rows(char *const *left, cha
         return -1;
     }
     if (left_ratio != NULL && right_ratio != NULL) {
-        double left_value = strtod(left_ratio, NULL);
-        double right_value = strtod(right_ratio, NULL);
+        double left_value = mylite_numeric_parse_double(left_ratio, NULL);
+        double right_value = mylite_numeric_parse_double(right_ratio, NULL);
 
         if (left_value > right_value) {
             return -1;

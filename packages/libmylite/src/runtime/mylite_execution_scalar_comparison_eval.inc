@@ -1644,8 +1644,8 @@ static int parse_scalar_comparison_complete_numeric_text(
         return MYLITE_MISUSE;
     }
     errno = 0;
-    if (mylite_execution_parse_c_locale_double(text, &end, &parsed) != MYLITE_OK || errno != 0 ||
-        end == text || end == NULL || *end != '\0') {
+    parsed = mylite_numeric_parse_double(text, &end);
+    if (errno != 0 || end == text || end == NULL || *end != '\0') {
         set_scalar_comparison_unsupported_error(database);
         return MYLITE_ERROR;
     }
@@ -1666,7 +1666,8 @@ static int parse_scalar_comparison_string_numeric_text(
         return MYLITE_MISUSE;
     }
     errno = 0;
-    if (mylite_execution_parse_c_locale_double(text, &end, &parsed) != MYLITE_OK || errno != 0) {
+    parsed = mylite_numeric_parse_double(text, &end);
+    if (errno != 0) {
         set_scalar_comparison_unsupported_error(database);
         return MYLITE_ERROR;
     }

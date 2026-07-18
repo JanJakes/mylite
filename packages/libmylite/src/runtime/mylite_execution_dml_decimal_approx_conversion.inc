@@ -164,8 +164,7 @@ static int convert_decimal_string_text(
             set_incorrect_decimal_value_error(database, text, column->name, row_number);
             return MYLITE_ERROR;
         }
-        int rc =
-            append_incorrect_decimal_value_warning(database, text, column->name, row_number);
+        int rc = append_incorrect_decimal_value_warning(database, text, column->name, row_number);
 
         if (rc != MYLITE_OK) {
             return rc;
@@ -791,8 +790,9 @@ static int parse_approximate_scanned_value(
     memcpy(token, text + scan->token_start, token_length);
     token[token_length] = '\0';
 
-    rc = mylite_execution_parse_c_locale_double(token, &end, &parsed);
-    if (rc == MYLITE_OK && (end == token || end == NULL || *end != '\0')) {
+    errno = 0;
+    parsed = mylite_numeric_parse_double(token, &end);
+    if (end == token || end == NULL || *end != '\0') {
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK && !isfinite(parsed)) {
@@ -885,8 +885,9 @@ static int parse_approximate_literal_value(
     memcpy(buffer, text, text_length);
     buffer[text_length] = '\0';
 
-    if (mylite_execution_parse_c_locale_double(buffer, &end, &parsed) != MYLITE_OK ||
-        end == buffer || end == NULL || *end != '\0' || !isfinite(parsed)) {
+    errno = 0;
+    parsed = mylite_numeric_parse_double(buffer, &end);
+    if (end == buffer || end == NULL || *end != '\0' || !isfinite(parsed)) {
         set_out_of_range_error(database, column_name, row_number);
         return MYLITE_ERROR;
     }
@@ -1018,7 +1019,7 @@ static int format_scaled_approximate_value_text(
         info->scale > decimal_max_scale) {
         return MYLITE_MISUSE;
     }
-    written = mylite_execution_format_c_locale_text(
+    written = mylite_numeric_format(
         buffer,
         buffer_size,
         "%.*f",
@@ -1046,7 +1047,7 @@ static int format_float_value_text(
     if (context_name == NULL || buffer == NULL || buffer_size == 0U) {
         return MYLITE_MISUSE;
     }
-    written = mylite_execution_format_c_locale_text(
+    written = mylite_numeric_format(
         candidate,
         sizeof(candidate),
         "%.*g",

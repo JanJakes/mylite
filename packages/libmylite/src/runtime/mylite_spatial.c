@@ -1,6 +1,7 @@
 #include "mylite_spatial.h"
 
 #include "mylite_json_internal.h"
+#include "mylite_numeric_locale.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -1261,7 +1262,8 @@ static int convex_hull_point_set_from_geometry(
     struct mylite_spatial_error *error,
     const char *function_name
 );
-static size_t convex_hull_point_set_count_geometry(const struct spatial_distance_geometry *geometry
+static size_t convex_hull_point_set_count_geometry(
+    const struct spatial_distance_geometry *geometry
 );
 static int convex_hull_point_set_append_geometry(
     const struct spatial_distance_geometry *geometry,
@@ -2155,8 +2157,8 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS ||
-           (kind >= MYLITE_SPATIAL_FUNCTION_MBRCONTAINS && kind <= MYLITE_SPATIAL_FUNCTION_MBRWITHIN
-           );
+           (kind >= MYLITE_SPATIAL_FUNCTION_MBRCONTAINS &&
+            kind <= MYLITE_SPATIAL_FUNCTION_MBRWITHIN);
 }
 
 bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind kind) {
@@ -5611,7 +5613,7 @@ static int set_spatial_error(
     error->code = code;
     error->sqlstate = sqlstate;
     va_start(args, format);
-    int written = vsnprintf(error->message, sizeof(error->message), format, args);
+    int written = mylite_numeric_vformat(error->message, sizeof(error->message), format, args);
     va_end(args);
     if (written < 0 || (size_t)written >= sizeof(error->message)) {
         error->message[0] = '\0';
@@ -6302,7 +6304,7 @@ static int argument_numeric(
     }
     text[argument->byte_count] = '\0';
     errno = 0;
-    value = strtod(text, &end);
+    value = mylite_numeric_parse_double(text, &end);
     while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
         ++end;
     }
@@ -6347,7 +6349,7 @@ static int argument_distance(
     }
     text[argument->byte_count] = '\0';
     errno = 0;
-    value = strtod(text, &end);
+    value = mylite_numeric_parse_double(text, &end);
     if (end == text) {
         value = 0.0;
     } else if (errno == ERANGE || !isfinite(value)) {
@@ -6388,7 +6390,7 @@ static int argument_buffer_strategy_points(
         }
         text[argument->byte_count] = '\0';
         errno = 0;
-        value = strtod(text, &end);
+        value = mylite_numeric_parse_double(text, &end);
         if (end == text) {
             value = 0.0;
         }
@@ -6435,7 +6437,7 @@ static int argument_geohash_coordinate(
     }
     text[argument->byte_count] = '\0';
     errno = 0;
-    value = strtod(text, &end);
+    value = mylite_numeric_parse_double(text, &end);
     if (end == text) {
         value = 0.0;
     } else if (errno == ERANGE || !isfinite(value)) {
@@ -6510,7 +6512,7 @@ static int argument_geohash_uint32(
         }
         text[argument->byte_count] = '\0';
         errno = 0;
-        value = strtod(text, &end);
+        value = mylite_numeric_parse_double(text, &end);
         while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
             ++end;
         }
@@ -6553,7 +6555,9 @@ static int argument_geojson_uint32(
     }
     if (argument->has_numeric) {
         value = argument->numeric;
-        snprintf(display, sizeof(display), "%.15g", value);
+        if (mylite_numeric_format(display, sizeof(display), "%.15g", value) < 0) {
+            return set_nomem_error(error);
+        }
         text = display;
         if (!isfinite(value) || value < 0.0 || value > (double)UINT32_MAX) {
             if (strcmp(argument_name, "max decimal digits") == 0) {
@@ -6577,7 +6581,7 @@ static int argument_geojson_uint32(
         }
         text[argument->byte_count] = '\0';
         errno = 0;
-        value = strtod(text, &end);
+        value = mylite_numeric_parse_double(text, &end);
         if (end == text) {
             value = 0.0;
         } else if (errno == ERANGE || !isfinite(value)) {
@@ -6640,7 +6644,7 @@ static int argument_geojson_srid(
         }
         text[argument->byte_count] = '\0';
         errno = 0;
-        value = strtod(text, &end);
+        value = mylite_numeric_parse_double(text, &end);
         if (end == text) {
             value = 0.0;
         }
@@ -8351,7 +8355,8 @@ static int convex_hull_point_set_from_geometry(
     return rc;
 }
 
-static size_t convex_hull_point_set_count_geometry(const struct spatial_distance_geometry *geometry
+static size_t convex_hull_point_set_count_geometry(
+    const struct spatial_distance_geometry *geometry
 ) {
     size_t point_count = 0U;
 
@@ -9337,7 +9342,7 @@ static int argument_simplify_distance(
     }
     text[argument->byte_count] = '\0';
     errno = 0;
-    value = strtod(text, &end);
+    value = mylite_numeric_parse_double(text, &end);
     if (end == text) {
         value = 0.0;
     } else if (errno == ERANGE || !isfinite(value)) {
@@ -13177,7 +13182,7 @@ static int append_double_as_text(struct spatial_buffer *buffer, double value) {
     if (value == 0.0) {
         value = 0.0;
     }
-    written = snprintf(text, sizeof(text), "%.15g", value);
+    written = mylite_numeric_format(text, sizeof(text), "%.15g", value);
     if (written < 0 || (size_t)written >= sizeof(text)) {
         return -1;
     }
@@ -13499,7 +13504,7 @@ static int append_geojson_number(
     if (max_dec_digits > spatial_geojson_default_max_dec_digits) {
         max_dec_digits = spatial_geojson_default_max_dec_digits;
     }
-    written = snprintf(text, sizeof(text), "%.*f", (int)max_dec_digits, value);
+    written = mylite_numeric_format(text, sizeof(text), "%.*f", (int)max_dec_digits, value);
     if (written < 0 || (size_t)written >= sizeof(text)) {
         return -1;
     }
@@ -13992,7 +13997,7 @@ static int geojson_coordinate_number(
         return set_invalid_geojson_data_error(context->error, context->function_name);
     }
     errno = 0;
-    parsed = strtod(value->payload.text.text, &end);
+    parsed = mylite_numeric_parse_double(value->payload.text.text, &end);
     if (end != value->payload.text.text + value->payload.text.length || errno == ERANGE ||
         !isfinite(parsed)) {
         return set_invalid_geojson_data_error(context->error, context->function_name);
@@ -14478,14 +14483,14 @@ static int parse_wkt_coordinate(struct spatial_wkt_parser *parser, double *out_x
 
     wkt_skip_space(parser);
     errno = 0;
-    *out_x = strtod(parser->text + parser->offset, &end);
+    *out_x = mylite_numeric_parse_double(parser->text + parser->offset, &end);
     if (end == parser->text + parser->offset || errno == ERANGE || !isfinite(*out_x)) {
         return set_invalid_gis_data_error(parser->error, parser->function_name);
     }
     parser->offset = (size_t)(end - parser->text);
     wkt_skip_space(parser);
     errno = 0;
-    *out_y = strtod(parser->text + parser->offset, &end);
+    *out_y = mylite_numeric_parse_double(parser->text + parser->offset, &end);
     if (end == parser->text + parser->offset || errno == ERANGE || !isfinite(*out_y)) {
         return set_invalid_gis_data_error(parser->error, parser->function_name);
     }

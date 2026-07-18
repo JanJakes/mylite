@@ -5,6 +5,7 @@
 #include "mylite_dynamic_string.h"
 #include "mylite_mysql_error_codes.h"
 #include "mylite_mysql_server_identity.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_source_span.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
@@ -869,7 +870,7 @@ static int sys_function_format_result(
     int written = 0;
 
     va_start(args, format);
-    written = vsnprintf(buffer, sizeof(buffer), format, args);
+    written = mylite_numeric_vformat(buffer, sizeof(buffer), format, args);
     va_end(args);
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         return MYLITE_NOMEM;
@@ -1736,7 +1737,7 @@ static bool parse_argument_number(
         ++start;
     }
     errno = 0;
-    *out_value = strtold(start, &end);
+    *out_value = mylite_numeric_parse_long_double(start, &end);
     *out_valid = errno != ERANGE && end != start;
     free(copy);
     return true;
@@ -1761,7 +1762,7 @@ static bool argument_number_has_trailing_text(const struct mylite_sys_function_a
         ++start;
     }
     errno = 0;
-    (void)strtold(start, &end);
+    (void)mylite_numeric_parse_long_double(start, &end);
     if (errno != ERANGE && end != start) {
         while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
             ++end;
@@ -1876,7 +1877,7 @@ static int parse_native_thread_id_argument(
     }
 
     errno = 0;
-    parsed = strtold(start, &end);
+    parsed = mylite_numeric_parse_long_double(start, &end);
     while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
         ++end;
     }
@@ -1909,7 +1910,7 @@ static int format_trimmed_unit_result(
     const char *unit
 ) {
     char buffer[sys_function_number_buffer_size];
-    int written = snprintf(buffer, sizeof(buffer), "%.2Lf %s", value, unit);
+    int written = mylite_numeric_format(buffer, sizeof(buffer), "%.2Lf %s", value, unit);
 
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         return MYLITE_NOMEM;

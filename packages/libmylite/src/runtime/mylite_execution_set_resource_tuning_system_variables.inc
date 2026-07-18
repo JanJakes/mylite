@@ -51,10 +51,7 @@ static int apply_set_resource_tuning_system_variable_assignment(
         rc = set_session_system_variable_override(database, target->kind, value, value_size);
     }
     if (rc == MYLITE_OK) {
-        rc = append_resource_tuning_system_variable_set_warning_if_needed(
-            database,
-            target->kind
-        );
+        rc = append_resource_tuning_system_variable_set_warning_if_needed(database, target->kind);
     }
 
     free(value);
@@ -110,10 +107,7 @@ static int apply_set_resource_tuning_system_variable_cell_value(
         rc = set_session_system_variable_override(database, target->kind, text, text_size);
     }
     if (rc == MYLITE_OK) {
-        rc = append_resource_tuning_system_variable_set_warning_if_needed(
-            database,
-            target->kind
-        );
+        rc = append_resource_tuning_system_variable_set_warning_if_needed(database, target->kind);
     }
 
     free(text);
@@ -449,7 +443,7 @@ static int copy_resource_tuning_decimal_value(
         return rc;
     }
     errno = 0;
-    parsed = strtold(owned, &end);
+    parsed = mylite_numeric_parse_long_double(owned, &end);
     if (end == owned || end == NULL || *end != '\0' || errno == ERANGE || !isfinite(parsed) ||
         parsed < 0.0L) {
         free(owned);
@@ -458,7 +452,7 @@ static int copy_resource_tuning_decimal_value(
     if (parsed == 0.0L) {
         parsed = 0.0L;
     }
-    written = snprintf(
+    written = mylite_numeric_format(
         formatted,
         sizeof(formatted),
         "%.*Lf",
@@ -553,9 +547,8 @@ static int validate_resource_tuning_fixed_global_value(
     const char *value,
     size_t value_size
 ) {
-    const char *default_value = target == NULL
-                                    ? NULL
-                                    : mylite_execution_system_variable_default_value(target->kind);
+    const char *default_value =
+        target == NULL ? NULL : mylite_execution_system_variable_default_value(target->kind);
 
     if (target == NULL || value == NULL || default_value == NULL) {
         set_runtime_error(database, "invalid resource tuning system variable default");

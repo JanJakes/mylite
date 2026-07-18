@@ -305,7 +305,11 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "JSON_OVERLAPS");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION:
-        return mylite_execution_scalar_json_member_of_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_json_member_of_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
         return mylite_execution_scalar_json_length_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
@@ -1304,7 +1308,7 @@ static int rand_seed_numeric_literal_value(
     literal_kind = mylite_sql_ast_node_literal_kind(literal);
 
     errno = 0;
-    value = strtold(text, &end);
+    value = mylite_numeric_parse_long_double(text, &end);
     if (end == text || end == NULL || *end != '\0' || errno == ERANGE || !isfinite(value) ||
         value < 0.0L) {
         free(text);
@@ -1720,7 +1724,7 @@ static int sysdate_scalar_value(
             precision,
             precision == 0U ? out_cell->datetime_text : out_cell->fractional_datetime_text,
             precision == 0U ? sizeof(out_cell->datetime_text)
-                             : sizeof(out_cell->fractional_datetime_text)
+                            : sizeof(out_cell->fractional_datetime_text)
         );
     }
     if (rc == MYLITE_OK) {

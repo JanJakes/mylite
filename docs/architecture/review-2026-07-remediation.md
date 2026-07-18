@@ -165,8 +165,12 @@ complete.
 - [x] Correct UTF-8 case/accent behavior for supported MySQL collations.
 - [x] Make `GROUP_CONCAT(DISTINCT)` use collation-aware equality and replace
   quadratic duplicate detection.
-- [ ] Make numeric parsing/formatting locale-independent and reject partial
-  conversions consistently.
+- [x] Make numeric parsing/formatting locale-independent and reject partial
+  conversions consistently. Runtime numeric text now uses one cached C-locale
+  service; strict consumers validate the returned end pointer, while MySQL
+  coercion paths retain their deliberate numeric-prefix behavior. Locale
+  coverage exercises JSON, spatial, decimal, SYS, system-variable, and
+  approximate-number paths under a comma-decimal locale.
 - [ ] Define SQL PREPARE prepare-time/session-state semantics.
 - [x] Synchronize PROCESSLIST session snapshots and replace quadratic sorting.
 

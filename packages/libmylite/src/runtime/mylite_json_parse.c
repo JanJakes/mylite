@@ -1,6 +1,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_json_internal.h"
+#include "mylite_numeric_locale.h"
 
 #include <errno.h>
 #include <math.h>
@@ -506,8 +507,10 @@ static int parse_number_integer_part(
             mylite_json_internal_is_decimal_digit(mylite_json_internal_parser_peek(parser))) {
             return mylite_json_internal_parser_invalid(parser, parser->position);
         }
-    } else if (mylite_json_internal_parser_peek(parser) >= '1' &&
-               mylite_json_internal_parser_peek(parser) <= '9') {
+    } else if (
+        mylite_json_internal_parser_peek(parser) >= '1' &&
+        mylite_json_internal_parser_peek(parser) <= '9'
+    ) {
         while (!mylite_json_internal_parser_at_end(parser) &&
                mylite_json_internal_is_decimal_digit(mylite_json_internal_parser_peek(parser))) {
             ++parser->position;
@@ -612,7 +615,7 @@ static int parse_floating_number(
     memcpy(text, parser->text + start, length);
     text[length] = '\0';
     errno = 0;
-    value = strtod(text, &end);
+    value = mylite_numeric_parse_double(text, &end);
     if (end != text + length || errno == ERANGE || !isfinite(value)) {
         rc = mylite_json_internal_parser_unsupported(parser, start);
     } else {

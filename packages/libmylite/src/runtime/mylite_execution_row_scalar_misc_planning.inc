@@ -878,7 +878,7 @@ static int plan_row_scalar_greatest_least_decimal_value(
     text[prefix_size + span->length] = '\0';
 
     errno = 0;
-    value = strtod(text, &parse_end);
+    value = mylite_numeric_parse_double(text, &parse_end);
     if (errno != 0 || parse_end == text || parse_end == NULL || *parse_end != '\0') {
         free(text);
         set_unsupported_error(

@@ -1388,11 +1388,7 @@ static int generic_json_schema_argument_value(
             return MYLITE_OK;
         }
         if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
-            return set_json_schema_invalid_data_type_error(
-                database,
-                function_name,
-                argument_index
-            );
+            return set_json_schema_invalid_data_type_error(database, function_name, argument_index);
         }
         rc = decode_sql_string_literal(
             database,
@@ -1418,18 +1414,14 @@ static int generic_json_schema_argument_value(
             return MYLITE_OK;
         }
         if (variable_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
-            return set_json_schema_invalid_data_type_error(
-                database,
-                function_name,
-                argument_index
-            );
+            return set_json_schema_invalid_data_type_error(database, function_name, argument_index);
         }
         rc = session_user_variable_value(database, unwrapped, &out_argument->cell);
         if (rc == MYLITE_OK) {
             out_argument->text = out_argument->cell.value;
-            out_argument->text_length =
-                out_argument->cell.has_value_size ? out_argument->cell.value_size
-                                                  : strlen(out_argument->cell.value);
+            out_argument->text_length = out_argument->cell.has_value_size
+                                            ? out_argument->cell.value_size
+                                            : strlen(out_argument->cell.value);
             out_argument->is_null = out_argument->cell.value == NULL;
         }
         return rc;
@@ -1651,7 +1643,7 @@ static int generic_system_double_argument(
                 return rc;
             }
             errno = 0;
-            *out_value = strtod(number_text, &end);
+            *out_value = mylite_numeric_parse_double(number_text, &end);
             if (errno == ERANGE || end == number_text || (end != NULL && *end != '\0')) {
                 *out_value = 0.0;
             }
@@ -1677,7 +1669,7 @@ static int generic_system_double_argument(
         ++start;
     }
     errno = 0;
-    *out_value = strtod(start, &end);
+    *out_value = mylite_numeric_parse_double(start, &end);
     while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
         ++end;
     }
@@ -2392,7 +2384,8 @@ static int scalar_concat_operator_result(
     return MYLITE_OK;
 }
 
-static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
+static bool concat_operator_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -2499,7 +2492,8 @@ static bool concat_operator_scalar_arithmetic_node_is_admitted(
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
     if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        if (!integer_default_binary_operator_is_supported(mylite_sql_ast_node_operator(expression)
+        if (!integer_default_binary_operator_is_supported(
+                mylite_sql_ast_node_operator(expression)
             )) {
             return false;
         }
@@ -3618,7 +3612,7 @@ static int evaluate_greatest_least_scalar_decimal_argument(
     text[prefix_size + span->length] = '\0';
 
     errno = 0;
-    out_argument->numeric_real = strtod(text, &parse_end);
+    out_argument->numeric_real = mylite_numeric_parse_double(text, &parse_end);
     if (errno != 0 || parse_end == text || parse_end == NULL || *parse_end != '\0') {
         free(text);
         set_unsupported_error(

@@ -1,6 +1,7 @@
 #include "mylite_execution_scalar_binary_internal.h"
 
 #include "mylite_ip_address.h"
+#include "mylite_numeric_locale.h"
 
 enum {
     ip_address_scalar_signed_text_capacity = 96,
@@ -478,7 +479,12 @@ static int inet_ntoa_literal_value(
         literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
         rc = mylite_execution_copy_source_span_text(database, &literal->span, &text);
         if (rc == MYLITE_OK) {
-            rc = inet_ntoa_real_value(database, text, strtod(text, NULL), out_cell);
+            rc = inet_ntoa_real_value(
+                database,
+                text,
+                mylite_numeric_parse_double(text, NULL),
+                out_cell
+            );
         }
         free(text);
         return rc;
@@ -585,7 +591,12 @@ static int inet_ntoa_unary_value(
             out_cell
         );
     } else if (rc == MYLITE_OK) {
-        rc = inet_ntoa_real_value(database, display_text, strtod(value_text, NULL), out_cell);
+        rc = inet_ntoa_real_value(
+            database,
+            display_text,
+            mylite_numeric_parse_double(value_text, NULL),
+            out_cell
+        );
     }
     free(display_text);
     free(value_text);

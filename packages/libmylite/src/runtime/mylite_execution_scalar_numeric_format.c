@@ -1,20 +1,16 @@
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_scalar_numeric.h"
+#include "mylite_numeric_locale.h"
 
 #include <mylite/mylite.h>
 
-#include <locale.h>
+#include <errno.h>
 #include <math.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#  include <windows.h>
-#endif
 
 enum {
     double_format_error_capacity = 80,
@@ -52,13 +48,7 @@ int mylite_execution_format_double_text(
         char candidate[double_text_capacity];
         char *end = NULL;
         double parsed = 0.0;
-        int written = mylite_execution_format_c_locale_text(
-            candidate,
-            sizeof(candidate),
-            "%.*g",
-            precision,
-            value
-        );
+        int written = mylite_numeric_format(candidate, sizeof(candidate), "%.*g", precision, value);
 
         if (written < 0 || (size_t)written >= sizeof(candidate)) {
             mylite_execution_set_double_format_error(database, function_name);
@@ -68,8 +58,9 @@ int mylite_execution_format_double_text(
             (strchr(candidate, 'e') != NULL || strchr(candidate, 'E') != NULL)) {
             continue;
         }
-        if (mylite_execution_parse_c_locale_double(candidate, &end, &parsed) == MYLITE_OK &&
-            end != candidate && end != NULL && *end == '\0' && parsed == value) {
+        errno = 0;
+        parsed = mylite_numeric_parse_double(candidate, &end);
+        if (errno == 0 && end != candidate && end != NULL && *end == '\0' && parsed == value) {
             return mylite_execution_copy_normalized_double_text(
                 database,
                 candidate,
@@ -108,20 +99,15 @@ static int format_scientific_double_text(
         char candidate[double_text_capacity];
         char *end = NULL;
         double parsed = 0.0;
-        int written = mylite_execution_format_c_locale_text(
-            candidate,
-            sizeof(candidate),
-            "%.*e",
-            precision,
-            value
-        );
+        int written = mylite_numeric_format(candidate, sizeof(candidate), "%.*e", precision, value);
 
         if (written < 0 || (size_t)written >= sizeof(candidate)) {
             mylite_execution_set_double_format_error(database, function_name);
             return MYLITE_ERROR;
         }
-        if (mylite_execution_parse_c_locale_double(candidate, &end, &parsed) == MYLITE_OK &&
-            end != candidate && end != NULL && *end == '\0' && parsed == value) {
+        errno = 0;
+        parsed = mylite_numeric_parse_double(candidate, &end);
+        if (errno == 0 && end != candidate && end != NULL && *end == '\0' && parsed == value) {
             return mylite_execution_copy_normalized_scientific_double_text(
                 database,
                 candidate,
@@ -134,92 +120,6 @@ static int format_scientific_double_text(
 
     mylite_execution_set_double_format_error(database, function_name);
     return MYLITE_ERROR;
-}
-
-int mylite_execution_format_c_locale_text(
-    char *buffer,
-    size_t buffer_size,
-    const char *format,
-    ...
-) {
-    va_list arguments;
-    int written = 0;
-
-    if (buffer == NULL || buffer_size == 0U || format == NULL) {
-        return -1;
-    }
-
-    va_start(arguments, format);
-#ifdef _WIN32
-    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
-
-    if (c_locale == NULL) {
-        va_end(arguments);
-        return -1;
-    }
-    written = _vsnprintf_l(buffer, buffer_size, format, c_locale, arguments);
-    _free_locale(c_locale);
-#else
-    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-    locale_t previous_locale = (locale_t)0;
-
-    if (c_locale == (locale_t)0) {
-        va_end(arguments);
-        return -1;
-    }
-    previous_locale = uselocale(c_locale);
-    if (previous_locale == (locale_t)0) {
-        freelocale(c_locale);
-        va_end(arguments);
-        return -1;
-    }
-    written = vsnprintf(buffer, buffer_size, format, arguments);
-    if (uselocale(previous_locale) == (locale_t)0) {
-        written = -1;
-    }
-    freelocale(c_locale);
-#endif
-    va_end(arguments);
-    return written;
-}
-
-int mylite_execution_parse_c_locale_double(const char *text, char **out_end, double *out_value) {
-    if (text == NULL || out_end == NULL || out_value == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-#ifdef _WIN32
-    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
-
-    if (c_locale == NULL) {
-        return MYLITE_ERROR;
-    }
-    *out_value = _strtod_l(text, out_end, c_locale);
-    _free_locale(c_locale);
-#else
-    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-    locale_t previous_locale = (locale_t)0;
-    int rc = MYLITE_OK;
-
-    if (c_locale == (locale_t)0) {
-        return MYLITE_ERROR;
-    }
-    previous_locale = uselocale(c_locale);
-    if (previous_locale == (locale_t)0) {
-        freelocale(c_locale);
-        return MYLITE_ERROR;
-    }
-    *out_value = strtod(text, out_end);
-    if (uselocale(previous_locale) == (locale_t)0) {
-        rc = MYLITE_ERROR;
-    }
-    freelocale(c_locale);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-#endif
-
-    return MYLITE_OK;
 }
 
 int mylite_execution_copy_normalized_double_text(

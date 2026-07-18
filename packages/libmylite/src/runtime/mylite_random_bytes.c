@@ -2,6 +2,7 @@
 
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
@@ -161,7 +162,7 @@ int mylite_random_bytes_length_from_text(
     }
     text[input_size] = '\0';
 
-    value = strtod(text, &parse_end);
+    value = mylite_numeric_parse_double(text, &parse_end);
     if (parse_end == text) {
         free(text);
         mylite_random_bytes_set_length_out_of_range_error(database);

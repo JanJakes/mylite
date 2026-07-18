@@ -22,12 +22,8 @@ static int cast_binary_value(
         return MYLITE_ERROR;
     }
 
-    int rc = scalar_text_conversion_input_value(
-        database,
-        child_at(expression, 0U),
-        &messages,
-        out_cell
-    );
+    int rc =
+        scalar_text_conversion_input_value(database, child_at(expression, 0U), &messages, out_cell);
     if (rc == MYLITE_OK) {
         rc = apply_scalar_placeholder_cast(
             database,
@@ -64,12 +60,8 @@ static int cast_char_value(
         return MYLITE_ERROR;
     }
 
-    int rc = scalar_text_conversion_input_value(
-        database,
-        child_at(expression, 0U),
-        &messages,
-        out_cell
-    );
+    int rc =
+        scalar_text_conversion_input_value(database, child_at(expression, 0U), &messages, out_cell);
     if (rc == MYLITE_OK) {
         rc = apply_scalar_placeholder_cast(
             database,
@@ -174,12 +166,8 @@ static int convert_binary_type_value(
         return MYLITE_ERROR;
     }
 
-    int rc = scalar_text_conversion_input_value(
-        database,
-        child_at(expression, 0U),
-        &messages,
-        out_cell
-    );
+    int rc =
+        scalar_text_conversion_input_value(database, child_at(expression, 0U), &messages, out_cell);
     if (rc == MYLITE_OK) {
         rc = apply_scalar_placeholder_cast(
             database,
@@ -217,12 +205,8 @@ static int convert_char_type_value(
         return MYLITE_ERROR;
     }
 
-    int rc = scalar_text_conversion_input_value(
-        database,
-        child_at(expression, 0U),
-        &messages,
-        out_cell
-    );
+    int rc =
+        scalar_text_conversion_input_value(database, child_at(expression, 0U), &messages, out_cell);
     if (rc == MYLITE_OK) {
         rc = apply_scalar_placeholder_cast(
             database,
@@ -393,12 +377,7 @@ static int convert_using_charset_value(
         return rc;
     }
 
-    rc = scalar_text_conversion_input_value(
-        database,
-        value,
-        &messages,
-        out_cell
-    );
+    rc = scalar_text_conversion_input_value(database, value, &messages, out_cell);
     if (rc != MYLITE_OK || !info.ascii_only_value || out_cell->value == NULL) {
         return rc;
     }
@@ -440,9 +419,8 @@ static int convert_using_charset_left_slice_value(
     }
 
     value = unwrap_parenthesized_expression(child_at(expression, 0U));
-    if (value == NULL ||
-        (value->kind != MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION &&
-         value->kind != MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION)) {
+    if (value == NULL || (value->kind != MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION &&
+                          value->kind != MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION)) {
         return MYLITE_OK;
     }
     *out_handled = true;
@@ -461,12 +439,7 @@ static int convert_using_charset_left_slice_value(
         return assign_scalar_cell_text(database, out_cell, "", 0U);
     }
 
-    rc = convert_using_charset_source_cell_value(
-        database,
-        value,
-        &source_cell,
-        &source_charset
-    );
+    rc = convert_using_charset_source_cell_value(database, value, &source_cell, &source_charset);
     if (rc != MYLITE_OK || source_cell.value == NULL) {
         session_scalar_cell_deinit(&source_cell);
         return rc;
@@ -546,11 +519,8 @@ static int scalar_convert_charset_left_slice_length(
     }
     *out_slice_length = 0U;
     if (strcmp(charset, "big5") == 0) {
-        *out_slice_length = scalar_convert_big5_left_slice_length(
-            text,
-            text_length,
-            requested_length
-        );
+        *out_slice_length =
+            scalar_convert_big5_left_slice_length(text, text_length, requested_length);
         return MYLITE_OK;
     }
     if (scalar_convert_charset_left_uses_utf8_characters(charset)) {
@@ -644,14 +614,12 @@ static size_t scalar_convert_big5_complete_prefix_length(const char *text, size_
 }
 
 static bool scalar_convert_big5_byte_is_lead(unsigned char byte) {
-    return byte >= scalar_convert_big5_lead_byte_min &&
-           byte <= scalar_convert_big5_lead_byte_max;
+    return byte >= scalar_convert_big5_lead_byte_min && byte <= scalar_convert_big5_lead_byte_max;
 }
 
 static bool scalar_convert_charset_left_uses_utf8_characters(const char *charset) {
-    return charset != NULL &&
-           (strcmp(charset, "utf8mb4") == 0 || strcmp(charset, "utf8mb3") == 0 ||
-            strcmp(charset, "ujis") == 0) != 0;
+    return charset != NULL && (strcmp(charset, "utf8mb4") == 0 || strcmp(charset, "utf8mb3") == 0 ||
+                               strcmp(charset, "ujis") == 0) != 0;
 }
 
 static int scalar_convert_charset_enforce_ascii(
@@ -694,7 +662,11 @@ static int collate_expression_value(
     }
     *out_cell = (struct session_scalar_cell){0};
 
-    rc = mylite_execution_scalar_collation_info_for_expression(database, expression, &collation_info);
+    rc = mylite_execution_scalar_collation_info_for_expression(
+        database,
+        expression,
+        &collation_info
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -938,24 +910,21 @@ static int parse_scalar_placeholder_cast_info(
     probe = span;
     if (scalar_span_consume_keyword(&probe, "BINARY")) {
         out_info->target = SCALAR_PLACEHOLDER_CAST_BINARY;
-        out_info->has_length =
-            scalar_span_parse_optional_length(&probe, &out_info->length);
+        out_info->has_length = scalar_span_parse_optional_length(&probe, &out_info->length);
         return MYLITE_OK;
     }
 
     probe = span;
     if (scalar_span_consume_keyword(&probe, "CHAR")) {
         out_info->target = SCALAR_PLACEHOLDER_CAST_TEXT;
-        out_info->has_length =
-            scalar_span_parse_optional_length(&probe, &out_info->length);
+        out_info->has_length = scalar_span_parse_optional_length(&probe, &out_info->length);
         return MYLITE_OK;
     }
 
     probe = span;
     if (scalar_span_consume_keyword(&probe, "NCHAR")) {
         out_info->target = SCALAR_PLACEHOLDER_CAST_TEXT;
-        out_info->has_length =
-            scalar_span_parse_optional_length(&probe, &out_info->length);
+        out_info->has_length = scalar_span_parse_optional_length(&probe, &out_info->length);
         return MYLITE_OK;
     }
 
@@ -964,8 +933,7 @@ static int parse_scalar_placeholder_cast_info(
         if (scalar_span_consume_keyword(&probe, "CHARACTER") ||
             scalar_span_consume_keyword(&probe, "CHAR")) {
             out_info->target = SCALAR_PLACEHOLDER_CAST_TEXT;
-            out_info->has_length =
-                scalar_span_parse_optional_length(&probe, &out_info->length);
+            out_info->has_length = scalar_span_parse_optional_length(&probe, &out_info->length);
         }
         return MYLITE_OK;
     }
@@ -1171,6 +1139,7 @@ static int apply_scalar_placeholder_decimal(
     struct session_scalar_cell *inout_cell
 ) {
     enum { scalar_placeholder_decimal_text_capacity = 128U };
+
     char format[sizeof("%.30Lf")];
     char text[scalar_placeholder_decimal_text_capacity];
     char *end = NULL;
@@ -1189,7 +1158,7 @@ static int apply_scalar_placeholder_decimal(
     }
 
     errno = 0;
-    value = strtold(inout_cell->value, &end);
+    value = mylite_numeric_parse_long_double(inout_cell->value, &end);
     if (end == inout_cell->value || errno == ERANGE || !isfinite(value)) {
         value = 0.0L;
     }
@@ -1199,7 +1168,7 @@ static int apply_scalar_placeholder_decimal(
         set_runtime_error(database, "failed to format decimal cast precision");
         return MYLITE_ERROR;
     }
-    written = snprintf(text, sizeof(text), format, value);
+    written = mylite_numeric_format(text, sizeof(text), format, value);
     if (written < 0 || (size_t)written >= sizeof(text)) {
         set_unsupported_error(database, "DECIMAL cast output is out of range");
         return MYLITE_ERROR;
@@ -1311,10 +1280,7 @@ static void trim_scalar_span(struct mylite_sql_source_span *span) {
     }
 }
 
-static bool scalar_span_consume_keyword(
-    struct mylite_sql_source_span *span,
-    const char *keyword
-) {
+static bool scalar_span_consume_keyword(struct mylite_sql_source_span *span, const char *keyword) {
     size_t end = 0U;
 
     if (span == NULL || span->text == NULL || keyword == NULL) {

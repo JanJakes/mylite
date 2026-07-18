@@ -236,8 +236,8 @@ static int spatial_function_numeric_literal_argument(
     text[text_length] = '\0';
 
     errno = 0;
-    if (mylite_execution_parse_c_locale_double(text, &parse_end, &value) != MYLITE_OK ||
-        parse_end == text) {
+    value = mylite_numeric_parse_double(text, &parse_end);
+    if (parse_end == text) {
         free(text);
         set_runtime_error(database, "failed to parse spatial numeric literal");
         return MYLITE_ERROR;

@@ -42,6 +42,7 @@
 #include "mylite_mysql_error_codes.h"
 #include "mylite_mysql_server_identity.h"
 #include "mylite_named_locks.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_parser.h"
 #include "mylite_period_functions.h"
 #ifdef MYLITE_ENABLE_PROFILING

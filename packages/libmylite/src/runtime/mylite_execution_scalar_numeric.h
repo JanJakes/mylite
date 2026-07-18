@@ -89,13 +89,6 @@ int mylite_execution_format_double_text(
     char *buffer,
     size_t buffer_size
 );
-int mylite_execution_format_c_locale_text(
-    char *buffer,
-    size_t buffer_size,
-    const char *format,
-    ...
-);
-int mylite_execution_parse_c_locale_double(const char *text, char **out_end, double *out_value);
 int mylite_execution_copy_normalized_double_text(
     struct mylite_db *database,
     const char *candidate,

@@ -4,6 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_mysql_error_codes.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
@@ -685,7 +686,7 @@ static int parse_double_text(
         ++start;
     }
     errno = 0;
-    *out_value = strtod(start, &end);
+    *out_value = mylite_numeric_parse_double(start, &end);
     while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
         ++end;
     }

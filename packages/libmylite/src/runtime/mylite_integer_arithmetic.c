@@ -3,6 +3,7 @@
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_mysql_error_codes.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
@@ -118,7 +119,8 @@ static int append_truncated_incorrect_arithmetic_warning(
     size_t value_length
 );
 static int append_arithmetic_division_by_zero_warning(sqlite3_context *context);
-static bool mylite_arithmetic_operation_is_valid(enum mylite_integer_arithmetic_operation operation
+static bool mylite_arithmetic_operation_is_valid(
+    enum mylite_integer_arithmetic_operation operation
 );
 static bool mylite_arithmetic_operation_uses_decimal_text_warning(
     enum mylite_integer_arithmetic_operation operation
@@ -606,7 +608,7 @@ static int mylite_arithmetic_text_double_value(
     buffer[prefix_length] = '\0';
 
     errno = 0;
-    *out_value = strtod(buffer, &parse_end);
+    *out_value = mylite_numeric_parse_double(buffer, &parse_end);
     if (parse_end == buffer || errno == ERANGE) {
         truncated = true;
     }
@@ -806,7 +808,8 @@ static int append_arithmetic_division_by_zero_warning(sqlite3_context *context) 
     return rc;
 }
 
-static bool mylite_arithmetic_operation_is_valid(enum mylite_integer_arithmetic_operation operation
+static bool mylite_arithmetic_operation_is_valid(
+    enum mylite_integer_arithmetic_operation operation
 ) {
     switch (operation) {
     case MYLITE_INTEGER_ARITHMETIC_ADD:

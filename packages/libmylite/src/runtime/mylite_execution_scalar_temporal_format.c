@@ -6,6 +6,7 @@
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_diagnostics.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_temporal_arithmetic.h"
 
 #include <ctype.h>
@@ -536,7 +537,8 @@ static int str_to_date_function_arguments(
     return rc;
 }
 
-bool mylite_execution_str_to_date_child_is_null_literal(const struct mylite_sql_ast_node *expression
+bool mylite_execution_str_to_date_child_is_null_literal(
+    const struct mylite_sql_ast_node *expression
 ) {
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
     return (expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL &&
@@ -730,9 +732,9 @@ static int get_format_literal_argument(
             );
             return MYLITE_ERROR;
         }
-        literal =
-            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(literal, 0U)
-            );
+        literal = mylite_execution_unwrap_parenthesized_expression(
+            mylite_execution_child_at(literal, 0U)
+        );
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
             mylite_execution_set_unsupported_error(
@@ -1109,7 +1111,7 @@ int mylite_execution_scalar_date_format_numeric_comparison_value(
         return MYLITE_OK;
     }
 
-    left = strtod(formatted, &end);
+    left = mylite_numeric_parse_double(formatted, &end);
     if (end == formatted || *end != '\0') {
         mylite_execution_set_unsupported_error(
             database,
@@ -1239,9 +1241,9 @@ static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_n
             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             return false;
         }
-        literal =
-            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(literal, 0U)
-            );
+        literal = mylite_execution_unwrap_parenthesized_expression(
+            mylite_execution_child_at(literal, 0U)
+        );
     }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         return false;
@@ -1371,7 +1373,7 @@ static int date_format_numeric_literal_value(
         memcpy(text, literal->span.text, literal->span.length);
         text[literal->span.length] = '\0';
     }
-    *out_value = strtod(text, &end);
+    *out_value = mylite_numeric_parse_double(text, &end);
     if (end == text || *end != '\0') {
         mylite_execution_set_unsupported_error(
             database,

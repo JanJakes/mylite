@@ -872,11 +872,12 @@ static int populate_string_result_column_descriptor(
     }
 
     if (is_national) {
-        descriptor->charset_id =
-            result_metadata_collation_id(database->session.collation_connection);
+        descriptor->charset_id = result_metadata_collation_id(
+            mylite_connection_statement_collation_connection(database)
+        );
         descriptor->collation_id = descriptor->charset_id;
         max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
-            database->session.collation_connection
+            mylite_connection_statement_collation_connection(database)
         );
     } else {
         descriptor->charset_id =

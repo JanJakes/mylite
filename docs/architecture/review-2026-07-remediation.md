@@ -171,7 +171,11 @@ complete.
   coercion paths retain their deliberate numeric-prefix behavior. Locale
   coverage exercises JSON, spatial, decimal, SYS, system-variable, and
   approximate-number paths under a comma-decimal locale.
-- [ ] Define SQL PREPARE prepare-time/session-state semantics.
+- [x] Define SQL PREPARE prepare-time/session-state semantics. SQL-level handlers
+  now retain lexer modes, default schema, and connection charset/collation;
+  statement-effective accessors preserve those parse/name/literal semantics
+  while parameter values, session-variable reads, and validation modes remain
+  execute-time.
 - [x] Synchronize PROCESSLIST session snapshots and replace quadratic sorting.
 
 ## Phase 5: Architecture, performance, and size

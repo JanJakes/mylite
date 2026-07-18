@@ -1327,12 +1327,12 @@ static int store_stored_procedure_placeholder_body(
         copy_stored_procedure_field(
             procedure->character_set_client,
             sizeof(procedure->character_set_client),
-            database->session.character_set_client
+            mylite_connection_statement_character_set_client(database)
         );
         copy_stored_procedure_field(
             procedure->collation_connection,
             sizeof(procedure->collation_connection),
-            database->session.collation_connection
+            mylite_connection_statement_collation_connection(database)
         );
         copy_stored_procedure_field(
             procedure->database_collation,
@@ -1443,12 +1443,12 @@ static int execute_create_procedure_statement(
         copy_stored_procedure_field(
             procedure->character_set_client,
             sizeof(procedure->character_set_client),
-            database->session.character_set_client
+            mylite_connection_statement_character_set_client(database)
         );
         copy_stored_procedure_field(
             procedure->collation_connection,
             sizeof(procedure->collation_connection),
-            database->session.collation_connection
+            mylite_connection_statement_collation_connection(database)
         );
         copy_stored_procedure_field(
             procedure->database_collation,
@@ -1778,7 +1778,7 @@ static int execute_sys_execute_prepared_stmt_procedure(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = execute_expanded_prepared_statement_sql(database, sql, sql_size, out_result);
+        rc = execute_expanded_prepared_statement_sql(database, sql, sql_size, NULL, out_result);
     }
 
     database->session.has_selected_schema = saved_has_schema;
@@ -2737,7 +2737,12 @@ static int append_stored_procedure_quoted_string_literal(
         return MYLITE_ERROR;
     }
 
-    rc = append_execute_string_literal(database, string, text == NULL ? "" : text, text_size);
+    rc = append_execute_string_literal(
+        string,
+        lexer_modes_for_session_sql_mode(&database->session),
+        text == NULL ? "" : text,
+        text_size
+    );
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
     }

@@ -878,12 +878,16 @@ static int information_schema_join_compat_append_concat_name_column(
 ) {
     const uint64_t character_length = 73U;
     const uint64_t max_bytes =
-        result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
+        result_metadata_collation_max_bytes_per_character(
+            mylite_connection_statement_collation_connection(database)
+        );
     struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor("name");
     int rc = MYLITE_OK;
 
     descriptor.logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
-    descriptor.charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor.charset_id = result_metadata_collation_id(
+        mylite_connection_statement_collation_connection(database)
+    );
     descriptor.collation_id = descriptor.charset_id;
     descriptor.display_length = result_metadata_display_length_cap(character_length * max_bytes);
     rc = mylite_result_append_column_descriptor(result, &descriptor);

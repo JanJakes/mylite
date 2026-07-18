@@ -1886,7 +1886,7 @@ static int decode_table_option_string_literal(
 
     quote = text[0];
     allow_backslash = true;
-    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+    if ((lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U) {
         allow_backslash = false;
     }
     mylite_dynamic_string_init(&string);

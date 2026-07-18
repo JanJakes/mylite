@@ -37,6 +37,7 @@ struct expected_query {
 
 static int test_prepared_statement_lifecycle(void);
 static int test_prepared_statement_source_variables_and_dml(void);
+static int test_prepared_statement_prepare_context(void);
 static int test_prepared_statement_diagnostics(void);
 static int test_prepared_statement_reopen_is_nonpersistent(void);
 static int test_prepared_statement_independent_handles(void);
@@ -73,6 +74,7 @@ int main(void) {
 
     failures += test_prepared_statement_lifecycle();
     failures += test_prepared_statement_source_variables_and_dml();
+    failures += test_prepared_statement_prepare_context();
     failures += test_prepared_statement_diagnostics();
     failures += test_prepared_statement_reopen_is_nonpersistent();
     failures += test_prepared_statement_independent_handles();
@@ -313,6 +315,195 @@ static int test_prepared_statement_source_variables_and_dml(void) {
             .affected_rows = 0,
             .warning_count = 0U,
             .context = "no backslash escapes parameter escaping",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_prepared_statement_prepare_context(void) {
+    char path[test_path_capacity];
+    static const char *const default_mode_columns[] = {"mode_value", "current_mode"};
+    static const char *const default_mode_values[] = {"literal", "ANSI_QUOTES"};
+    static const char *const concat_mode_columns[] = {"mode_value", "current_mode"};
+    static const char *const concat_mode_values[] = {"10", "ANSI_QUOTES"};
+    static const char *const schema_columns[] = {"v", "current_database"};
+    static const char *const prepared_schema_values[] = {"first", "prepare_a"};
+    static const char *const current_schema_values[] = {"second", "prepare_b"};
+    static const char *const no_schema_columns[] = {"current_database"};
+    static const char *const no_schema_values[] = {NULL};
+    static const char *const collation_columns[] = {
+        "literal_collation",
+        "current_collation",
+    };
+    static const char *const case_sensitive_values[] = {
+        "utf8mb4_0900_as_cs",
+        "utf8mb4_0900_ai_ci",
+    };
+    static const char *const case_insensitive_values[] = {
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_as_cs",
+    };
+    mylite_db *database = NULL;
+    int failures = make_test_path(path, sizeof(path), "prepared-context");
+
+    if (failures != 0) {
+        return failures;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open prepare context");
+    if (failures != 0) {
+        remove_related_files(path);
+        return failures;
+    }
+
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = ''");
+    failures += execute_statement_ok(
+        database,
+        "PREPARE mode_default FROM "
+        "'SELECT \"literal\" AS mode_value, @@SESSION.sql_mode AS current_mode'"
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "EXECUTE mode_default",
+            .columns = default_mode_columns,
+            .values = default_mode_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "prepare-time default sql mode",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'PIPES_AS_CONCAT'");
+    failures += execute_statement_ok(
+        database,
+        "SET @mode_source = "
+        "'SELECT 1 || 0 AS mode_value, @@SESSION.sql_mode AS current_mode'"
+    );
+    failures += execute_statement_ok(database, "PREPARE mode_concat FROM @mode_source");
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "EXECUTE mode_concat",
+            .columns = concat_mode_columns,
+            .values = concat_mode_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "prepare-time concat sql mode",
+        }
+    );
+
+    failures += execute_statement_ok(database, "CREATE DATABASE prepare_a");
+    failures += execute_statement_ok(database, "CREATE DATABASE prepare_b");
+    failures += execute_statement_ok(database, "USE prepare_a");
+    failures += execute_statement_ok(database, "CREATE TABLE schema_context (v VARCHAR(20))");
+    failures += execute_statement_ok(database, "INSERT INTO schema_context VALUES ('first')");
+    failures += execute_statement_ok(database, "USE prepare_b");
+    failures += execute_statement_ok(database, "CREATE TABLE schema_context (v VARCHAR(20))");
+    failures += execute_statement_ok(database, "INSERT INTO schema_context VALUES ('second')");
+    failures += execute_statement_ok(database, "USE prepare_a");
+    failures += execute_statement_ok(
+        database,
+        "PREPARE schema_stmt FROM "
+        "'SELECT v, DATABASE() AS current_database FROM schema_context'"
+    );
+    failures += execute_statement_ok(database, "USE prepare_b");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "EXECUTE schema_stmt",
+            .columns = schema_columns,
+            .values = prepared_schema_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "prepare-time default database",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v, DATABASE() AS current_database FROM schema_context",
+            .columns = schema_columns,
+            .values = current_schema_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "execute-time database restored",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE DATABASE prepare_drop");
+    failures += execute_statement_ok(
+        database,
+        "PREPARE drop_current_schema FROM 'DROP DATABASE prepare_drop'"
+    );
+    failures += execute_statement_ok(database, "USE prepare_drop");
+    failures += execute_statement_ok(database, "EXECUTE drop_current_schema");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATABASE() AS current_database",
+            .columns = no_schema_columns,
+            .values = no_schema_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "dropped execute-time database remains cleared",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_as_cs");
+    failures += execute_statement_ok(
+        database,
+        "PREPARE collation_cs FROM "
+        "'SELECT COLLATION(''x'') AS literal_collation, "
+        "@@SESSION.collation_connection AS current_collation'"
+    );
+    failures +=
+        execute_statement_ok(database, "SET SESSION collation_connection = 'utf8mb4_0900_ai_ci'");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "EXECUTE collation_cs",
+            .columns = collation_columns,
+            .values = case_sensitive_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "prepare-time case-sensitive collation",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "PREPARE collation_ci FROM "
+        "'SELECT COLLATION(''x'') AS literal_collation, "
+        "@@SESSION.collation_connection AS current_collation'"
+    );
+    failures +=
+        execute_statement_ok(database, "SET SESSION collation_connection = 'utf8mb4_0900_as_cs'");
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "EXECUTE collation_ci",
+            .columns = collation_columns,
+            .values = case_insensitive_values,
+            .column_count = 2U,
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "prepare-time case-insensitive collation",
         }
     );
 

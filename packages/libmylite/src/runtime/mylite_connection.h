@@ -147,6 +147,12 @@ struct mylite_session_prepared_statement {
     char *sql;
     size_t sql_size;
     size_t parameter_count;
+    unsigned int lexer_modes;
+    bool has_selected_schema;
+    char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
+    char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
 };
 
 enum mylite_session_stored_procedure_local_value_kind {
@@ -358,6 +364,7 @@ struct mylite_db {
 #endif
     mylite_stmt *active_cursor;
     mylite_stmt *live_statements;
+    const struct mylite_session_prepared_statement *active_prepared_statement;
     bool transaction_state_uncertain;
     struct mylite_processlist_session_snapshot processlist_snapshot;
     struct mylite_db *processlist_next;
@@ -367,6 +374,9 @@ struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *datab
 const struct mylite_session_state *mylite_connection_session_state(
     const struct mylite_db *database
 );
+const char *mylite_connection_statement_character_set_client(const struct mylite_db *database);
+const char *mylite_connection_statement_character_set_connection(const struct mylite_db *database);
+const char *mylite_connection_statement_collation_connection(const struct mylite_db *database);
 int mylite_connection_collect_processlist_sessions(
     const struct mylite_db *current,
     struct mylite_processlist_session_snapshot **out_sessions,

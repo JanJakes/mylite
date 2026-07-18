@@ -671,3 +671,10 @@ static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session
     }
     return modes;
 }
+
+static unsigned int lexer_modes_for_statement(const struct mylite_db *database) {
+    if (database != NULL && database->active_prepared_statement != NULL) {
+        return database->active_prepared_statement->lexer_modes;
+    }
+    return database == NULL ? 0U : lexer_modes_for_session_sql_mode(&database->session);
+}

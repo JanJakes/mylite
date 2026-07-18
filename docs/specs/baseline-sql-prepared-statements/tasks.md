@@ -12,6 +12,9 @@
   parameters safely.
 - [x] Add marker counting, prepare-time validation, and execute-time expansion
   without admitting direct `?` SQL.
+- [x] Capture prepare-time lexer, default-database, character-set, and collation
+  context while preserving execute-time parameter values, session-variable
+  readback, and runtime validation modes.
 - [x] Route expanded execution through existing statement execution semantics.
 - [x] Add MySQL-runtime expectation script.
 - [x] Add parser/runtime C tests and CMake registration.

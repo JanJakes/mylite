@@ -48,11 +48,11 @@ static int append_show_result_columns(
         if (definition->uses_connection_collation) {
             const uint64_t max_bytes_per_character =
                 result_metadata_collation_max_bytes_per_character(
-                    database->session.collation_connection
+                    mylite_connection_statement_collation_connection(database)
                 );
 
             descriptor.charset_id = result_metadata_collation_id(
-                database->session.collation_connection
+                mylite_connection_statement_collation_connection(database)
             );
             descriptor.collation_id = descriptor.charset_id;
             if (descriptor.display_length > UINT64_MAX / max_bytes_per_character) {

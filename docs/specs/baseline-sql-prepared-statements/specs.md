@@ -60,6 +60,20 @@ Runtime probes verified these behaviors for the supported slice:
 - Successful `EXECUTE` reports the executed statement's row-count semantics:
   `SELECT` yields `ROW_COUNT() == -1`; non-query statements use the underlying
   affected-row count.
+- SQL syntax is interpreted using the SQL-mode lexer rules in effect at
+  `PREPARE`. Later `sql_mode` changes do not reinterpret quoted tokens,
+  `PIPES_AS_CONCAT`, or backslash escapes in the prepared source.
+- The default database, connection character set, and connection collation are
+  captured at `PREPARE`. Unqualified objects, `DATABASE()`, string-literal
+  metadata, and literal collation semantics use that context during execution,
+  after which the connection's current default database is restored.
+- User-variable parameter values and ordinary session-variable reads remain
+  execute-time. For example, `@@session.sql_mode` and
+  `@@session.collation_connection` report their current values even when the
+  prepared source and literals use their captured prepare-time context.
+- Runtime validation modes remain execute-time. Changing strict data-validation
+  modes after `PREPARE` affects a later DML execution without reparsing the
+  prepared source under the new syntax modes.
 
 ## Supported Surface
 
@@ -161,12 +175,16 @@ prepared SQL string.
 - Lexer/parser/AST: parser adds lifecycle AST nodes but does not make `?`
   valid in direct SQL.
 - Runtime session state: owns a growable vector of prepared statement entries
-  and a small user-variable value-kind tag needed for safe marker rendering.
-  Entries are zero-init safe and freed on close.
+  containing source SQL, marker count, lexer modes, default database, and
+  connection character-set/collation context, plus a small user-variable
+  value-kind tag needed for safe marker rendering. Entries are zero-init safe
+  and freed on close.
 - Analyzer/planner: no separate prepared-statement planner is introduced.
   Prepare-time validation parses a marker-normalized SQL string and stores the
-  original source plus marker count. Execute-time expansion uses the existing
-  analyzer/planner for the expanded SQL.
+  original source plus immutable prepare context. Execute-time expansion uses
+  the captured lexer mode, and the existing analyzer/planner resolves the
+  expanded SQL under statement-effective schema and collation accessors without
+  changing observable session-variable values.
 - Catalog/storage/VFS: no catalog rows, descriptor versions, generation
   counters, SQLite schema text, `.mylite` preamble, or shifted SQLite payload
   invariants change.
@@ -230,3 +248,6 @@ snapshot path.
 - No prepared lifecycle commands inside prepared SQL.
 - No additional SQL statement compatibility beyond whatever the expanded SQL
   already supports directly.
+- No typed SQL-level parameter descriptors; marker values are still rendered as
+  SQL literals before parsing, subject to the documented value-kind and binary
+  limitations.

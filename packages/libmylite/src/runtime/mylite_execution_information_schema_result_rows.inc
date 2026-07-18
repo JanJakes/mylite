@@ -308,8 +308,12 @@ static void information_schema_apply_connection_text_metadata(
         return;
     }
     max_bytes_per_character =
-        result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
-    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+        result_metadata_collation_max_bytes_per_character(
+            mylite_connection_statement_collation_connection(database)
+        );
+    descriptor->charset_id = result_metadata_collation_id(
+        mylite_connection_statement_collation_connection(database)
+    );
     descriptor->collation_id = descriptor->charset_id;
     if (column_definition->column_type != NULL &&
         strcmp(column_definition->column_type, "varchar(65535)") == 0 &&
@@ -441,14 +445,18 @@ static void information_schema_make_group_concat_result_column_descriptor(
     struct mylite_result_column_descriptor *out_descriptor
 ) {
     const uint64_t max_bytes_per_character =
-        result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
+        result_metadata_collation_max_bytes_per_character(
+            mylite_connection_statement_collation_connection(database)
+        );
 
     *out_descriptor = unknown_result_column_descriptor(label);
     out_descriptor->logical_type = database->session.group_concat_max_len > 512U
                                        ? MYLITE_RESULT_LOGICAL_TYPE_BLOB
                                        : MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
     out_descriptor->charset_id =
-        result_metadata_collation_id(database->session.collation_connection);
+        result_metadata_collation_id(
+            mylite_connection_statement_collation_connection(database)
+        );
     out_descriptor->collation_id = out_descriptor->charset_id;
     if (database->session.group_concat_max_len > UINT64_MAX / max_bytes_per_character) {
         out_descriptor->display_length = UINT32_MAX;

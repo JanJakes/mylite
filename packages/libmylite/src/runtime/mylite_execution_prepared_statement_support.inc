@@ -93,6 +93,7 @@ static int validate_prepared_statement_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
+    unsigned int lexer_modes,
     size_t *out_parameter_count
 ) {
     struct mylite_sql_parse_result parse_result;
@@ -106,7 +107,14 @@ static int validate_prepared_statement_sql(
     }
     *out_parameter_count = 0U;
 
-    rc = build_prepared_statement_sql(database, sql, sql_size, NULL, &normalized_sql);
+    rc = build_prepared_statement_sql(
+        database,
+        sql,
+        sql_size,
+        lexer_modes,
+        NULL,
+        &normalized_sql
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -116,7 +124,7 @@ static int validate_prepared_statement_sql(
         (struct mylite_sql_parse_config){
             .input = normalized_sql.text,
             .length = normalized_sql.text_size,
-            .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .modes = lexer_modes,
         },
         &parse_result
     ));
@@ -149,6 +157,7 @@ static int build_prepared_statement_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
+    unsigned int lexer_modes,
     const struct mylite_sql_ast_node *using_list,
     struct prepared_statement_expanded_sql *out_sql
 ) {
@@ -170,7 +179,7 @@ static int build_prepared_statement_sql(
         (struct mylite_sql_lexer_config){
             .input = sql,
             .length = sql_size,
-            .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .modes = lexer_modes,
         }
     );
 
@@ -203,6 +212,7 @@ static int build_prepared_statement_sql(
                 rc = append_execute_parameter_sql(
                     database,
                     &output,
+                    lexer_modes,
                     child_at(using_list, parameter_index)
                 );
             }
@@ -232,6 +242,7 @@ static int build_prepared_statement_sql(
 static int append_execute_parameter_sql(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    unsigned int lexer_modes,
     const struct mylite_sql_ast_node *variable
 ) {
     char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
@@ -254,22 +265,19 @@ static int append_execute_parameter_sql(
         return mylite_dynamic_string_append_bytes(string, value->value, value->value_size);
     }
 
-    return append_execute_string_literal(database, string, value->value, value->value_size);
+    return append_execute_string_literal(string, lexer_modes, value->value, value->value_size);
 }
 
 static int append_execute_string_literal(
-    const struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    unsigned int lexer_modes,
     const char *text,
     size_t text_size
 ) {
-    bool no_backslash_escapes = false;
+    bool no_backslash_escapes =
+        (lexer_modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U;
     int rc = mylite_dynamic_string_append_char(string, '\'');
 
-    if (database != NULL) {
-        no_backslash_escapes =
-            (database->session.sql_mode & MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U;
-    }
     for (size_t index = 0U; rc == MYLITE_OK && index < text_size; ++index) {
         if (text[index] == '\'') {
             rc = mylite_dynamic_string_append(string, "''");

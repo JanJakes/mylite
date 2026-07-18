@@ -143,7 +143,7 @@ static int append_decoded_sql_string_literal_span(
 
     quote = text[quote_index];
     allow_backslash = true;
-    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+    if ((lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U) {
         allow_backslash = false;
     }
     for (size_t index = quote_index + 1U; rc == MYLITE_OK && index + 1U < length; ++index) {

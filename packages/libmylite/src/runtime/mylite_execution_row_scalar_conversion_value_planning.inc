@@ -1621,8 +1621,8 @@ static int append_row_scalar_conversion_step(
     step.kind = conversion_kind;
     switch (conversion_kind) {
     case PLANNED_ROW_SCALAR_CONVERSION_CHAR:
-        step.charset = database->session.character_set_connection;
-        step.collation = database->session.collation_connection;
+        step.charset = mylite_connection_statement_character_set_connection(database);
+        step.collation = mylite_connection_statement_collation_connection(database);
         break;
     case PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET:
         step.charset = charset_info.charset;

@@ -9,6 +9,7 @@ static int execute_prepare_statement(
     size_t source_sql_size = 0U;
     size_t parameter_count = 0U;
     size_t existing_index = 0U;
+    unsigned int lexer_modes = lexer_modes_for_session_sql_mode(&database->session);
     int rc = MYLITE_OK;
 
     rc = copy_prepared_statement_name(database, child_at(statement, 0U), name, sizeof(name));
@@ -29,6 +30,7 @@ static int execute_prepare_statement(
             database,
             source_sql,
             source_sql_size,
+            lexer_modes,
             &parameter_count
         );
     }
@@ -50,6 +52,32 @@ static int execute_prepare_statement(
         prepared->sql = source_sql;
         prepared->sql_size = source_sql_size;
         prepared->parameter_count = parameter_count;
+        prepared->lexer_modes = lexer_modes;
+        prepared->has_selected_schema = database->session.has_selected_schema;
+        (void)snprintf(
+            prepared->selected_schema,
+            sizeof(prepared->selected_schema),
+            "%s",
+            database->session.selected_schema
+        );
+        (void)snprintf(
+            prepared->character_set_client,
+            sizeof(prepared->character_set_client),
+            "%s",
+            database->session.character_set_client
+        );
+        (void)snprintf(
+            prepared->character_set_connection,
+            sizeof(prepared->character_set_connection),
+            "%s",
+            database->session.character_set_connection
+        );
+        (void)snprintf(
+            prepared->collation_connection,
+            sizeof(prepared->collation_connection),
+            "%s",
+            database->session.collation_connection
+        );
         source_sql = NULL;
         ++database->session.prepared_statement_count;
     }
@@ -97,6 +125,7 @@ static int execute_execute_statement(
         database,
         prepared->sql,
         prepared->sql_size,
+        prepared->lexer_modes,
         using_list,
         &expanded_sql
     );
@@ -105,6 +134,7 @@ static int execute_execute_statement(
             database,
             expanded_sql.text,
             expanded_sql.text_size,
+            prepared,
             out_result
         );
     }
@@ -117,6 +147,7 @@ static int execute_expanded_prepared_statement_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
+    const struct mylite_session_prepared_statement *prepared,
     mylite_result **out_result
 ) {
     struct mylite_statement_context context;
@@ -126,6 +157,11 @@ static int execute_expanded_prepared_statement_sql(
     size_t statement_count = 0U;
     bool preserve_diagnostics_snapshot = false;
     bool completed_statement_is_select = false;
+    bool saved_has_selected_schema = false;
+    bool saved_selected_schema_is_drop_target = false;
+    char saved_selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY] = {0};
+    char dropped_schema[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+    const struct mylite_session_prepared_statement *saved_active_prepared_statement = NULL;
     int rc = MYLITE_OK;
 
     if (database == NULL || sql == NULL || out_result == NULL) {
@@ -146,7 +182,9 @@ static int execute_expanded_prepared_statement_sql(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = sql_size,
-            .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .modes = prepared == NULL
+                         ? lexer_modes_for_session_sql_mode(&database->session)
+                         : prepared->lexer_modes,
         },
         &parse_result
     ));
@@ -172,6 +210,37 @@ static int execute_expanded_prepared_statement_sql(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK && statement != NULL) {
+        saved_active_prepared_statement = database->active_prepared_statement;
+        database->active_prepared_statement = prepared;
+        if (prepared != NULL) {
+            saved_has_selected_schema = database->session.has_selected_schema;
+            (void)snprintf(
+                saved_selected_schema,
+                sizeof(saved_selected_schema),
+                "%s",
+                database->session.selected_schema
+            );
+            if (saved_has_selected_schema &&
+                statement->kind == MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT &&
+                copy_identifier_text(
+                    child_at(statement, 0U),
+                    dropped_schema,
+                    sizeof(dropped_schema),
+                    database
+                ) == MYLITE_OK) {
+                saved_selected_schema_is_drop_target = text_equals_ascii_case_insensitive(
+                    saved_selected_schema,
+                    dropped_schema
+                );
+            }
+            database->session.has_selected_schema = prepared->has_selected_schema;
+            (void)snprintf(
+                database->session.selected_schema,
+                sizeof(database->session.selected_schema),
+                "%s",
+                prepared->selected_schema
+            );
+        }
         database->session.active_statement_time = (int64_t)mylite_statement_context_time(&context);
         rc = prepare_statement_transaction_boundary(database, statement);
         if (rc == MYLITE_OK) {
@@ -183,6 +252,21 @@ static int execute_expanded_prepared_statement_sql(
         if (rc == MYLITE_OK) {
             rc = execute_non_prepared_statement(database, &context, statement, out_result);
         }
+        if (prepared != NULL) {
+            database->session.has_selected_schema =
+                saved_has_selected_schema && !(rc == MYLITE_OK && saved_selected_schema_is_drop_target);
+            if (database->session.has_selected_schema) {
+                (void)snprintf(
+                    database->session.selected_schema,
+                    sizeof(database->session.selected_schema),
+                    "%s",
+                    saved_selected_schema
+                );
+            } else {
+                database->session.selected_schema[0] = '\0';
+            }
+        }
+        database->active_prepared_statement = saved_active_prepared_statement;
     }
     if (rc == MYLITE_OK) {
         completed_row_count = row_count_for_completed_statement(statement, *out_result);

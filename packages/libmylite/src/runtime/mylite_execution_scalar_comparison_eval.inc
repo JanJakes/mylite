@@ -1141,7 +1141,7 @@ static int evaluate_scalar_comparison_like_expression(
             value.value,
             scalar_cell_text_length(&value),
             false,
-            session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)
+            (lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U
                 ? '\0'
                 : '\\'
         );

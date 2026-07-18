@@ -575,8 +575,9 @@ static int row_scalar_collate_base_charset(
 
     switch (base_expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
-        *out_charset =
-            base_expression->value.is_text ? database->session.character_set_connection : "binary";
+        *out_charset = base_expression->value.is_text
+                           ? mylite_connection_statement_character_set_connection(database)
+                           : "binary";
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         if (column_descriptor_is_string_family(&base_expression->column) &&
@@ -593,7 +594,7 @@ static int row_scalar_collate_base_charset(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
-        *out_charset = database->session.character_set_connection;
+        *out_charset = mylite_connection_statement_character_set_connection(database);
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION: {
         const char *charset = row_scalar_conversion_result_charset(base_expression);
@@ -646,11 +647,11 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
-        *out_charset = database->session.character_set_connection;
+        *out_charset = mylite_connection_statement_character_set_connection(database);
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
         *out_charset = mylite_spatial_function_returns_text(base_expression->spatial_function_kind)
-                           ? database->session.character_set_connection
+                           ? mylite_connection_statement_character_set_connection(database)
                            : "binary";
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_AES_ENCRYPT:
@@ -660,7 +661,7 @@ static int row_scalar_collate_base_charset(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (base_expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
-            *out_charset = database->session.character_set_connection;
+            *out_charset = mylite_connection_statement_character_set_connection(database);
             return MYLITE_OK;
         }
         break;

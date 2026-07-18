@@ -305,8 +305,8 @@ static int charset_collation_scalar_result(
     if (is_statement_digest_string) {
         return charset_collation_select_result(
             function_kind,
-            database->session.character_set_connection,
-            database->session.collation_connection,
+            mylite_connection_statement_character_set_connection(database),
+            mylite_connection_statement_collation_connection(database),
             out_result
         );
     }
@@ -314,8 +314,8 @@ static int charset_collation_scalar_result(
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
         if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_STRING) {
-            charset = database->session.character_set_connection;
-            collation = database->session.collation_connection;
+            charset = mylite_connection_statement_character_set_connection(database);
+            collation = mylite_connection_statement_collation_connection(database);
         }
         return charset_collation_select_result(function_kind, charset, collation, out_result);
     case MYLITE_SQL_AST_UNARY_EXPRESSION: {
@@ -937,8 +937,8 @@ static int charset_collation_concat_scalar_result(
     }
     return charset_collation_select_result(
         function_kind,
-        database->session.character_set_connection,
-        database->session.collation_connection,
+        mylite_connection_statement_character_set_connection(database),
+        mylite_connection_statement_collation_connection(database),
         out_result
     );
 }
@@ -1308,8 +1308,8 @@ static int scalar_expression_base_charset_collation_metadata(
         return match_rc;
     }
     if (is_statement_digest_string) {
-        *out_charset = database->session.character_set_connection;
-        *out_collation = database->session.collation_connection;
+        *out_charset = mylite_connection_statement_character_set_connection(database);
+        *out_collation = mylite_connection_statement_collation_connection(database);
         return MYLITE_OK;
     }
 
@@ -1321,8 +1321,8 @@ static int scalar_expression_base_charset_collation_metadata(
         case MYLITE_SQL_AST_LITERAL_INTEGER:
         case MYLITE_SQL_AST_LITERAL_TRUE:
         case MYLITE_SQL_AST_LITERAL_FALSE:
-            *out_charset = database->session.character_set_connection;
-            *out_collation = database->session.collation_connection;
+            *out_charset = mylite_connection_statement_character_set_connection(database);
+            *out_collation = mylite_connection_statement_collation_connection(database);
             break;
         case MYLITE_SQL_AST_LITERAL_NULL:
         case MYLITE_SQL_AST_LITERAL_HEX:
@@ -1351,8 +1351,8 @@ static int scalar_expression_base_charset_collation_metadata(
              operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) &&
             literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-            *out_charset = database->session.character_set_connection;
-            *out_collation = database->session.collation_connection;
+            *out_charset = mylite_connection_statement_character_set_connection(database);
+            *out_collation = mylite_connection_statement_collation_connection(database);
             return MYLITE_OK;
         }
         break;
@@ -1401,8 +1401,8 @@ static int scalar_expression_base_charset_collation_metadata(
     case MYLITE_SQL_AST_SHA_FUNCTION:
     case MYLITE_SQL_AST_SHA1_FUNCTION:
     case MYLITE_SQL_AST_SHA2_FUNCTION:
-        *out_charset = database->session.character_set_connection;
-        *out_collation = database->session.collation_connection;
+        *out_charset = mylite_connection_statement_character_set_connection(database);
+        *out_collation = mylite_connection_statement_collation_connection(database);
         return MYLITE_OK;
     default:
         break;

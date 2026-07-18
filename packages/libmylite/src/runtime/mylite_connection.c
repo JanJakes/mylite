@@ -168,6 +168,36 @@ const struct mylite_session_state *mylite_connection_session_state(
     return &database->session;
 }
 
+const char *mylite_connection_statement_character_set_client(const struct mylite_db *database) {
+    if (database == NULL) {
+        return NULL;
+    }
+    if (database->active_prepared_statement != NULL) {
+        return database->active_prepared_statement->character_set_client;
+    }
+    return database->session.character_set_client;
+}
+
+const char *mylite_connection_statement_character_set_connection(const struct mylite_db *database) {
+    if (database == NULL) {
+        return NULL;
+    }
+    if (database->active_prepared_statement != NULL) {
+        return database->active_prepared_statement->character_set_connection;
+    }
+    return database->session.character_set_connection;
+}
+
+const char *mylite_connection_statement_collation_connection(const struct mylite_db *database) {
+    if (database == NULL) {
+        return NULL;
+    }
+    if (database->active_prepared_statement != NULL) {
+        return database->active_prepared_statement->collation_connection;
+    }
+    return database->session.collation_connection;
+}
+
 int mylite_connection_collect_processlist_sessions(
     const struct mylite_db *current,
     struct mylite_processlist_session_snapshot **out_sessions,

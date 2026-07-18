@@ -499,12 +499,14 @@ static int validate_prepared_statement_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
+    unsigned int lexer_modes,
     size_t *out_parameter_count
 );
 static int build_prepared_statement_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
+    unsigned int lexer_modes,
     const struct mylite_sql_ast_node *using_list,
     struct prepared_statement_expanded_sql *out_sql
 );
@@ -512,16 +514,18 @@ static int execute_expanded_prepared_statement_sql(
     struct mylite_db *database,
     const char *sql,
     size_t sql_size,
+    const struct mylite_session_prepared_statement *prepared,
     mylite_result **out_result
 );
 static int append_execute_parameter_sql(
     struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    unsigned int lexer_modes,
     const struct mylite_sql_ast_node *variable
 );
 static int append_execute_string_literal(
-    const struct mylite_db *database,
     struct mylite_dynamic_string *string,
+    unsigned int lexer_modes,
     const char *text,
     size_t text_size
 );
@@ -2303,6 +2307,7 @@ static int rebuild_sql_mode_text(
 static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
+static unsigned int lexer_modes_for_statement(const struct mylite_db *database);
 static bool system_variable_expression_has_global_scope(
     const struct mylite_sql_ast_node *expression
 );

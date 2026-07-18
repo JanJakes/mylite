@@ -68,6 +68,8 @@ expect_error() {
 
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
+    run_mysql "DROP DATABASE IF EXISTS ${DATABASE}_other;" >/dev/null 2>&1 || true
+    run_mysql "DROP DATABASE IF EXISTS ${DATABASE}_drop;" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT HUP INT TERM
@@ -146,6 +148,68 @@ expect_output \
      SET @slash = 'a\\\\b';
      EXECUTE slash USING @slash;
      DEALLOCATE PREPARE slash;" \
+    "$DATABASE"
+
+expect_output \
+    "prepare-time sql mode and execute-time sql mode readback" \
+    "literal	ANSI_QUOTES
+10	ANSI_QUOTES" \
+    "SET SESSION sql_mode = '';
+     PREPARE mode_default FROM
+       'SELECT \"literal\", @@SESSION.sql_mode';
+     SET SESSION sql_mode = 'ANSI_QUOTES';
+     EXECUTE mode_default;
+     DEALLOCATE PREPARE mode_default;
+     SET SESSION sql_mode = 'PIPES_AS_CONCAT';
+     SET @mode_source = 'SELECT 1 || 0, @@SESSION.sql_mode';
+     PREPARE mode_concat FROM @mode_source;
+     SET SESSION sql_mode = 'ANSI_QUOTES';
+     EXECUTE mode_concat;
+     DEALLOCATE PREPARE mode_concat;" \
+    "$DATABASE"
+
+expect_output \
+    "prepare-time default database" \
+    "first	${DATABASE}
+second	${DATABASE}_other" \
+    "CREATE DATABASE ${DATABASE}_other;
+     CREATE TABLE ${DATABASE}.schema_context (v VARCHAR(20));
+     CREATE TABLE ${DATABASE}_other.schema_context (v VARCHAR(20));
+     INSERT INTO ${DATABASE}.schema_context VALUES ('first');
+     INSERT INTO ${DATABASE}_other.schema_context VALUES ('second');
+     USE ${DATABASE};
+     PREPARE schema_stmt FROM 'SELECT v, DATABASE() FROM schema_context';
+     USE ${DATABASE}_other;
+     EXECUTE schema_stmt;
+     SELECT v, DATABASE() FROM schema_context;
+     DEALLOCATE PREPARE schema_stmt;"
+
+expect_output \
+    "prepared drop clears execute-time default database" \
+    "NULL" \
+    "CREATE DATABASE ${DATABASE}_drop;
+     USE ${DATABASE}_other;
+     PREPARE drop_current_schema FROM 'DROP DATABASE ${DATABASE}_drop';
+     USE ${DATABASE}_drop;
+     EXECUTE drop_current_schema;
+     SELECT DATABASE();
+     DEALLOCATE PREPARE drop_current_schema;"
+
+expect_output \
+    "prepare-time literal collation and execute-time collation readback" \
+    "utf8mb4_0900_as_cs	utf8mb4_0900_ai_ci
+utf8mb4_0900_ai_ci	utf8mb4_0900_as_cs" \
+    "SET NAMES utf8mb4 COLLATE utf8mb4_0900_as_cs;
+     PREPARE collation_cs FROM
+       'SELECT COLLATION(''x''), @@SESSION.collation_connection';
+     SET SESSION collation_connection = 'utf8mb4_0900_ai_ci';
+     EXECUTE collation_cs;
+     DEALLOCATE PREPARE collation_cs;
+     PREPARE collation_ci FROM
+       'SELECT COLLATION(''x''), @@SESSION.collation_connection';
+     SET SESSION collation_connection = 'utf8mb4_0900_as_cs';
+     EXECUTE collation_ci;
+     DEALLOCATE PREPARE collation_ci;" \
     "$DATABASE"
 
 expect_output \

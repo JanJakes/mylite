@@ -2040,7 +2040,7 @@ static int like_escape_character_from_predicate(
         return MYLITE_MISUSE;
     }
     *out_escape_character =
-        session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)
+        (lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U
             ? '\0'
             : '\\';
     if (escape_node == NULL) {

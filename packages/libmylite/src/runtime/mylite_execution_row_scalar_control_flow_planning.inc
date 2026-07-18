@@ -710,8 +710,8 @@ static int plan_row_scalar_like_predicate_expression(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
     out_expression->argument_count = 2U;
     out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_LIKE;
-    out_expression->like_uses_escape = (bool
-    )!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES);
+    out_expression->like_uses_escape =
+        (lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) == 0U;
 
     rc = plan_row_scalar_control_flow_value_argument(
         database,
@@ -820,8 +820,8 @@ static int plan_row_scalar_leaf_like_predicate_expression(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
     out_expression->argument_count = 2U;
     out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_LIKE;
-    out_expression->like_uses_escape = (bool
-    )!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES);
+    out_expression->like_uses_escape =
+        (lexer_modes_for_statement(database) & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) == 0U;
 
     rc = plan_row_scalar_control_flow_leaf_value_argument(
         database,

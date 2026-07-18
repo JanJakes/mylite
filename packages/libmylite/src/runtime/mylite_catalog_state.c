@@ -140,7 +140,7 @@ int mylite_catalog_synchronize_snapshot(struct mylite_db *database) {
         database->session.catalog_generation = catalog_generation;
         mylite_catalog_invalidate_descriptor_cache(database);
     } else if (database->catalog.has_observed_data_version) {
-        mylite_catalog_table_cache_invalidate(&database->catalog);
+        mylite_catalog_table_cache_invalidate_status(&database->catalog);
     }
     database->catalog.observed_data_version = data_version;
     database->catalog.has_observed_data_version = true;

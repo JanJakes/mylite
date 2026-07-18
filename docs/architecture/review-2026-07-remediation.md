@@ -276,7 +276,16 @@ complete.
   across reset, with catalog and SQLite schema generation invalidation.
   Parameterized plans remain open because the current analyzer embeds bound
   values and must first separate value binding from semantic analysis.
-- [ ] Measure and correct administrative cache/concurrency scaling.
+- [x] Measure and correct administrative cache/concurrency scaling. Descriptor
+  caches use LRU replacement rather than fixed-slot churn, PROCESSLIST publishes
+  synchronized session snapshots and sorts with `qsort`, and ordinary writes
+  on another handle no longer discard structural table descriptors. A changed
+  SQLite data version with an unchanged catalog generation now marks only the
+  three mutable table-status fields stale; the next table read refreshes those
+  fields once from the reader's established snapshot. Cross-handle lifecycle
+  coverage proves status freshness while tracing zero full descriptor reads and
+  one narrow status read. The threaded read/write benchmark remained dominated
+  by scheduler and SQLite locking noise, so no latency improvement is claimed.
 
 ### Build, size, and packaging
 

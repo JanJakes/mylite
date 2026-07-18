@@ -58,6 +58,7 @@ struct mylite_catalog_table_descriptor_input {
 
 void mylite_catalog_schema_table_cache_invalidate(struct mylite_catalog *catalog);
 void mylite_catalog_table_cache_invalidate(struct mylite_catalog *catalog);
+void mylite_catalog_table_cache_invalidate_status(struct mylite_catalog *catalog);
 void mylite_catalog_table_cache_invalidate_entry(struct mylite_catalog *catalog, int64_t table_id);
 void mylite_catalog_schema_table_cache_deinit(struct mylite_catalog *catalog);
 bool mylite_catalog_find_cached_foreign_key_roles(

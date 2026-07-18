@@ -26,6 +26,7 @@ struct cached_schema_descriptor {
 struct cached_table_descriptor {
     struct mylite_catalog_table_descriptor *descriptor;
     uint64_t last_used;
+    bool status_is_stale;
 };
 
 struct cached_foreign_key_roles {
@@ -176,14 +177,18 @@ static void cache_schema_descriptor(
     struct mylite_catalog *catalog,
     const struct mylite_catalog_schema_descriptor *schema
 );
-static const struct mylite_catalog_table_descriptor *find_cached_table_by_name(
+static struct cached_table_descriptor *find_cached_table_by_name(
     struct mylite_catalog *catalog,
     int64_t schema_id,
     const char *name
 );
-static const struct mylite_catalog_table_descriptor *find_cached_table_by_id(
+static struct cached_table_descriptor *find_cached_table_by_id(
     struct mylite_catalog *catalog,
     int64_t table_id
+);
+static int refresh_cached_table_status(
+    struct mylite_db *database,
+    struct cached_table_descriptor *entry
 );
 static void cache_table_descriptor(
     struct mylite_catalog *catalog,
@@ -416,7 +421,7 @@ int mylite_catalog_try_read_table_by_name(
     struct mylite_catalog_table_descriptor *out_table,
     bool *out_found
 ) {
-    const struct mylite_catalog_table_descriptor *cached_table = NULL;
+    struct cached_table_descriptor *cached_entry = NULL;
     int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
@@ -435,9 +440,13 @@ int mylite_catalog_try_read_table_by_name(
         return rc;
     }
 
-    cached_table = find_cached_table_by_name(&database->catalog, schema_id, name);
-    if (cached_table != NULL) {
-        *out_table = *cached_table;
+    cached_entry = find_cached_table_by_name(&database->catalog, schema_id, name);
+    if (cached_entry != NULL) {
+        rc = refresh_cached_table_status(database, cached_entry);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_table = *cached_entry->descriptor;
         *out_found = true;
         return MYLITE_OK;
     }
@@ -489,7 +498,7 @@ int mylite_catalog_read_table_by_id(
     int64_t table_id,
     struct mylite_catalog_table_descriptor *out_table
 ) {
-    const struct mylite_catalog_table_descriptor *cached_table = NULL;
+    struct cached_table_descriptor *cached_entry = NULL;
     int rc = mylite_catalog_validate_ready_database(database);
 
     if (rc != MYLITE_OK) {
@@ -503,9 +512,13 @@ int mylite_catalog_read_table_by_id(
         return rc;
     }
 
-    cached_table = find_cached_table_by_id(&database->catalog, table_id);
-    if (cached_table != NULL) {
-        *out_table = *cached_table;
+    cached_entry = find_cached_table_by_id(&database->catalog, table_id);
+    if (cached_entry != NULL) {
+        rc = refresh_cached_table_status(database, cached_entry);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_table = *cached_entry->descriptor;
         return MYLITE_OK;
     }
 
@@ -603,6 +616,20 @@ void mylite_catalog_table_cache_invalidate(struct mylite_catalog *catalog) {
     for (size_t index = 0U; index < catalog_table_descriptor_cache_limit; ++index) {
         free(catalog->descriptor_cache->tables[index].descriptor);
         catalog->descriptor_cache->tables[index] = (struct cached_table_descriptor){0};
+    }
+}
+
+void mylite_catalog_table_cache_invalidate_status(struct mylite_catalog *catalog) {
+    if (catalog == NULL || catalog->descriptor_cache == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < catalog_table_descriptor_cache_limit; ++index) {
+        struct cached_table_descriptor *entry = &catalog->descriptor_cache->tables[index];
+
+        if (entry->descriptor != NULL) {
+            entry->status_is_stale = true;
+        }
     }
 }
 
@@ -769,7 +796,7 @@ static void cache_schema_descriptor(
     catalog->descriptor_cache_is_valid = true;
 }
 
-static const struct mylite_catalog_table_descriptor *find_cached_table_by_name(
+static struct cached_table_descriptor *find_cached_table_by_name(
     struct mylite_catalog *catalog,
     int64_t schema_id,
     const char *name
@@ -791,13 +818,13 @@ static const struct mylite_catalog_table_descriptor *find_cached_table_by_name(
         if (entry->descriptor != NULL && entry->descriptor->schema_id == schema_id &&
             strcmp(entry->descriptor->name, name) == 0) {
             entry->last_used = descriptor_cache_next_clock(cache);
-            return entry->descriptor;
+            return entry;
         }
     }
     return NULL;
 }
 
-static const struct mylite_catalog_table_descriptor *find_cached_table_by_id(
+static struct cached_table_descriptor *find_cached_table_by_id(
     struct mylite_catalog *catalog,
     int64_t table_id
 ) {
@@ -817,10 +844,64 @@ static const struct mylite_catalog_table_descriptor *find_cached_table_by_id(
 
         if (entry->descriptor != NULL && entry->descriptor->table_id == table_id) {
             entry->last_used = descriptor_cache_next_clock(cache);
-            return entry->descriptor;
+            return entry;
         }
     }
     return NULL;
+}
+
+static int refresh_cached_table_status(
+    struct mylite_db *database,
+    struct cached_table_descriptor *entry
+) {
+    sqlite3_stmt *statement = NULL;
+    int64_t auto_increment_next = 0;
+    int64_t auto_increment_status = 0;
+    int64_t updated_time_utc_epoch = 0;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    if (!entry->status_is_stale) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_prepare_statement(
+        database->sqlite,
+        "SELECT auto_increment_next, auto_increment_status, updated_time_utc_epoch "
+        "FROM _mylite_catalog_tables WHERE table_id = ?1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, entry->descriptor->table_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
+        if (sqlite_rc != SQLITE_ROW) {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(statement, 0, &auto_increment_next);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(statement, 1, &auto_increment_status);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_checked_column_i64(statement, 2, &updated_time_utc_epoch);
+    }
+    if (rc == MYLITE_OK &&
+        (auto_increment_next <= 0 || auto_increment_status < 0 || updated_time_utc_epoch < 0)) {
+        rc = MYLITE_ERROR;
+    }
+    rc = mylite_catalog_finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        entry->descriptor->auto_increment_next = auto_increment_next;
+        entry->descriptor->auto_increment_status = auto_increment_status;
+        entry->descriptor->updated_time_utc_epoch = updated_time_utc_epoch;
+        entry->status_is_stale = false;
+    }
+    return rc;
 }
 
 static void cache_table_descriptor(
@@ -848,6 +929,7 @@ static void cache_table_descriptor(
     *entry = (struct cached_table_descriptor){
         .descriptor = copy,
         .last_used = descriptor_cache_next_clock(cache),
+        .status_is_stale = false,
     };
     catalog->cached_generation = catalog->generation;
     catalog->descriptor_cache_is_valid = true;

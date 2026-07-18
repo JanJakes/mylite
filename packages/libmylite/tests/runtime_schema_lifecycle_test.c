@@ -59,6 +59,11 @@ struct expected_empty_statement_result {
     const char *context;
 };
 
+struct table_descriptor_cache_trace {
+    size_t full_descriptor_reads;
+    size_t status_reads;
+};
+
 static const char *const show_warnings_names[show_warnings_column_count] = {
     "Level",
     "Code",
@@ -71,6 +76,12 @@ static int test_schema_diagnostics_and_unsupported_syntax(void);
 static int test_schema_if_exists_catalog_lookup_failures_are_not_noops(void);
 static int test_drop_schema_physical_failure_preserves_catalog(void);
 static int test_same_file_schema_handles(void);
+static int count_table_descriptor_cache_reads(
+    unsigned int trace_type,
+    void *context,
+    void *statement_pointer,
+    void *expanded_sql
+);
 static int test_independent_schema_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -1056,6 +1067,7 @@ static int test_same_file_schema_handles(void) {
     struct mylite_catalog_table_descriptor first_table = {0};
     struct mylite_catalog_table_descriptor second_table = {0};
     struct mylite_catalog_table_descriptor updated_second_table = {0};
+    struct table_descriptor_cache_trace cache_trace = {0};
     const struct mylite_catalog *first_catalog = NULL;
     const struct mylite_catalog *second_catalog = NULL;
     char first_physical[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
@@ -1215,6 +1227,9 @@ static int test_same_file_schema_handles(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(first, "SELECT * FROM app.second_table", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_int(
         mylite_catalog_read_schema_by_name(first, "app", &schema),
         MYLITE_OK,
@@ -1244,6 +1259,19 @@ static int test_same_file_schema_handles(void) {
         MYLITE_OK,
         "update shared table status from second handle"
     );
+    sqlite = mylite_connection_sqlite_for_test(first);
+    if (sqlite != NULL) {
+        failures += expect_int(
+            sqlite3_trace_v2(
+                sqlite,
+                SQLITE_TRACE_STMT,
+                count_table_descriptor_cache_reads,
+                &cache_trace
+            ),
+            SQLITE_OK,
+            "install table descriptor cache trace"
+        );
+    }
     failures += execute_ok(first, "SELECT * FROM second_table", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1257,6 +1285,20 @@ static int test_same_file_schema_handles(void) {
         external_updated_time,
         "data version invalidates routine table status"
     );
+    if (sqlite != NULL) {
+        failures += expect_int(
+            sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+            SQLITE_OK,
+            "remove table descriptor cache trace"
+        );
+    }
+    failures += expect_size(
+        cache_trace.full_descriptor_reads,
+        0U,
+        "remote data write preserves structural table descriptor"
+    );
+    failures +=
+        expect_size(cache_trace.status_reads, 1U, "remote data write refreshes table status once");
     memcpy(first_physical, first_table.physical_name, sizeof(first_physical));
     memcpy(second_physical, second_table.physical_name, sizeof(second_physical));
 
@@ -1306,6 +1348,33 @@ static int test_same_file_schema_handles(void) {
     remove_related_files(path);
 
     return failures;
+}
+
+static int count_table_descriptor_cache_reads(
+    unsigned int trace_type,
+    void *context, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace callback ABI.
+    void *statement_pointer,
+    void *expanded_sql
+) {
+    static const char full_descriptor_prefix[] =
+        "SELECT table_id, schema_id, name, kind, physical_name, ";
+    static const char status_sql[] =
+        "SELECT auto_increment_next, auto_increment_status, updated_time_utc_epoch "
+        "FROM _mylite_catalog_tables WHERE table_id = ?1";
+    struct table_descriptor_cache_trace *trace = (struct table_descriptor_cache_trace *)context;
+    sqlite3_stmt *statement = (sqlite3_stmt *)statement_pointer;
+    const char *sql = statement == NULL ? NULL : sqlite3_sql(statement);
+
+    (void)expanded_sql;
+    if (trace_type != SQLITE_TRACE_STMT || trace == NULL || sql == NULL) {
+        return 0;
+    }
+    if (strncmp(sql, full_descriptor_prefix, sizeof(full_descriptor_prefix) - 1U) == 0) {
+        ++trace->full_descriptor_reads;
+    } else if (strcmp(sql, status_sql) == 0) {
+        ++trace->status_reads;
+    }
+    return 0;
 }
 
 static int test_independent_schema_handles(void) {

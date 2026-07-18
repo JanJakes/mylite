@@ -281,6 +281,18 @@ SQLite fork. Schema-generation invalidation remains MyLite-owned.
 ## Compatibility status
 
 Core PHP, mysqli, PDO, and SQL-level `PREPARE`/`EXECUTE` use this API. Release
-qualification, sanitizer coverage, benchmark baselines, and ABI/size review are
-tracked separately and remain required before closing the broader remediation
-chapter.
+qualification, sanitizer coverage, and ABI/size review are tracked separately
+and remain required before closing the broader remediation chapter.
+
+## Implementation measurements
+
+The July 2026 Release measurements on the shared development host show a
+prepared WordPress option SELECT at a 39-44 microsecond p50 versus 45-51
+microseconds for literal execution. The equivalent autocommit UPDATE remains
+journal dominated: prepared and literal p50 values both fall near 205-226
+microseconds. These are directional local baselines, not CI thresholds.
+
+Profiling 10,000 retained SELECT executions records zero normalization calls
+and zero parse calls after prepare. A focused materialized-DML profile enforces
+the same invariant and verifies that lazy step execution, SQLite work, and
+completion are included in `cursor_step_ns`.

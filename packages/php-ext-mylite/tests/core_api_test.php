@@ -78,7 +78,11 @@ expect_true(
     'typed prepared row mismatch'
 );
 
-$hostile = "Grace'); DROP TABLE people; --";
+expect_true(
+    $db->exec("SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'") >= 0,
+    'NO_BACKSLASH_ESCAPES setup failed'
+);
+$hostile = "Grace\\'); DROP TABLE people; --";
 $stmt = $db->prepare('SELECT ? AS hostile_value');
 expect_true($stmt->execute([$hostile]), 'execute hostile text statement');
 expect_true(

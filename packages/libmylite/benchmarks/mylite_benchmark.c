@@ -131,6 +131,8 @@ struct runtime_scenario {
     size_t additional_setup_query_count;
     const struct benchmark_query *queries;
     size_t query_count;
+    const struct benchmark_query *prepared_bindings;
+    size_t prepared_binding_count;
 };
 
 #define QUERY(sql_literal) {sql_literal, sizeof(sql_literal) - 1U}
@@ -363,6 +365,23 @@ static const struct benchmark_query wordpress_options_queries[] = {
           "ON DUPLICATE KEY UPDATE option_name = VALUES(option_name), "
           "option_value = VALUES(option_value), autoload = VALUES(autoload)"),
     QUERY("DELETE FROM wp_options WHERE option_name = '_transient_delete_miss'"),
+};
+
+static const struct benchmark_query wordpress_prepared_select_queries[] = {
+    QUERY("SELECT option_value FROM wp_options WHERE option_name = ? LIMIT 1"),
+};
+
+static const struct benchmark_query wordpress_prepared_select_bindings[] = {
+    QUERY("siteurl"),
+};
+
+static const struct benchmark_query wordpress_prepared_update_queries[] = {
+    QUERY("UPDATE wp_options SET option_value = ? WHERE option_name = ?"),
+};
+
+static const struct benchmark_query wordpress_prepared_update_bindings[] = {
+    QUERY("https://example.test"),
+    QUERY("siteurl"),
 };
 
 static const struct benchmark_query wordpress_posts_meta_queries[] = {
@@ -846,6 +865,31 @@ static const struct runtime_scenario runtime_cursor_scenarios[] = {
     },
 };
 
+static const struct runtime_scenario runtime_prepared_scenarios[] = {
+    {
+        .name = "runtime.wp_prepared_select",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_prepared_select_queries,
+        .query_count = sizeof(wordpress_prepared_select_queries) /
+                       sizeof(wordpress_prepared_select_queries[0]),
+        .prepared_bindings = wordpress_prepared_select_bindings,
+        .prepared_binding_count = sizeof(wordpress_prepared_select_bindings) /
+                                  sizeof(wordpress_prepared_select_bindings[0]),
+    },
+    {
+        .name = "runtime.wp_prepared_update",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_prepared_update_queries,
+        .query_count = sizeof(wordpress_prepared_update_queries) /
+                       sizeof(wordpress_prepared_update_queries[0]),
+        .prepared_bindings = wordpress_prepared_update_bindings,
+        .prepared_binding_count = sizeof(wordpress_prepared_update_bindings) /
+                                  sizeof(wordpress_prepared_update_bindings[0]),
+    },
+};
+
 static int parse_options(int argc, char **argv, struct benchmark_options *out_options);
 static int parse_option(
     int argc,
@@ -958,6 +1002,17 @@ static int run_runtime_cursor_scenario(
     const struct runtime_scenario *scenario,
     const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
+);
+static int run_runtime_prepared_scenario(
+    const struct runtime_scenario *scenario,
+    const struct runtime_repetition_options *repeat_options,
+    struct benchmark_measurement *out_measurement
+);
+static int run_prepared_statement_iterations(
+    mylite_stmt *statement,
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *measurement
 );
 static int run_runtime_stress_scenario(
     const struct runtime_scenario *scenario,
@@ -1375,6 +1430,10 @@ static void print_scenario_list(void) {
         runtime_cursor_scenarios,
         sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0])
     );
+    print_runtime_scenario_list(
+        runtime_prepared_scenarios,
+        sizeof(runtime_prepared_scenarios) / sizeof(runtime_prepared_scenarios[0])
+    );
     for (size_t index = 0U; index < mylite_benchmark_runtime_stress_scenario_count(); ++index) {
         puts(mylite_benchmark_runtime_stress_scenario_name(index));
     }
@@ -1631,6 +1690,22 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
             return rc;
         }
     }
+    for (size_t scenario_index = 0U; scenario_index < sizeof(runtime_prepared_scenarios) /
+                                                          sizeof(runtime_prepared_scenarios[0]);
+         ++scenario_index) {
+        rc = run_filtered_runtime_scenario(
+            options,
+            &runtime_prepared_scenarios[scenario_index],
+            "prepared",
+            run_runtime_prepared_scenario,
+            repeat_options,
+            &matched_scenario
+        );
+
+        if (rc != 0) {
+            return rc;
+        }
+    }
     for (size_t scenario_index = 0U;
          scenario_index < mylite_benchmark_runtime_stress_scenario_count();
          ++scenario_index) {
@@ -1698,6 +1773,21 @@ static bool runtime_scenario_filter_exists(const struct benchmark_options *optio
             runtime_scenario_filter_query_index(
                 options,
                 &runtime_cursor_scenarios[scenario_index],
+                &query_index
+            )) {
+            return true;
+        }
+    }
+    for (size_t scenario_index = 0U; scenario_index < sizeof(runtime_prepared_scenarios) /
+                                                          sizeof(runtime_prepared_scenarios[0]);
+         ++scenario_index) {
+        if (runtime_scenario_matches_base_filter(
+                options,
+                &runtime_prepared_scenarios[scenario_index]
+            ) ||
+            runtime_scenario_filter_query_index(
+                options,
+                &runtime_prepared_scenarios[scenario_index],
                 &query_index
             )) {
             return true;
@@ -2097,6 +2187,166 @@ static int run_runtime_cursor_scenario(
 
     mylite_close(database);
     remove_related_database_files(path);
+    return 0;
+}
+
+static int run_runtime_prepared_scenario(
+    const struct runtime_scenario *scenario,
+    const struct runtime_repetition_options *repeat_options,
+    struct benchmark_measurement *out_measurement
+) {
+    mylite_db *database = NULL;
+    mylite_stmt *statement = NULL;
+    char path[runtime_database_path_capacity];
+    uint64_t started = 0U;
+    uint64_t ended = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    bool profile_started = false;
+#endif
+    int rc = make_runtime_database_path(path, sizeof(path), scenario->name);
+    int result = 1;
+
+    if (rc != 0 || scenario->query_count != 1U) {
+        return 1;
+    }
+    remove_related_database_files(path);
+    rc = mylite_open(path, &database);
+    if (rc != MYLITE_OK) {
+        fprintf(stderr, "%s: failed to open benchmark database: %d\n", scenario->name, rc);
+        goto cleanup;
+    }
+    if (setup_runtime_database(database, scenario) != 0) {
+        goto cleanup;
+    }
+    rc =
+        mylite_prepare(database, scenario->queries[0].sql, scenario->queries[0].length, &statement);
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "%s: prepared benchmark failed to prepare: rc=%d err=%d state=%s message=%s\n",
+            scenario->name,
+            rc,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        goto cleanup;
+    }
+    if (mylite_stmt_parameter_count(statement) != scenario->prepared_binding_count) {
+        fprintf(stderr, "%s: prepared benchmark binding count mismatch\n", scenario->name);
+        goto cleanup;
+    }
+    if (benchmark_measurement_prepare_request_latencies(
+            out_measurement,
+            repeat_options->iterations,
+            scenario->name
+        ) != 0 ||
+        run_prepared_statement_iterations(
+            statement,
+            scenario,
+            repeat_options->warmup_iterations,
+            NULL
+        ) != 0) {
+        goto cleanup;
+    }
+#ifdef MYLITE_ENABLE_PROFILING
+    if (repeat_options->profile_json_path != NULL) {
+        rc = mylite_profile_start(database);
+        if (rc != MYLITE_OK) {
+            fprintf(stderr, "%s: failed to start prepared profile: %d\n", scenario->name, rc);
+            goto cleanup;
+        }
+        profile_started = true;
+    }
+#endif
+    started = monotonic_now_ns();
+    rc = run_prepared_statement_iterations(
+        statement,
+        scenario,
+        repeat_options->iterations,
+        out_measurement
+    );
+    ended = monotonic_now_ns();
+    if (rc != 0) {
+        goto cleanup;
+    }
+    out_measurement->elapsed_ns = ended - started;
+#ifdef MYLITE_ENABLE_PROFILING
+    if (profile_started) {
+        if (mylite_profile_stop(database, &out_measurement->profile) != MYLITE_OK) {
+            fprintf(stderr, "%s: failed to stop prepared profile\n", scenario->name);
+            goto cleanup;
+        }
+        profile_started = false;
+    }
+#endif
+    result = 0;
+
+cleanup:
+#ifdef MYLITE_ENABLE_PROFILING
+    if (profile_started) {
+        (void)mylite_profile_stop(database, &out_measurement->profile);
+    }
+#endif
+    if (mylite_stmt_finalize(statement) != MYLITE_OK) {
+        result = 1;
+    }
+    mylite_close(database);
+    remove_related_database_files(path);
+    return result;
+}
+
+static int run_prepared_statement_iterations(
+    mylite_stmt *statement,
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *measurement
+) {
+    const struct benchmark_query *query = &scenario->queries[0];
+
+    for (size_t iteration = 0U; iteration < iterations; ++iteration) {
+        uint64_t request_started = measurement == NULL ? 0U : monotonic_now_ns();
+        size_t value_bytes = 0U;
+        int rc = mylite_stmt_reset(statement);
+
+        for (size_t binding_index = 0U;
+             binding_index < scenario->prepared_binding_count && rc == MYLITE_OK;
+             ++binding_index) {
+            const struct benchmark_query *binding = &scenario->prepared_bindings[binding_index];
+
+            rc = mylite_stmt_bind_text(statement, binding_index, binding->sql, binding->length);
+        }
+        while (rc == MYLITE_OK || rc == MYLITE_ROW) {
+            rc = mylite_stmt_step(statement);
+            if (rc == MYLITE_ROW) {
+                size_t column_count = mylite_stmt_column_count(statement);
+
+                for (size_t column = 0U; column < column_count; ++column) {
+                    value_bytes += mylite_stmt_value_size(statement, column);
+                }
+            }
+        }
+        if (measurement != NULL) {
+            ++measurement->operations;
+            measurement->bytes += query->length;
+            if (rc == MYLITE_DONE) {
+                ++measurement->ok_count;
+            } else {
+                ++measurement->error_count;
+            }
+        }
+        if (rc != MYLITE_DONE) {
+            fprintf(stderr, "%s: prepared benchmark execution failed: rc=%d\n", scenario->name, rc);
+            return 1;
+        }
+        if (measurement != NULL &&
+            measurement->request_latency_count < measurement->request_latency_capacity) {
+            measurement->request_latency_ns[measurement->request_latency_count] =
+                monotonic_now_ns() - request_started;
+            ++measurement->request_latency_count;
+        }
+        (void)value_bytes;
+    }
     return 0;
 }
 
@@ -2952,7 +3202,8 @@ static int append_profile_json(
         ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64 ",\"sqlite_step_ns\":%" PRIu64
         ",\"result_buffer_ns\":%" PRIu64 ",\"cursor_step_ns\":%" PRIu64
         ",\"cursor_finalize_ns\":%" PRIu64 ",\"unattributed_ns\":%" PRIu64
-        ",\"statement_count\":%" PRIu64 ",\"sqlite_step_count\":%" PRIu64
+        ",\"statement_count\":%" PRIu64 ",\"normalization_count\":%" PRIu64
+        ",\"parse_count\":%" PRIu64 ",\"sqlite_step_count\":%" PRIu64
         ",\"result_row_count\":%" PRIu64 ",\"result_value_bytes\":%" PRIu64
         ",\"cursor_row_count\":%" PRIu64 ",\"cursor_value_bytes\":%" PRIu64
         ",\"cursor_finalize_count\":%" PRIu64 "}\n",
@@ -2970,6 +3221,8 @@ static int append_profile_json(
         profile->cursor_finalize_ns,
         unattributed_ns,
         profile->statement_count,
+        profile->normalization_count,
+        profile->parse_count,
         profile->sqlite_step_count,
         profile->result_row_count,
         profile->result_value_bytes,

@@ -965,6 +965,70 @@ static int test_native_prepared_scalar_bindings(void) {
     failures += expect_int(
         mylite_prepare(
             database,
+            "SELECT '?' AS string_marker, 1 AS `?`, ? AS bound_value /* ? */ -- ?\n",
+            strlen("SELECT '?' AS string_marker, 1 AS `?`, ? AS bound_value /* ? */ -- ?\n"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native quoted and commented markers"
+    );
+    failures +=
+        expect_size(mylite_stmt_parameter_count(stmt), 1U, "quoted and commented marker count");
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 0U, 31), MYLITE_OK, "bind classified marker");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "classified marker row");
+    failures += expect_cursor_text(stmt, 0U, "?", "quoted string marker value");
+    failures += expect_cursor_text(stmt, 1U, "1", "quoted identifier marker value");
+    failures += expect_cursor_text(stmt, 2U, "31", "classified bound marker value");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize classified markers");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT /*!80000 ? AS executable_value, */ ? AS ordinary_value "
+            "/*!99999 , ? AS skipped_value */",
+            strlen(
+                "SELECT /*!80000 ? AS executable_value, */ ? AS ordinary_value "
+                "/*!99999 , ? AS skipped_value */"
+            ),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native executable-comment markers"
+    );
+    failures +=
+        expect_size(mylite_stmt_parameter_count(stmt), 2U, "version-gated executable marker count");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 41),
+        MYLITE_OK,
+        "bind executable-comment marker"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, 42),
+        MYLITE_OK,
+        "bind ordinary marker after executable comment"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "executable-comment marker row");
+    failures += expect_cursor_text(stmt, 0U, "41", "executable-comment marker value");
+    failures += expect_cursor_text(stmt, 1U, "42", "ordinary marker value");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize executable-comment markers");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(database, "SELECT * FROM ?", strlen("SELECT * FROM ?"), &stmt),
+        MYLITE_ERROR,
+        "reject native identifier marker"
+    );
+    failures +=
+        expect_contains(mylite_errmsg(database), "syntax", "native identifier marker diagnostic");
+    (void)mylite_stmt_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
             "SELECT name FROM items WHERE id = ? ORDER BY id LIMIT ? OFFSET ?",
             strlen("SELECT name FROM items WHERE id = ? ORDER BY id LIMIT ? OFFSET ?"),
             &stmt

@@ -89,12 +89,14 @@ void mylite_profile_record_statement(mylite_db *database, uint64_t started_ns) {
 void mylite_profile_record_normalization(mylite_db *database, uint64_t started_ns) {
     if (database != NULL && database->profile_active) {
         database->profile.normalization_ns += elapsed_since(started_ns);
+        ++database->profile.normalization_count;
     }
 }
 
 void mylite_profile_record_parse(mylite_db *database, uint64_t started_ns) {
     if (database != NULL && database->profile_active) {
         database->profile.parse_ns += elapsed_since(started_ns);
+        ++database->profile.parse_count;
     }
 }
 

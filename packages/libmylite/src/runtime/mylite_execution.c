@@ -949,27 +949,39 @@ int mylite_stmt_step(mylite_stmt *stmt) {
     if (stmt == NULL || stmt->database == NULL) {
         return MYLITE_MISUSE;
     }
-    rc = reject_poisoned_connection(stmt->database);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows) {
-        if (stmt->done) {
-            return MYLITE_DONE;
-        }
-        rc = start_cursor_execution(stmt);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-    }
-    if (stmt->done) {
-        return MYLITE_DONE;
-    }
-
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_enter_api(stmt->database);
     profile_step_started_ns = mylite_profile_now_ns();
 #endif
+    rc = reject_poisoned_connection(stmt->database);
+    if (rc != MYLITE_OK) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
+        return rc;
+    }
+    if (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows) {
+        if (stmt->done) {
+#ifdef MYLITE_ENABLE_PROFILING
+            mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
+            return MYLITE_DONE;
+        }
+        rc = start_cursor_execution(stmt);
+        if (rc != MYLITE_OK) {
+#ifdef MYLITE_ENABLE_PROFILING
+            mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
+            return rc;
+        }
+    }
+    if (stmt->done) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
+        return MYLITE_DONE;
+    }
+
     stmt->current_row_available = false;
     if (stmt->has_materialized_rows) {
         if (stmt->materialized_row_index >= mylite_result_row_count(stmt->metadata_result)) {

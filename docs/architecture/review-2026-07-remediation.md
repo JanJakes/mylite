@@ -197,6 +197,8 @@ complete.
 
 - [ ] Add allocation, descriptor-copy, metadata-step, parser-retry, statement-
   cache, and plan-cache counters to the benchmark/profile surface.
+  Normalization and parse invocation counters are complete; the remaining
+  counters are still open.
 - [ ] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
   separately owned/interned cold strings.
 - [ ] Budget caches by bytes and use generation-safe borrowed/pinned spans.

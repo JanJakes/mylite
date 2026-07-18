@@ -18,6 +18,8 @@ struct mylite_profile_snapshot {
     uint64_t cursor_step_ns;
     uint64_t cursor_finalize_ns;
     uint64_t statement_count;
+    uint64_t normalization_count;
+    uint64_t parse_count;
     uint64_t sqlite_step_count;
     uint64_t result_row_count;
     uint64_t result_value_bytes;

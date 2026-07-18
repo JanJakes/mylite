@@ -19,6 +19,7 @@ enum {
 
 static int test_buffered_profile(void);
 static int test_cursor_profile(void);
+static int test_repeated_prepared_profile(void);
 static int test_connection_attribution(void);
 static int test_transaction_control_profile(void);
 static int test_close_active_profile(void);
@@ -34,6 +35,7 @@ int main(void) {
 
     failures += test_buffered_profile();
     failures += test_cursor_profile();
+    failures += test_repeated_prepared_profile();
     failures += test_connection_attribution();
     failures += test_transaction_control_profile();
     failures += test_close_active_profile();
@@ -109,6 +111,8 @@ static int test_buffered_profile(void) {
     failures += expect_true(snapshot.statement_api_ns > 0U, "buffered statement time");
     failures += expect_true(snapshot.normalization_ns > 0U, "buffered normalization time");
     failures += expect_true(snapshot.parse_ns > 0U, "buffered parse time");
+    failures += expect_true(snapshot.normalization_count == 1U, "buffered normalization count");
+    failures += expect_true(snapshot.parse_count == 1U, "buffered parse count");
     failures += expect_true(snapshot.sqlite_step_count > 0U, "buffered SQLite steps");
     failures += expect_true(snapshot.sqlite_step_ns > 0U, "buffered SQLite step time");
     failures += expect_true(snapshot.result_row_count >= 1U, "buffered profiled rows");
@@ -192,12 +196,127 @@ static int test_cursor_profile(void) {
         expect_int(mylite_profile_stop(database, &snapshot), MYLITE_OK, "stop cursor profile");
     failures += expect_true(snapshot.statement_count == 1U, "cursor statement count");
     failures += expect_true(snapshot.statement_api_ns > 0U, "cursor prepare time");
+    failures += expect_true(snapshot.normalization_count == 1U, "cursor normalization count");
+    failures += expect_true(snapshot.parse_count == 1U, "cursor parse count");
     failures += expect_true(snapshot.cursor_step_ns > 0U, "cursor step time");
     failures += expect_true(snapshot.cursor_row_count == 1U, "cursor profiled rows");
     failures += expect_true(snapshot.cursor_value_bytes == 1U, "cursor profiled bytes");
     failures += expect_true(snapshot.sqlite_step_count > 0U, "cursor SQLite steps");
     failures += expect_true(snapshot.cursor_finalize_count == 1U, "cursor finalize count");
     failures += expect_true(snapshot.cursor_finalize_ns > 0U, "cursor finalize time");
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_repeated_prepared_profile(void) {
+    struct mylite_profile_snapshot snapshot = {0};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_stmt *dml_stmt = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "prepared") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open repeated prepared profile database"
+    );
+    failures += expect_int(
+        mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
+        MYLITE_OK,
+        "create repeated prepared profile database"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(database, "USE app", strlen("USE app"), &result),
+        MYLITE_OK,
+        "select repeated prepared profile database"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "CREATE TABLE t (id INT)",
+            strlen("CREATE TABLE t (id INT)"),
+            &result
+        ),
+        MYLITE_OK,
+        "create repeated prepared profile table"
+    );
+    mylite_result_free(result);
+    failures += expect_int(
+        mylite_prepare(database, "SELECT ? AS value", strlen("SELECT ? AS value"), &stmt),
+        MYLITE_OK,
+        "prepare repeated profile statement"
+    );
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "INSERT INTO t VALUES (?)",
+            strlen("INSERT INTO t VALUES (?)"),
+            &dml_stmt
+        ),
+        MYLITE_OK,
+        "prepare materialized profile statement"
+    );
+    failures +=
+        expect_int(mylite_profile_start(database), MYLITE_OK, "start repeated prepared profile");
+    for (int value = 1; value <= 3; ++value) {
+        failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset repeated profile");
+        failures += expect_int(
+            mylite_stmt_bind_int64(stmt, 0U, value),
+            MYLITE_OK,
+            "bind repeated profile value"
+        );
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step repeated profile row");
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step repeated profile done");
+    }
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop repeated prepared profile"
+    );
+    failures += expect_true(snapshot.statement_count == 0U, "repeated profile prepare count");
+    failures +=
+        expect_true(snapshot.normalization_count == 0U, "repeated execution normalization count");
+    failures += expect_true(snapshot.parse_count == 0U, "repeated execution parse count");
+    failures += expect_true(snapshot.cursor_row_count == 3U, "repeated profile row count");
+    failures += expect_true(snapshot.cursor_step_ns > 0U, "repeated profile step time");
+
+    failures += expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start materialized prepared profile"
+    );
+    failures += expect_int(mylite_stmt_reset(dml_stmt), MYLITE_OK, "reset materialized profile");
+    failures += expect_int(
+        mylite_stmt_bind_int64(dml_stmt, 0U, 1),
+        MYLITE_OK,
+        "bind materialized profile value"
+    );
+    failures +=
+        expect_int(mylite_stmt_step(dml_stmt), MYLITE_DONE, "step materialized prepared profile");
+    failures += expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop materialized prepared profile"
+    );
+    failures += expect_true(snapshot.cursor_step_ns > 0U, "materialized profile step time");
+    failures += expect_true(snapshot.sqlite_step_count > 0U, "materialized profile SQLite steps");
+    failures += expect_true(snapshot.normalization_count == 0U, "materialized normalization count");
+    failures += expect_true(snapshot.parse_count == 0U, "materialized parse count");
+
+    failures +=
+        expect_int(mylite_stmt_finalize(dml_stmt), MYLITE_OK, "finalize materialized profile");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize repeated profile");
     mylite_close(database);
     remove_related_files(path);
     return failures;

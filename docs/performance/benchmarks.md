@@ -64,6 +64,12 @@ executes a five-query mixed request containing a read, an upsert, two updates,
 and a delete. These scenarios measure a request-shaped sequence while retaining
 the existing `.queryN` isolation for hotspot analysis.
 
+`runtime.wp_prepared_select` and `runtime.wp_prepared_update` prepare one
+WordPress-shaped statement before warmup, then reset, bind, and execute that
+same native statement for every measured operation. These scenarios isolate
+retained-plan execution from prepare cost and accept `--profile-json`; measured
+normalization and parse counts must remain zero.
+
 The following focused stress scenarios are listed by `--list` but run only when
 selected explicitly with `--scenario`:
 
@@ -102,6 +108,8 @@ measured sample. Each object includes wall time and these cumulative counters:
   preparation.
 - `normalization_ns` and `parse_ns`: compatibility normalization and MyLite
   lex/parse time.
+- `normalization_count` and `parse_count`: phase invocation counts used to
+  detect reparsing independently of timer noise.
 - `sqlite_step_ns`: time spent inside runtime `sqlite3_step()` calls, measured
   with MyLite's monotonic clock.
 - `result_buffer_ns`: time copying rows into buffered MyLite results.

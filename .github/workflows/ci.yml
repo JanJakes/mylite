@@ -30,6 +30,9 @@ jobs:
       - name: Test expectation tooling
         run: tools/test-mysql-runtime-expectation-tools
 
+      - name: Test performance comparison tooling
+        run: tools/test-performance-regression-tools
+
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

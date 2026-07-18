@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+
+import argparse
+import csv
+import json
+import math
+import statistics
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MANIFEST = ROOT / "tools/performance-scenarios.tsv"
+EXPECTED_COLUMNS = [
+    "scenario",
+    "kind",
+    "output_kind",
+    "iterations",
+    "warmup",
+    "samples_per_pass",
+    "max_regression_percent",
+    "max_noise_percent",
+]
+
+
+def fail(message):
+    print("compare-performance: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def read_manifest(path):
+    with path.open(encoding="utf-8", newline="") as manifest_file:
+        reader = csv.DictReader(manifest_file, delimiter="\t")
+        if reader.fieldnames != EXPECTED_COLUMNS:
+            raise RuntimeError("unexpected performance manifest header")
+        rows = list(reader)
+    if not rows:
+        raise RuntimeError("performance manifest is empty")
+
+    seen = set()
+    for line_number, row in enumerate(rows, 2):
+        scenario = row["scenario"]
+        if not scenario or scenario in seen:
+            raise RuntimeError("invalid or duplicate scenario at line {}".format(line_number))
+        seen.add(scenario)
+        if row["kind"] not in ("lexer", "parse", "runtime"):
+            raise RuntimeError("invalid benchmark kind at line {}".format(line_number))
+        if row["output_kind"] not in ("lexer", "parse", "execute", "prepared", "stress"):
+            raise RuntimeError("invalid benchmark output kind at line {}".format(line_number))
+        for field in ("iterations", "warmup", "samples_per_pass"):
+            try:
+                row[field] = int(row[field])
+            except ValueError as error:
+                raise RuntimeError("invalid {} at line {}".format(field, line_number)) from error
+        for field in ("max_regression_percent", "max_noise_percent"):
+            try:
+                row[field] = float(row[field])
+            except ValueError as error:
+                raise RuntimeError("invalid {} at line {}".format(field, line_number)) from error
+        if row["iterations"] < 1 or row["warmup"] < 0 or row["samples_per_pass"] < 5:
+            raise RuntimeError("invalid sample configuration at line {}".format(line_number))
+        if row["max_regression_percent"] < 0.0 or row["max_noise_percent"] <= 0.0:
+            raise RuntimeError("invalid tolerance at line {}".format(line_number))
+    return rows
+
+
+def run_benchmark(binary, row, role, pass_index, output_dir):
+    command = [
+        str(binary),
+        "--only",
+        row["kind"],
+        "--scenario",
+        row["scenario"],
+        "--iterations",
+        str(row["iterations"]),
+        "--warmup",
+        str(row["warmup"]),
+    ]
+    repetitions = row["samples_per_pass"]
+    expected_per_repetition = 1
+    if row["kind"] == "runtime":
+        command.extend(("--samples", str(row["samples_per_pass"])))
+        repetitions = 1
+        expected_per_repetition = row["samples_per_pass"]
+
+    raw_path = output_dir / "{}.{}.pass{}.csv".format(row["scenario"], role, pass_index)
+    outputs = []
+    values = []
+    for repetition in range(repetitions):
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        outputs.append("# comparison repetition={}\n{}".format(repetition + 1, result.stdout))
+        raw_path.write_text("".join(outputs), encoding="utf-8")
+        if result.returncode != 0:
+            raise RuntimeError("{} {} pass {} failed; see {}".format(
+                row["scenario"], role, pass_index, raw_path
+            ))
+        values.extend(parse_samples(result.stdout, row, raw_path, expected_per_repetition))
+    return values
+
+
+def parse_samples(output, row, raw_path, expected_samples):
+    csv_lines = [line for line in output.splitlines() if line and not line.startswith("#")]
+    reader = csv.DictReader(csv_lines)
+    required = {"scenario", "kind", "operations", "ok", "errors", "avg_us"}
+    if reader.fieldnames is None or not required.issubset(reader.fieldnames):
+        raise RuntimeError("invalid benchmark CSV in {}".format(raw_path))
+
+    values = []
+    for record in reader:
+        if record["scenario"] != row["scenario"] or record["kind"] != row["output_kind"]:
+            raise RuntimeError("unexpected benchmark row in {}".format(raw_path))
+        try:
+            operations = int(record["operations"])
+            ok = int(record["ok"])
+            errors = int(record["errors"])
+            average_us = float(record["avg_us"])
+        except ValueError as error:
+            raise RuntimeError("invalid numeric benchmark row in {}".format(raw_path)) from error
+        if operations < 1 or ok != operations or errors != 0 or average_us <= 0.0:
+            raise RuntimeError("unsuccessful benchmark row in {}".format(raw_path))
+        values.append(average_us)
+    if len(values) != expected_samples:
+        raise RuntimeError("expected {} samples in {}, found {}".format(
+            expected_samples, raw_path, len(values)
+        ))
+    return values
+
+
+def summarize_samples(values):
+    median = statistics.median(values)
+    mad = statistics.median(abs(value - median) for value in values)
+    scaled_relative_mad = 100.0 * 1.4826 * mad / median
+    return {
+        "samples": len(values),
+        "median_us": median,
+        "mad_us": mad,
+        "scaled_relative_mad_percent": scaled_relative_mad,
+        "minimum_us": min(values),
+        "maximum_us": max(values),
+    }
+
+
+def compare_scenario(row, baseline_values, candidate_values):
+    baseline = summarize_samples(baseline_values)
+    candidate = summarize_samples(candidate_values)
+    regression = 100.0 * (candidate["median_us"] / baseline["median_us"] - 1.0)
+    standard_error = math.sqrt(
+        baseline["scaled_relative_mad_percent"] ** 2 / baseline["samples"]
+        + candidate["scaled_relative_mad_percent"] ** 2 / candidate["samples"]
+    )
+    statistical_allowance = 3.0 * standard_error
+    allowed_regression = row["max_regression_percent"] + statistical_allowance
+    noise = max(
+        baseline["scaled_relative_mad_percent"],
+        candidate["scaled_relative_mad_percent"],
+    )
+    status = "pass"
+    reason = ""
+    if noise > row["max_noise_percent"]:
+        status = "fail"
+        reason = "noise {:.2f}% exceeds {:.2f}%".format(noise, row["max_noise_percent"])
+    elif regression > allowed_regression:
+        status = "fail"
+        reason = "regression {:.2f}% exceeds {:.2f}%".format(regression, allowed_regression)
+    return {
+        "scenario": row["scenario"],
+        "kind": row["kind"],
+        "status": status,
+        "reason": reason,
+        "regression_percent": regression,
+        "base_tolerance_percent": row["max_regression_percent"],
+        "statistical_allowance_percent": statistical_allowance,
+        "allowed_regression_percent": allowed_regression,
+        "max_noise_percent": row["max_noise_percent"],
+        "baseline": baseline,
+        "candidate": candidate,
+    }
+
+
+def write_reports(output_dir, results):
+    (output_dir / "summary.json").write_text(
+        json.dumps({"results": results}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    lines = [
+        "scenario\tstatus\tbaseline_median_us\tcandidate_median_us\tregression\tallowed\tnoise"
+    ]
+    for result in results:
+        noise = max(
+            result["baseline"]["scaled_relative_mad_percent"],
+            result["candidate"]["scaled_relative_mad_percent"],
+        )
+        lines.append("{}\t{}\t{:.3f}\t{:.3f}\t{:.2f}%\t{:.2f}%\t{:.2f}%".format(
+            result["scenario"],
+            result["status"],
+            result["baseline"]["median_us"],
+            result["candidate"]["median_us"],
+            result["regression_percent"],
+            result["allowed_regression_percent"],
+            noise,
+        ))
+    (output_dir / "summary.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("baseline", type=Path)
+    parser.add_argument("candidate", type=Path)
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    options = parser.parse_args()
+
+    try:
+        baseline = options.baseline.resolve(strict=True)
+        candidate = options.candidate.resolve(strict=True)
+        if not baseline.is_file() or not candidate.is_file():
+            raise RuntimeError("benchmark arguments must be executable files")
+        rows = read_manifest(options.manifest)
+        options.output_dir.mkdir(parents=True, exist_ok=True)
+        results = []
+        for row in rows:
+            values = {"baseline": [], "candidate": []}
+            sequence = (
+                ("baseline", baseline, 1),
+                ("candidate", candidate, 1),
+                ("candidate", candidate, 2),
+                ("baseline", baseline, 2),
+            )
+            for role, binary, pass_index in sequence:
+                values[role].extend(
+                    run_benchmark(binary, row, role, pass_index, options.output_dir)
+                )
+            result = compare_scenario(row, values["baseline"], values["candidate"])
+            results.append(result)
+            print("{}: {} ({:+.2f}%, allowed {:.2f}%)".format(
+                row["scenario"],
+                result["status"],
+                result["regression_percent"],
+                result["allowed_regression_percent"],
+            ), flush=True)
+        write_reports(options.output_dir, results)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        return fail(str(error))
+
+    failures = [result for result in results if result["status"] != "pass"]
+    if failures:
+        for result in failures:
+            print("compare-performance: {}: {}".format(
+                result["scenario"], result["reason"]
+            ), file=sys.stderr)
+        return 1
+    print("compare-performance: all performance thresholds passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

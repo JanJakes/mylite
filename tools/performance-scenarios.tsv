@@ -1,0 +1,9 @@
+scenario	kind	output_kind	iterations	warmup	samples_per_pass	max_regression_percent	max_noise_percent
+lexer.wp_builtin	lexer	lexer	100000	0	7	8	20
+parse.wp_builtin	parse	parse	25000	0	7	8	12
+runtime.wp_frontend_request	runtime	execute	1000	2	7	12	15
+runtime.wp_medium_frontend_request	runtime	execute	500	2	7	12	15
+runtime.wp_write_request	runtime	execute	300	2	7	15	20
+runtime.wp_prepared_select	runtime	prepared	5000	2	7	12	15
+runtime.large_in_4096	runtime	stress	100	2	7	15	15
+runtime.catalog_cache_saturation	runtime	stress	50	2	7	15	35

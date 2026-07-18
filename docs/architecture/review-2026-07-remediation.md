@@ -422,8 +422,11 @@ complete.
   80.19/97.81/67.49%, SQL at 81.05/97.75/61.56%, and storage at
   81.04/91.55/67.46% for lines/functions/branches. CI enforces nearby nonzero
   module ratchets and retains the HTML, JSON, text, and CTest evidence.
-- [ ] Add stable-runner benchmark history and statistically tolerant
-  regression checks.
+- [x] Add paired-runner benchmark history and statistically tolerant regression
+  checks. Pull requests and weekly runs build base and head on one runner, pin
+  ABBA samples to one CPU and tmpfs, compare medians with scaled-MAD standard
+  error allowances, reject high-noise runs, and retain raw/environment evidence
+  for 90 days. This avoids false absolute comparisons across hosted hardware.
 - [ ] Pin mutable CI/container/tool inputs and add a formal reproducible release
   workflow with checksums, provenance, and an SBOM excluding license selection.
 

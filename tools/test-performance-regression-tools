@@ -1,0 +1,74 @@
+#!/bin/sh
+
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/mylite-performance-tools.XXXXXX")
+trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
+
+cat > "$temporary_directory/benchmark" <<'EOF'
+#!/bin/sh
+set -eu
+scenario=
+kind=
+samples=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --scenario) scenario=$2; shift 2 ;;
+    --only) kind=$2; shift 2 ;;
+    --samples) samples=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "$kind" = runtime ]; then
+  kind=execute
+fi
+printf '%s\n' 'scenario,kind,iterations,queries,operations,ok,errors,tokens,bytes,total_ms,avg_us,ops_per_sec'
+index=1
+while [ "$index" -le "$samples" ]; do
+  case "$0" in
+    *slow*) value=130 ;;
+    *noisy*) value=$((index * 50)) ;;
+    *candidate*) value=105 ;;
+    *) value=100 ;;
+  esac
+  printf '%s,%s,1,1,1,1,0,0,0,0.1,%s,10\n' "$scenario" "$kind" "$value"
+  index=$((index + 1))
+done
+EOF
+chmod +x "$temporary_directory/benchmark"
+cp "$temporary_directory/benchmark" "$temporary_directory/candidate"
+cp "$temporary_directory/benchmark" "$temporary_directory/slow"
+cp "$temporary_directory/benchmark" "$temporary_directory/noisy"
+
+cat > "$temporary_directory/manifest.tsv" <<'EOF'
+scenario	kind	output_kind	iterations	warmup	samples_per_pass	max_regression_percent	max_noise_percent
+runtime.test	runtime	execute	1	0	5	10	20
+EOF
+
+"$root/tools/compare-performance" \
+  "$temporary_directory/benchmark" \
+  "$temporary_directory/candidate" \
+  --manifest "$temporary_directory/manifest.tsv" \
+  --output-dir "$temporary_directory/pass" >/dev/null
+grep -q 'runtime.test[[:space:]]pass' "$temporary_directory/pass/summary.tsv"
+
+if "$root/tools/compare-performance" \
+  "$temporary_directory/benchmark" \
+  "$temporary_directory/slow" \
+  --manifest "$temporary_directory/manifest.tsv" \
+  --output-dir "$temporary_directory/slow-result" >/dev/null 2>&1; then
+  echo "test-performance-regression-tools: accepted a performance regression" >&2
+  exit 1
+fi
+
+if "$root/tools/compare-performance" \
+  "$temporary_directory/benchmark" \
+  "$temporary_directory/noisy" \
+  --manifest "$temporary_directory/manifest.tsv" \
+  --output-dir "$temporary_directory/noisy-result" >/dev/null 2>&1; then
+  echo "test-performance-regression-tools: accepted excessive noise" >&2
+  exit 1
+fi
+
+printf '%s\n' 'test-performance-regression-tools: passed'

@@ -172,6 +172,22 @@ scenario for duplicate-key construction and hash-table growth; use the normal
 Release build for comparisons because allocator and instrumentation choices
 materially affect this workload.
 
+## Regression Qualification
+
+`tools/compare-performance` compares Release benchmark binaries from a baseline
+and candidate revision using the scenarios and tolerances in
+`tools/performance-scenarios.tsv`. Each scenario runs in ABBA order, producing
+14 baseline and 14 candidate samples. The gate compares medians and adds a
+three-standard-error allowance derived from scaled median absolute deviation.
+It rejects excessively noisy runs instead of silently widening the tolerance.
+
+The scheduled and pull-request performance workflow builds both revisions on
+one runner, pins the comparison to one allowed CPU, and uses tmpfs for runtime
+databases. Raw CSV, robust statistics, revision IDs, compiler version, kernel,
+and CPU model are retained for 90 days. Only paired measurements are treated as
+regression evidence; absolute values from different hosted runners are history,
+not directly comparable baselines.
+
 ## WordPress MySQL Server-Test Query CSV
 
 The WordPress SQLite integration project publishes a MySQL server-test query

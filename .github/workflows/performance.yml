@@ -1,0 +1,101 @@
+name: Performance qualification
+
+on:
+  pull_request:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paired-regression:
+    name: paired performance regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build
+
+      - name: Select paired baseline
+        id: revisions
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            baseline=$PULL_REQUEST_BASE
+          else
+            baseline=$(git rev-parse HEAD^)
+          fi
+          printf 'baseline=%s\n' "$baseline" >> "$GITHUB_OUTPUT"
+          printf 'candidate=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check performance tooling
+        run: tools/test-performance-regression-tools
+
+      - name: Build baseline and candidate benchmarks
+        env:
+          CC: clang
+          BASELINE_REVISION: ${{ steps.revisions.outputs.baseline }}
+        run: |
+          git worktree add --detach /tmp/mylite-performance-baseline "$BASELINE_REVISION"
+          cmake -S /tmp/mylite-performance-baseline \
+            -B /tmp/mylite-performance-baseline-build \
+            -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build /tmp/mylite-performance-baseline-build --target mylite_benchmark
+          cmake --preset ci
+          cmake --build --preset ci --target mylite_benchmark
+
+      - name: Compare paired performance
+        env:
+          BASELINE_REVISION: ${{ steps.revisions.outputs.baseline }}
+          CANDIDATE_REVISION: ${{ steps.revisions.outputs.candidate }}
+        run: |
+          mkdir -p build/performance-regression /dev/shm/mylite-performance
+          {
+            printf 'baseline=%s\n' "$BASELINE_REVISION"
+            printf 'candidate=%s\n' "$CANDIDATE_REVISION"
+            uname -a
+            clang --version | head -1
+            grep -m1 'model name' /proc/cpuinfo
+          } > build/performance-regression/environment.txt
+          first_cpu=$(sed -n 's/^Cpus_allowed_list:[[:space:]]*\([0-9][0-9]*\).*/\1/p' /proc/self/status)
+          TMPDIR=/dev/shm/mylite-performance taskset -c "$first_cpu" \
+            tools/compare-performance \
+              /tmp/mylite-performance-baseline-build/packages/libmylite/mylite_benchmark \
+              build/ci/packages/libmylite/mylite_benchmark \
+              --output-dir build/performance-regression
+
+      - name: Publish comparison summary
+        if: always()
+        run: |
+          if [ -f build/performance-regression/summary.tsv ]; then
+            cat build/performance-regression/summary.tsv
+            {
+              printf '```text\n'
+              cat build/performance-regression/summary.tsv
+              printf '```\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: paired-performance-${{ github.run_id }}
+          path: build/performance-regression
+          if-no-files-found: ignore
+          retention-days: 90

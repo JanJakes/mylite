@@ -36,6 +36,15 @@
       }
     },
     {
+      "name": "debug-ci",
+      "displayName": "CI assertion-enabled debug build",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/debug-ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
       "name": "php-ci",
       "displayName": "CI release build with PHP extensions",
       "inherits": "ci",
@@ -128,6 +137,10 @@
       "configurePreset": "ci"
     },
     {
+      "name": "debug-ci",
+      "configurePreset": "debug-ci"
+    },
+    {
       "name": "php-ci",
       "configurePreset": "php-ci"
     },
@@ -199,6 +212,13 @@
     {
       "name": "ci",
       "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-ci",
+      "configurePreset": "debug-ci",
       "output": {
         "outputOnFailure": true
       }

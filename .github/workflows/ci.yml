@@ -4,6 +4,13 @@ on:
   pull_request:
   push:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -27,7 +34,7 @@ jobs:
             cc: clang
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Install build tools
         shell: bash
@@ -73,14 +80,99 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Join-Path $env:SystemDrive 'tmp') | Out-Null
 
       - name: Test
-        run: ctest --preset ci --output-on-failure
+        run: ctest --preset ci --output-on-failure --output-junit build/ci/ctest.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ctest-${{ matrix.name }}
+          path: build/ci/ctest.xml
+          if-no-files-found: ignore
+
+  debug:
+    name: ubuntu-clang-debug
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build
+
+      - name: Configure
+        env:
+          CC: clang
+        run: cmake --preset debug-ci
+
+      - name: Build
+        run: cmake --build --preset debug-ci
+
+      - name: Test
+        run: ctest --preset debug-ci --output-on-failure --output-junit build/debug-ci/ctest.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ctest-ubuntu-clang-debug
+          path: build/debug-ci/ctest.xml
+          if-no-files-found: ignore
+
+  sanitizers:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: asan-ubsan
+            preset: asan-ubsan
+          - name: tsan-concurrency
+            preset: tsan
+          - name: allocator-fault-injection
+            preset: fault-injection
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build
+
+      - name: Configure
+        env:
+          CC: clang
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: >-
+          ctest --preset ${{ matrix.preset }} --output-on-failure
+          --output-junit build/${{ matrix.preset }}/ctest.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ctest-${{ matrix.name }}
+          path: build/${{ matrix.preset }}/ctest.xml
+          if-no-files-found: ignore
 
   clang-tools:
     name: clang-format and clang-tidy
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Install clang tools
         run: |
@@ -103,7 +195,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Install PHP build tools
         run: |
@@ -125,7 +217,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Start MySQL 8.4.9
         run: |
@@ -133,9 +225,9 @@ jobs:
             --name mylite-mysql-849 \
             -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
             -e MYSQL_ROOT_HOST=% \
-            -d mysql:8.4.9 \
+            -d mysql:8.4.9@sha256:14690274f4967ba207939c97dd79a8d6604f1d532218ea6be69c0001ddd2d45f \
             --skip-log-bin
-          for attempt in $(seq 1 120); do
+          for _ in $(seq 1 120); do
             if docker exec mylite-mysql-849 mysqladmin --protocol=TCP -h127.0.0.1 -uroot ping --silent; then
               docker exec mylite-mysql-849 mysql --protocol=TCP -h127.0.0.1 -uroot \
                 --batch --raw --skip-column-names -e 'SELECT VERSION();'
@@ -162,7 +254,7 @@ jobs:
       MYLITE_MYSQLI_PROFILE_LIMIT: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Show runner resources
         run: |
@@ -208,7 +300,7 @@ jobs:
       MYLITE_MYSQLI_PROFILE_LIMIT: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Show runner resources
         run: |
@@ -251,7 +343,7 @@ jobs:
       MYLITE_LARAVEL_CMAKE_BUILD_TYPE: Release
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Show runner resources
         run: |
@@ -296,7 +388,7 @@ jobs:
       MYLITE_DOCTRINE_CMAKE_BUILD_TYPE: Release
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Show runner resources
         run: |
@@ -342,7 +434,7 @@ jobs:
       MYLITE_MEDIAWIKI_CMAKE_BUILD_TYPE: Release
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Show runner resources
         run: |

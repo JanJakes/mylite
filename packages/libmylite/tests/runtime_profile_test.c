@@ -411,8 +411,8 @@ static int test_repeated_prepared_profile(void) {
     );
     failures += expect_true(snapshot.cursor_step_ns > 0U, "materialized profile step time");
     failures += expect_true(snapshot.sqlite_step_count > 0U, "materialized profile SQLite steps");
-    failures += expect_true(snapshot.descriptor_copy_count > 0U, "materialized descriptor copies");
-    failures += expect_true(snapshot.descriptor_copy_bytes > 0U, "materialized descriptor bytes");
+    failures += expect_true(snapshot.descriptor_copy_count == 0U, "materialized descriptor copies");
+    failures += expect_true(snapshot.descriptor_copy_bytes == 0U, "materialized descriptor bytes");
     failures += expect_true(snapshot.normalization_count == 0U, "materialized normalization count");
     failures += expect_true(snapshot.parse_count == 0U, "materialized parse count");
 

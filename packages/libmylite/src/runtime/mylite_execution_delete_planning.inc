@@ -22,6 +22,7 @@ static int plan_single_table_delete(
     const struct mylite_sql_ast_node *table_node = target_node;
     struct select_source_context source_context = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -61,11 +62,12 @@ static int plan_single_table_delete(
     if (rc == MYLITE_OK &&
         (where_clause != NULL || order_clause != NULL || limit_clause != NULL ||
          sql_safe_updates_is_enabled(database))) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
-            &table_column_count
+            &table_column_count,
+            &table_columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -122,7 +124,7 @@ static int plan_single_table_delete(
         );
     }
 
-    free(table_columns);
+    mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
     if (rc != MYLITE_OK) {
         planned_delete_deinit(out_plan);
     }

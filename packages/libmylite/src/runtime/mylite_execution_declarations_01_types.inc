@@ -1055,6 +1055,7 @@ struct planned_insert {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    struct loaded_table_columns_cache_entry *columns_cache_entry;
     struct loaded_index_info *indexes;
     size_t index_count;
     struct loaded_foreign_key_info *foreign_keys;
@@ -2455,6 +2456,7 @@ struct planned_update {
     int64_t date_interval_value;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    struct loaded_table_columns_cache_entry *columns_cache_entry;
     const char *rowid_alias;
     size_t primary_key_column_index;
     int64_t primary_key_column_id;

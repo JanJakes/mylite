@@ -514,6 +514,7 @@ static int plan_count_table_source(
     struct planned_count *out_plan
 ) {
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
     struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
@@ -540,11 +541,12 @@ static int plan_count_table_source(
     if (rc == MYLITE_OK && (nodes->where_clause != NULL || nodes->order_clause != NULL ||
                             out_plan->function == PLANNED_COUNT_COLUMN ||
                             out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
-            &table_column_count
+            &table_column_count,
+            &table_columns_cache_entry
         );
     }
     if (rc == MYLITE_OK && (out_plan->function == PLANNED_COUNT_COLUMN ||
@@ -581,7 +583,7 @@ static int plan_count_table_source(
         );
     }
 
-    free(table_columns);
+    mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
     return rc;
 }
 

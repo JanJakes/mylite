@@ -19,6 +19,7 @@ static int plan_single_table_update(
     struct update_optional_clauses clauses = {0};
     const struct mylite_sql_ast_node *optional_clause = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
     struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
@@ -48,11 +49,12 @@ static int plan_single_table_update(
         rc = validate_update_index_hints(database, target, &out_plan->table);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
-            &table_column_count
+            &table_column_count,
+            &table_columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -144,11 +146,13 @@ static int plan_single_table_update(
     if (rc == MYLITE_OK) {
         out_plan->columns = table_columns;
         out_plan->column_count = table_column_count;
+        out_plan->columns_cache_entry = table_columns_cache_entry;
         table_columns = NULL;
         table_column_count = 0U;
+        table_columns_cache_entry = NULL;
     }
 
-    free(table_columns);
+    mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
     mylite_execution_primary_key_info_deinit(&primary_key);
     if (rc != MYLITE_OK) {
         planned_update_deinit(out_plan);
@@ -903,11 +907,12 @@ static int finish_joined_update_target_plan(
 
     rc = reject_builtin_schema_joined_update_target(database, out_plan);
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
-            &out_plan->column_count
+            &out_plan->column_count,
+            &out_plan->columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -1038,7 +1043,7 @@ static void planned_update_deinit(struct planned_update *plan) {
         }
     }
     free(plan->assignments);
-    free(plan->columns);
+    mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
     planned_select_order_deinit(&plan->order);
     mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_update){0};

@@ -21,11 +21,12 @@ static int plan_insert(
         &out_plan->table
     );
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
-            &out_plan->column_count
+            &out_plan->column_count,
+            &out_plan->columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -127,11 +128,12 @@ static int plan_insert_set(
         &out_plan->table
     );
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &out_plan->columns,
-            &out_plan->column_count
+            &out_plan->column_count,
+            &out_plan->columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -1373,7 +1375,7 @@ static void planned_insert_deinit(struct planned_insert *plan) {
     free(plan->duplicate_update.assignments);
     mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
-    free(plan->columns);
+    mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
     *plan = (struct planned_insert){0};
 }
 

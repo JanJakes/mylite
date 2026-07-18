@@ -8,8 +8,6 @@ static int plan_count_expression_aggregate_source(
     const struct mylite_sql_ast_node *statement,
     const struct select_optional_clauses *clauses,
     struct select_source_context *out_source_context,
-    struct mylite_catalog_column_descriptor **out_table_columns,
-    size_t *out_table_column_count,
     struct planned_count_expression_aggregate *out_plan
 );
 static int plan_single_source_count_expression_aggregate_source(
@@ -17,8 +15,6 @@ static int plan_single_source_count_expression_aggregate_source(
     const struct mylite_sql_ast_node *from_clause,
     const struct select_optional_clauses *clauses,
     struct select_source_context *out_source_context,
-    struct mylite_catalog_column_descriptor **out_table_columns,
-    size_t *out_table_column_count,
     struct planned_count_expression_aggregate *out_plan
 );
 static int plan_joined_count_expression_aggregate_source(
@@ -159,8 +155,6 @@ static int plan_count_expression_aggregate(
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     struct select_optional_clauses clauses = {0};
     struct select_source_context source_context = {0};
-    struct mylite_catalog_column_descriptor *table_columns = NULL;
-    size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_count_expression_aggregate){0};
@@ -175,8 +169,6 @@ static int plan_count_expression_aggregate(
             statement,
             &clauses,
             &source_context,
-            &table_columns,
-            &table_column_count,
             out_plan
         );
     }
@@ -185,8 +177,8 @@ static int plan_count_expression_aggregate(
             database,
             select_list,
             &source_context,
-            table_columns,
-            table_column_count,
+            out_plan->source.source_columns,
+            out_plan->source.source_column_count,
             out_plan
         );
     }
@@ -194,7 +186,6 @@ static int plan_count_expression_aggregate(
         rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
-    free(table_columns);
     if (rc != MYLITE_OK) {
         planned_count_expression_aggregate_deinit(out_plan);
     }
@@ -227,8 +218,6 @@ static int plan_count_expression_aggregate_source(
     const struct mylite_sql_ast_node *statement,
     const struct select_optional_clauses *clauses,
     struct select_source_context *out_source_context,
-    struct mylite_catalog_column_descriptor **out_table_columns,
-    size_t *out_table_column_count,
     struct planned_count_expression_aggregate *out_plan
 ) {
     const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
@@ -246,8 +235,6 @@ static int plan_count_expression_aggregate_source(
             from_clause,
             clauses,
             out_source_context,
-            out_table_columns,
-            out_table_column_count,
             out_plan
         );
     }
@@ -273,8 +260,6 @@ static int plan_single_source_count_expression_aggregate_source(
     const struct mylite_sql_ast_node *from_clause,
     const struct select_optional_clauses *clauses,
     struct select_source_context *out_source_context,
-    struct mylite_catalog_column_descriptor **out_table_columns,
-    size_t *out_table_column_count,
     struct planned_count_expression_aggregate *out_plan
 ) {
     const struct select_predicate_plan_options predicate_options = {
@@ -302,11 +287,12 @@ static int plan_single_source_count_expression_aggregate_source(
     }
     if (rc == MYLITE_OK) {
         copy_plan_source_alias_if_present(&out_plan->source, out_source_context);
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->source.table.table_id,
-            out_table_columns,
-            out_table_column_count
+            &out_plan->source.source_columns,
+            &out_plan->source.source_column_count,
+            &out_plan->source.source_columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -314,8 +300,8 @@ static int plan_single_source_count_expression_aggregate_source(
             database,
             clauses->where_clause,
             out_source_context,
-            *out_table_columns,
-            *out_table_column_count,
+            out_plan->source.source_columns,
+            out_plan->source.source_column_count,
             &predicate_options,
             &out_plan->source.predicate
         );

@@ -241,7 +241,12 @@ complete.
   focused tests. Profiling builds force-include a portable allocator shim for
   the MyLite target, while production builds retain direct libc allocation.
 - [ ] Replace fixed 15.6 KiB column descriptors with compact hot metadata and
-  separately owned/interned cold strings.
+  separately owned/interned cold strings. As an intermediate ownership step,
+  SELECT aggregates and INSERT/UPDATE/DELETE plans now pin generation-safe
+  cached column spans instead of cloning them. This removed all measured full
+  descriptor copies from the six-query WordPress frontend and five-query write
+  scenarios, reducing cumulative requested allocation by 14.2% and 16.9%,
+  respectively. The descriptor representation itself remains open.
 - [ ] Budget caches by bytes and use generation-safe borrowed/pinned spans.
 - [x] Bound invalid-SQL parser recovery work and make nested-parenthesis scans
   linear after measuring current scaling. Predicate retries now precompute one

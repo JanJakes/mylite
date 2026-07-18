@@ -2186,8 +2186,7 @@ enum planned_count_expression_aggregate_item_kind {
 
 struct planned_count_expression_aggregate_item {
     enum planned_count_expression_aggregate_item_kind kind;
-    const struct mylite_sql_ast_node *expression;
-    const struct mylite_sql_ast_node *alias;
+    char *result_label;
     bool is_distinct;
     struct planned_select_predicate predicate;
     struct planned_row_scalar_expression row_scalar_expression;

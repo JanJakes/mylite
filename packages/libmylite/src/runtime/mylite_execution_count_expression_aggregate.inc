@@ -405,7 +405,9 @@ static int append_count_expression_aggregate_item(
     size_t table_column_count,
     struct planned_count_expression_aggregate *out_plan
 ) {
+    const struct mylite_sql_ast_node *source_expression = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *alias = NULL;
     const struct mylite_sql_ast_node *predicate_node = NULL;
     const struct select_predicate_plan_options options = {
         .allow_exists = false,
@@ -421,14 +423,14 @@ static int append_count_expression_aggregate_item(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
+    source_expression = child_at(select_item, 0U);
+    alias = child_at(select_item, 1U);
+    expression = unwrap_parenthesized_expression(source_expression);
     if (expression == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    item.expression = child_at(select_item, 0U);
-    item.alias = child_at(select_item, 1U);
     item.is_distinct = aggregate_function_is_distinct(expression);
     if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
         item.kind = PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR;
@@ -491,10 +493,18 @@ static int append_count_expression_aggregate_item(
         }
     }
 
+    rc =
+        copy_planned_aggregate_result_label(database, source_expression, alias, &item.result_label);
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit(&item.predicate);
+        planned_row_scalar_expression_deinit(&item.row_scalar_expression);
+        return rc;
+    }
     required_count = out_plan->item_count + 1U;
     if (required_count > SIZE_MAX / sizeof(*items)) {
         planned_select_predicate_deinit(&item.predicate);
         planned_row_scalar_expression_deinit(&item.row_scalar_expression);
+        free(item.result_label);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
@@ -502,6 +512,7 @@ static int append_count_expression_aggregate_item(
     if (items == NULL) {
         planned_select_predicate_deinit(&item.predicate);
         planned_row_scalar_expression_deinit(&item.row_scalar_expression);
+        free(item.result_label);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
@@ -603,6 +614,7 @@ static void planned_count_expression_aggregate_deinit(
     for (size_t item_index = 0U; item_index < plan->item_count; ++item_index) {
         planned_select_predicate_deinit(&plan->items[item_index].predicate);
         planned_row_scalar_expression_deinit(&plan->items[item_index].row_scalar_expression);
+        free(plan->items[item_index].result_label);
     }
     free(plan->items);
     planned_select_deinit(&plan->source);
@@ -663,20 +675,11 @@ static int append_count_expression_aggregate_result_columns(
 
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
         const struct planned_count_expression_aggregate_item *item = &plan->items[item_index];
-        char *column_name = NULL;
 
-        if (item->alias != NULL) {
-            rc = copy_select_item_alias_text(database, item->alias, &column_name);
-        } else {
-            rc = copy_aggregate_result_column_name(database, &item->expression->span, &column_name);
+        rc = mylite_result_append_column(result, item->result_label);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
         }
-        if (rc == MYLITE_OK) {
-            rc = mylite_result_append_column(result, column_name);
-            if (rc != MYLITE_OK) {
-                set_nomem_error(database);
-            }
-        }
-        free(column_name);
     }
 
     return rc;

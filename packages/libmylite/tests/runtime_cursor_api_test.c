@@ -23,6 +23,9 @@ enum {
     mysql_varchar_20_display_length = 80,
     mysql_error_commands_out_of_sync = 2014,
     sql_text_capacity = 128,
+    cache_budget_sql_capacity = 4096,
+    cache_budget_table_count = 40,
+    cache_budget_column_count = 16,
     diagnostic_text_capacity = 256,
 };
 
@@ -35,6 +38,7 @@ struct expected_query_scalar_text {
 static int test_cursor_select_streams_rows_and_metadata(void);
 static int test_cursor_keeps_borrowed_metadata_across_invalidation(void);
 static int test_key_metadata_cache_uses_lru_replacement(void);
+static int test_metadata_caches_enforce_byte_budgets(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_reset_and_value_nullability(void);
 static int test_native_prepared_scalar_bindings(void);
@@ -77,6 +81,7 @@ int main(void) {
     failures += test_cursor_select_streams_rows_and_metadata();
     failures += test_cursor_keeps_borrowed_metadata_across_invalidation();
     failures += test_key_metadata_cache_uses_lru_replacement();
+    failures += test_metadata_caches_enforce_byte_budgets();
     failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_reset_and_value_nullability();
     failures += test_native_prepared_scalar_bindings();
@@ -800,6 +805,126 @@ static int test_key_metadata_cache_uses_lru_replacement(void) {
     failures += expect_true(
         (int)key_metadata_cache_contains_table(database, last_table.table_id),
         "replacement key metadata entry cached"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_metadata_caches_enforce_byte_budgets(void) {
+    char path[test_path_capacity];
+    char sql[cache_budget_sql_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    size_t column_cache_bytes = 0U;
+    size_t key_cache_bytes = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "metadata_cache_budget") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cache budget file");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
+        int written = snprintf(sql, sizeof(sql), "CREATE TABLE budget_%zu (", table_index);
+        size_t length = written > 0 ? (size_t)written : sizeof(sql);
+
+        for (size_t column_index = 0U;
+             length < sizeof(sql) && column_index < cache_budget_column_count;
+             ++column_index) {
+            written = snprintf(
+                sql + length,
+                sizeof(sql) - length,
+                "%sc%zu INT NOT NULL",
+                column_index == 0U ? "" : ",",
+                column_index
+            );
+            length = written > 0 && (size_t)written < sizeof(sql) - length
+                         ? length + (size_t)written
+                         : sizeof(sql);
+        }
+        if (length < sizeof(sql)) {
+            written = snprintf(sql + length, sizeof(sql) - length, ",PRIMARY KEY (");
+            length = written > 0 && (size_t)written < sizeof(sql) - length
+                         ? length + (size_t)written
+                         : sizeof(sql);
+        }
+        for (size_t column_index = 0U;
+             length < sizeof(sql) && column_index < cache_budget_column_count;
+             ++column_index) {
+            written = snprintf(
+                sql + length,
+                sizeof(sql) - length,
+                "%sc%zu",
+                column_index == 0U ? "" : ",",
+                column_index
+            );
+            length = written > 0 && (size_t)written < sizeof(sql) - length
+                         ? length + (size_t)written
+                         : sizeof(sql);
+        }
+        if (length < sizeof(sql)) {
+            written = snprintf(sql + length, sizeof(sql) - length, "))");
+            length = written > 0 && (size_t)written < sizeof(sql) - length
+                         ? length + (size_t)written
+                         : sizeof(sql);
+        }
+        failures += expect_true(length < sizeof(sql), "format cache budget table");
+        if (length < sizeof(sql)) {
+            failures += execute_ok(database, sql);
+        }
+    }
+
+    for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
+        int written = snprintf(
+            sql,
+            sizeof(sql),
+            "SELECT c0 FROM budget_%zu WHERE c0 = 0",
+            table_index
+        );
+
+        failures += expect_true(
+            written > 0 && (size_t)written < sizeof(sql),
+            "format cache budget select"
+        );
+        if (written > 0 && (size_t)written < sizeof(sql)) {
+            failures += expect_int(
+                mylite_prepare(database, sql, (size_t)written, &stmt),
+                MYLITE_OK,
+                "prepare cache budget select"
+            );
+            failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize budget select");
+            stmt = NULL;
+        }
+    }
+
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        column_cache_bytes += database->table_columns_cache[index].byte_count;
+    }
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        key_cache_bytes += database->table_key_metadata_cache[index].byte_count;
+    }
+    failures += expect_true(column_cache_bytes > 0U, "column cache retains budgeted entries");
+    failures += expect_true(key_cache_bytes > 0U, "key cache retains budgeted entries");
+    failures += expect_true(
+        column_cache_bytes <= MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT,
+        "column cache byte budget"
+    );
+    failures += expect_true(
+        key_cache_bytes <= MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_BYTE_LIMIT,
+        "key cache byte budget"
+    );
+    failures += expect_true(
+        database->table_columns_cache_count < cache_budget_table_count,
+        "column cache evicts before retaining every wide table"
+    );
+    failures += expect_true(
+        database->table_key_metadata_cache_count < cache_budget_table_count,
+        "key cache evicts before retaining every wide table"
     );
 
     mylite_close(database);

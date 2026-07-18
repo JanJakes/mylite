@@ -198,8 +198,11 @@ static struct loaded_table_columns_cache_entry *find_table_columns_cache_entry(
     int64_t table_id
 );
 static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entry(
-    struct mylite_db *database
+    struct mylite_db *database,
+    size_t required_bytes
 );
+static bool table_columns_cache_make_room(struct mylite_db *database, size_t required_bytes);
+static size_t table_columns_cache_byte_count(const struct mylite_db *database);
 static uint64_t table_columns_cache_next_clock(struct mylite_db *database);
 static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry);
 static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(
@@ -207,7 +210,16 @@ static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cac
     int64_t table_id
 );
 static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_cache_entry(
-    struct mylite_db *database
+    struct mylite_db *database,
+    size_t required_bytes
+);
+static bool table_key_metadata_cache_make_room(
+    struct mylite_db *database,
+    size_t required_bytes
+);
+static size_t table_key_metadata_cache_byte_count(const struct mylite_db *database);
+static size_t loaded_table_key_metadata_byte_count(
+    const struct loaded_table_key_metadata *metadata
 );
 static uint64_t table_key_metadata_cache_next_clock(struct mylite_db *database);
 static void release_table_key_metadata_cache_entry(
@@ -252,7 +264,10 @@ int mylite_execution_acquire_table_columns(
         return rc;
     }
 
-    entry = prepare_table_columns_cache_entry(database);
+    entry = prepare_table_columns_cache_entry(
+        database,
+        *out_column_count * sizeof(**out_columns)
+    );
     if (entry == NULL) {
         return MYLITE_OK;
     }
@@ -264,6 +279,7 @@ int mylite_execution_acquire_table_columns(
         .last_use = table_columns_cache_next_clock(database),
         .columns = *out_columns,
         .column_count = *out_column_count,
+        .byte_count = *out_column_count * sizeof(**out_columns),
         .reference_count = 1U,
     };
     *out_cache_entry = entry;
@@ -456,7 +472,7 @@ static void maybe_cache_loaded_table_columns(
     mylite_profile_record_descriptor_copy(database, column_count * sizeof(*copy));
 #endif
 
-    entry = prepare_table_columns_cache_entry(database);
+    entry = prepare_table_columns_cache_entry(database, column_count * sizeof(*copy));
     if (entry == NULL) {
         free(copy);
         return;
@@ -470,6 +486,7 @@ static void maybe_cache_loaded_table_columns(
         .last_use = table_columns_cache_next_clock(database),
         .columns = copy,
         .column_count = column_count,
+        .byte_count = column_count * sizeof(*copy),
     };
 }
 
@@ -602,7 +619,9 @@ int mylite_execution_acquire_table_key_metadata(
         return rc;
     }
 
-    entry = prepare_table_key_metadata_cache_entry(database);
+    size_t metadata_bytes = loaded_table_key_metadata_byte_count(&metadata);
+
+    entry = prepare_table_key_metadata_cache_entry(database, metadata_bytes);
     if (entry == NULL) {
         out_reference->owned_metadata = metadata;
         out_reference->metadata = &out_reference->owned_metadata;
@@ -616,6 +635,7 @@ int mylite_execution_acquire_table_key_metadata(
         .sqlite_schema_generation = database->session.sqlite_schema_generation,
         .last_use = table_key_metadata_cache_next_clock(database),
         .metadata = metadata,
+        .byte_count = metadata_bytes,
         .reference_count = 1U,
     };
     out_reference->metadata = &entry->metadata;
@@ -699,12 +719,13 @@ static struct loaded_table_columns_cache_entry *find_table_columns_cache_entry(
 }
 
 static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entry(
-    struct mylite_db *database
+    struct mylite_db *database,
+    size_t required_bytes
 ) {
     struct loaded_table_columns_cache_entry *entry = NULL;
     uint64_t oldest_use = UINT64_MAX;
 
-    if (database == NULL) {
+    if (database == NULL || !table_columns_cache_make_room(database, required_bytes)) {
         return NULL;
     }
     for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
@@ -729,6 +750,48 @@ static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entr
     }
     loaded_table_columns_cache_entry_deinit(entry);
     return entry;
+}
+
+static bool table_columns_cache_make_room(
+    struct mylite_db *database,
+    size_t required_bytes
+) {
+    if (required_bytes > MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT) {
+        return false;
+    }
+    while (table_columns_cache_byte_count(database) >
+           MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT - required_bytes) {
+        struct loaded_table_columns_cache_entry *oldest = NULL;
+
+        for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+            struct loaded_table_columns_cache_entry *candidate =
+                &database->table_columns_cache[index];
+
+            if (candidate->reference_count == 0U && candidate->byte_count > 0U &&
+                (oldest == NULL || candidate->last_use < oldest->last_use)) {
+                oldest = candidate;
+            }
+        }
+        if (oldest == NULL) {
+            return false;
+        }
+        loaded_table_columns_cache_entry_deinit(oldest);
+    }
+    return true;
+}
+
+static size_t table_columns_cache_byte_count(const struct mylite_db *database) {
+    size_t byte_count = 0U;
+
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        size_t entry_bytes = database->table_columns_cache[index].byte_count;
+
+        if (entry_bytes > SIZE_MAX - byte_count) {
+            return SIZE_MAX;
+        }
+        byte_count += entry_bytes;
+    }
+    return byte_count;
 }
 
 static uint64_t table_columns_cache_next_clock(struct mylite_db *database) {
@@ -777,12 +840,13 @@ static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cac
 }
 
 static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_cache_entry(
-    struct mylite_db *database
+    struct mylite_db *database,
+    size_t required_bytes
 ) {
     struct loaded_table_key_metadata_cache_entry *entry = NULL;
     uint64_t oldest_use = UINT64_MAX;
 
-    if (database == NULL) {
+    if (database == NULL || !table_key_metadata_cache_make_room(database, required_bytes)) {
         return NULL;
     }
     for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
@@ -810,6 +874,75 @@ static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_
     }
     loaded_table_key_metadata_cache_entry_deinit(entry);
     return entry;
+}
+
+static bool table_key_metadata_cache_make_room(
+    struct mylite_db *database,
+    size_t required_bytes
+) {
+    if (required_bytes > MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_BYTE_LIMIT) {
+        return false;
+    }
+    while (table_key_metadata_cache_byte_count(database) >
+           MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_BYTE_LIMIT - required_bytes) {
+        struct loaded_table_key_metadata_cache_entry *oldest = NULL;
+
+        for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+            struct loaded_table_key_metadata_cache_entry *candidate =
+                &database->table_key_metadata_cache[index];
+
+            if (candidate->reference_count == 0U && candidate->byte_count > 0U &&
+                (oldest == NULL || candidate->last_use < oldest->last_use)) {
+                oldest = candidate;
+            }
+        }
+        if (oldest == NULL) {
+            return false;
+        }
+        loaded_table_key_metadata_cache_entry_deinit(oldest);
+    }
+    return true;
+}
+
+static size_t table_key_metadata_cache_byte_count(const struct mylite_db *database) {
+    size_t byte_count = 0U;
+
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        size_t entry_bytes = database->table_key_metadata_cache[index].byte_count;
+
+        if (entry_bytes > SIZE_MAX - byte_count) {
+            return SIZE_MAX;
+        }
+        byte_count += entry_bytes;
+    }
+    return byte_count;
+}
+
+static size_t loaded_table_key_metadata_byte_count(
+    const struct loaded_table_key_metadata *metadata
+) {
+    size_t byte_count = 0U;
+
+    if (metadata == NULL ||
+        metadata->primary_key.part_count > SIZE_MAX / sizeof(*metadata->primary_key.parts) ||
+        metadata->index_count > SIZE_MAX / sizeof(*metadata->indexes)) {
+        return SIZE_MAX;
+    }
+    byte_count = metadata->primary_key.part_count * sizeof(*metadata->primary_key.parts);
+    if (metadata->index_count * sizeof(*metadata->indexes) > SIZE_MAX - byte_count) {
+        return SIZE_MAX;
+    }
+    byte_count += metadata->index_count * sizeof(*metadata->indexes);
+    for (size_t index = 0U; index < metadata->index_count; ++index) {
+        size_t part_count = metadata->indexes[index].part_count;
+
+        if (part_count > SIZE_MAX / sizeof(*metadata->indexes[index].parts) ||
+            part_count * sizeof(*metadata->indexes[index].parts) > SIZE_MAX - byte_count) {
+            return SIZE_MAX;
+        }
+        byte_count += part_count * sizeof(*metadata->indexes[index].parts);
+    }
+    return byte_count;
 }
 
 static uint64_t table_key_metadata_cache_next_clock(struct mylite_db *database) {

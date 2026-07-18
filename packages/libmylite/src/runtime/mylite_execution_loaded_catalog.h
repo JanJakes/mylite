@@ -71,6 +71,8 @@ struct loaded_table_key_metadata_reference {
 enum {
     MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_LIMIT = 64,
     MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT = 64,
+    MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT = 8U * 1024U * 1024U,
+    MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_BYTE_LIMIT = 8U * 1024U * 1024U,
 };
 
 struct loaded_table_columns_cache_entry {
@@ -81,6 +83,7 @@ struct loaded_table_columns_cache_entry {
     uint64_t last_use;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    size_t byte_count;
     size_t reference_count;
 };
 
@@ -91,6 +94,7 @@ struct loaded_table_key_metadata_cache_entry {
     uint64_t sqlite_schema_generation;
     uint64_t last_use;
     struct loaded_table_key_metadata metadata;
+    size_t byte_count;
     size_t reference_count;
 };
 

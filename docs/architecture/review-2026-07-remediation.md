@@ -247,7 +247,13 @@ complete.
   descriptor copies from the six-query WordPress frontend and five-query write
   scenarios, reducing cumulative requested allocation by 14.2% and 16.9%,
   respectively. The descriptor representation itself remains open.
-- [ ] Budget caches by bytes and use generation-safe borrowed/pinned spans.
+- [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
+  Column and deep key-metadata payloads now have independent 8 MiB limits in
+  addition to their 64-entry caps. Insertion evicts only unpinned LRU entries;
+  oversized or fully pinned workloads retain statement-owned metadata instead.
+  End-to-end coverage warms both caches with 40 wide composite-key tables and
+  verifies bounded bytes, eviction, pin survival, and release after
+  invalidation.
 - [x] Bound invalid-SQL parser recovery work and make nested-parenthesis scans
   linear after measuring current scaling. Predicate retries now precompute one
   byte of WHERE-clause context per token instead of repeatedly rescanning the

@@ -299,7 +299,7 @@ static bool select_distinct_order_item_is_selected(
 ) {
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         if (item->column_source_index == plan->column_source_indexes[column_index] &&
-            item->column.column_id == plan->columns[column_index].column_id) {
+            item->column.column_id == plan->columns[column_index]->column_id) {
             return true;
         }
     }
@@ -369,7 +369,7 @@ static int validate_select_distinct_columns(
     const struct planned_select *plan
 ) {
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        if (!select_distinct_column_is_supported(&plan->columns[column_index])) {
+        if (!select_distinct_column_is_supported(plan->columns[column_index])) {
             set_unsupported_error(
                 database,
                 "SELECT DISTINCT supports only integer, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or "
@@ -1583,7 +1583,7 @@ static int validate_derived_select_output_columns(
             derived_plan->column_aliases[column_index] != NULL) {
             if (!text_equals_ascii_case_insensitive(
                     derived_plan->column_aliases[column_index],
-                    derived_plan->columns[column_index].name
+                    derived_plan->columns[column_index]->name
                 )) {
                 set_unsupported_error(
                     database,
@@ -1614,11 +1614,9 @@ static int copy_derived_select_source_columns(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    memcpy(
-        out_source->columns,
-        derived_plan->columns,
-        derived_plan->column_count * sizeof(*out_source->columns)
-    );
+    for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
+        out_source->columns[column_index] = *derived_plan->columns[column_index];
+    }
     for (size_t column_index = 0U; column_index < derived_plan->column_count; ++column_index) {
         if (derived_plan->column_aliases != NULL &&
             derived_plan->column_aliases[column_index] != NULL) {

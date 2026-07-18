@@ -696,13 +696,13 @@ static int infer_create_table_select_columns(
             struct planned_column *column = &plan->create_table.columns[column_index];
 
             planned_column_from_catalog_descriptor(
-                &plan->source.columns[column_index],
+                plan->source.columns[column_index],
                 NULL,
                 column
             );
             copy_create_table_select_column_character_metadata(
                 &plan->source.table,
-                &plan->source.columns[column_index],
+                plan->source.columns[column_index],
                 &plan->create_table,
                 column
             );
@@ -717,28 +717,28 @@ static int infer_create_table_select_columns(
 
 static int validate_create_table_select_source_columns(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *columns,
+    const struct mylite_catalog_column_descriptor *const *columns,
     size_t column_count
 ) {
     for (size_t column_index = 0U; column_index < column_count; ++column_index) {
         struct integer_column_range range = {0};
         int rc = MYLITE_OK;
 
-        if (column_descriptor_is_string_family(&columns[column_index]) ||
-            column_descriptor_is_json(&columns[column_index]) ||
-            column_descriptor_is_binary_string_family(&columns[column_index]) ||
-            column_descriptor_is_bit(&columns[column_index]) ||
-            column_descriptor_is_decimal(&columns[column_index]) ||
-            column_descriptor_is_approximate(&columns[column_index]) ||
-            column_descriptor_is_year(&columns[column_index]) ||
-            column_descriptor_is_date(&columns[column_index]) ||
-            column_descriptor_is_time(&columns[column_index]) ||
-            column_descriptor_is_datetime(&columns[column_index]) ||
-            column_descriptor_is_timestamp(&columns[column_index])) {
+        if (column_descriptor_is_string_family(columns[column_index]) ||
+            column_descriptor_is_json(columns[column_index]) ||
+            column_descriptor_is_binary_string_family(columns[column_index]) ||
+            column_descriptor_is_bit(columns[column_index]) ||
+            column_descriptor_is_decimal(columns[column_index]) ||
+            column_descriptor_is_approximate(columns[column_index]) ||
+            column_descriptor_is_year(columns[column_index]) ||
+            column_descriptor_is_date(columns[column_index]) ||
+            column_descriptor_is_time(columns[column_index]) ||
+            column_descriptor_is_datetime(columns[column_index]) ||
+            column_descriptor_is_timestamp(columns[column_index])) {
             continue;
         }
-        if (columns[column_index].physical_type[0] == '\0' ||
-            strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
+        if (columns[column_index]->physical_type[0] == '\0' ||
+            strcmp(columns[column_index]->physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
                 "CREATE TABLE SELECT supports only integer, BIT, string, JSON, binary string, "
@@ -749,7 +749,7 @@ static int validate_create_table_select_source_columns(
         }
         rc = integer_range_for_column(
             database,
-            &columns[column_index],
+            columns[column_index],
             "CREATE TABLE SELECT supports only integer, BIT, string, JSON, binary string, decimal, "
             "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
             &range

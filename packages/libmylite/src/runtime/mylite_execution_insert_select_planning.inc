@@ -419,7 +419,7 @@ static int validate_insert_select_compound_branch_target_compatibility(
         size_t column_index = plan->target_indexes[target_position];
 
         if (!insert_select_source_target_types_are_compatible(
-                &source->columns[target_position],
+                source->columns[target_position],
                 &plan->target.columns[column_index]
             )) {
             set_unsupported_error(

@@ -387,7 +387,7 @@ static int append_select_projection_column_sql(
     const struct planned_select *plan,
     size_t column_index
 ) {
-    const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+    const struct mylite_catalog_column_descriptor *column = plan->columns[column_index];
     int rc = append_descriptor_column_name_sql_for_source(
         string,
         column,

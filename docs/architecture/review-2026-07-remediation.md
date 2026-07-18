@@ -246,7 +246,14 @@ complete.
   cached column spans instead of cloning them. This removed all measured full
   descriptor copies from the six-query WordPress frontend and five-query write
   scenarios, reducing cumulative requested allocation by 14.2% and 16.9%,
-  respectively. The descriptor representation itself remains open.
+  respectively. Descriptor SELECT projections now retain immutable pointers
+  into those pinned spans instead of copying one 15.6 KiB descriptor per
+  output column. That reduced another WordPress frontend allocation sample
+  from 108.6 MB to 93.0 MB over 50 requests (14.4%) and reduced the Release
+  128-column projection median from 268.7 us to 116.6 us (56.6%). Explicit
+  name resolution returns a source reference directly; copy-returning callers
+  keep their existing owned semantics. The descriptor representation itself
+  remains open for predicate, expression, ordering, and aggregate plan fields.
 - [x] Budget caches by bytes and use generation-safe borrowed/pinned spans.
   Column and deep key-metadata payloads now have independent 8 MiB limits in
   addition to their 64-entry caps. Insertion evicts only unpinned LRU entries;

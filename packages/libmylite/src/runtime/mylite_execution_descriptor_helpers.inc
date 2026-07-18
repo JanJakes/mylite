@@ -64,18 +64,49 @@ static int resolve_descriptor_column_reference_with_source_index(
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
 ) {
+    const struct mylite_catalog_column_descriptor *resolved_column = NULL;
+    int rc = resolve_descriptor_column_reference_pointer_with_source_index(
+        database,
+        column_node,
+        source_context,
+        diagnostic_context,
+        unsupported_message,
+        table_columns,
+        table_column_count,
+        &resolved_column,
+        out_source_index
+    );
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (rc == MYLITE_OK) {
+        *out_column = *resolved_column;
+    }
+    return rc;
+}
+
+static int resolve_descriptor_column_reference_pointer_with_source_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    enum column_reference_diagnostic_context diagnostic_context,
+    const char *unsupported_message,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor **out_column,
+    size_t *out_source_index
+) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     size_t part_count = 0U;
     size_t column_index = 0U;
     int rc = MYLITE_OK;
 
-    *out_column = (struct mylite_catalog_column_descriptor){0};
+    *out_column = NULL;
     if (out_source_index != NULL) {
         *out_source_index = 0U;
     }
     if (source_context != NULL && source_context->source_count > 0U) {
-        return resolve_joined_descriptor_column_reference(
+        return resolve_joined_descriptor_column_reference_pointer(
             database,
             column_node,
             source_context,
@@ -117,17 +148,17 @@ static int resolve_descriptor_column_reference_with_source_index(
         return MYLITE_ERROR;
     }
 
-    *out_column = table_columns[column_index];
+    *out_column = &table_columns[column_index];
     return MYLITE_OK;
 }
 
-static int resolve_joined_descriptor_column_reference(
+static int resolve_joined_descriptor_column_reference_pointer(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     const struct select_source_context *source_context,
     enum column_reference_diagnostic_context diagnostic_context,
     const char *unsupported_message,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 ) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -195,7 +226,7 @@ static int resolve_joined_descriptor_column_reference(
         return MYLITE_ERROR;
     }
 
-    *out_column = source_context->sources[matching_source_index].columns[matching_column_index];
+    *out_column = &source_context->sources[matching_source_index].columns[matching_column_index];
     if (out_source_index != NULL) {
         *out_source_index = matching_source_index;
     }

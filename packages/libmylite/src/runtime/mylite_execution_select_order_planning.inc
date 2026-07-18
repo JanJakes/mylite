@@ -326,7 +326,7 @@ static int plan_select_order_ordinal(
         return MYLITE_ERROR;
     }
 
-    out_item->column = select_plan->columns[ordinal - 1U];
+    out_item->column = *select_plan->columns[ordinal - 1U];
     out_item->column_source_index = select_plan->column_source_indexes[ordinal - 1U];
     return MYLITE_OK;
 }
@@ -706,7 +706,7 @@ static int resolve_order_alias(
                 free(order_name);
                 return MYLITE_ERROR;
             }
-            *out_column = select_plan->columns[column_index];
+            *out_column = *select_plan->columns[column_index];
             if (out_source_index != NULL) {
                 *out_source_index = select_plan->column_source_indexes[column_index];
             }

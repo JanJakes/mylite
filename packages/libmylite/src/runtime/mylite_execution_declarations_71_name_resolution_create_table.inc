@@ -1866,13 +1866,24 @@ static int resolve_descriptor_column_reference_with_source_index(
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
 );
-static int resolve_joined_descriptor_column_reference(
+static int resolve_descriptor_column_reference_pointer_with_source_index(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     const struct select_source_context *source_context,
     enum column_reference_diagnostic_context diagnostic_context,
     const char *unsupported_message,
-    struct mylite_catalog_column_descriptor *out_column,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor **out_column,
+    size_t *out_source_index
+);
+static int resolve_joined_descriptor_column_reference_pointer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    enum column_reference_diagnostic_context diagnostic_context,
+    const char *unsupported_message,
+    const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 );
 static bool column_reference_source_matches_parts(

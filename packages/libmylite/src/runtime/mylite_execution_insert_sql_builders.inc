@@ -355,7 +355,7 @@ static int append_insert_select_compound_column_projection_sql(
     const struct planned_select *source,
     size_t column_index
 ) {
-    const struct mylite_catalog_column_descriptor *column = &source->columns[column_index];
+    const struct mylite_catalog_column_descriptor *column = source->columns[column_index];
     int rc = append_descriptor_column_name_sql_for_source(
         string,
         column,
@@ -900,7 +900,7 @@ static bool insert_select_compound_output_uses_string_collation(
         if (branch->kind == PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE) {
             if (column_index < branch->source.column_count &&
                 column_descriptor_uses_string_key_collation(
-                    &branch->source.columns[column_index],
+                    branch->source.columns[column_index],
                     true
                 )) {
                 return true;
@@ -953,7 +953,7 @@ static int append_insert_select_source_projection(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_quoted_identifier(
                 string,
-                plan->source.columns[column_index].name
+                plan->source.columns[column_index]->name
             );
         }
         if (rc == MYLITE_OK) {
@@ -1108,7 +1108,7 @@ static int append_create_table_select_source_projection(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_quoted_identifier(
                 string,
-                plan->source.columns[column_index].name
+                plan->source.columns[column_index]->name
             );
         }
     }

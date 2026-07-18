@@ -57,6 +57,7 @@ static int plan_count_having_select(
     struct mylite_catalog_table_descriptor table = {0};
     struct select_source_context source_context = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -87,11 +88,12 @@ static int plan_count_having_select(
         rc = init_select_source_context(database, from_clause, &source, &source_context);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             table.table_id,
             &table_columns,
-            &table_column_count
+            &table_column_count,
+            &table_columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
@@ -100,6 +102,12 @@ static int plan_count_having_select(
         out_plan->descriptor_projection.is_distinct =
             mylite_sql_ast_node_select_modifier(statement) ==
             MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+        out_plan->descriptor_projection.source_columns = table_columns;
+        out_plan->descriptor_projection.source_column_count = table_column_count;
+        out_plan->descriptor_projection.source_columns_cache_entry = table_columns_cache_entry;
+        table_columns = NULL;
+        table_column_count = 0U;
+        table_columns_cache_entry = NULL;
         copy_plan_source_alias_if_present(&out_plan->descriptor_projection, &source_context);
 
         out_plan->row_projection.has_source = true;
@@ -120,8 +128,8 @@ static int plan_count_having_select(
             select_list,
             &clauses,
             &source_context,
-            table_columns,
-            table_column_count,
+            out_plan->descriptor_projection.source_columns,
+            out_plan->descriptor_projection.source_column_count,
             out_plan
         );
     }
@@ -134,7 +142,7 @@ static int plan_count_having_select(
         );
     }
 
-    free(table_columns);
+    mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
     if (rc != MYLITE_OK) {
         planned_count_having_select_deinit(out_plan);
     }
@@ -659,7 +667,7 @@ static int append_count_having_outer_select_list_sql(
         if (rc == MYLITE_OK && plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR &&
             plan->descriptor_projection.is_distinct &&
             column_descriptor_uses_string_key_collation(
-                &plan->descriptor_projection.columns[index],
+                plan->descriptor_projection.columns[index],
                 true
             )) {
             rc = append_string_key_collation_sql(string);

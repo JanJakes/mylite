@@ -1477,7 +1477,7 @@ struct planned_select {
     struct mylite_catalog_column_descriptor *source_columns;
     size_t source_column_count;
     struct loaded_table_columns_cache_entry *source_columns_cache_entry;
-    struct mylite_catalog_column_descriptor *columns;
+    const struct mylite_catalog_column_descriptor **columns;
     char **column_aliases;
     size_t *column_source_indexes;
     size_t column_count;

@@ -2,7 +2,7 @@ static int append_selected_sqlite_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     mylite_result *result,
-    const struct mylite_catalog_column_descriptor *columns,
+    const struct mylite_catalog_column_descriptor *const *columns,
     size_t descriptor_count,
     struct sqlite_result_row_storage *storage
 ) {
@@ -28,7 +28,7 @@ static int read_selected_sqlite_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     size_t column_count,
-    const struct mylite_catalog_column_descriptor *columns,
+    const struct mylite_catalog_column_descriptor *const *columns,
     size_t descriptor_count,
     struct sqlite_result_row_storage *storage
 ) {
@@ -108,14 +108,14 @@ static int append_selected_sqlite_row_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     size_t column_index,
-    const struct mylite_catalog_column_descriptor *columns,
+    const struct mylite_catalog_column_descriptor *const *columns,
     size_t descriptor_count,
     char *text,
     size_t text_capacity,
     struct mylite_result_cell *out_value
 ) {
     const struct mylite_catalog_column_descriptor *column =
-        columns != NULL && column_index < descriptor_count ? &columns[column_index] : NULL;
+        columns != NULL && column_index < descriptor_count ? columns[column_index] : NULL;
 
     return append_selected_sqlite_row_value_with_descriptor(
         database,

@@ -26,7 +26,7 @@ static int plan_select_columns(
     while (item != NULL) {
         const struct mylite_sql_ast_node *column_node = NULL;
         const struct mylite_sql_ast_node *qualified_wildcard = NULL;
-        struct mylite_catalog_column_descriptor column = {0};
+        const struct mylite_catalog_column_descriptor *column = NULL;
         size_t source_index = 0U;
         int rc = MYLITE_OK;
 
@@ -50,7 +50,7 @@ static int plan_select_columns(
             set_unsupported_error(database, "SELECT supports only descriptor table columns");
             return MYLITE_ERROR;
         }
-        rc = resolve_descriptor_column_reference_with_source_index(
+        rc = resolve_descriptor_column_reference_pointer_with_source_index(
             database,
             column_node,
             source_context,
@@ -67,7 +67,7 @@ static int plan_select_columns(
         rc = append_select_column_from_source(
             database,
             out_plan,
-            &column,
+            column,
             source_index,
             child_at(item, 1U)
         );
@@ -386,7 +386,7 @@ static int append_select_column_from_source(
         }
     }
 
-    plan->columns[plan->column_count] = *column;
+    plan->columns[plan->column_count] = column;
     plan->column_aliases[plan->column_count] = alias_text;
     plan->column_source_indexes[plan->column_count] = source_index;
     plan->column_count = required_count;
@@ -401,7 +401,7 @@ static int reserve_select_columns(
 ) {
     enum { initial_select_column_capacity = 4 };
 
-    struct mylite_catalog_column_descriptor *columns = NULL;
+    const struct mylite_catalog_column_descriptor **columns = NULL;
     char **aliases = NULL;
     size_t *source_indexes = NULL;
     size_t capacity = plan->column_capacity;
@@ -489,7 +489,7 @@ static int append_select_result_column(
     const struct result_column_metadata_context *metadata_context,
     size_t column_index
 ) {
-    const char *column_name = plan->columns[column_index].name;
+    const char *column_name = plan->columns[column_index]->name;
     const char *alias = plan->column_aliases[column_index];
     struct mylite_result_column_descriptor descriptor = {0};
     int rc = MYLITE_OK;
@@ -644,7 +644,7 @@ static int make_select_result_column_descriptor(
     const char *label,
     struct mylite_result_column_descriptor *out_descriptor
 ) {
-    const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+    const struct mylite_catalog_column_descriptor *column = plan->columns[column_index];
     const char *table_name = plan->source.table_name;
 
     if (plan->source_has_alias) {

@@ -114,7 +114,7 @@ static int insert_select_source_column_for_position(
             set_runtime_error(database, "invalid INSERT ... SELECT source column");
             return MYLITE_ERROR;
         }
-        *out_source_column = &plan->source.columns[target_position];
+        *out_source_column = plan->source.columns[target_position];
         return MYLITE_OK;
     }
     if (plan->source_kind != PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
@@ -141,7 +141,7 @@ static int insert_select_source_column_for_position(
         return MYLITE_ERROR;
     }
 
-    *out_source_column = &branch->source.columns[target_position];
+    *out_source_column = branch->source.columns[target_position];
     return MYLITE_OK;
 }
 

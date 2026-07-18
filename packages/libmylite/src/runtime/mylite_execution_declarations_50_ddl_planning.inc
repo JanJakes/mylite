@@ -188,7 +188,7 @@ static int infer_create_table_select_columns(
 );
 static int validate_create_table_select_source_columns(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *columns,
+    const struct mylite_catalog_column_descriptor *const *columns,
     size_t column_count
 );
 static void copy_create_table_select_column_character_metadata(

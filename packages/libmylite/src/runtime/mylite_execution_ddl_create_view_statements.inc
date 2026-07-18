@@ -486,7 +486,7 @@ static int create_view_from_plan(
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
         const struct mylite_catalog_column_descriptor *source_column =
-            &plan->source.columns[column_index];
+            plan->source.columns[column_index];
 
         rc = mylite_catalog_insert_column_in_mutation(
             database,
@@ -793,7 +793,7 @@ static int copy_create_view_inferred_column_name(
     if (alias != NULL) {
         return duplicate_text(database, alias, out_name);
     }
-    return duplicate_text(database, plan->source.columns[column_index].name, out_name);
+    return duplicate_text(database, plan->source.columns[column_index]->name, out_name);
 }
 
 static void set_view_column_count_error(struct mylite_db *database) {
@@ -969,7 +969,7 @@ static int append_create_view_projection_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_mysql_quoted_identifier(
                 string,
-                plan->source.columns[column_index].name
+                plan->source.columns[column_index]->name
             );
         }
         if (rc == MYLITE_OK) {

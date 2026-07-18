@@ -2708,7 +2708,7 @@ static int materialize_update_scalar_subquery_sqlite_value(
     struct planned_value *out_value
 ) {
     const struct mylite_catalog_column_descriptor *source_column =
-        &plan->assignment_subquery.columns[0];
+        plan->assignment_subquery.columns[0];
     const struct mylite_catalog_column_descriptor *target_column = &plan->assignment_column;
     int sqlite_type = sqlite3_column_type(statement, 0);
 

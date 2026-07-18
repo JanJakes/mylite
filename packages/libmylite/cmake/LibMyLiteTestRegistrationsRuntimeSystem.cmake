@@ -31,6 +31,17 @@
     COMMAND mylite_runtime_catalog_foundation_test
   )
   add_test(
+    NAME libmylite.runtime.recovery_model
+    COMMAND mylite_runtime_recovery_model_test
+  )
+  set_tests_properties(
+    libmylite.runtime.recovery_model
+    PROPERTIES
+      LABELS "crash;fault-injection;model;runtime"
+      RESOURCE_LOCK mylite_recovery
+      TIMEOUT 180
+  )
+  add_test(
     NAME libmylite.runtime.basic_table_lifecycle
     COMMAND mylite_runtime_basic_table_lifecycle_test
   )

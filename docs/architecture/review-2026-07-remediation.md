@@ -395,8 +395,14 @@ complete.
   geometry, preamble, and catalog inputs. Six Clang libFuzzer targets run under
   ASan+UBSan with copied seed corpora and deterministic bounded smoke budgets;
   the local tier passes 51,000 in-memory mutations and 1,000 database opens.
-- [ ] Add model-based DDL/DML, metamorphic rollback/reopen, multi-process crash,
-  and power-failure/fault-injection tests.
+- [x] Add model-based DDL/DML, metamorphic rollback/reopen, multi-process crash,
+  and power-failure/fault-injection tests. A deterministic state model now
+  checks 512 mixed writes plus transactional rollback/commit across reopen,
+  modeled DDL transitions, and process death before and after commit. The VFS
+  qualification tier measures and injects every write and sync reached by
+  catalog-backed `CREATE TABLE`, then verifies catalog/physical atomicity and
+  SQLite integrity after reopen. Existing initialization, hot-journal, and
+  auto-increment crash tests share the serialized `crash` qualification label.
 - [x] Add CTest labels, timeouts, resource controls, and failure artifacts.
   Every native test has a bounded timeout and functional label, concurrency
   tests retain serial resource controls, and all native CI configurations

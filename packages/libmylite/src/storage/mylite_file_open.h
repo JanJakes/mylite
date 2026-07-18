@@ -29,6 +29,7 @@ void mylite_storage_vfs_test_set_fault(
 );
 void mylite_storage_vfs_test_clear_fault(void);
 bool mylite_storage_vfs_test_fault_was_triggered(void);
+size_t mylite_storage_vfs_test_matching_call_count(void);
 int mylite_storage_vfs_transition_initialization(struct sqlite3_file *file, bool commit);
 int mylite_storage_open_sqlite_payload(const char *path, struct sqlite3 **out_sqlite);
 int mylite_storage_commit_sqlite_initialization(struct sqlite3 *sqlite);

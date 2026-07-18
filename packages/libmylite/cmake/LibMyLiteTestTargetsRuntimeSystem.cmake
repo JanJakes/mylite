@@ -52,6 +52,18 @@
   )
   mylite_configure_c_target(mylite_runtime_file_backed_open_test)
 
+  add_executable(mylite_runtime_recovery_model_test
+    tests/runtime_recovery_model_test.c
+  )
+  target_link_libraries(mylite_runtime_recovery_model_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_recovery_model_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_recovery_model_test)
+
   add_executable(mylite_runtime_catalog_foundation_test
     tests/runtime_catalog_foundation_test.c
   )

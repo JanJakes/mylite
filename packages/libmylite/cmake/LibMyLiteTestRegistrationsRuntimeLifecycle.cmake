@@ -1020,6 +1020,13 @@
     NAME libmylite.runtime.auto_increment_lifecycle
     COMMAND mylite_runtime_auto_increment_lifecycle_test
   )
+  set_tests_properties(
+    libmylite.runtime.auto_increment_lifecycle
+    PROPERTIES
+      LABELS "crash;runtime"
+      RESOURCE_LOCK mylite_recovery
+      TIMEOUT 180
+  )
   add_test(
     NAME libmylite.runtime.serial_alias_lifecycle
     COMMAND mylite_runtime_serial_alias_lifecycle_test
@@ -1083,6 +1090,13 @@
   add_test(
     NAME libmylite.runtime.file_backed_open
     COMMAND mylite_runtime_file_backed_open_test
+  )
+  set_tests_properties(
+    libmylite.runtime.file_backed_open
+    PROPERTIES
+      LABELS "crash;runtime;storage"
+      RESOURCE_LOCK mylite_recovery
+      TIMEOUT 180
   )
   add_test(NAME libmylite.runtime.open_memory COMMAND mylite_runtime_open_memory_test)
   add_test(NAME libmylite.runtime.result_metadata COMMAND mylite_runtime_result_metadata_test)

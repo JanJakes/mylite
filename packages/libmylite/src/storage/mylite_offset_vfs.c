@@ -19,6 +19,7 @@ struct mylite_offset_file {
 struct mylite_storage_vfs_fault {
     enum mylite_storage_vfs_fault_operation operation;
     size_t calls_until_failure;
+    size_t matching_call_count;
     bool triggered;
 };
 
@@ -176,14 +177,18 @@ void mylite_storage_vfs_set_exclusive_create(bool enabled) {
     exclusive_create_enabled = enabled;
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): the enum identifies the failpoint.
 void mylite_storage_vfs_test_set_fault(
     enum mylite_storage_vfs_fault_operation operation,
     size_t fail_on_call
 ) {
     injected_fault.operation = operation;
     injected_fault.calls_until_failure = fail_on_call == 0U ? 1U : fail_on_call;
+    injected_fault.matching_call_count = 0U;
     injected_fault.triggered = false;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 void mylite_storage_vfs_test_clear_fault(void) {
     memset(&injected_fault, 0, sizeof(injected_fault));
@@ -191,6 +196,10 @@ void mylite_storage_vfs_test_clear_fault(void) {
 
 bool mylite_storage_vfs_test_fault_was_triggered(void) {
     return injected_fault.triggered;
+}
+
+size_t mylite_storage_vfs_test_matching_call_count(void) {
+    return injected_fault.matching_call_count;
 }
 
 int mylite_storage_vfs_transition_initialization(sqlite3_file *file, bool commit) {
@@ -895,7 +904,7 @@ static bool logical_size_from_physical(
         return false;
     }
 
-    *out_logical = physical - (2 * MYLITE_FILE_SQLITE_PAYLOAD_OFFSET);
+    *out_logical = physical - (2 * (sqlite3_int64)MYLITE_FILE_SQLITE_PAYLOAD_OFFSET);
     return true;
 }
 
@@ -967,7 +976,11 @@ static int sqlite_status_to_mylite(int sqlite_status) {
 }
 
 static bool inject_fault(enum mylite_storage_vfs_fault_operation operation) {
-    if (injected_fault.operation != operation || injected_fault.triggered) {
+    if (injected_fault.operation != operation) {
+        return false;
+    }
+    injected_fault.matching_call_count += 1U;
+    if (injected_fault.triggered) {
         return false;
     }
     if (injected_fault.calls_until_failure > 1U) {

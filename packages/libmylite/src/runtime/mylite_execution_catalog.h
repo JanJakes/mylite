@@ -463,7 +463,6 @@ struct mylite_execution_catalog_builtin_sys_view {
     const char *name;
     const char *view_definition;
     const char *show_create_view_sql;
-    const char *show_create_qualified_view_sql;
 };
 
 struct mylite_execution_catalog_sys_config_trigger {
@@ -561,6 +560,11 @@ const struct mylite_execution_catalog_builtin_sys_view *mylite_execution_catalog
 );
 const struct mylite_execution_catalog_builtin_sys_view *mylite_execution_catalog_builtin_sys_view_definition_by_name(
     const char *view_name
+);
+int mylite_execution_catalog_build_builtin_sys_view_show_create(
+    const struct mylite_execution_catalog_builtin_sys_view *view,
+    bool schema_qualified,
+    char **out_sql
 );
 
 size_t mylite_execution_catalog_innodb_compressed_page_size_count(void);

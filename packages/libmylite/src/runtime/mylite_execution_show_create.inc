@@ -956,17 +956,39 @@ static int append_show_create_builtin_sys_view_result(
     const struct mylite_execution_catalog_builtin_sys_view *view,
     bool schema_qualified
 ) {
-    const char *show_create_sql =
-        schema_qualified ? view->show_create_qualified_view_sql : view->show_create_view_sql;
+    char *show_create_sql = NULL;
+    int rc = MYLITE_OK;
 
-    return append_show_create_view_text_result(
-        database,
-        result,
-        view->name,
-        show_create_sql,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci"
-    );
+    if (!schema_qualified) {
+        return append_show_create_view_text_result(
+            database,
+            result,
+            view->name,
+            view->show_create_view_sql,
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        );
+    }
+
+    rc = mylite_execution_catalog_build_builtin_sys_view_show_create(view, true, &show_create_sql);
+
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_view_text_result(
+            database,
+            result,
+            view->name,
+            show_create_sql,
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        );
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (rc != MYLITE_OK) {
+        set_runtime_error(database, "invalid built-in SYS view definition");
+    }
+    free(show_create_sql);
+    return rc;
 }
 
 static int append_show_create_view_text_result(

@@ -1,5 +1,8 @@
 #include "mylite_execution_catalog.h"
 
+#include "mylite/mylite.h"
+#include "mylite_dynamic_string.h"
+
 #include <stddef.h>
 #include <string.h>
 
@@ -9,11 +12,6 @@ static const char sys_version_view_definition[] =
 static const char sys_version_show_create_view_sql[] =
     "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
-    "`sys_version`,version() AS `mysql_version`";
-
-static const char sys_version_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
     "`sys_version`,version() AS `mysql_version`";
 
 #define SYS_METRICS_VIEW_COLUMNS "(`Variable_name`,`Variable_value`,`Type`,`Enabled`)"
@@ -71,10 +69,6 @@ static const char sys_metrics_view_definition[] = SYS_METRICS_VIEW_DEFINITION;
 static const char sys_metrics_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`metrics` " SYS_METRICS_VIEW_COLUMNS " AS " SYS_METRICS_VIEW_DEFINITION;
-
-static const char sys_metrics_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`metrics` " SYS_METRICS_VIEW_COLUMNS " AS " SYS_METRICS_VIEW_DEFINITION;
 
 #undef SYS_METRICS_VIEW_COLUMNS
 #undef SYS_METRICS_INNODB_EXCLUDED_NAMES
@@ -198,22 +192,12 @@ static const char sys_processlist_show_create_view_sql[] =
     "`processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
     " AS " SYS_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION;
 
-static const char sys_processlist_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
-    " AS " SYS_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
-
 static const char sys_x_processlist_view_definition[] = SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
 
 static const char sys_x_processlist_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
     " AS " SYS_X_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION;
-
-static const char sys_x_processlist_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
-    " AS " SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
 
 #define SYS_SESSION_SELECT(source)                                                                 \
     "select `" source "`.`thd_id` AS `thd_id`,`" source "`.`conn_id` AS `conn_id`,`" source        \
@@ -241,19 +225,11 @@ static const char sys_session_show_create_view_sql[] =
     "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`session` AS " SYS_SESSION_SELECT("processlist");
 
-static const char sys_session_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`session` AS " SYS_SESSION_SELECT("sys`.`processlist");
-
 static const char sys_x_session_view_definition[] = SYS_SESSION_SELECT("sys`.`x$processlist");
 
 static const char sys_x_session_show_create_view_sql[] =
     "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$session` AS " SYS_SESSION_SELECT("x$processlist");
-
-static const char sys_x_session_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$session` AS " SYS_SESSION_SELECT("sys`.`x$processlist");
 
 #define SYS_SESSION_SSL_STATUS_VIEW_COLUMNS                                                        \
     "(`thread_id`,`ssl_version`,`ssl_cipher`,`ssl_sessions_reused`)"
@@ -273,11 +249,6 @@ static const char sys_session_ssl_status_view_definition[] = SYS_SESSION_SSL_STA
 static const char sys_session_ssl_status_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`session_ssl_status` " SYS_SESSION_SSL_STATUS_VIEW_COLUMNS
-    " AS " SYS_SESSION_SSL_STATUS_VIEW_DEFINITION;
-
-static const char sys_session_ssl_status_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`session_ssl_status` " SYS_SESSION_SSL_STATUS_VIEW_COLUMNS
     " AS " SYS_SESSION_SSL_STATUS_VIEW_DEFINITION;
 
 #undef SYS_SESSION_SELECT
@@ -415,14 +386,6 @@ static const char sys_statement_analysis_show_create_view_sql[] =
             SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
                 SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED("stmts");
 
-static const char sys_statement_analysis_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`statement_analysis` " SYS_STATEMENT_ANALYSIS_VIEW_COLUMNS
-    " AS " SYS_STATEMENT_ANALYSIS_PREFIX("stmts", "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)")
-        SYS_STATEMENT_ANALYSIS_COUNTERS("stmts") SYS_STATEMENT_ANALYSIS_FORMATTED_TIMERS("stmts")
-            SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
-                SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED("stmts");
-
 static const char sys_x_statement_analysis_view_definition[] = SYS_STATEMENT_ANALYSIS_PREFIX(
     "stmts",
     "`stmts`.`DIGEST_TEXT`"
@@ -433,16 +396,6 @@ static const char sys_x_statement_analysis_view_definition[] = SYS_STATEMENT_ANA
 static const char sys_x_statement_analysis_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$statement_analysis` " SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS
-    " AS " SYS_STATEMENT_ANALYSIS_PREFIX(
-        "stmts",
-        "`stmts`.`DIGEST_TEXT`"
-    ) "`stmts`.`COUNT_SECONDARY` AS `exec_secondary_count`," SYS_STATEMENT_ANALYSIS_COUNTERS("stmts"
-    ) SYS_STATEMENT_ANALYSIS_RAW_TIMERS("stmts") SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
-        SYS_STATEMENT_ANALYSIS_SUFFIX_RAW("stmts");
-
-static const char sys_x_statement_analysis_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$statement_analysis` " SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS
     " AS " SYS_STATEMENT_ANALYSIS_PREFIX(
         "stmts",
         "`stmts`.`DIGEST_TEXT`"
@@ -474,26 +427,12 @@ static const char sys_statements_with_errors_or_warnings_show_create_view_sql[] 
         "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)"
     );
 
-static const char sys_statements_with_errors_or_warnings_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`statements_with_errors_or_warnings`"
-    " " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS " AS " SYS_STATEMENTS_ERRORS_DEFINITION(
-        "stmts",
-        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)"
-    );
-
 static const char sys_x_statements_with_errors_or_warnings_view_definition[] =
     SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`stmts`.`DIGEST_TEXT`");
 
 static const char sys_x_statements_with_errors_or_warnings_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$statements_with_errors_or_warnings` " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`stmts`.`DIGEST_TEXT`");
-
-static const char sys_x_statements_with_errors_or_warnings_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$statements_with_errors_or_warnings`"
-    " " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
     " AS " SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`stmts`.`DIGEST_TEXT`");
 
 #define SYS_STATEMENTS_FULL_SCAN_DEFINITION(source, query_expression, latency_expression)          \
@@ -527,15 +466,6 @@ static const char sys_statements_with_full_table_scans_show_create_view_sql[] =
         "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
     );
 
-static const char sys_statements_with_full_table_scans_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
-        "stmts",
-        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
-        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
-    );
-
 static const char sys_x_statements_with_full_table_scans_view_definition[] =
     SYS_STATEMENTS_FULL_SCAN_DEFINITION(
         "stmts",
@@ -546,15 +476,6 @@ static const char sys_x_statements_with_full_table_scans_view_definition[] =
 static const char sys_x_statements_with_full_table_scans_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
-        "stmts",
-        "`stmts`.`DIGEST_TEXT`",
-        "`stmts`.`SUM_TIMER_WAIT`"
-    );
-
-static const char sys_x_statements_with_full_table_scans_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
     " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
         "stmts",
         "`stmts`.`DIGEST_TEXT`",
@@ -612,15 +533,6 @@ static const char sys_statements_with_runtimes_in_95th_percentile_show_create_vi
         "format_pico_time"
     );
 
-static const char sys_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`statements_with_runtimes_in_95th_percentile`"
-    " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION(
-        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
-        "format_pico_time"
-    );
-
 static const char sys_x_statements_with_runtimes_in_95th_percentile_view_definition[] =
     SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
 
@@ -629,13 +541,6 @@ static const char sys_x_statements_with_runtimes_in_95th_percentile_show_create_
     "`x$statements_with_runtimes_in_95th_percentile`"
     " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
     " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
-
-static const char
-    sys_x_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql[] =
-        "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-        "`sys`.`x$statements_with_runtimes_in_95th_percentile`"
-        " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
-        " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
 
 #define SYS_STATEMENTS_SORTING_DEFINITION(query_expression, latency_expression)                    \
     "select " query_expression                                                                     \
@@ -669,25 +574,12 @@ static const char sys_statements_with_sorting_show_create_view_sql[] =
         "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
     );
 
-static const char sys_statements_with_sorting_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_SORTING_DEFINITION(
-        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
-        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
-    );
-
 static const char sys_x_statements_with_sorting_view_definition[] =
     SYS_STATEMENTS_SORTING_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
 
 static const char sys_x_statements_with_sorting_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_SORTING_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
-
-static const char sys_x_statements_with_sorting_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
     " AS " SYS_STATEMENTS_SORTING_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
 
 #define SYS_STATEMENTS_TEMP_TABLES_DEFINITION(query_expression, latency_expression)                \
@@ -721,28 +613,12 @@ static const char sys_statements_with_temp_tables_show_create_view_sql[] =
         "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
     );
 
-static const char sys_statements_with_temp_tables_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
-        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
-        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
-    );
-
 static const char sys_x_statements_with_temp_tables_view_definition[] =
     SYS_STATEMENTS_TEMP_TABLES_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
 
 static const char sys_x_statements_with_temp_tables_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
-    " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
-        "`stmts`.`DIGEST_TEXT`",
-        "`stmts`.`SUM_TIMER_WAIT`"
-    );
-
-static const char sys_x_statements_with_temp_tables_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
     " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
         "`stmts`.`DIGEST_TEXT`",
         "`stmts`.`SUM_TIMER_WAIT`"
@@ -856,11 +732,6 @@ static const char sys_host_summary_show_create_view_sql[] =
     "`host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
     " AS " SYS_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
 
-static const char sys_host_summary_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
-    " AS " SYS_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
-
 static const char sys_x_host_summary_view_definition[] =
     SYS_X_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
 
@@ -868,11 +739,6 @@ static const char sys_x_host_summary_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
     " AS " SYS_X_HOST_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
-
-static const char sys_x_host_summary_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$host_summary` " SYS_HOST_SUMMARY_VIEW_COLUMNS
-    " AS " SYS_X_HOST_SUMMARY_QUALIFIED_VIEW_DEFINITION;
 
 #undef SYS_HOST_SUMMARY_VIEW_COLUMNS
 #undef SYS_HOST_SUMMARY_QUALIFIED_SELECT_SUFFIX
@@ -918,22 +784,12 @@ static const char sys_host_summary_by_file_io_show_create_view_sql[] =
     "`host_summary_by_file_io` " SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
     " AS " SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
 
-static const char sys_host_summary_by_file_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`host_summary_by_file_io` " SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
-    " AS " SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
-
 static const char sys_x_host_summary_by_file_io_view_definition[] =
     SYS_X_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
 
 static const char sys_x_host_summary_by_file_io_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$host_summary_by_file_io` " SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
-    " AS " SYS_X_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
-
-static const char sys_x_host_summary_by_file_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$host_summary_by_file_io` " SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
     " AS " SYS_X_HOST_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
 
 #undef SYS_HOST_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
@@ -982,22 +838,12 @@ static const char sys_host_summary_by_file_io_type_show_create_view_sql[] =
     "`host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
     " AS " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
 
-static const char sys_host_summary_by_file_io_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
-    " AS " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
-
 static const char sys_x_host_summary_by_file_io_type_view_definition[] =
     SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
 
 static const char sys_x_host_summary_by_file_io_type_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
-    " AS " SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
-
-static const char sys_x_host_summary_by_file_io_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$host_summary_by_file_io_type` " SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
     " AS " SYS_X_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
 
 #undef SYS_HOST_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
@@ -1045,22 +891,12 @@ static const char sys_host_summary_by_stages_show_create_view_sql[] =
     "`host_summary_by_stages` " SYS_HOST_SUMMARY_BY_STAGES_VIEW_COLUMNS
     " AS " SYS_HOST_SUMMARY_BY_STAGES_VIEW_DEFINITION;
 
-static const char sys_host_summary_by_stages_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`host_summary_by_stages` " SYS_HOST_SUMMARY_BY_STAGES_VIEW_COLUMNS
-    " AS " SYS_HOST_SUMMARY_BY_STAGES_VIEW_DEFINITION;
-
 static const char sys_x_host_summary_by_stages_view_definition[] =
     SYS_X_HOST_SUMMARY_BY_STAGES_VIEW_DEFINITION;
 
 static const char sys_x_host_summary_by_stages_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$host_summary_by_stages` " SYS_HOST_SUMMARY_BY_STAGES_VIEW_COLUMNS
-    " AS " SYS_X_HOST_SUMMARY_BY_STAGES_VIEW_DEFINITION;
-
-static const char sys_x_host_summary_by_stages_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$host_summary_by_stages` " SYS_HOST_SUMMARY_BY_STAGES_VIEW_COLUMNS
     " AS " SYS_X_HOST_SUMMARY_BY_STAGES_VIEW_DEFINITION;
 
 #undef SYS_HOST_SUMMARY_BY_STAGES_VIEW_COLUMNS
@@ -1121,23 +957,12 @@ static const char sys_host_summary_by_statement_latency_show_create_view_sql[] =
     "`host_summary_by_statement_latency` " SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
     " AS " SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
 
-static const char sys_host_summary_by_statement_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`host_summary_by_statement_latency` " SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
-    " AS " SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_host_summary_by_statement_latency_view_definition[] =
     SYS_X_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_host_summary_by_statement_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$host_summary_by_statement_latency` " SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_host_summary_by_statement_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$host_summary_by_statement_latency`"
-    " " SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_HOST_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
@@ -1205,22 +1030,12 @@ static const char sys_host_summary_by_statement_type_show_create_view_sql[] =
     "`host_summary_by_statement_type` " SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
     " AS " SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
 
-static const char sys_host_summary_by_statement_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`host_summary_by_statement_type` " SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
-    " AS " SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
-
 static const char sys_x_host_summary_by_statement_type_view_definition[] =
     SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
 
 static const char sys_x_host_summary_by_statement_type_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$host_summary_by_statement_type` " SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
-    " AS " SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
-
-static const char sys_x_host_summary_by_statement_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$host_summary_by_statement_type` " SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
     " AS " SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
 
 #undef SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
@@ -1320,11 +1135,6 @@ static const char sys_user_summary_show_create_view_sql[] =
     "`user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
     " AS " SYS_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
 
-static const char sys_user_summary_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
-    " AS " SYS_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
-
 static const char sys_x_user_summary_view_definition[] =
     SYS_X_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
 
@@ -1332,11 +1142,6 @@ static const char sys_x_user_summary_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
     " AS " SYS_X_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
-
-static const char sys_x_user_summary_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
-    " AS " SYS_X_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
 
 #undef SYS_USER_SUMMARY_VIEW_COLUMNS
 #undef SYS_USER_SUMMARY_QUALIFIED_USER_EXPR
@@ -1385,22 +1190,12 @@ static const char sys_user_summary_by_file_io_show_create_view_sql[] =
     "`user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
     " AS " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
 
-static const char sys_user_summary_by_file_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
-    " AS " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
-
 static const char sys_x_user_summary_by_file_io_view_definition[] =
     SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
 
 static const char sys_x_user_summary_by_file_io_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
-    " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
-
-static const char sys_x_user_summary_by_file_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
     " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
 
 #undef SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
@@ -1455,22 +1250,12 @@ static const char sys_user_summary_by_file_io_type_show_create_view_sql[] =
     "`user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
     " AS " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
 
-static const char sys_user_summary_by_file_io_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
-    " AS " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
-
 static const char sys_x_user_summary_by_file_io_type_view_definition[] =
     SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
 
 static const char sys_x_user_summary_by_file_io_type_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
-    " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
-
-static const char sys_x_user_summary_by_file_io_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
     " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
 
 #undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
@@ -1521,22 +1306,12 @@ static const char sys_user_summary_by_stages_show_create_view_sql[] =
     "`user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
     " AS " SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
 
-static const char sys_user_summary_by_stages_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
-    " AS " SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
-
 static const char sys_x_user_summary_by_stages_view_definition[] =
     SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
 
 static const char sys_x_user_summary_by_stages_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
-    " AS " SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
-
-static const char sys_x_user_summary_by_stages_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
     " AS " SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
 
 #undef SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
@@ -1599,23 +1374,12 @@ static const char sys_user_summary_by_statement_latency_show_create_view_sql[] =
     "`user_summary_by_statement_latency` " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
     " AS " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
 
-static const char sys_user_summary_by_statement_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`user_summary_by_statement_latency` " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
-    " AS " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_user_summary_by_statement_latency_view_definition[] =
     SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_user_summary_by_statement_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$user_summary_by_statement_latency` " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_user_summary_by_statement_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$user_summary_by_statement_latency`"
-    " " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
@@ -1683,22 +1447,12 @@ static const char sys_user_summary_by_statement_type_show_create_view_sql[] =
     "`user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
     " AS " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
 
-static const char sys_user_summary_by_statement_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
-    " AS " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
-
 static const char sys_x_user_summary_by_statement_type_view_definition[] =
     SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
 
 static const char sys_x_user_summary_by_statement_type_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
-    " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
-
-static const char sys_x_user_summary_by_statement_type_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
     " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
 
 #undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
@@ -1778,22 +1532,12 @@ static const char sys_wait_classes_global_by_avg_latency_show_create_view_sql[] 
     "`wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
     " AS " SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
 
-static const char sys_wait_classes_global_by_avg_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
-    " AS " SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_wait_classes_global_by_avg_latency_view_definition[] =
     SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_wait_classes_global_by_avg_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
-    " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_wait_classes_global_by_avg_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
     " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
 
 static const char sys_wait_classes_global_by_latency_view_definition[] =
@@ -1804,22 +1548,12 @@ static const char sys_wait_classes_global_by_latency_show_create_view_sql[] =
     "`wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
     " AS " SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_wait_classes_global_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
-    " AS " SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_wait_classes_global_by_latency_view_definition[] =
     SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_wait_classes_global_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
-    " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_wait_classes_global_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
     " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_WAIT_CLASS_VIEW_COLUMNS
@@ -1878,22 +1612,12 @@ static const char sys_waits_by_host_by_latency_show_create_view_sql[] =
     "`waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_waits_by_host_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_waits_by_host_by_latency_view_definition[] =
     SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_waits_by_host_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_waits_by_host_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
@@ -1948,22 +1672,12 @@ static const char sys_waits_by_user_by_latency_show_create_view_sql[] =
     "`waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_waits_by_user_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_waits_by_user_by_latency_view_definition[] =
     SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_waits_by_user_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_waits_by_user_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
@@ -2012,22 +1726,12 @@ static const char sys_waits_global_by_latency_show_create_view_sql[] =
     "`waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_waits_global_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_waits_global_by_latency_view_definition[] =
     SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_waits_global_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_waits_global_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
@@ -2096,22 +1800,12 @@ static const char sys_memory_by_host_by_current_bytes_show_create_view_sql[] =
     "`memory_by_host_by_current_bytes` " SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
-static const char sys_memory_by_host_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`memory_by_host_by_current_bytes` " SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
 static const char sys_x_memory_by_host_by_current_bytes_view_definition[] =
     SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 static const char sys_x_memory_by_host_by_current_bytes_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$memory_by_host_by_current_bytes` " SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
-static const char sys_x_memory_by_host_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$memory_by_host_by_current_bytes` " SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_X_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 #undef SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS
@@ -2185,23 +1879,12 @@ static const char sys_memory_by_thread_by_current_bytes_show_create_view_sql[] =
     "`memory_by_thread_by_current_bytes` " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
-static const char sys_memory_by_thread_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`memory_by_thread_by_current_bytes` " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
 static const char sys_x_memory_by_thread_by_current_bytes_view_definition[] =
     SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 static const char sys_x_memory_by_thread_by_current_bytes_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$memory_by_thread_by_current_bytes` " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
-static const char sys_x_memory_by_thread_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$memory_by_thread_by_current_bytes`"
-    " " SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_X_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 #undef SYS_MEMORY_BY_THREAD_BY_CURRENT_BYTES_VIEW_COLUMNS
@@ -2275,22 +1958,12 @@ static const char sys_memory_by_user_by_current_bytes_show_create_view_sql[] =
     "`memory_by_user_by_current_bytes` " SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
-static const char sys_memory_by_user_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`memory_by_user_by_current_bytes` " SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
 static const char sys_x_memory_by_user_by_current_bytes_view_definition[] =
     SYS_X_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 static const char sys_x_memory_by_user_by_current_bytes_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$memory_by_user_by_current_bytes` " SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_X_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
-static const char sys_x_memory_by_user_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$memory_by_user_by_current_bytes` " SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_X_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 #undef SYS_MEMORY_BY_USER_BY_CURRENT_BYTES_VIEW_COLUMNS
@@ -2364,22 +2037,12 @@ static const char sys_memory_global_by_current_bytes_show_create_view_sql[] =
     "`memory_global_by_current_bytes` " SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
-static const char sys_memory_global_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`memory_global_by_current_bytes` " SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
 static const char sys_x_memory_global_by_current_bytes_view_definition[] =
     SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 static const char sys_x_memory_global_by_current_bytes_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$memory_global_by_current_bytes` " SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_COLUMNS
-    " AS " SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION;
-
-static const char sys_x_memory_global_by_current_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$memory_global_by_current_bytes` " SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_COLUMNS
     " AS " SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION;
 
 #undef SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_COLUMNS
@@ -2417,22 +2080,12 @@ static const char sys_memory_global_total_show_create_view_sql[] =
     "`memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
     " AS " SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
 
-static const char sys_memory_global_total_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
-    " AS " SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
-
 static const char sys_x_memory_global_total_view_definition[] =
     SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
 
 static const char sys_x_memory_global_total_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
-    " AS " SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
-
-static const char sys_x_memory_global_total_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
     " AS " SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
 
 #undef SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
@@ -2487,22 +2140,12 @@ static const char sys_innodb_buffer_stats_by_schema_show_create_view_sql[] =
     "`innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
     " AS " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
 
-static const char sys_innodb_buffer_stats_by_schema_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
-    " AS " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
-
 static const char sys_x_innodb_buffer_stats_by_schema_view_definition[] =
     SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
 
 static const char sys_x_innodb_buffer_stats_by_schema_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
-    " AS " SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
-
-static const char sys_x_innodb_buffer_stats_by_schema_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$innodb_buffer_stats_by_schema` " SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
     " AS " SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_DEFINITION;
 
 #undef SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS
@@ -2565,22 +2208,12 @@ static const char sys_innodb_buffer_stats_by_table_show_create_view_sql[] =
     "`innodb_buffer_stats_by_table` " SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_COLUMNS
     " AS " SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_DEFINITION;
 
-static const char sys_innodb_buffer_stats_by_table_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`innodb_buffer_stats_by_table` " SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_COLUMNS
-    " AS " SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_DEFINITION;
-
 static const char sys_x_innodb_buffer_stats_by_table_view_definition[] =
     SYS_X_INNODB_BUFFER_STATS_BY_TABLE_VIEW_DEFINITION;
 
 static const char sys_x_innodb_buffer_stats_by_table_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$innodb_buffer_stats_by_table` " SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_COLUMNS
-    " AS " SYS_X_INNODB_BUFFER_STATS_BY_TABLE_VIEW_DEFINITION;
-
-static const char sys_x_innodb_buffer_stats_by_table_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$innodb_buffer_stats_by_table` " SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_COLUMNS
     " AS " SYS_X_INNODB_BUFFER_STATS_BY_TABLE_VIEW_DEFINITION;
 
 #undef SYS_INNODB_BUFFER_STATS_BY_TABLE_VIEW_COLUMNS
@@ -2654,22 +2287,12 @@ static const char sys_innodb_lock_waits_show_create_view_sql[] =
     "`innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
     " AS " SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION;
 
-static const char sys_innodb_lock_waits_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
-    " AS " SYS_INNODB_LOCK_WAITS_VIEW_DEFINITION;
-
 static const char sys_x_innodb_lock_waits_view_definition[] =
     SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION;
 
 static const char sys_x_innodb_lock_waits_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
-    " AS " SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION;
-
-static const char sys_x_innodb_lock_waits_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$innodb_lock_waits` " SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
     " AS " SYS_X_INNODB_LOCK_WAITS_VIEW_DEFINITION;
 
 #undef SYS_INNODB_LOCK_WAITS_VIEW_COLUMNS
@@ -2733,22 +2356,12 @@ static const char sys_io_by_thread_by_latency_show_create_view_sql[] =
     "`io_by_thread_by_latency` " SYS_IO_BY_THREAD_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_IO_BY_THREAD_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_io_by_thread_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`io_by_thread_by_latency` " SYS_IO_BY_THREAD_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_IO_BY_THREAD_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_io_by_thread_by_latency_view_definition[] =
     SYS_X_IO_BY_THREAD_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_io_by_thread_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$io_by_thread_by_latency` " SYS_IO_BY_THREAD_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_IO_BY_THREAD_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_io_by_thread_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$io_by_thread_by_latency` " SYS_IO_BY_THREAD_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_IO_BY_THREAD_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_IO_BY_THREAD_BY_LATENCY_VIEW_COLUMNS
@@ -2812,22 +2425,12 @@ static const char sys_io_global_by_file_by_bytes_show_create_view_sql[] =
     "`io_global_by_file_by_bytes` " SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_COLUMNS
     " AS " SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION;
 
-static const char sys_io_global_by_file_by_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`io_global_by_file_by_bytes` " SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_COLUMNS
-    " AS " SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION;
-
 static const char sys_x_io_global_by_file_by_bytes_view_definition[] =
     SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION;
 
 static const char sys_x_io_global_by_file_by_bytes_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$io_global_by_file_by_bytes` " SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_COLUMNS
-    " AS " SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION;
-
-static const char sys_x_io_global_by_file_by_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$io_global_by_file_by_bytes` " SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_COLUMNS
     " AS " SYS_X_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_DEFINITION;
 
 #undef SYS_IO_GLOBAL_BY_FILE_BY_BYTES_VIEW_COLUMNS
@@ -2873,22 +2476,12 @@ static const char sys_io_global_by_file_by_latency_show_create_view_sql[] =
     "`io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_io_global_by_file_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_io_global_by_file_by_latency_view_definition[] =
     SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_io_global_by_file_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_io_global_by_file_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$io_global_by_file_by_latency` " SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_IO_GLOBAL_BY_FILE_BY_LATENCY_VIEW_COLUMNS
@@ -2959,22 +2552,12 @@ static const char sys_io_global_by_wait_by_bytes_show_create_view_sql[] =
     "`io_global_by_wait_by_bytes` " SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_COLUMNS
     " AS " SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_DEFINITION;
 
-static const char sys_io_global_by_wait_by_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`io_global_by_wait_by_bytes` " SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_COLUMNS
-    " AS " SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_DEFINITION;
-
 static const char sys_x_io_global_by_wait_by_bytes_view_definition[] =
     SYS_X_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_DEFINITION;
 
 static const char sys_x_io_global_by_wait_by_bytes_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$io_global_by_wait_by_bytes` " SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_COLUMNS
-    " AS " SYS_X_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_DEFINITION;
-
-static const char sys_x_io_global_by_wait_by_bytes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$io_global_by_wait_by_bytes` " SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_COLUMNS
     " AS " SYS_X_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_DEFINITION;
 
 #undef SYS_IO_GLOBAL_BY_WAIT_BY_BYTES_VIEW_COLUMNS
@@ -3043,22 +2626,12 @@ static const char sys_io_global_by_wait_by_latency_show_create_view_sql[] =
     "`io_global_by_wait_by_latency` " SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_DEFINITION;
 
-static const char sys_io_global_by_wait_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`io_global_by_wait_by_latency` " SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_DEFINITION;
-
 static const char sys_x_io_global_by_wait_by_latency_view_definition[] =
     SYS_X_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_DEFINITION;
 
 static const char sys_x_io_global_by_wait_by_latency_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$io_global_by_wait_by_latency` " SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_COLUMNS
-    " AS " SYS_X_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_DEFINITION;
-
-static const char sys_x_io_global_by_wait_by_latency_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$io_global_by_wait_by_latency` " SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_COLUMNS
     " AS " SYS_X_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_DEFINITION;
 
 #undef SYS_IO_GLOBAL_BY_WAIT_BY_LATENCY_VIEW_COLUMNS
@@ -3119,21 +2692,11 @@ static const char sys_latest_file_io_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS " AS " SYS_LATEST_FILE_IO_VIEW_DEFINITION;
 
-static const char sys_latest_file_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS
-    " AS " SYS_LATEST_FILE_IO_VIEW_DEFINITION;
-
 static const char sys_x_latest_file_io_view_definition[] = SYS_X_LATEST_FILE_IO_VIEW_DEFINITION;
 
 static const char sys_x_latest_file_io_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS
-    " AS " SYS_X_LATEST_FILE_IO_VIEW_DEFINITION;
-
-static const char sys_x_latest_file_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$latest_file_io` " SYS_LATEST_FILE_IO_VIEW_COLUMNS
     " AS " SYS_X_LATEST_FILE_IO_VIEW_DEFINITION;
 
 #undef SYS_LATEST_FILE_IO_VIEW_COLUMNS
@@ -3158,11 +2721,6 @@ static const char sys_ps_check_lost_instrumentation_view_definition[] =
 static const char sys_ps_check_lost_instrumentation_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`ps_check_lost_instrumentation` " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS
-    " AS " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION;
-
-static const char sys_ps_check_lost_instrumentation_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`ps_check_lost_instrumentation` " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS
     " AS " SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_DEFINITION;
 
 #undef SYS_PS_CHECK_LOST_INSTRUMENTATION_VIEW_COLUMNS
@@ -3214,11 +2772,6 @@ static const char sys_schema_auto_increment_columns_view_definition[] =
 static const char sys_schema_auto_increment_columns_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`schema_auto_increment_columns` " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION;
-
-static const char sys_schema_auto_increment_columns_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_auto_increment_columns` " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
     " AS " SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_AUTO_INCREMENT_COLUMNS_VIEW_COLUMNS
@@ -3283,22 +2836,12 @@ static const char sys_schema_index_statistics_show_create_view_sql[] =
     "`schema_index_statistics` " SYS_SCHEMA_INDEX_STATISTICS_VIEW_COLUMNS
     " AS " SYS_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION;
 
-static const char sys_schema_index_statistics_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_index_statistics` " SYS_SCHEMA_INDEX_STATISTICS_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION;
-
 static const char sys_x_schema_index_statistics_view_definition[] =
     SYS_X_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION;
 
 static const char sys_x_schema_index_statistics_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$schema_index_statistics` " SYS_SCHEMA_INDEX_STATISTICS_VIEW_COLUMNS
-    " AS " SYS_X_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION;
-
-static const char sys_x_schema_index_statistics_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$schema_index_statistics` " SYS_SCHEMA_INDEX_STATISTICS_VIEW_COLUMNS
     " AS " SYS_X_SCHEMA_INDEX_STATISTICS_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_INDEX_STATISTICS_VIEW_COLUMNS
@@ -3367,22 +2910,12 @@ static const char sys_schema_redundant_indexes_show_create_view_sql[] =
     "`schema_redundant_indexes` " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS
     " AS " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION;
 
-static const char sys_schema_redundant_indexes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_redundant_indexes` " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_DEFINITION;
-
 static const char sys_x_schema_flattened_keys_view_definition[] =
     SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION;
 
 static const char sys_x_schema_flattened_keys_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$schema_flattened_keys` " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS
-    " AS " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION;
-
-static const char sys_x_schema_flattened_keys_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$schema_flattened_keys` " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_COLUMNS
     " AS " SYS_X_SCHEMA_FLATTENED_KEYS_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_REDUNDANT_INDEXES_VIEW_COLUMNS
@@ -3440,22 +2973,12 @@ static const char sys_schema_table_lock_waits_show_create_view_sql[] =
     "`schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
     " AS " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
 
-static const char sys_schema_table_lock_waits_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
-
 static const char sys_x_schema_table_lock_waits_view_definition[] =
     SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
 
 static const char sys_x_schema_table_lock_waits_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
-    " AS " SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
-
-static const char sys_x_schema_table_lock_waits_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$schema_table_lock_waits` " SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
     " AS " SYS_X_SCHEMA_TABLE_LOCK_WAITS_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_TABLE_LOCK_WAITS_VIEW_COLUMNS
@@ -3493,11 +3016,6 @@ static const char sys_x_ps_schema_table_statistics_io_show_create_view_sql[] =
     "`x$ps_schema_table_statistics_io` " SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_COLUMNS
     " AS " SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_DEFINITION;
 
-static const char sys_x_ps_schema_table_statistics_io_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$ps_schema_table_statistics_io` " SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_COLUMNS
-    " AS " SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_DEFINITION;
-
 #undef SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_COLUMNS
 #undef SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_DEFINITION
 
@@ -3514,12 +3032,6 @@ static const char sys_x_ps_digest_avg_latency_distribution_view_definition[] =
 static const char sys_x_ps_digest_avg_latency_distribution_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$ps_digest_avg_latency_distribution` " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS
-    " AS " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION;
-
-static const char sys_x_ps_digest_avg_latency_distribution_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$ps_digest_avg_latency_distribution`"
-    " " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS
     " AS " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION;
 
 #undef SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS
@@ -3553,12 +3065,6 @@ static const char sys_x_ps_digest_95th_percentile_by_avg_us_show_create_view_sql
     "`x$ps_digest_95th_percentile_by_avg_us`"
     " " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS
     " AS " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_UNQUALIFIED_VIEW_DEFINITION;
-
-static const char sys_x_ps_digest_95th_percentile_by_avg_us_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$ps_digest_95th_percentile_by_avg_us`"
-    " " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS
-    " AS " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_DEFINITION;
 
 #undef SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS
 #undef SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_DEFINITION
@@ -3615,22 +3121,12 @@ static const char sys_schema_table_statistics_show_create_view_sql[] =
     "`schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
     " AS " SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
 
-static const char sys_schema_table_statistics_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
-
 static const char sys_x_schema_table_statistics_view_definition[] =
     SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
 
 static const char sys_x_schema_table_statistics_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
-    " AS " SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
-
-static const char sys_x_schema_table_statistics_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$schema_table_statistics` " SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
     " AS " SYS_X_SCHEMA_TABLE_STATISTICS_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS
@@ -3708,24 +3204,12 @@ static const char sys_schema_table_statistics_with_buffer_show_create_view_sql[]
     "`schema_table_statistics_with_buffer` " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
     " AS " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
 
-static const char sys_schema_table_statistics_with_buffer_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_table_statistics_with_buffer`"
-    " " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
-
 static const char sys_x_schema_table_statistics_with_buffer_view_definition[] =
     SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
 
 static const char sys_x_schema_table_statistics_with_buffer_show_create_view_sql[] =
     "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$schema_table_statistics_with_buffer` " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
-    " AS " SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
-
-static const char sys_x_schema_table_statistics_with_buffer_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$schema_table_statistics_with_buffer`"
-    " " SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
     " AS " SYS_X_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_TABLE_STATISTICS_WITH_BUFFER_VIEW_COLUMNS
@@ -3767,24 +3251,12 @@ static const char sys_schema_tables_with_full_table_scans_show_create_view_sql[]
     "`schema_tables_with_full_table_scans` " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
     " AS " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
 
-static const char sys_schema_tables_with_full_table_scans_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_tables_with_full_table_scans`"
-    " " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
-
 static const char sys_x_schema_tables_with_full_table_scans_view_definition[] =
     SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
 
 static const char sys_x_schema_tables_with_full_table_scans_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`x$schema_tables_with_full_table_scans` " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
-    " AS " SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
-
-static const char sys_x_schema_tables_with_full_table_scans_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`x$schema_tables_with_full_table_scans`"
-    " " SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
     " AS " SYS_X_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_TABLES_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
@@ -3814,11 +3286,6 @@ static const char sys_schema_unused_indexes_view_definition[] =
 static const char sys_schema_unused_indexes_show_create_view_sql[] =
     "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
     "`schema_unused_indexes` " SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION;
-
-static const char sys_schema_unused_indexes_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_unused_indexes` " SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS
     " AS " SYS_SCHEMA_UNUSED_INDEXES_VIEW_DEFINITION;
 
 #undef SYS_SCHEMA_UNUSED_INDEXES_VIEW_COLUMNS
@@ -3858,415 +3325,288 @@ static const char sys_schema_object_overview_show_create_view_sql[] =
     "`schema_object_overview` " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS
     " AS " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION;
 
-static const char sys_schema_object_overview_show_create_qualified_view_sql[] =
-    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
-    "`sys`.`schema_object_overview` " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS
-    " AS " SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION;
-
 #undef SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_COLUMNS
 #undef SYS_SCHEMA_OBJECT_OVERVIEW_VIEW_DEFINITION
 
 static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_definitions[] = {
-    {"version",
-     sys_version_view_definition,
-     sys_version_show_create_view_sql,
-     sys_version_show_create_qualified_view_sql},
-    {"metrics",
-     sys_metrics_view_definition,
-     sys_metrics_show_create_view_sql,
-     sys_metrics_show_create_qualified_view_sql},
-    {"processlist",
-     sys_processlist_view_definition,
-     sys_processlist_show_create_view_sql,
-     sys_processlist_show_create_qualified_view_sql},
-    {"x$processlist",
-     sys_x_processlist_view_definition,
-     sys_x_processlist_show_create_view_sql,
-     sys_x_processlist_show_create_qualified_view_sql},
-    {"session",
-     sys_session_view_definition,
-     sys_session_show_create_view_sql,
-     sys_session_show_create_qualified_view_sql},
-    {"x$session",
-     sys_x_session_view_definition,
-     sys_x_session_show_create_view_sql,
-     sys_x_session_show_create_qualified_view_sql},
+    {"version", sys_version_view_definition, sys_version_show_create_view_sql},
+    {"metrics", sys_metrics_view_definition, sys_metrics_show_create_view_sql},
+    {"processlist", sys_processlist_view_definition, sys_processlist_show_create_view_sql},
+    {"x$processlist", sys_x_processlist_view_definition, sys_x_processlist_show_create_view_sql},
+    {"session", sys_session_view_definition, sys_session_show_create_view_sql},
+    {"x$session", sys_x_session_view_definition, sys_x_session_show_create_view_sql},
     {"session_ssl_status",
      sys_session_ssl_status_view_definition,
-     sys_session_ssl_status_show_create_view_sql,
-     sys_session_ssl_status_show_create_qualified_view_sql},
+     sys_session_ssl_status_show_create_view_sql},
     {"statement_analysis",
      sys_statement_analysis_view_definition,
-     sys_statement_analysis_show_create_view_sql,
-     sys_statement_analysis_show_create_qualified_view_sql},
+     sys_statement_analysis_show_create_view_sql},
     {"statements_with_errors_or_warnings",
      sys_statements_with_errors_or_warnings_view_definition,
-     sys_statements_with_errors_or_warnings_show_create_view_sql,
-     sys_statements_with_errors_or_warnings_show_create_qualified_view_sql},
+     sys_statements_with_errors_or_warnings_show_create_view_sql},
     {"statements_with_full_table_scans",
      sys_statements_with_full_table_scans_view_definition,
-     sys_statements_with_full_table_scans_show_create_view_sql,
-     sys_statements_with_full_table_scans_show_create_qualified_view_sql},
+     sys_statements_with_full_table_scans_show_create_view_sql},
     {"statements_with_runtimes_in_95th_percentile",
      sys_statements_with_runtimes_in_95th_percentile_view_definition,
-     sys_statements_with_runtimes_in_95th_percentile_show_create_view_sql,
-     sys_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql},
+     sys_statements_with_runtimes_in_95th_percentile_show_create_view_sql},
     {"statements_with_sorting",
      sys_statements_with_sorting_view_definition,
-     sys_statements_with_sorting_show_create_view_sql,
-     sys_statements_with_sorting_show_create_qualified_view_sql},
+     sys_statements_with_sorting_show_create_view_sql},
     {"statements_with_temp_tables",
      sys_statements_with_temp_tables_view_definition,
-     sys_statements_with_temp_tables_show_create_view_sql,
-     sys_statements_with_temp_tables_show_create_qualified_view_sql},
-    {"host_summary",
-     sys_host_summary_view_definition,
-     sys_host_summary_show_create_view_sql,
-     sys_host_summary_show_create_qualified_view_sql},
+     sys_statements_with_temp_tables_show_create_view_sql},
+    {"host_summary", sys_host_summary_view_definition, sys_host_summary_show_create_view_sql},
     {"host_summary_by_file_io",
      sys_host_summary_by_file_io_view_definition,
-     sys_host_summary_by_file_io_show_create_view_sql,
-     sys_host_summary_by_file_io_show_create_qualified_view_sql},
+     sys_host_summary_by_file_io_show_create_view_sql},
     {"host_summary_by_file_io_type",
      sys_host_summary_by_file_io_type_view_definition,
-     sys_host_summary_by_file_io_type_show_create_view_sql,
-     sys_host_summary_by_file_io_type_show_create_qualified_view_sql},
+     sys_host_summary_by_file_io_type_show_create_view_sql},
     {"host_summary_by_stages",
      sys_host_summary_by_stages_view_definition,
-     sys_host_summary_by_stages_show_create_view_sql,
-     sys_host_summary_by_stages_show_create_qualified_view_sql},
+     sys_host_summary_by_stages_show_create_view_sql},
     {"host_summary_by_statement_latency",
      sys_host_summary_by_statement_latency_view_definition,
-     sys_host_summary_by_statement_latency_show_create_view_sql,
-     sys_host_summary_by_statement_latency_show_create_qualified_view_sql},
+     sys_host_summary_by_statement_latency_show_create_view_sql},
     {"host_summary_by_statement_type",
      sys_host_summary_by_statement_type_view_definition,
-     sys_host_summary_by_statement_type_show_create_view_sql,
-     sys_host_summary_by_statement_type_show_create_qualified_view_sql},
-    {"user_summary",
-     sys_user_summary_view_definition,
-     sys_user_summary_show_create_view_sql,
-     sys_user_summary_show_create_qualified_view_sql},
+     sys_host_summary_by_statement_type_show_create_view_sql},
+    {"user_summary", sys_user_summary_view_definition, sys_user_summary_show_create_view_sql},
     {"user_summary_by_file_io",
      sys_user_summary_by_file_io_view_definition,
-     sys_user_summary_by_file_io_show_create_view_sql,
-     sys_user_summary_by_file_io_show_create_qualified_view_sql},
+     sys_user_summary_by_file_io_show_create_view_sql},
     {"user_summary_by_file_io_type",
      sys_user_summary_by_file_io_type_view_definition,
-     sys_user_summary_by_file_io_type_show_create_view_sql,
-     sys_user_summary_by_file_io_type_show_create_qualified_view_sql},
+     sys_user_summary_by_file_io_type_show_create_view_sql},
     {"user_summary_by_stages",
      sys_user_summary_by_stages_view_definition,
-     sys_user_summary_by_stages_show_create_view_sql,
-     sys_user_summary_by_stages_show_create_qualified_view_sql},
+     sys_user_summary_by_stages_show_create_view_sql},
     {"user_summary_by_statement_latency",
      sys_user_summary_by_statement_latency_view_definition,
-     sys_user_summary_by_statement_latency_show_create_view_sql,
-     sys_user_summary_by_statement_latency_show_create_qualified_view_sql},
+     sys_user_summary_by_statement_latency_show_create_view_sql},
     {"user_summary_by_statement_type",
      sys_user_summary_by_statement_type_view_definition,
-     sys_user_summary_by_statement_type_show_create_view_sql,
-     sys_user_summary_by_statement_type_show_create_qualified_view_sql},
+     sys_user_summary_by_statement_type_show_create_view_sql},
     {"wait_classes_global_by_avg_latency",
      sys_wait_classes_global_by_avg_latency_view_definition,
-     sys_wait_classes_global_by_avg_latency_show_create_view_sql,
-     sys_wait_classes_global_by_avg_latency_show_create_qualified_view_sql},
+     sys_wait_classes_global_by_avg_latency_show_create_view_sql},
     {"wait_classes_global_by_latency",
      sys_wait_classes_global_by_latency_view_definition,
-     sys_wait_classes_global_by_latency_show_create_view_sql,
-     sys_wait_classes_global_by_latency_show_create_qualified_view_sql},
+     sys_wait_classes_global_by_latency_show_create_view_sql},
     {"waits_by_host_by_latency",
      sys_waits_by_host_by_latency_view_definition,
-     sys_waits_by_host_by_latency_show_create_view_sql,
-     sys_waits_by_host_by_latency_show_create_qualified_view_sql},
+     sys_waits_by_host_by_latency_show_create_view_sql},
     {"waits_by_user_by_latency",
      sys_waits_by_user_by_latency_view_definition,
-     sys_waits_by_user_by_latency_show_create_view_sql,
-     sys_waits_by_user_by_latency_show_create_qualified_view_sql},
+     sys_waits_by_user_by_latency_show_create_view_sql},
     {"waits_global_by_latency",
      sys_waits_global_by_latency_view_definition,
-     sys_waits_global_by_latency_show_create_view_sql,
-     sys_waits_global_by_latency_show_create_qualified_view_sql},
+     sys_waits_global_by_latency_show_create_view_sql},
     {"innodb_buffer_stats_by_schema",
      sys_innodb_buffer_stats_by_schema_view_definition,
-     sys_innodb_buffer_stats_by_schema_show_create_view_sql,
-     sys_innodb_buffer_stats_by_schema_show_create_qualified_view_sql},
+     sys_innodb_buffer_stats_by_schema_show_create_view_sql},
     {"innodb_buffer_stats_by_table",
      sys_innodb_buffer_stats_by_table_view_definition,
-     sys_innodb_buffer_stats_by_table_show_create_view_sql,
-     sys_innodb_buffer_stats_by_table_show_create_qualified_view_sql},
+     sys_innodb_buffer_stats_by_table_show_create_view_sql},
     {"innodb_lock_waits",
      sys_innodb_lock_waits_view_definition,
-     sys_innodb_lock_waits_show_create_view_sql,
-     sys_innodb_lock_waits_show_create_qualified_view_sql},
+     sys_innodb_lock_waits_show_create_view_sql},
     {"io_by_thread_by_latency",
      sys_io_by_thread_by_latency_view_definition,
-     sys_io_by_thread_by_latency_show_create_view_sql,
-     sys_io_by_thread_by_latency_show_create_qualified_view_sql},
+     sys_io_by_thread_by_latency_show_create_view_sql},
     {"io_global_by_file_by_bytes",
      sys_io_global_by_file_by_bytes_view_definition,
-     sys_io_global_by_file_by_bytes_show_create_view_sql,
-     sys_io_global_by_file_by_bytes_show_create_qualified_view_sql},
+     sys_io_global_by_file_by_bytes_show_create_view_sql},
     {"io_global_by_file_by_latency",
      sys_io_global_by_file_by_latency_view_definition,
-     sys_io_global_by_file_by_latency_show_create_view_sql,
-     sys_io_global_by_file_by_latency_show_create_qualified_view_sql},
+     sys_io_global_by_file_by_latency_show_create_view_sql},
     {"io_global_by_wait_by_bytes",
      sys_io_global_by_wait_by_bytes_view_definition,
-     sys_io_global_by_wait_by_bytes_show_create_view_sql,
-     sys_io_global_by_wait_by_bytes_show_create_qualified_view_sql},
+     sys_io_global_by_wait_by_bytes_show_create_view_sql},
     {"io_global_by_wait_by_latency",
      sys_io_global_by_wait_by_latency_view_definition,
-     sys_io_global_by_wait_by_latency_show_create_view_sql,
-     sys_io_global_by_wait_by_latency_show_create_qualified_view_sql},
-    {"latest_file_io",
-     sys_latest_file_io_view_definition,
-     sys_latest_file_io_show_create_view_sql,
-     sys_latest_file_io_show_create_qualified_view_sql},
+     sys_io_global_by_wait_by_latency_show_create_view_sql},
+    {"latest_file_io", sys_latest_file_io_view_definition, sys_latest_file_io_show_create_view_sql},
     {"memory_by_host_by_current_bytes",
      sys_memory_by_host_by_current_bytes_view_definition,
-     sys_memory_by_host_by_current_bytes_show_create_view_sql,
-     sys_memory_by_host_by_current_bytes_show_create_qualified_view_sql},
+     sys_memory_by_host_by_current_bytes_show_create_view_sql},
     {"memory_by_thread_by_current_bytes",
      sys_memory_by_thread_by_current_bytes_view_definition,
-     sys_memory_by_thread_by_current_bytes_show_create_view_sql,
-     sys_memory_by_thread_by_current_bytes_show_create_qualified_view_sql},
+     sys_memory_by_thread_by_current_bytes_show_create_view_sql},
     {"memory_by_user_by_current_bytes",
      sys_memory_by_user_by_current_bytes_view_definition,
-     sys_memory_by_user_by_current_bytes_show_create_view_sql,
-     sys_memory_by_user_by_current_bytes_show_create_qualified_view_sql},
+     sys_memory_by_user_by_current_bytes_show_create_view_sql},
     {"memory_global_by_current_bytes",
      sys_memory_global_by_current_bytes_view_definition,
-     sys_memory_global_by_current_bytes_show_create_view_sql,
-     sys_memory_global_by_current_bytes_show_create_qualified_view_sql},
+     sys_memory_global_by_current_bytes_show_create_view_sql},
     {"memory_global_total",
      sys_memory_global_total_view_definition,
-     sys_memory_global_total_show_create_view_sql,
-     sys_memory_global_total_show_create_qualified_view_sql},
+     sys_memory_global_total_show_create_view_sql},
     {"ps_check_lost_instrumentation",
      sys_ps_check_lost_instrumentation_view_definition,
-     sys_ps_check_lost_instrumentation_show_create_view_sql,
-     sys_ps_check_lost_instrumentation_show_create_qualified_view_sql},
+     sys_ps_check_lost_instrumentation_show_create_view_sql},
     {"schema_auto_increment_columns",
      sys_schema_auto_increment_columns_view_definition,
-     sys_schema_auto_increment_columns_show_create_view_sql,
-     sys_schema_auto_increment_columns_show_create_qualified_view_sql},
+     sys_schema_auto_increment_columns_show_create_view_sql},
     {"schema_index_statistics",
      sys_schema_index_statistics_view_definition,
-     sys_schema_index_statistics_show_create_view_sql,
-     sys_schema_index_statistics_show_create_qualified_view_sql},
+     sys_schema_index_statistics_show_create_view_sql},
     {"schema_object_overview",
      sys_schema_object_overview_view_definition,
-     sys_schema_object_overview_show_create_view_sql,
-     sys_schema_object_overview_show_create_qualified_view_sql},
+     sys_schema_object_overview_show_create_view_sql},
     {"schema_redundant_indexes",
      sys_schema_redundant_indexes_view_definition,
-     sys_schema_redundant_indexes_show_create_view_sql,
-     sys_schema_redundant_indexes_show_create_qualified_view_sql},
+     sys_schema_redundant_indexes_show_create_view_sql},
     {"schema_table_lock_waits",
      sys_schema_table_lock_waits_view_definition,
-     sys_schema_table_lock_waits_show_create_view_sql,
-     sys_schema_table_lock_waits_show_create_qualified_view_sql},
+     sys_schema_table_lock_waits_show_create_view_sql},
     {"schema_table_statistics",
      sys_schema_table_statistics_view_definition,
-     sys_schema_table_statistics_show_create_view_sql,
-     sys_schema_table_statistics_show_create_qualified_view_sql},
+     sys_schema_table_statistics_show_create_view_sql},
     {"schema_table_statistics_with_buffer",
      sys_schema_table_statistics_with_buffer_view_definition,
-     sys_schema_table_statistics_with_buffer_show_create_view_sql,
-     sys_schema_table_statistics_with_buffer_show_create_qualified_view_sql},
+     sys_schema_table_statistics_with_buffer_show_create_view_sql},
     {"schema_tables_with_full_table_scans",
      sys_schema_tables_with_full_table_scans_view_definition,
-     sys_schema_tables_with_full_table_scans_show_create_view_sql,
-     sys_schema_tables_with_full_table_scans_show_create_qualified_view_sql},
+     sys_schema_tables_with_full_table_scans_show_create_view_sql},
     {"schema_unused_indexes",
      sys_schema_unused_indexes_view_definition,
-     sys_schema_unused_indexes_show_create_view_sql,
-     sys_schema_unused_indexes_show_create_qualified_view_sql},
+     sys_schema_unused_indexes_show_create_view_sql},
     {"x$schema_flattened_keys",
      sys_x_schema_flattened_keys_view_definition,
-     sys_x_schema_flattened_keys_show_create_view_sql,
-     sys_x_schema_flattened_keys_show_create_qualified_view_sql},
-    {"x$host_summary",
-     sys_x_host_summary_view_definition,
-     sys_x_host_summary_show_create_view_sql,
-     sys_x_host_summary_show_create_qualified_view_sql},
+     sys_x_schema_flattened_keys_show_create_view_sql},
+    {"x$host_summary", sys_x_host_summary_view_definition, sys_x_host_summary_show_create_view_sql},
     {"x$host_summary_by_file_io",
      sys_x_host_summary_by_file_io_view_definition,
-     sys_x_host_summary_by_file_io_show_create_view_sql,
-     sys_x_host_summary_by_file_io_show_create_qualified_view_sql},
+     sys_x_host_summary_by_file_io_show_create_view_sql},
     {"x$host_summary_by_file_io_type",
      sys_x_host_summary_by_file_io_type_view_definition,
-     sys_x_host_summary_by_file_io_type_show_create_view_sql,
-     sys_x_host_summary_by_file_io_type_show_create_qualified_view_sql},
+     sys_x_host_summary_by_file_io_type_show_create_view_sql},
     {"x$host_summary_by_stages",
      sys_x_host_summary_by_stages_view_definition,
-     sys_x_host_summary_by_stages_show_create_view_sql,
-     sys_x_host_summary_by_stages_show_create_qualified_view_sql},
+     sys_x_host_summary_by_stages_show_create_view_sql},
     {"x$host_summary_by_statement_latency",
      sys_x_host_summary_by_statement_latency_view_definition,
-     sys_x_host_summary_by_statement_latency_show_create_view_sql,
-     sys_x_host_summary_by_statement_latency_show_create_qualified_view_sql},
+     sys_x_host_summary_by_statement_latency_show_create_view_sql},
     {"x$host_summary_by_statement_type",
      sys_x_host_summary_by_statement_type_view_definition,
-     sys_x_host_summary_by_statement_type_show_create_view_sql,
-     sys_x_host_summary_by_statement_type_show_create_qualified_view_sql},
-    {"x$user_summary",
-     sys_x_user_summary_view_definition,
-     sys_x_user_summary_show_create_view_sql,
-     sys_x_user_summary_show_create_qualified_view_sql},
+     sys_x_host_summary_by_statement_type_show_create_view_sql},
+    {"x$user_summary", sys_x_user_summary_view_definition, sys_x_user_summary_show_create_view_sql},
     {"x$user_summary_by_file_io",
      sys_x_user_summary_by_file_io_view_definition,
-     sys_x_user_summary_by_file_io_show_create_view_sql,
-     sys_x_user_summary_by_file_io_show_create_qualified_view_sql},
+     sys_x_user_summary_by_file_io_show_create_view_sql},
     {"x$user_summary_by_file_io_type",
      sys_x_user_summary_by_file_io_type_view_definition,
-     sys_x_user_summary_by_file_io_type_show_create_view_sql,
-     sys_x_user_summary_by_file_io_type_show_create_qualified_view_sql},
+     sys_x_user_summary_by_file_io_type_show_create_view_sql},
     {"x$user_summary_by_stages",
      sys_x_user_summary_by_stages_view_definition,
-     sys_x_user_summary_by_stages_show_create_view_sql,
-     sys_x_user_summary_by_stages_show_create_qualified_view_sql},
+     sys_x_user_summary_by_stages_show_create_view_sql},
     {"x$user_summary_by_statement_latency",
      sys_x_user_summary_by_statement_latency_view_definition,
-     sys_x_user_summary_by_statement_latency_show_create_view_sql,
-     sys_x_user_summary_by_statement_latency_show_create_qualified_view_sql},
+     sys_x_user_summary_by_statement_latency_show_create_view_sql},
     {"x$user_summary_by_statement_type",
      sys_x_user_summary_by_statement_type_view_definition,
-     sys_x_user_summary_by_statement_type_show_create_view_sql,
-     sys_x_user_summary_by_statement_type_show_create_qualified_view_sql},
+     sys_x_user_summary_by_statement_type_show_create_view_sql},
     {"x$wait_classes_global_by_avg_latency",
      sys_x_wait_classes_global_by_avg_latency_view_definition,
-     sys_x_wait_classes_global_by_avg_latency_show_create_view_sql,
-     sys_x_wait_classes_global_by_avg_latency_show_create_qualified_view_sql},
+     sys_x_wait_classes_global_by_avg_latency_show_create_view_sql},
     {"x$wait_classes_global_by_latency",
      sys_x_wait_classes_global_by_latency_view_definition,
-     sys_x_wait_classes_global_by_latency_show_create_view_sql,
-     sys_x_wait_classes_global_by_latency_show_create_qualified_view_sql},
+     sys_x_wait_classes_global_by_latency_show_create_view_sql},
     {"x$waits_by_host_by_latency",
      sys_x_waits_by_host_by_latency_view_definition,
-     sys_x_waits_by_host_by_latency_show_create_view_sql,
-     sys_x_waits_by_host_by_latency_show_create_qualified_view_sql},
+     sys_x_waits_by_host_by_latency_show_create_view_sql},
     {"x$waits_by_user_by_latency",
      sys_x_waits_by_user_by_latency_view_definition,
-     sys_x_waits_by_user_by_latency_show_create_view_sql,
-     sys_x_waits_by_user_by_latency_show_create_qualified_view_sql},
+     sys_x_waits_by_user_by_latency_show_create_view_sql},
     {"x$waits_global_by_latency",
      sys_x_waits_global_by_latency_view_definition,
-     sys_x_waits_global_by_latency_show_create_view_sql,
-     sys_x_waits_global_by_latency_show_create_qualified_view_sql},
+     sys_x_waits_global_by_latency_show_create_view_sql},
     {"x$innodb_buffer_stats_by_schema",
      sys_x_innodb_buffer_stats_by_schema_view_definition,
-     sys_x_innodb_buffer_stats_by_schema_show_create_view_sql,
-     sys_x_innodb_buffer_stats_by_schema_show_create_qualified_view_sql},
+     sys_x_innodb_buffer_stats_by_schema_show_create_view_sql},
     {"x$innodb_buffer_stats_by_table",
      sys_x_innodb_buffer_stats_by_table_view_definition,
-     sys_x_innodb_buffer_stats_by_table_show_create_view_sql,
-     sys_x_innodb_buffer_stats_by_table_show_create_qualified_view_sql},
+     sys_x_innodb_buffer_stats_by_table_show_create_view_sql},
     {"x$innodb_lock_waits",
      sys_x_innodb_lock_waits_view_definition,
-     sys_x_innodb_lock_waits_show_create_view_sql,
-     sys_x_innodb_lock_waits_show_create_qualified_view_sql},
+     sys_x_innodb_lock_waits_show_create_view_sql},
     {"x$io_by_thread_by_latency",
      sys_x_io_by_thread_by_latency_view_definition,
-     sys_x_io_by_thread_by_latency_show_create_view_sql,
-     sys_x_io_by_thread_by_latency_show_create_qualified_view_sql},
+     sys_x_io_by_thread_by_latency_show_create_view_sql},
     {"x$io_global_by_file_by_bytes",
      sys_x_io_global_by_file_by_bytes_view_definition,
-     sys_x_io_global_by_file_by_bytes_show_create_view_sql,
-     sys_x_io_global_by_file_by_bytes_show_create_qualified_view_sql},
+     sys_x_io_global_by_file_by_bytes_show_create_view_sql},
     {"x$io_global_by_file_by_latency",
      sys_x_io_global_by_file_by_latency_view_definition,
-     sys_x_io_global_by_file_by_latency_show_create_view_sql,
-     sys_x_io_global_by_file_by_latency_show_create_qualified_view_sql},
+     sys_x_io_global_by_file_by_latency_show_create_view_sql},
     {"x$io_global_by_wait_by_bytes",
      sys_x_io_global_by_wait_by_bytes_view_definition,
-     sys_x_io_global_by_wait_by_bytes_show_create_view_sql,
-     sys_x_io_global_by_wait_by_bytes_show_create_qualified_view_sql},
+     sys_x_io_global_by_wait_by_bytes_show_create_view_sql},
     {"x$io_global_by_wait_by_latency",
      sys_x_io_global_by_wait_by_latency_view_definition,
-     sys_x_io_global_by_wait_by_latency_show_create_view_sql,
-     sys_x_io_global_by_wait_by_latency_show_create_qualified_view_sql},
+     sys_x_io_global_by_wait_by_latency_show_create_view_sql},
     {"x$latest_file_io",
      sys_x_latest_file_io_view_definition,
-     sys_x_latest_file_io_show_create_view_sql,
-     sys_x_latest_file_io_show_create_qualified_view_sql},
+     sys_x_latest_file_io_show_create_view_sql},
     {"x$memory_by_host_by_current_bytes",
      sys_x_memory_by_host_by_current_bytes_view_definition,
-     sys_x_memory_by_host_by_current_bytes_show_create_view_sql,
-     sys_x_memory_by_host_by_current_bytes_show_create_qualified_view_sql},
+     sys_x_memory_by_host_by_current_bytes_show_create_view_sql},
     {"x$memory_by_thread_by_current_bytes",
      sys_x_memory_by_thread_by_current_bytes_view_definition,
-     sys_x_memory_by_thread_by_current_bytes_show_create_view_sql,
-     sys_x_memory_by_thread_by_current_bytes_show_create_qualified_view_sql},
+     sys_x_memory_by_thread_by_current_bytes_show_create_view_sql},
     {"x$memory_by_user_by_current_bytes",
      sys_x_memory_by_user_by_current_bytes_view_definition,
-     sys_x_memory_by_user_by_current_bytes_show_create_view_sql,
-     sys_x_memory_by_user_by_current_bytes_show_create_qualified_view_sql},
+     sys_x_memory_by_user_by_current_bytes_show_create_view_sql},
     {"x$memory_global_by_current_bytes",
      sys_x_memory_global_by_current_bytes_view_definition,
-     sys_x_memory_global_by_current_bytes_show_create_view_sql,
-     sys_x_memory_global_by_current_bytes_show_create_qualified_view_sql},
+     sys_x_memory_global_by_current_bytes_show_create_view_sql},
     {"x$memory_global_total",
      sys_x_memory_global_total_view_definition,
-     sys_x_memory_global_total_show_create_view_sql,
-     sys_x_memory_global_total_show_create_qualified_view_sql},
+     sys_x_memory_global_total_show_create_view_sql},
     {"x$ps_digest_95th_percentile_by_avg_us",
      sys_x_ps_digest_95th_percentile_by_avg_us_view_definition,
-     sys_x_ps_digest_95th_percentile_by_avg_us_show_create_view_sql,
-     sys_x_ps_digest_95th_percentile_by_avg_us_show_create_qualified_view_sql},
+     sys_x_ps_digest_95th_percentile_by_avg_us_show_create_view_sql},
     {"x$ps_digest_avg_latency_distribution",
      sys_x_ps_digest_avg_latency_distribution_view_definition,
-     sys_x_ps_digest_avg_latency_distribution_show_create_view_sql,
-     sys_x_ps_digest_avg_latency_distribution_show_create_qualified_view_sql},
+     sys_x_ps_digest_avg_latency_distribution_show_create_view_sql},
     {"x$ps_schema_table_statistics_io",
      sys_x_ps_schema_table_statistics_io_view_definition,
-     sys_x_ps_schema_table_statistics_io_show_create_view_sql,
-     sys_x_ps_schema_table_statistics_io_show_create_qualified_view_sql},
+     sys_x_ps_schema_table_statistics_io_show_create_view_sql},
     {"x$schema_index_statistics",
      sys_x_schema_index_statistics_view_definition,
-     sys_x_schema_index_statistics_show_create_view_sql,
-     sys_x_schema_index_statistics_show_create_qualified_view_sql},
+     sys_x_schema_index_statistics_show_create_view_sql},
     {"x$schema_table_lock_waits",
      sys_x_schema_table_lock_waits_view_definition,
-     sys_x_schema_table_lock_waits_show_create_view_sql,
-     sys_x_schema_table_lock_waits_show_create_qualified_view_sql},
+     sys_x_schema_table_lock_waits_show_create_view_sql},
     {"x$schema_table_statistics",
      sys_x_schema_table_statistics_view_definition,
-     sys_x_schema_table_statistics_show_create_view_sql,
-     sys_x_schema_table_statistics_show_create_qualified_view_sql},
+     sys_x_schema_table_statistics_show_create_view_sql},
     {"x$schema_table_statistics_with_buffer",
      sys_x_schema_table_statistics_with_buffer_view_definition,
-     sys_x_schema_table_statistics_with_buffer_show_create_view_sql,
-     sys_x_schema_table_statistics_with_buffer_show_create_qualified_view_sql},
+     sys_x_schema_table_statistics_with_buffer_show_create_view_sql},
     {"x$schema_tables_with_full_table_scans",
      sys_x_schema_tables_with_full_table_scans_view_definition,
-     sys_x_schema_tables_with_full_table_scans_show_create_view_sql,
-     sys_x_schema_tables_with_full_table_scans_show_create_qualified_view_sql},
+     sys_x_schema_tables_with_full_table_scans_show_create_view_sql},
     {"x$statement_analysis",
      sys_x_statement_analysis_view_definition,
-     sys_x_statement_analysis_show_create_view_sql,
-     sys_x_statement_analysis_show_create_qualified_view_sql},
+     sys_x_statement_analysis_show_create_view_sql},
     {"x$statements_with_errors_or_warnings",
      sys_x_statements_with_errors_or_warnings_view_definition,
-     sys_x_statements_with_errors_or_warnings_show_create_view_sql,
-     sys_x_statements_with_errors_or_warnings_show_create_qualified_view_sql},
+     sys_x_statements_with_errors_or_warnings_show_create_view_sql},
     {"x$statements_with_full_table_scans",
      sys_x_statements_with_full_table_scans_view_definition,
-     sys_x_statements_with_full_table_scans_show_create_view_sql,
-     sys_x_statements_with_full_table_scans_show_create_qualified_view_sql},
+     sys_x_statements_with_full_table_scans_show_create_view_sql},
     {"x$statements_with_runtimes_in_95th_percentile",
      sys_x_statements_with_runtimes_in_95th_percentile_view_definition,
-     sys_x_statements_with_runtimes_in_95th_percentile_show_create_view_sql,
-     sys_x_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql},
+     sys_x_statements_with_runtimes_in_95th_percentile_show_create_view_sql},
     {"x$statements_with_sorting",
      sys_x_statements_with_sorting_view_definition,
-     sys_x_statements_with_sorting_show_create_view_sql,
-     sys_x_statements_with_sorting_show_create_qualified_view_sql},
+     sys_x_statements_with_sorting_show_create_view_sql},
     {"x$statements_with_temp_tables",
      sys_x_statements_with_temp_tables_view_definition,
-     sys_x_statements_with_temp_tables_show_create_view_sql,
-     sys_x_statements_with_temp_tables_show_create_qualified_view_sql},
+     sys_x_statements_with_temp_tables_show_create_view_sql},
 };
 
 size_t mylite_execution_catalog_builtin_sys_view_definition_count(void) {
@@ -4295,4 +3635,101 @@ const struct mylite_execution_catalog_builtin_sys_view *mylite_execution_catalog
         }
     }
     return NULL;
+}
+
+int mylite_execution_catalog_build_builtin_sys_view_show_create(
+    const struct mylite_execution_catalog_builtin_sys_view *view,
+    bool schema_qualified,
+    char **out_sql
+) {
+    static const char algorithm_prefix[] = "CREATE ALGORITHM=";
+    const struct mylite_execution_catalog_mysql_system_table *table = NULL;
+    struct mylite_dynamic_string sql;
+    const char *algorithm = NULL;
+    const char *algorithm_end = NULL;
+    bool include_columns = false;
+    int rc = MYLITE_OK;
+
+    if (view == NULL || out_sql == NULL || view->show_create_view_sql == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    if (!schema_qualified) {
+        mylite_dynamic_string_init(&sql);
+        rc = mylite_dynamic_string_append(&sql, view->show_create_view_sql);
+        if (rc == MYLITE_OK) {
+            *out_sql = mylite_dynamic_string_take(&sql);
+            if (*out_sql == NULL) {
+                rc = MYLITE_NOMEM;
+            }
+        }
+        mylite_dynamic_string_deinit(&sql);
+        return rc;
+    }
+    if (strncmp(view->show_create_view_sql, algorithm_prefix, sizeof(algorithm_prefix) - 1U) != 0) {
+        return MYLITE_ERROR;
+    }
+    algorithm = view->show_create_view_sql + sizeof(algorithm_prefix) - 1U;
+    algorithm_end = strchr(algorithm, ' ');
+    include_columns = strstr(view->show_create_view_sql, ") AS ") != NULL;
+    table = mylite_execution_catalog_mysql_system_table_definition_by_name("sys", view->name);
+    if (algorithm_end == NULL || algorithm_end == algorithm || table == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    mylite_dynamic_string_init(&sql);
+    rc = mylite_dynamic_string_append_literal(&sql, "CREATE ALGORITHM=");
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_bytes(
+            &sql,
+            algorithm,
+            (size_t)(algorithm_end - algorithm)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_literal(
+            &sql,
+            " DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+        );
+    }
+    if (rc == MYLITE_OK && schema_qualified) {
+        rc = mylite_dynamic_string_append_literal(&sql, "`sys`.");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_mysql_quoted_identifier(&sql, view->name);
+    }
+    if (rc == MYLITE_OK && include_columns) {
+        rc = mylite_dynamic_string_append_literal(&sql, " (");
+    }
+    for (size_t index = 0U;
+         rc == MYLITE_OK && include_columns && index < table->query_definition.column_count;
+         ++index) {
+        if (index > 0U) {
+            rc = mylite_dynamic_string_append_char(&sql, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_mysql_quoted_identifier(
+                &sql,
+                table->query_definition.columns[index].name
+            );
+        }
+    }
+    if (rc == MYLITE_OK && include_columns) {
+        rc = mylite_dynamic_string_append_char(&sql, ')');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_literal(&sql, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&sql, view->view_definition);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&sql);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    mylite_dynamic_string_deinit(&sql);
+    return rc;
 }

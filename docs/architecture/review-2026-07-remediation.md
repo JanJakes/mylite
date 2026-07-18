@@ -357,7 +357,19 @@ complete.
   bytes. LTO increased the module and loaded-section sizes by about 1.9% and
   2.6%, respectively, so it remains opt-in instead of being enabled by the
   production preset.
-- [ ] Compact generated metadata and measure parser state/table contributors.
+- [x] Compact generated metadata and measure parser state/table contributors.
+  Qualified SYS `SHOW CREATE VIEW` statements are now reconstructed from the
+  canonical executable definition, system-table column registry, and the
+  unqualified MySQL text instead of retaining a second full SQL copy for each
+  of 100 views. Registry-wide equivalence coverage proved both forms before
+  removal, and all SYS view tests exercise the compact path. The production
+  shared library fell from 8,995,352 to 8,827,080 bytes (1.9%), loaded sections
+  from 8,517,459 to 8,359,818 bytes (1.9%), and the SYS-view object from 439,572
+  to 285,950 bytes (34.9%). The generated Lemon parser contributes 1,485,419
+  loaded bytes; its compressed action and lookahead tables account for
+  1,282,038 bytes. Lemon's default compressed-table mode is already in use, and
+  disabling compression or eliminating state resorting did not produce a valid
+  smaller parser, so no parser-generation tradeoff was retained.
 - [x] Add `lempar.c` as a parser-generation dependency and include first-party
   `.inc` files in format validation.
 - [x] Add installable headers, exported CMake/pkg-config targets, clean consumer

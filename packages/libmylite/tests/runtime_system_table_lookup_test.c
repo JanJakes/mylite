@@ -1,8 +1,10 @@
+#include "mylite/mylite.h"
 #include "runtime/mylite_execution_catalog.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 enum { decimal_conversion_base = 10 };
 
@@ -31,6 +33,55 @@ int main(void) {
             definition->query_definition.name
         );
         failures += expect_true(lookup == definition, "system table lookup preserves identity");
+    }
+    for (size_t index = 0U; index < mylite_execution_catalog_builtin_sys_view_definition_count();
+         ++index) {
+        const struct mylite_execution_catalog_builtin_sys_view *view =
+            mylite_execution_catalog_builtin_sys_view_definition_at(index);
+        char *show_create_sql = NULL;
+        char *qualified_show_create_sql = NULL;
+        int rc = mylite_execution_catalog_build_builtin_sys_view_show_create(
+            view,
+            false,
+            &show_create_sql
+        );
+
+        failures += expect_true(rc == MYLITE_OK, "build SYS view SHOW CREATE");
+        if (view != NULL && show_create_sql != NULL &&
+            strcmp(show_create_sql, view->show_create_view_sql) != 0) {
+            (void)fprintf(
+                stderr,
+                "SYS view %s SHOW CREATE mismatch\nexpected: %s\nactual:   %s\n",
+                view->name,
+                view->show_create_view_sql,
+                show_create_sql
+            );
+        }
+        failures += expect_true(
+            view != NULL && show_create_sql != NULL &&
+                strcmp(show_create_sql, view->show_create_view_sql) == 0,
+            "generated SYS view SHOW CREATE matches catalog text"
+        );
+        rc = mylite_execution_catalog_build_builtin_sys_view_show_create(
+            view,
+            true,
+            &qualified_show_create_sql
+        );
+        failures += expect_true(rc == MYLITE_OK, "build qualified SYS view SHOW CREATE");
+        failures += expect_true(
+            view != NULL && qualified_show_create_sql != NULL &&
+                strstr(qualified_show_create_sql, " VIEW `sys`.") != NULL,
+            "generated qualified SYS view SHOW CREATE qualifies the view"
+        );
+        const char *definition =
+            qualified_show_create_sql == NULL ? NULL : strstr(qualified_show_create_sql, " AS ");
+        failures += expect_true(
+            view != NULL && definition != NULL &&
+                strcmp(definition + 4, view->view_definition) == 0,
+            "generated qualified SYS view SHOW CREATE uses the executable definition"
+        );
+        free(show_create_sql);
+        free(qualified_show_create_sql);
     }
     failures += expect_true(
         mylite_execution_catalog_mysql_system_table_definition_by_name("wp", "wp_options") == NULL,

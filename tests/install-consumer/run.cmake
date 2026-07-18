@@ -96,12 +96,18 @@ if(pkg_config_executable)
     message(FATAL_ERROR "Installed pkg-config metadata failed: ${pkgconfig_error}")
   endif()
   separate_arguments(pkgconfig_arguments NATIVE_COMMAND "${pkgconfig_arguments}")
+  set(sanitizer_link_arguments)
+  if(DEFINED MYLITE_SANITIZER_LINK_OPTION
+     AND NOT MYLITE_SANITIZER_LINK_OPTION STREQUAL "")
+    list(APPEND sanitizer_link_arguments "${MYLITE_SANITIZER_LINK_OPTION}")
+  endif()
 
   execute_process(
     COMMAND "${MYLITE_C_COMPILER}"
       "${MYLITE_SOURCE_DIR}/tests/install-consumer/main.c"
       -o "${pkgconfig_consumer_executable}"
       ${pkgconfig_arguments}
+      ${sanitizer_link_arguments}
     RESULT_VARIABLE pkgconfig_build_result
     ERROR_VARIABLE pkgconfig_build_error
   )

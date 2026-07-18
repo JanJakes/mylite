@@ -244,7 +244,13 @@ complete.
   duplicate-key evaluation.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization.
-- [ ] Separate mutable session publication from statement-owned collections.
+- [x] Separate mutable session publication from statement-owned collections.
+  Cursor and buffered execution now capture diagnostics, row counts, found-row
+  counts, and insert IDs in statement-owned completion records and publish them
+  once at the command boundary. Finalizing an older materialized cursor cannot
+  overwrite state published by a newer command. Live statements are registered
+  independently from connection session state and detach safely on close;
+  focused cursor tests cover stale completion order and close with live cursors.
 - [x] Add scoped allocator and VFS failpoints used by qualification tests.
   The dedicated `fault-injection` preset force-includes a test-only allocator
   shim into first-party library sources; production and profiling builds keep
@@ -385,12 +391,16 @@ complete.
 - [x] Add assertion-enabled Debug jobs and representative Release jobs. The
   684-test Debug suite passes locally and CI retains the four-platform Release
   matrix alongside a dedicated Clang Debug job.
-- [ ] Add reproducible ASan+UBSan presets and run the complete core suite. The
-  preset and focused prepared-statement qualification are complete; the full
-  suite remains to be run in CI.
-- [ ] Add focused LSan and deterministic TSan concurrency tiers. Leak detection
-  and a labeled two-test TSan tier pass locally; remaining sleep-based test
-  coordination and CI coverage remain open.
+- [x] Add reproducible ASan+UBSan presets and run the complete core suite. The
+  complete 686-test suite passes with ASan, UBSan, strict abort-on-error, and
+  leak detection. The full sweep exposed and fixed retained heap-backed AST
+  cache chunks plus lost ownership of allocated IF/CASE scalar results; the
+  installed pkg-config consumer also propagates sanitizer runtime linkage.
+- [x] Add focused LSan and deterministic TSan concurrency tiers. Leak detection
+  covers the complete native suite. The labeled two-test TSan tier passes for
+  PROCESSLIST publication and active-reader/writer contention. The latter uses
+  a condition-variable-controlled SQLite busy handler instead of a timing
+  sleep, and both sanitizer tiers run in CI with retained JUnit evidence.
 - [x] Add first-party fuzz targets for the lexer/parser, normalizer, JSON,
   geometry, preamble, and catalog inputs. Six Clang libFuzzer targets run under
   ASan+UBSan with copied seed corpora and deterministic bounded smoke budgets;

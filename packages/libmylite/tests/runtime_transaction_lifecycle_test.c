@@ -14,7 +14,6 @@
 #  include <process.h>
 #else
 #  include <pthread.h>
-#  include <time.h>
 #  include <unistd.h>
 #endif
 
@@ -29,7 +28,6 @@ enum {
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
     mysql_warning_consistent_snapshot_ignored = 138,
-    writer_release_delay_ns = 100000000,
     transaction_variable_default_scalar_column_count = 10,
     transaction_variable_changed_scalar_column_count = 5,
 };
@@ -69,6 +67,13 @@ struct concurrent_write_context {
     int rc;
     int64_t affected_rows;
 };
+
+struct writer_busy_wait_context {
+    pthread_mutex_t mutex;
+    pthread_cond_t condition;
+    bool writer_blocked;
+    bool reader_released;
+};
 #endif
 
 static int test_transaction_control_and_dml(void);
@@ -85,6 +90,7 @@ static int test_read_only_transaction_does_not_reserve_writer_lock(void);
 #ifndef _WIN32
 static int test_writer_waits_for_active_read_cursor(void);
 static void *execute_concurrent_write(void *argument);
+static int wait_for_reader_release(void *argument, int previous_attempts);
 #endif
 static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
@@ -1936,7 +1942,8 @@ static int test_writer_waits_for_active_read_cursor(void) {
     mylite_stmt *cursor = NULL;
     pthread_t writer_thread;
     struct concurrent_write_context write = {0};
-    struct timespec release_delay = {.tv_sec = 0, .tv_nsec = writer_release_delay_ns};
+    struct writer_busy_wait_context busy_wait = {0};
+    bool synchronization_initialized = false;
     int thread_was_created = 0;
     int failures = 0;
 
@@ -1959,10 +1966,31 @@ static int test_writer_waits_for_active_read_cursor(void) {
     failures += expect_int(mylite_stmt_step(cursor), MYLITE_ROW, "step active read cursor");
 
     write.database = writer;
+    if (failures == 0 && pthread_mutex_init(&busy_wait.mutex, NULL) == 0) {
+        if (pthread_cond_init(&busy_wait.condition, NULL) == 0) {
+            synchronization_initialized = true;
+            sqlite3_busy_handler(
+                mylite_connection_sqlite_for_test(writer),
+                wait_for_reader_release,
+                &busy_wait
+            );
+        } else {
+            (void)pthread_mutex_destroy(&busy_wait.mutex);
+            fprintf(stderr, "initialize busy-wait condition: failed\n");
+            failures++;
+        }
+    } else if (failures == 0) {
+        fprintf(stderr, "initialize busy-wait mutex: failed\n");
+        failures++;
+    }
     if (failures == 0 &&
         pthread_create(&writer_thread, NULL, execute_concurrent_write, &write) == 0) {
         thread_was_created = 1;
-        (void)nanosleep(&release_delay, NULL);
+        (void)pthread_mutex_lock(&busy_wait.mutex);
+        while (!busy_wait.writer_blocked) {
+            (void)pthread_cond_wait(&busy_wait.condition, &busy_wait.mutex);
+        }
+        (void)pthread_mutex_unlock(&busy_wait.mutex);
     } else if (failures == 0) {
         fprintf(stderr, "create busy-wait writer thread: failed\n");
         failures++;
@@ -1970,10 +1998,21 @@ static int test_writer_waits_for_active_read_cursor(void) {
 
     failures += expect_int(mylite_stmt_finalize(cursor), MYLITE_OK, "release active read cursor");
     cursor = NULL;
+    if (synchronization_initialized) {
+        (void)pthread_mutex_lock(&busy_wait.mutex);
+        busy_wait.reader_released = true;
+        (void)pthread_cond_signal(&busy_wait.condition);
+        (void)pthread_mutex_unlock(&busy_wait.mutex);
+    }
     if (thread_was_created) {
         failures += expect_int(pthread_join(writer_thread, NULL), 0, "join busy-wait writer");
         failures += expect_int(write.rc, MYLITE_OK, "concurrent write waits for reader");
         failures += expect_int64(write.affected_rows, 1, "concurrent write affected rows");
+    }
+    if (synchronization_initialized) {
+        sqlite3_busy_handler(mylite_connection_sqlite_for_test(writer), NULL, NULL);
+        (void)pthread_cond_destroy(&busy_wait.condition);
+        (void)pthread_mutex_destroy(&busy_wait.mutex);
     }
 
     mylite_close(writer);
@@ -1994,6 +2033,20 @@ static void *execute_concurrent_write(void *argument) {
     mylite_result_free(result);
 
     return NULL;
+}
+
+static int wait_for_reader_release(void *argument, int previous_attempts) {
+    struct writer_busy_wait_context *busy_wait = argument;
+
+    (void)previous_attempts;
+    (void)pthread_mutex_lock(&busy_wait->mutex);
+    busy_wait->writer_blocked = true;
+    (void)pthread_cond_signal(&busy_wait->condition);
+    while (!busy_wait->reader_released) {
+        (void)pthread_cond_wait(&busy_wait->condition, &busy_wait->mutex);
+    }
+    (void)pthread_mutex_unlock(&busy_wait->mutex);
+    return 1;
 }
 #endif
 

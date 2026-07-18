@@ -1439,7 +1439,7 @@ static int rand_seed_nullif_expression_value(
     }
     if (rc == MYLITE_OK && first_cell.value != NULL &&
         (second_cell.value == NULL || strcmp(first_cell.value, second_cell.value) != 0)) {
-        copy_session_scalar_cell(out_cell, &first_cell);
+        move_session_scalar_cell(out_cell, &first_cell);
     }
     session_scalar_cell_deinit(&first_cell);
     session_scalar_cell_deinit(&second_cell);

@@ -90,6 +90,7 @@ static int searched_case_expression_value(
             if (rc == MYLITE_OK) {
                 rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
             }
+            session_scalar_cell_deinit(&result);
             return rc;
         }
         when_clause = when_clause->next_sibling;
@@ -104,6 +105,7 @@ static int searched_case_expression_value(
         if (rc == MYLITE_OK) {
             rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
         }
+        session_scalar_cell_deinit(&result);
         return rc;
     }
 
@@ -154,6 +156,7 @@ static int simple_case_expression_value(
             if (rc == MYLITE_OK) {
                 rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
             }
+            session_scalar_cell_deinit(&result);
             return rc;
         }
         when_clause = when_clause->next_sibling;
@@ -168,6 +171,7 @@ static int simple_case_expression_value(
         if (rc == MYLITE_OK) {
             rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
         }
+        session_scalar_cell_deinit(&result);
         return rc;
     }
 
@@ -192,7 +196,7 @@ static int evaluate_case_arithmetic_expression(
 
 static int copy_case_result_cell(
     struct mylite_db *database,
-    const struct session_scalar_cell *selected_cell,
+    struct session_scalar_cell *selected_cell,
     size_t previous_warning_count,
     struct session_scalar_cell *out_cell
 ) {
@@ -211,7 +215,7 @@ static int copy_case_result_cell(
         return rc;
     }
 
-    copy_session_scalar_cell(out_cell, selected_cell);
+    move_session_scalar_cell(out_cell, selected_cell);
     out_cell->staged_division_by_zero_warning_count = total_warning_count;
     return MYLITE_OK;
 }

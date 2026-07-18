@@ -114,6 +114,7 @@ static int test_no_source_dual_and_do_unix_timestamp(void) {
     };
     static const char *const columns_dual[] = {"epoch"};
     static const char *const values_dual[] = {"1"};
+    static const char *const values_null[] = {NULL};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -179,6 +180,47 @@ static int test_no_source_dual_and_do_unix_timestamp(void) {
             .sql = "SELECT IF(GET_LOCK('mylite_unix_timestamp_sysdate', 1), "
                    "UNIX_TIMESTAMP(SYSDATE(6)), NULL) AS epoch",
             .context = "unix_timestamp sysdate if result",
+        }
+    );
+    failures += expect_current_epoch_query(
+        database,
+        (struct current_epoch_query){
+            .sql = "SELECT IFNULL(UNIX_TIMESTAMP(SYSDATE(6)), NULL) AS epoch",
+            .context = "unix_timestamp sysdate ifnull result",
+        }
+    );
+    failures += expect_current_epoch_query(
+        database,
+        (struct current_epoch_query){
+            .sql = "SELECT COALESCE(NULL, UNIX_TIMESTAMP(SYSDATE(6))) AS epoch",
+            .context = "unix_timestamp sysdate coalesce result",
+        }
+    );
+    failures += expect_current_epoch_query(
+        database,
+        (struct current_epoch_query){
+            .sql = "SELECT NULLIF(UNIX_TIMESTAMP(SYSDATE(6)), -1) AS epoch",
+            .context = "unix_timestamp sysdate nullif result",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT NULLIF(UNIX_TIMESTAMP('2024-01-01'), "
+                   "UNIX_TIMESTAMP('2024-01-01')) AS epoch",
+            .columns = columns_dual,
+            .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
+            .values = values_null,
+            .row_count = 1U,
+            .context = "unix_timestamp equal nullif result",
+        }
+    );
+    failures += expect_current_epoch_query(
+        database,
+        (struct current_epoch_query){
+            .sql = "SELECT CASE WHEN 1 THEN IF(1, UNIX_TIMESTAMP(SYSDATE(6)), NULL) "
+                   "ELSE NULL END AS epoch",
+            .context = "unix_timestamp sysdate case result",
         }
     );
 

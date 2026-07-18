@@ -32,6 +32,7 @@ static int if_scalar_value(
         }
     }
 
+    session_scalar_cell_deinit(&cell);
     if_eval_stack_deinit(&stack);
     return rc;
 }
@@ -169,7 +170,7 @@ static bool if_eval_completed_value(
     struct if_eval_frame *frame = NULL;
 
     if (stack->count == 0U) {
-        copy_session_scalar_cell(out_cell, cell);
+        move_session_scalar_cell(out_cell, cell);
         return true;
     }
 
@@ -213,7 +214,7 @@ static void if_eval_complete_if_frame(
     } else {
         *next_expression = frame->second_value;
     }
-    *cell = (struct session_scalar_cell){0};
+    session_scalar_cell_deinit(cell);
 }
 
 static void if_eval_complete_ifnull_frame(
@@ -223,7 +224,7 @@ static void if_eval_complete_ifnull_frame(
 ) {
     if (cell->value == NULL) {
         *next_expression = frame->first_value;
-        *cell = (struct session_scalar_cell){0};
+        session_scalar_cell_deinit(cell);
     } else {
         *next_expression = NULL;
     }
@@ -237,7 +238,7 @@ static void if_eval_complete_coalesce_frame(
     if (cell->value == NULL && frame->first_value != NULL) {
         *next_expression = frame->first_value;
         frame->first_value = frame->first_value->next_sibling;
-        *cell = (struct session_scalar_cell){0};
+        session_scalar_cell_deinit(cell);
         return;
     }
 
@@ -250,18 +251,19 @@ static void if_eval_complete_nullif_frame(
     const struct mylite_sql_ast_node **next_expression
 ) {
     if (frame->first_value != NULL) {
-        copy_session_scalar_cell(&frame->first_cell, cell);
+        move_session_scalar_cell(&frame->first_cell, cell);
         frame->first_value = NULL;
-        *cell = (struct session_scalar_cell){0};
         *next_expression = frame->second_value;
         return;
     }
 
     if (frame->first_cell.value == NULL ||
         (cell->value != NULL && strcmp(frame->first_cell.value, cell->value) == 0)) {
-        *cell = (struct session_scalar_cell){0};
+        session_scalar_cell_deinit(cell);
+        session_scalar_cell_deinit(&frame->first_cell);
     } else {
-        copy_session_scalar_cell(cell, &frame->first_cell);
+        session_scalar_cell_deinit(cell);
+        move_session_scalar_cell(cell, &frame->first_cell);
     }
     *next_expression = NULL;
 }
@@ -272,7 +274,7 @@ static void if_eval_complete_isnull_frame(
 ) {
     bool is_null = cell->value == NULL;
 
-    *cell = (struct session_scalar_cell){0};
+    session_scalar_cell_deinit(cell);
     if (is_null) {
         cell->value = "1";
     } else {
@@ -443,6 +445,9 @@ static void if_eval_stack_deinit(struct if_eval_stack *stack) {
         return;
     }
 
+    for (size_t index = 0U; index < stack->count; ++index) {
+        session_scalar_cell_deinit(&stack->items[index].first_cell);
+    }
     free((void *)stack->items);
     *stack = (struct if_eval_stack){0};
 }
@@ -532,6 +537,47 @@ static void copy_session_scalar_cell(
     }
 
     destination->value = source->value;
+}
+
+static void move_session_scalar_cell(
+    struct session_scalar_cell *destination,
+    struct session_scalar_cell *source
+) {
+    const char *source_value = NULL;
+    const char *source_warning_text = NULL;
+
+    if (destination == NULL || source == NULL || destination == source) {
+        return;
+    }
+
+    source_value = source->value;
+    source_warning_text = source->staged_truncated_integer_text;
+    *destination = *source;
+    if (source_value == source->owned_text) {
+        destination->value = destination->owned_text;
+    } else if (source_value == source->datetime_text) {
+        destination->value = destination->datetime_text;
+    } else if (source_value == source->fractional_datetime_text) {
+        destination->value = destination->fractional_datetime_text;
+    } else if (source_value == source->integer_text) {
+        destination->value = destination->integer_text;
+    } else if (source_value == source->double_text) {
+        destination->value = destination->double_text;
+    } else if (source_value == source->base_conversion_text) {
+        destination->value = destination->base_conversion_text;
+    } else if (source_value == source->literal_text) {
+        destination->value = destination->literal_text;
+    }
+
+    if (source_warning_text == source->owned_text) {
+        destination->staged_truncated_integer_text = destination->owned_text;
+    } else if (source_warning_text == source->staged_truncated_decimal_text) {
+        destination->staged_truncated_integer_text = destination->staged_truncated_decimal_text;
+    } else if (source_warning_text == source->staged_unhex_incorrect_string_text) {
+        destination->staged_truncated_integer_text =
+            destination->staged_unhex_incorrect_string_text;
+    }
+    *source = (struct session_scalar_cell){0};
 }
 
 static void session_scalar_cell_deinit(struct session_scalar_cell *cell) {

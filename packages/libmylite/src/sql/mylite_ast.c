@@ -14,6 +14,7 @@ enum {
 struct mylite_sql_ast_node_chunk {
     struct mylite_sql_ast_node_chunk *next;
     size_t used;
+    bool is_pooled;
     struct mylite_sql_ast_node nodes[ast_nodes_per_chunk];
 };
 
@@ -25,7 +26,8 @@ static void ast_cache_lock(void);
 static void ast_cache_unlock(void);
 
 static struct mylite_sql_ast_node_chunk *cached_ast_chunks;
-static size_t cached_ast_chunk_count;
+static struct mylite_sql_ast_node_chunk ast_chunk_pool[ast_cached_chunk_limit];
+static size_t ast_chunk_pool_used;
 static atomic_flag cached_ast_chunks_lock = ATOMIC_FLAG_INIT;
 
 void mylite_sql_ast_init(struct mylite_sql_ast *ast) {
@@ -154,6 +156,9 @@ static struct mylite_sql_ast_node_chunk *ast_new_chunk(struct mylite_sql_ast *as
 
     if (chunk == NULL) {
         chunk = (struct mylite_sql_ast_node_chunk *)malloc(sizeof(*chunk));
+        if (chunk != NULL) {
+            chunk->is_pooled = false;
+        }
     }
 
     if (chunk == NULL) {
@@ -172,7 +177,10 @@ static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void) {
     chunk = cached_ast_chunks;
     if (chunk != NULL) {
         cached_ast_chunks = chunk->next;
-        --cached_ast_chunk_count;
+    } else if (ast_chunk_pool_used < (size_t)ast_cached_chunk_limit) {
+        chunk = &ast_chunk_pool[ast_chunk_pool_used];
+        ++ast_chunk_pool_used;
+        chunk->is_pooled = true;
     }
     ast_cache_unlock();
 
@@ -180,24 +188,19 @@ static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void) {
 }
 
 static void ast_release_chunk(struct mylite_sql_ast_node_chunk *chunk) {
-    bool cache_chunk = false;
-
     if (chunk == NULL) {
         return;
     }
-    ast_cache_lock();
-    if (cached_ast_chunk_count < (size_t)ast_cached_chunk_limit) {
-        chunk->next = cached_ast_chunks;
-        chunk->used = 0U;
-        cached_ast_chunks = chunk;
-        ++cached_ast_chunk_count;
-        cache_chunk = true;
-    }
-    ast_cache_unlock();
-
-    if (!cache_chunk) {
+    if (!chunk->is_pooled) {
         free(chunk);
+        return;
     }
+
+    ast_cache_lock();
+    chunk->next = cached_ast_chunks;
+    chunk->used = 0U;
+    cached_ast_chunks = chunk;
+    ast_cache_unlock();
 }
 
 static void ast_cache_lock(void) {

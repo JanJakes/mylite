@@ -1,3 +1,10 @@
+set(mylite_install_consumer_sanitizer_link_option "")
+if(MYLITE_ENABLE_ASAN_UBSAN)
+  set(mylite_install_consumer_sanitizer_link_option "-fsanitize=address,undefined")
+elseif(MYLITE_ENABLE_TSAN)
+  set(mylite_install_consumer_sanitizer_link_option "-fsanitize=thread")
+endif()
+
 add_test(
   NAME mylite.install.consumer
   COMMAND "${CMAKE_COMMAND}"
@@ -8,6 +15,7 @@ add_test(
     "-DMYLITE_C_COMPILER=${CMAKE_C_COMPILER}"
     "-DMYLITE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
     "-DMYLITE_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}"
+    "-DMYLITE_SANITIZER_LINK_OPTION=${mylite_install_consumer_sanitizer_link_option}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/install-consumer/run.cmake"
 )
 set_tests_properties(

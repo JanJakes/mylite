@@ -1638,7 +1638,7 @@ static int evaluate_case_arithmetic_expression(
 );
 static int copy_case_result_cell(
     struct mylite_db *database,
-    const struct session_scalar_cell *selected_cell,
+    struct session_scalar_cell *selected_cell,
     size_t previous_warning_count,
     struct session_scalar_cell *out_cell
 );
@@ -1720,6 +1720,10 @@ static void if_eval_stack_deinit(struct if_eval_stack *stack);
 static void copy_session_scalar_cell(
     struct session_scalar_cell *destination,
     const struct session_scalar_cell *source
+);
+static void move_session_scalar_cell(
+    struct session_scalar_cell *destination,
+    struct session_scalar_cell *source
 );
 static void session_scalar_cell_deinit(struct session_scalar_cell *cell);
 static void session_scalar_cell_array_deinit(struct session_scalar_cell *cells, size_t cell_count);

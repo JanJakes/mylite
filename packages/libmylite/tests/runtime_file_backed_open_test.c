@@ -12,8 +12,12 @@
 #include <string.h>
 
 #ifdef _WIN32
+#  include <windows.h>
+
 #  include <process.h>
+#  include <sys/stat.h>
 #else
+#  include <sys/stat.h>
 #  include <sys/wait.h>
 #  include <unistd.h>
 #endif
@@ -33,6 +37,8 @@ static int test_independent_file_backed_handles_and_bootstrap_state(void);
 static int test_reopens_legacy_version_one_file(void);
 static int test_rejects_incomplete_lifecycle_files(void);
 static int test_rejects_second_opener_during_initialization(void);
+static int test_rejects_concurrent_process_opener(const char *executable_path);
+static int test_vfs_fault_injection(void);
 static int test_lock_byte_gap_mapping(void);
 static int test_legacy_lock_boundary_containment(void);
 static int test_journal_mode_policy(void);
@@ -41,6 +47,16 @@ static int test_process_death_leaves_initializing_file_rejected(void);
 static int test_abort_marks_opened_identity_recovery_required(void);
 static int test_hot_journal_recovery_after_process_death(void);
 #endif
+static int test_symlink_failure_preserves_path_identity(void);
+static int create_file_symlink(const char *target_path, const char *link_path);
+static int path_is_symlink(const char *path);
+static int initialization_child_main(
+    const char *path,
+    const char *ready_path,
+    const char *release_path
+);
+static int wait_for_path(const char *path);
+static int path_exists(const char *path);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -73,8 +89,12 @@ static int expect_not_bytes(
     const char *context
 );
 
-int main(void) {
+int main(int argc, char **argv) {
     int failures = 0;
+
+    if (argc == 5 && strcmp(argv[1], "--initialization-child") == 0) {
+        return initialization_child_main(argv[2], argv[3], argv[4]);
+    }
 
     failures += test_open_rejects_invalid_arguments();
     failures += test_create_new_file_with_preamble_and_shifted_payload();
@@ -84,6 +104,8 @@ int main(void) {
     failures += test_reopens_legacy_version_one_file();
     failures += test_rejects_incomplete_lifecycle_files();
     failures += test_rejects_second_opener_during_initialization();
+    failures += test_rejects_concurrent_process_opener(argv[0]);
+    failures += test_vfs_fault_injection();
     failures += test_lock_byte_gap_mapping();
     failures += test_legacy_lock_boundary_containment();
     failures += test_journal_mode_policy();
@@ -92,6 +114,7 @@ int main(void) {
     failures += test_abort_marks_opened_identity_recovery_required();
     failures += test_hot_journal_recovery_after_process_death();
 #endif
+    failures += test_symlink_failure_preserves_path_identity();
 
     return failures == 0 ? 0 : 1;
 }
@@ -467,6 +490,253 @@ static int test_rejects_second_opener_during_initialization(void) {
     return failures;
 }
 
+static int test_rejects_concurrent_process_opener(const char *executable_path) {
+    char path[test_path_capacity];
+    char ready_path[test_path_capacity];
+    char release_path[test_path_capacity];
+    mylite_db *second = NULL;
+    int failures = 0;
+    int written = 0;
+#ifdef _WIN32
+    intptr_t child = -1;
+    int child_status = -1;
+#else
+    pid_t child = -1;
+    int child_status = 0;
+
+    (void)executable_path;
+#endif
+
+    if (make_test_path(path, sizeof(path), "concurrent_process_initialization") != 0) {
+        return 1;
+    }
+    written = snprintf(ready_path, sizeof(ready_path), "%s-ready", path);
+    if (written < 0 || (size_t)written >= sizeof(ready_path)) {
+        return 1;
+    }
+    written = snprintf(release_path, sizeof(release_path), "%s-release", path);
+    if (written < 0 || (size_t)written >= sizeof(release_path)) {
+        return 1;
+    }
+    remove_related_files(path);
+    (void)remove(ready_path);
+    (void)remove(release_path);
+
+#ifdef _WIN32
+    child = _spawnl(
+        _P_NOWAIT,
+        executable_path,
+        executable_path,
+        "--initialization-child",
+        path,
+        ready_path,
+        release_path,
+        NULL
+    );
+#else
+    child = fork();
+    if (child == 0) {
+        _exit(initialization_child_main(path, ready_path, release_path));
+    }
+#endif
+    if (child == -1) {
+        fprintf(stderr, "spawn concurrent initialization owner failed\n");
+        failures += 1;
+    } else {
+        failures += wait_for_path(ready_path);
+        if (failures == 0) {
+            failures += expect_int(
+                mylite_open(path, &second),
+                MYLITE_ERROR,
+                "reject concurrent process initialization opener"
+            );
+            failures +=
+                expect_true(second == NULL, "concurrent process initialization opener stays null");
+        }
+        failures += write_file_bytes(release_path, "", 0U);
+#ifdef _WIN32
+        failures += expect_true(
+            _cwait(&child_status, child, 0) != -1,
+            "wait for concurrent initialization owner"
+        );
+        failures += expect_int(child_status, 0, "concurrent initialization owner status");
+#else
+        failures += expect_true(
+            waitpid(child, &child_status, 0) == child,
+            "wait for concurrent initialization owner"
+        );
+        if (WIFEXITED(child_status)) {
+            failures +=
+                expect_int(WEXITSTATUS(child_status), 0, "concurrent initialization owner status");
+        } else {
+            failures += 1;
+        }
+#endif
+    }
+
+    (void)remove(ready_path);
+    (void)remove(release_path);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_vfs_fault_injection(void) {
+    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    sqlite3_file *file = NULL;
+    sqlite3_int64 logical_size = 0;
+    int close_rc = SQLITE_OK;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "vfs_faults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_CREATE, 1U);
+    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject create failure");
+    failures += expect_true(database == NULL, "create failure leaves output null");
+    failures +=
+        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "create failpoint triggered");
+    failures += expect_int(path_exists(path), 0, "create failure leaves no file");
+    mylite_storage_vfs_test_clear_fault();
+
+    mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_WRITE, 1U);
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject preamble write failure");
+    failures += expect_true(database == NULL, "write failure leaves output null");
+    failures +=
+        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "write failpoint triggered");
+    mylite_storage_vfs_test_clear_fault();
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
+        "write failure marks recovery required"
+    );
+    remove_related_files(path);
+
+    mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_SYNC, 1U);
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject preamble sync failure");
+    failures += expect_true(database == NULL, "sync failure leaves output null");
+    failures +=
+        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "sync failpoint triggered");
+    mylite_storage_vfs_test_clear_fault();
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
+        "sync failure marks recovery required"
+    );
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create VFS fault file");
+    mylite_close(database);
+    database = NULL;
+
+    mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_OPEN, 1U);
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject existing open failure");
+    failures += expect_true(database == NULL, "open failure leaves output null");
+    failures +=
+        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "open failpoint triggered");
+    mylite_storage_vfs_test_clear_fault();
+
+    failures += expect_int(
+        mylite_storage_open_sqlite_payload(path, &sqlite),
+        MYLITE_OK,
+        "open payload for direct VFS faults"
+    );
+    if (sqlite != NULL) {
+        failures += expect_int(
+            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &file),
+            SQLITE_OK,
+            "load direct VFS file"
+        );
+    }
+    if (file != NULL) {
+        failures +=
+            expect_int(file->pMethods->xFileSize(file, &logical_size), SQLITE_OK, "VFS size");
+
+        mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_WRITE, 1U);
+        failures += expect_int(
+            file->pMethods->xWrite(file, preamble, 1, 0),
+            SQLITE_IOERR_WRITE,
+            "inject VFS write failure"
+        );
+        failures += expect_true(
+            mylite_storage_vfs_test_fault_was_triggered(),
+            "direct write failpoint triggered"
+        );
+
+        mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_SYNC, 1U);
+        failures += expect_int(
+            file->pMethods->xSync(file, SQLITE_SYNC_FULL),
+            SQLITE_IOERR_FSYNC,
+            "inject VFS sync failure"
+        );
+        failures += expect_true(
+            mylite_storage_vfs_test_fault_was_triggered(),
+            "direct sync failpoint triggered"
+        );
+
+        mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_TRUNCATE, 1U);
+        failures += expect_int(
+            file->pMethods->xTruncate(file, logical_size),
+            SQLITE_IOERR_TRUNCATE,
+            "inject VFS truncate failure"
+        );
+        failures += expect_true(
+            mylite_storage_vfs_test_fault_was_triggered(),
+            "truncate failpoint triggered"
+        );
+    }
+
+    mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_CLOSE, 1U);
+    close_rc = sqlite3_close(sqlite);
+    sqlite = NULL;
+    failures +=
+        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "close failpoint triggered");
+    failures += expect_true(
+        close_rc == SQLITE_OK || close_rc == SQLITE_IOERR_CLOSE,
+        "close injection returns a documented SQLite close status"
+    );
+    mylite_storage_vfs_test_clear_fault();
+
+    {
+        char delete_path[test_path_capacity];
+        sqlite3_vfs *vfs = sqlite3_vfs_find(mylite_storage_vfs_name());
+        int written = snprintf(delete_path, sizeof(delete_path), "%s-delete", path);
+
+        if (written < 0 || (size_t)written >= sizeof(delete_path)) {
+            failures += 1;
+        } else {
+            failures += write_file_bytes(delete_path, "delete", sizeof("delete"));
+            mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_DELETE, 1U);
+            failures += expect_int(
+                vfs->xDelete(vfs, delete_path, 0),
+                SQLITE_IOERR_DELETE,
+                "inject VFS delete failure"
+            );
+            failures += expect_true(
+                mylite_storage_vfs_test_fault_was_triggered(),
+                "delete failpoint triggered"
+            );
+            failures += expect_int(path_exists(delete_path), 1, "failed delete preserves file");
+            mylite_storage_vfs_test_clear_fault();
+            (void)remove(delete_path);
+        }
+    }
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen after VFS faults");
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_lock_byte_gap_mapping(void) {
     enum {
         crossing_size = 4,
@@ -818,6 +1088,86 @@ static int test_abort_marks_opened_identity_recovery_required(void) {
     remove_related_files(owned_path);
     return failures;
 }
+#endif
+
+static int test_symlink_failure_preserves_path_identity(void) {
+    static const unsigned char target_contents[] = "not a MyLite database";
+
+    unsigned char readback[sizeof(target_contents)];
+    char link_path[test_path_capacity];
+    char target_path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+    int symlink_rc = 0;
+    int written = 0;
+
+    if (make_test_path(link_path, sizeof(link_path), "symlink_identity") != 0) {
+        return 1;
+    }
+    written = snprintf(target_path, sizeof(target_path), "%s-target", link_path);
+    if (written < 0 || (size_t)written >= sizeof(target_path)) {
+        return 1;
+    }
+    remove_related_files(link_path);
+    remove_related_files(target_path);
+    failures += write_file_bytes(target_path, target_contents, sizeof(target_contents));
+    symlink_rc = create_file_symlink(target_path, link_path);
+    if (symlink_rc == 2) {
+        fprintf(stderr, "SKIP: operating system denied test symlink creation\n");
+        remove_related_files(target_path);
+        return failures;
+    }
+    failures += expect_int(symlink_rc, 0, "create database symlink");
+    if (symlink_rc != 0) {
+        remove_related_files(link_path);
+        remove_related_files(target_path);
+        return failures;
+    }
+
+    failures +=
+        expect_int(mylite_open(link_path, &database), MYLITE_ERROR, "reject symlink target");
+    failures += expect_true(database == NULL, "symlink failure leaves output null");
+    failures += expect_int(path_is_symlink(link_path), 1, "failed open preserves symlink");
+    failures += read_file_at(target_path, 0L, readback, sizeof(readback));
+    failures += expect_bytes(
+        readback,
+        target_contents,
+        sizeof(target_contents),
+        "failed symlink open preserves target"
+    );
+
+    remove_related_files(link_path);
+    remove_related_files(target_path);
+    return failures;
+}
+
+static int create_file_symlink(const char *target_path, const char *link_path) {
+#ifdef _WIN32
+    enum { allow_unprivileged_create = 0x2 };
+
+    if (CreateSymbolicLinkA(link_path, target_path, allow_unprivileged_create) != 0) {
+        return 0;
+    }
+    return GetLastError() == ERROR_PRIVILEGE_NOT_HELD ? 2 : 1;
+#else
+    return symlink(target_path, link_path);
+#endif
+}
+
+static int path_is_symlink(const char *path) {
+#ifdef _WIN32
+    DWORD attributes = GetFileAttributesA(path);
+
+    return attributes != INVALID_FILE_ATTRIBUTES &&
+           (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+#else
+    struct stat status;
+
+    return lstat(path, &status) == 0 && S_ISLNK(status.st_mode);
+#endif
+}
+
+#ifndef _WIN32
 
 static int test_hot_journal_recovery_after_process_death(void) {
     char path[test_path_capacity];
@@ -909,6 +1259,54 @@ static int test_hot_journal_recovery_after_process_death(void) {
     return failures;
 }
 #endif
+
+static int initialization_child_main(
+    const char *path,
+    const char *ready_path,
+    const char *release_path
+) {
+    sqlite3 *initializing = NULL;
+    int rc = mylite_storage_open_sqlite_payload(path, &initializing);
+
+    if (rc != MYLITE_OK || initializing == NULL) {
+        return 1;
+    }
+    if (write_file_bytes(ready_path, "", 0U) != 0) {
+        mylite_storage_abort_sqlite_initialization(initializing);
+        (void)sqlite3_close(initializing);
+        return 1;
+    }
+    if (wait_for_path(release_path) != 0) {
+        mylite_storage_abort_sqlite_initialization(initializing);
+        (void)sqlite3_close(initializing);
+        return 1;
+    }
+
+    mylite_storage_abort_sqlite_initialization(initializing);
+    return sqlite3_close(initializing) == SQLITE_OK ? 0 : 1;
+}
+
+static int wait_for_path(const char *path) {
+    for (int attempt = 0; attempt < 500; ++attempt) {
+        if (path_exists(path)) {
+            return 0;
+        }
+        (void)sqlite3_sleep(10);
+    }
+
+    fprintf(stderr, "timed out waiting for path: %s\n", path);
+    return 1;
+}
+
+static int path_exists(const char *path) {
+    FILE *file = fopen(path, "rb");
+
+    if (file == NULL) {
+        return 0;
+    }
+    (void)fclose(file);
+    return 1;
+}
 
 static int make_test_path(char *path, size_t path_size, const char *name) {
     const char *directory = getenv("TMPDIR");

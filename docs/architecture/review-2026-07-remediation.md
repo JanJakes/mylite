@@ -135,8 +135,17 @@ complete.
   silently reinitializing them.
 - [x] Qualify hot rollback-journal recovery and enforce the explicit no-WAL
   policy through the shifted VFS.
-- [ ] Add multi-process barriers, replacement/symlink tests, and VFS fault
-  injection around create, open, sync, truncate, rename, and close.
+- [x] Add multi-process barriers, replacement/symlink tests, and VFS fault
+  injection around create, open, sync, truncate, rename, and close. The
+  file-backed lifecycle suite now coordinates a live initialization owner and
+  competing opener through explicit ready/release files on POSIX and Windows,
+  preserves the opened identity across pathname replacement, and verifies that
+  a rejected symlink target and its link survive failed open cleanup. One-shot
+  thread-local shifted-VFS failpoints cover create, existing open, write, sync,
+  truncate, delete, and close without cross-test or cross-thread leakage. The
+  injected initial-write path also proves cleanup publishes a complete
+  recovery-required preamble. The focused suite passes in Debug and under
+  ASan+UBSan, including post-fault reopen integrity.
 
 ### Lock-byte address mapping
 

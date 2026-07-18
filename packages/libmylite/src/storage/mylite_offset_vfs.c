@@ -13,6 +13,13 @@ struct mylite_offset_file {
     uint16_t format_version;
     bool shifts_offsets;
     bool initialization_owner;
+    bool initialization_preamble_written;
+};
+
+struct mylite_storage_vfs_fault {
+    enum mylite_storage_vfs_fault_operation operation;
+    size_t calls_until_failure;
+    bool triggered;
 };
 
 #ifdef _WIN32
@@ -116,6 +123,7 @@ static int translate_size_file_control(
     void *argument
 );
 static int sqlite_status_to_mylite(int sqlite_status);
+static bool inject_fault(enum mylite_storage_vfs_fault_operation operation);
 
 static const sqlite3_io_methods offset_io_methods = {
     .iVersion = 1,
@@ -141,6 +149,7 @@ static const sqlite3_io_methods offset_io_methods = {
 
 static sqlite3_vfs mylite_offset_vfs;
 static MYLITE_STORAGE_THREAD_LOCAL bool exclusive_create_enabled;
+static MYLITE_STORAGE_THREAD_LOCAL struct mylite_storage_vfs_fault injected_fault;
 
 int mylite_storage_vfs_ensure_registered(void) {
     sqlite3_mutex *mutex = NULL;
@@ -165,6 +174,23 @@ const char *mylite_storage_vfs_name(void) {
 
 void mylite_storage_vfs_set_exclusive_create(bool enabled) {
     exclusive_create_enabled = enabled;
+}
+
+void mylite_storage_vfs_test_set_fault(
+    enum mylite_storage_vfs_fault_operation operation,
+    size_t fail_on_call
+) {
+    injected_fault.operation = operation;
+    injected_fault.calls_until_failure = fail_on_call == 0U ? 1U : fail_on_call;
+    injected_fault.triggered = false;
+}
+
+void mylite_storage_vfs_test_clear_fault(void) {
+    memset(&injected_fault, 0, sizeof(injected_fault));
+}
+
+bool mylite_storage_vfs_test_fault_was_triggered(void) {
+    return injected_fault.triggered;
 }
 
 int mylite_storage_vfs_transition_initialization(sqlite3_file *file, bool commit) {
@@ -223,6 +249,7 @@ static int register_offset_vfs(sqlite3_vfs *base_vfs) {
 
 static int offset_close(sqlite3_file *file) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
+    bool fail_close = inject_fault(MYLITE_STORAGE_VFS_FAULT_CLOSE);
     int rc = SQLITE_OK;
 
     if (offset_file->inner_file != NULL) {
@@ -240,7 +267,7 @@ static int offset_close(sqlite3_file *file) {
 
     memset(offset_file, 0, sizeof(*offset_file));
 
-    return rc;
+    return fail_close && rc == SQLITE_OK ? SQLITE_IOERR_CLOSE : rc;
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
@@ -259,6 +286,10 @@ static int offset_read(sqlite3_file *file, void *buffer, int amount, sqlite3_int
 static int offset_write(sqlite3_file *file, const void *buffer, int amount, sqlite3_int64 offset) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
 
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_WRITE)) {
+        return SQLITE_IOERR_WRITE;
+    }
+
     if (offset_file->shifts_offsets) {
         return write_shifted(offset_file, buffer, amount, offset);
     }
@@ -270,6 +301,10 @@ static int offset_write(sqlite3_file *file, const void *buffer, int amount, sqli
 static int offset_truncate(sqlite3_file *file, sqlite3_int64 size) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
     sqlite3_int64 physical_size = size;
+
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_TRUNCATE)) {
+        return SQLITE_IOERR_TRUNCATE;
+    }
 
     if (offset_file->shifts_offsets) {
         if (!format_uses_lock_gap(offset_file) && size > MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE) {
@@ -285,6 +320,10 @@ static int offset_truncate(sqlite3_file *file, sqlite3_int64 size) {
 
 static int offset_sync(sqlite3_file *file, int flags) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
+
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_SYNC)) {
+        return SQLITE_IOERR_FSYNC;
+    }
 
     return offset_file->inner_file->pMethods->xSync(offset_file->inner_file, flags);
 }
@@ -400,6 +439,13 @@ static int offset_vfs_open(
 
     memset(offset_file, 0, sizeof(*offset_file));
 
+    if (file_shifts_offsets(flags) &&
+        inject_fault(
+            exclusive_create ? MYLITE_STORAGE_VFS_FAULT_CREATE : MYLITE_STORAGE_VFS_FAULT_OPEN
+        )) {
+        return SQLITE_CANTOPEN;
+    }
+
     rc = open_inner_file(base_vfs, filename, file, inner_flags, out_flags);
     if (rc != SQLITE_OK) {
         close_failed_inner_file(offset_file);
@@ -428,6 +474,10 @@ static int offset_vfs_open(
 
 static int offset_vfs_delete(sqlite3_vfs *vfs, const char *filename, int sync_directory) {
     sqlite3_vfs *base_vfs = wrapped_vfs(vfs);
+
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_DELETE)) {
+        return SQLITE_IOERR_DELETE;
+    }
 
     return base_vfs->xDelete(base_vfs, filename, sync_directory);
 }
@@ -567,12 +617,19 @@ static int initialize_new_main_database_file(struct mylite_offset_file *file) {
     file->format_version = MYLITE_FILE_FORMAT_VERSION;
     file->initialization_owner = true;
     mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_WRITE)) {
+        return SQLITE_IOERR_WRITE;
+    }
     rc = file->inner_file->pMethods
              ->xWrite(file->inner_file, preamble, MYLITE_FILE_PREAMBLE_SIZE, 0);
     if (rc != SQLITE_OK) {
         return rc;
     }
+    file->initialization_preamble_written = true;
 
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_SYNC)) {
+        return SQLITE_IOERR_FSYNC;
+    }
     return file->inner_file->pMethods->xSync(file->inner_file, SQLITE_SYNC_FULL);
 }
 
@@ -645,6 +702,7 @@ static int transition_initialization_state(
     struct mylite_offset_file *file,
     enum mylite_file_lifecycle_state state
 ) {
+    unsigned char recovery_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char stored_state = (unsigned char)state;
     int rc = SQLITE_OK;
 
@@ -657,10 +715,25 @@ static int transition_initialization_state(
             return rc;
         }
     }
-    rc = file->inner_file->pMethods
-             ->xWrite(file->inner_file, &stored_state, 1, MYLITE_FILE_LIFECYCLE_STATE_OFFSET);
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_WRITE)) {
+        return SQLITE_IOERR_WRITE;
+    }
+    if (file->initialization_preamble_written) {
+        rc = file->inner_file->pMethods
+                 ->xWrite(file->inner_file, &stored_state, 1, MYLITE_FILE_LIFECYCLE_STATE_OFFSET);
+    } else {
+        mylite_file_preamble_init_with_state(recovery_preamble, state);
+        rc = file->inner_file->pMethods
+                 ->xWrite(file->inner_file, recovery_preamble, MYLITE_FILE_PREAMBLE_SIZE, 0);
+        if (rc == SQLITE_OK) {
+            file->initialization_preamble_written = true;
+        }
+    }
     if (rc != SQLITE_OK) {
         return rc;
+    }
+    if (inject_fault(MYLITE_STORAGE_VFS_FAULT_SYNC)) {
+        return SQLITE_IOERR_FSYNC;
     }
     rc = file->inner_file->pMethods->xSync(file->inner_file, SQLITE_SYNC_FULL);
     if (rc == SQLITE_OK) {
@@ -891,4 +964,18 @@ static int sqlite_status_to_mylite(int sqlite_status) {
     }
 
     return MYLITE_ERROR;
+}
+
+static bool inject_fault(enum mylite_storage_vfs_fault_operation operation) {
+    if (injected_fault.operation != operation || injected_fault.triggered) {
+        return false;
+    }
+    if (injected_fault.calls_until_failure > 1U) {
+        injected_fault.calls_until_failure -= 1U;
+        return false;
+    }
+
+    injected_fault.calls_until_failure = 0U;
+    injected_fault.triggered = true;
+    return true;
 }

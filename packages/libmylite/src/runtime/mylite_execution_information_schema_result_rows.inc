@@ -6,26 +6,17 @@ static int information_schema_append_result_columns(
     int rc = MYLITE_OK;
 
     if (query->is_count_star) {
-        char *column_name = NULL;
         struct mylite_result_column_descriptor descriptor = {0};
 
-        if (query->count_alias != NULL) {
-            rc = copy_select_item_alias_text(database, query->count_alias, &column_name);
-        } else {
-            rc = copy_aggregate_result_column_name(
-                database,
-                &query->count_expression->span,
-                &column_name
-            );
+        if (query->count_name == NULL) {
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA count descriptor");
+            return MYLITE_ERROR;
         }
-        if (rc == MYLITE_OK) {
-            information_schema_make_count_result_column_descriptor(column_name, &descriptor);
-            rc = mylite_result_append_column_descriptor(result, &descriptor);
-            if (rc != MYLITE_OK) {
-                set_nomem_error(database);
-            }
+        information_schema_make_count_result_column_descriptor(query->count_name, &descriptor);
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
         }
-        free(column_name);
         return rc;
     }
 
@@ -74,12 +65,10 @@ static int information_schema_make_result_column_descriptor(
         information_schema_make_unsigned_result_column_descriptor(label, out_descriptor);
         return MYLITE_OK;
     case INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL:
-        return make_scalar_result_column_descriptor(
-            database,
-            query->projection_expressions[projection_index],
-            label,
-            out_descriptor
-        );
+        *out_descriptor =
+            query->projection_expressions[projection_index].integer_literal_descriptor;
+        out_descriptor->label = label;
+        return MYLITE_OK;
     case INFORMATION_SCHEMA_PROJECTION_GROUP_CONCAT_ORDERED_COLUMN:
         information_schema_make_group_concat_result_column_descriptor(
             database,
@@ -1156,9 +1145,8 @@ static int information_schema_projection_value(
         INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION) {
         return information_schema_unsigned_projection_expression_value(
             database,
-            query,
             row,
-            query->projection_expressions[projection_index],
+            &query->projection_expressions[projection_index],
             buffer,
             buffer_size,
             out_value
@@ -1168,7 +1156,7 @@ static int information_schema_projection_value(
         INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL) {
         return information_schema_integer_literal_projection_value(
             database,
-            query->projection_expressions[projection_index],
+            &query->projection_expressions[projection_index],
             buffer,
             buffer_size,
             out_value
@@ -1193,9 +1181,8 @@ static int information_schema_projection_value(
 
 static int information_schema_unsigned_projection_expression_value(
     struct mylite_db *database,
-    const struct information_schema_query *query,
     const char *const *row,
-    const struct mylite_sql_ast_node *expression,
+    const struct information_schema_projection_expression *expression,
     char *buffer,
     size_t buffer_size,
     const char **out_value
@@ -1208,15 +1195,14 @@ static int information_schema_unsigned_projection_expression_value(
     static const double nearest_integer_rounding_offset = 0.5;
 
     *out_value = NULL;
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION) {
+    if (expression == NULL || expression->instruction_count == 0U) {
         set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
         return MYLITE_ERROR;
     }
     rc = information_schema_numeric_projection_expression_value(
         database,
-        query,
         row,
-        child_at(expression, 0U),
+        expression,
         &value,
         &is_null
     );
@@ -1243,21 +1229,21 @@ static int information_schema_unsigned_projection_expression_value(
 
 static int information_schema_integer_literal_projection_value(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
+    const struct information_schema_projection_expression *expression,
     char *buffer,
     size_t buffer_size,
     const char **out_value
 ) {
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_INTEGER ||
-        expression->span.text == NULL || expression->span.length == 0U ||
-        expression->span.length >= buffer_size) {
+    size_t length = expression == NULL || expression->integer_literal_text == NULL
+                        ? 0U
+                        : strlen(expression->integer_literal_text);
+
+    if (length == 0U || length >= buffer_size) {
         set_runtime_error(database, "invalid INFORMATION_SCHEMA integer literal projection");
         return MYLITE_ERROR;
     }
 
-    memcpy(buffer, expression->span.text, expression->span.length);
-    buffer[expression->span.length] = '\0';
+    memcpy(buffer, expression->integer_literal_text, length + 1U);
     *out_value = buffer;
     return MYLITE_OK;
 }
@@ -1293,40 +1279,57 @@ static int information_schema_logical_not_column_projection_value(
 
 static int information_schema_numeric_projection_expression_value(
     struct mylite_db *database,
-    const struct information_schema_query *query,
     const char *const *row,
-    const struct mylite_sql_ast_node *expression,
+    const struct information_schema_projection_expression *expression,
     double *out_value,
     bool *out_is_null
 ) {
-    struct information_schema_numeric_eval_frame_stack frames = {0};
     struct information_schema_numeric_eval_value_stack values = {0};
     int rc = MYLITE_OK;
 
     *out_value = 0.0;
     *out_is_null = false;
-    rc = information_schema_numeric_eval_frame_stack_push(
-        database,
-        &frames,
-        (struct information_schema_numeric_eval_frame){
-            .action = INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER,
-            .expression = expression,
-        }
-    );
-    while (rc == MYLITE_OK && frames.count != 0U) {
-        struct information_schema_numeric_eval_frame frame = frames.items[--frames.count];
+    if (expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < expression->instruction_count; ++index) {
+        const struct information_schema_numeric_projection_instruction *instruction =
+            &expression->instructions[index];
 
-        if (frame.action == INFORMATION_SCHEMA_NUMERIC_EVAL_APPLY_DIVIDE) {
+        if (instruction->kind == INFORMATION_SCHEMA_NUMERIC_PROJECTION_LITERAL) {
+            rc = information_schema_numeric_eval_value_stack_push(
+                database,
+                &values,
+                (struct information_schema_numeric_eval_value){
+                    .value = instruction->literal,
+                    .is_null = false,
+                }
+            );
+        } else if (instruction->kind == INFORMATION_SCHEMA_NUMERIC_PROJECTION_COLUMN) {
+            double value = 0.0;
+            bool is_null = false;
+
+            rc = information_schema_numeric_text_value(
+                database,
+                row[instruction->column_index],
+                &value,
+                &is_null
+            );
+            if (rc == MYLITE_OK) {
+                rc = information_schema_numeric_eval_value_stack_push(
+                    database,
+                    &values,
+                    (struct information_schema_numeric_eval_value){
+                        .value = value,
+                        .is_null = is_null,
+                    }
+                );
+            }
+        } else if (instruction->kind == INFORMATION_SCHEMA_NUMERIC_PROJECTION_DIVIDE) {
             rc = information_schema_numeric_projection_apply_divide_frame(database, &values);
         } else {
-            rc = information_schema_numeric_projection_enter_frame(
-                database,
-                query,
-                row,
-                frame.expression,
-                &frames,
-                &values
-            );
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
+            rc = MYLITE_ERROR;
         }
     }
     if (rc == MYLITE_OK && values.count != 1U) {
@@ -1338,100 +1341,7 @@ static int information_schema_numeric_projection_expression_value(
         *out_is_null = values.items[0].is_null;
     }
     information_schema_numeric_eval_value_stack_deinit(&values);
-    information_schema_numeric_eval_frame_stack_deinit(&frames);
     return rc;
-}
-
-static int information_schema_numeric_projection_enter_frame(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const char *const *row,
-    const struct mylite_sql_ast_node *expression,
-    struct information_schema_numeric_eval_frame_stack *frames,
-    struct information_schema_numeric_eval_value_stack *values
-) {
-    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
-
-    if (unwrapped == NULL) {
-        set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
-        return MYLITE_ERROR;
-    }
-    if (unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
-        mylite_sql_ast_node_literal_kind(unwrapped) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        double value = 0.0;
-        int rc = information_schema_numeric_literal_value(database, unwrapped, &value);
-
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        return information_schema_numeric_eval_value_stack_push(
-            database,
-            values,
-            (struct information_schema_numeric_eval_value){.value = value, .is_null = false}
-        );
-    }
-    if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        size_t column_index = 0U;
-        double value = 0.0;
-        bool is_null = false;
-        int rc = mylite_execution_information_schema_resolve_column_reference(
-            database,
-            query,
-            unwrapped,
-            COLUMN_REFERENCE_FIELD,
-            &column_index
-        );
-
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        rc = information_schema_numeric_text_value(database, row[column_index], &value, &is_null);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        return information_schema_numeric_eval_value_stack_push(
-            database,
-            values,
-            (struct information_schema_numeric_eval_value){.value = value, .is_null = is_null}
-        );
-    }
-    if (unwrapped->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
-        mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
-        int rc = information_schema_numeric_eval_frame_stack_push(
-            database,
-            frames,
-            (struct information_schema_numeric_eval_frame){
-                .action = INFORMATION_SCHEMA_NUMERIC_EVAL_APPLY_DIVIDE,
-                .expression = NULL,
-            }
-        );
-
-        if (rc == MYLITE_OK) {
-            rc = information_schema_numeric_eval_frame_stack_push(
-                database,
-                frames,
-                (struct information_schema_numeric_eval_frame){
-                    .action = INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER,
-                    .expression = child_at(unwrapped, 1U),
-                }
-            );
-        }
-        if (rc == MYLITE_OK) {
-            rc = information_schema_numeric_eval_frame_stack_push(
-                database,
-                frames,
-                (struct information_schema_numeric_eval_frame){
-                    .action = INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER,
-                    .expression = child_at(unwrapped, 0U),
-                }
-            );
-        }
-        return rc;
-    }
-
-    set_runtime_error(database, "invalid INFORMATION_SCHEMA numeric projection expression");
-    return MYLITE_ERROR;
 }
 
 static int information_schema_numeric_projection_apply_divide_frame(
@@ -1469,43 +1379,6 @@ static int information_schema_numeric_projection_apply_divide_frame(
             .is_null = false,
         }
     );
-}
-
-static int information_schema_numeric_eval_frame_stack_push(
-    struct mylite_db *database,
-    struct information_schema_numeric_eval_frame_stack *stack,
-    struct information_schema_numeric_eval_frame frame
-) {
-    struct information_schema_numeric_eval_frame *items = NULL;
-    size_t capacity = 0U;
-
-    if (stack->count == stack->capacity) {
-        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
-        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        items = realloc(stack->items, capacity * sizeof(*items));
-        if (items == NULL) {
-            set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        stack->items = items;
-        stack->capacity = capacity;
-    }
-    stack->items[stack->count] = frame;
-    ++stack->count;
-    return MYLITE_OK;
-}
-
-static void information_schema_numeric_eval_frame_stack_deinit(
-    struct information_schema_numeric_eval_frame_stack *stack
-) {
-    if (stack == NULL) {
-        return;
-    }
-    free(stack->items);
-    *stack = (struct information_schema_numeric_eval_frame_stack){0};
 }
 
 static int information_schema_numeric_eval_value_stack_push(
@@ -1569,23 +1442,6 @@ static int information_schema_numeric_text_value(
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
-}
-
-static int information_schema_numeric_literal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    double *out_value
-) {
-    char *text = NULL;
-    bool is_null = false;
-    int rc = copy_source_span_text(database, &literal->span, &text);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = information_schema_numeric_text_value(database, text, out_value, &is_null);
-    free(text);
-    return rc;
 }
 
 static int information_schema_append_count_result(

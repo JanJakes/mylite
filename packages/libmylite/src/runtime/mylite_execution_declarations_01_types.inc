@@ -3013,6 +3013,26 @@ enum information_schema_projection_kind {
     INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN = 4,
 };
 
+enum information_schema_numeric_projection_instruction_kind {
+    INFORMATION_SCHEMA_NUMERIC_PROJECTION_LITERAL = 0,
+    INFORMATION_SCHEMA_NUMERIC_PROJECTION_COLUMN = 1,
+    INFORMATION_SCHEMA_NUMERIC_PROJECTION_DIVIDE = 2,
+};
+
+struct information_schema_numeric_projection_instruction {
+    enum information_schema_numeric_projection_instruction_kind kind;
+    size_t column_index;
+    double literal;
+};
+
+struct information_schema_projection_expression {
+    struct information_schema_numeric_projection_instruction *instructions;
+    size_t instruction_count;
+    size_t instruction_capacity;
+    char *integer_literal_text;
+    struct mylite_result_column_descriptor integer_literal_descriptor;
+};
+
 struct information_schema_query {
     const struct mylite_execution_catalog_table_definition *definition;
     const struct mylite_execution_catalog_mysql_system_table *system_table_definition;
@@ -3021,13 +3041,13 @@ struct information_schema_query {
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;
     bool is_count_star;
-    const struct mylite_sql_ast_node *count_expression;
-    const struct mylite_sql_ast_node *count_alias;
+    char *count_name;
     size_t *projection_indexes;
     enum information_schema_projection_kind *projection_kinds;
-    const struct mylite_sql_ast_node **projection_expressions;
+    struct information_schema_projection_expression *projection_expressions;
     char **projection_names;
     size_t projection_count;
+    size_t projection_capacity;
     bool has_group;
     size_t group_indexes[3];
     size_t group_index_count;
@@ -3066,22 +3086,6 @@ struct information_schema_result_projection_buffers {
     char stack_computed_values[information_schema_projection_stack_capacity][integer_text_capacity];
     bool values_use_heap;
     bool computed_values_use_heap;
-};
-
-enum information_schema_numeric_eval_action {
-    INFORMATION_SCHEMA_NUMERIC_EVAL_ENTER = 1,
-    INFORMATION_SCHEMA_NUMERIC_EVAL_APPLY_DIVIDE = 2,
-};
-
-struct information_schema_numeric_eval_frame {
-    enum information_schema_numeric_eval_action action;
-    const struct mylite_sql_ast_node *expression;
-};
-
-struct information_schema_numeric_eval_frame_stack {
-    struct information_schema_numeric_eval_frame *items;
-    size_t count;
-    size_t capacity;
 };
 
 struct information_schema_numeric_eval_value {

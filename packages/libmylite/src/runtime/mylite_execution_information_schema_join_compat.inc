@@ -806,7 +806,7 @@ static int information_schema_join_compat_append_source_column(
 ) {
     size_t projection_index = 0U;
     enum information_schema_projection_kind projection_kind = INFORMATION_SCHEMA_PROJECTION_COLUMN;
-    const struct mylite_sql_ast_node *projection_expression = NULL;
+    struct information_schema_projection_expression projection_expression = {0};
     char *projection_name = NULL;
     struct information_schema_query query = {0};
     struct mylite_result_column_descriptor descriptor = {0};

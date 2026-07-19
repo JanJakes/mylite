@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 struct information_schema_query;
+struct information_schema_projection_expression;
 struct mylite_db;
 struct mylite_execution_catalog_table_definition;
 struct mylite_sql_ast_node;
@@ -49,6 +50,9 @@ int mylite_execution_information_schema_table_definition_index(
 );
 const struct mylite_execution_catalog_table_definition *mylite_execution_find_information_schema_table_definition(
     const char *table_name
+);
+void mylite_execution_information_schema_projection_expression_deinit(
+    struct information_schema_projection_expression *expression
 );
 
 #endif

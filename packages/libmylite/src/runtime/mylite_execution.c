@@ -3224,6 +3224,23 @@ int mylite_execution_information_schema_copy_select_item_alias(
     return copy_select_item_alias_text(database, alias, out_text);
 }
 
+int mylite_execution_information_schema_copy_aggregate_label(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_text
+) {
+    return copy_aggregate_result_column_name(database, span, out_text);
+}
+
+int mylite_execution_information_schema_make_scalar_result_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    return make_scalar_result_column_descriptor(database, expression, label, out_descriptor);
+}
+
 bool mylite_execution_select_order_source_context_is_joined(
     const struct select_source_context *source_context
 ) {

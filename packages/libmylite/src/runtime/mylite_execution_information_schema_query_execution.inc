@@ -97,11 +97,18 @@ static int information_schema_query_plan_materialization(
     for (size_t index = 0U; rc == MYLITE_OK && index < query->projection_count; ++index) {
         if (query->projection_kinds[index] ==
             INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION) {
-            rc = information_schema_query_require_expression_columns(
-                database,
-                query,
-                query->projection_expressions[index]
-            );
+            const struct information_schema_projection_expression *expression =
+                &query->projection_expressions[index];
+
+            for (size_t instruction_index = 0U; instruction_index < expression->instruction_count;
+                 ++instruction_index) {
+                const struct information_schema_numeric_projection_instruction *instruction =
+                    &expression->instructions[instruction_index];
+
+                if (instruction->kind == INFORMATION_SCHEMA_NUMERIC_PROJECTION_COLUMN) {
+                    information_schema_query_require_column(query, instruction->column_index);
+                }
+            }
         } else if (query->projection_kinds[index] !=
                    INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL) {
             information_schema_query_require_column(query, query->projection_indexes[index]);
@@ -225,11 +232,15 @@ static void information_schema_query_deinit(struct information_schema_query *que
     }
     for (size_t index = 0U; index < query->projection_count; ++index) {
         free(query->projection_names[index]);
+        mylite_execution_information_schema_projection_expression_deinit(
+            &query->projection_expressions[index]
+        );
     }
-    free((void *)query->projection_names);
+    free(query->count_name);
+    free(query->projection_names);
     free(query->projection_indexes);
     free(query->projection_kinds);
-    free((void *)query->projection_expressions);
+    free(query->projection_expressions);
     free(query->required_columns);
     *query = (struct information_schema_query){0};
 }
@@ -666,7 +677,7 @@ static int information_schema_append_fast_table_existence_literal_row(
     const char *values[1] = {NULL};
     int rc = information_schema_integer_literal_projection_value(
         database,
-        query->projection_expressions[0],
+        &query->projection_expressions[0],
         value_text,
         sizeof(value_text),
         &values[0]

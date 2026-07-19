@@ -1448,47 +1448,29 @@ static int information_schema_logical_not_column_projection_value(
 );
 static int information_schema_unsigned_projection_expression_value(
     struct mylite_db *database,
-    const struct information_schema_query *query,
     const char *const *row,
-    const struct mylite_sql_ast_node *expression,
+    const struct information_schema_projection_expression *expression,
     char *buffer,
     size_t buffer_size,
     const char **out_value
 );
 static int information_schema_integer_literal_projection_value(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
+    const struct information_schema_projection_expression *expression,
     char *buffer,
     size_t buffer_size,
     const char **out_value
 );
 static int information_schema_numeric_projection_expression_value(
     struct mylite_db *database,
-    const struct information_schema_query *query,
     const char *const *row,
-    const struct mylite_sql_ast_node *expression,
+    const struct information_schema_projection_expression *expression,
     double *out_value,
     bool *out_is_null
-);
-static int information_schema_numeric_projection_enter_frame(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const char *const *row,
-    const struct mylite_sql_ast_node *expression,
-    struct information_schema_numeric_eval_frame_stack *frames,
-    struct information_schema_numeric_eval_value_stack *values
 );
 static int information_schema_numeric_projection_apply_divide_frame(
     struct mylite_db *database,
     struct information_schema_numeric_eval_value_stack *values
-);
-static int information_schema_numeric_eval_frame_stack_push(
-    struct mylite_db *database,
-    struct information_schema_numeric_eval_frame_stack *stack,
-    struct information_schema_numeric_eval_frame frame
-);
-static void information_schema_numeric_eval_frame_stack_deinit(
-    struct information_schema_numeric_eval_frame_stack *stack
 );
 static int information_schema_numeric_eval_value_stack_push(
     struct mylite_db *database,
@@ -1503,11 +1485,6 @@ static int information_schema_numeric_text_value(
     const char *text,
     double *out_value,
     bool *out_is_null
-);
-static int information_schema_numeric_literal_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    double *out_value
 );
 static int information_schema_matching_row_indexes(
     struct mylite_db *database,

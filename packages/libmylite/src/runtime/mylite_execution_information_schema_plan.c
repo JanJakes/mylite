@@ -18,6 +18,8 @@
 #include "mylite_execution_select_order_plan.h"
 #include "mylite_execution_sql_normalization.h"
 #include "mylite_execution_statement_transaction.h"
+#include "mylite_execution_text_internal.h"
+#include "mylite_numeric_locale.h"
 #include "mylite_result.h"
 #include "mylite_spatial.h"
 #include "mylite_statement_completion.h"
@@ -25,15 +27,33 @@
 #include "mylite_string_bitmask.h"
 #include "mylite_sys_functions.h"
 
+#include <errno.h>
 #include <float.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "mylite_execution_declarations_00_constants.inc"
 #include "mylite_execution_declarations_01_types.inc"
+
+enum information_schema_numeric_plan_action {
+    INFORMATION_SCHEMA_NUMERIC_PLAN_ENTER = 1,
+    INFORMATION_SCHEMA_NUMERIC_PLAN_APPEND_DIVIDE = 2,
+};
+
+struct information_schema_numeric_plan_frame {
+    enum information_schema_numeric_plan_action action;
+    const struct mylite_sql_ast_node *expression;
+};
+
+struct information_schema_numeric_plan_stack {
+    struct information_schema_numeric_plan_frame *items;
+    size_t count;
+    size_t capacity;
+};
 
 static int information_schema_plan_projection(
     struct mylite_db *database,
@@ -85,6 +105,49 @@ static int information_schema_append_projection_slot(
     struct information_schema_query *query,
     const struct information_schema_projection_slot_request *request
 );
+static int information_schema_reserve_projections(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    size_t required_count
+);
+static int information_schema_plan_projection_expression(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_projection_slot_request *request,
+    const char *column_name,
+    struct information_schema_projection_expression *out_expression
+);
+static int information_schema_compile_unsigned_projection_expression(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    struct information_schema_projection_expression *out_expression
+);
+static int information_schema_compile_numeric_projection_node(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_numeric_plan_frame *frame,
+    struct information_schema_numeric_plan_stack *stack,
+    struct information_schema_projection_expression *out_expression
+);
+static int information_schema_append_numeric_projection_instruction(
+    struct mylite_db *database,
+    struct information_schema_projection_expression *expression,
+    struct information_schema_numeric_projection_instruction instruction
+);
+static int information_schema_parse_numeric_projection_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    double *out_value
+);
+static int information_schema_numeric_plan_stack_push(
+    struct mylite_db *database,
+    struct information_schema_numeric_plan_stack *stack,
+    struct information_schema_numeric_plan_frame frame
+);
+static void information_schema_numeric_plan_stack_deinit(
+    struct information_schema_numeric_plan_stack *stack
+);
 static int information_schema_plan_group(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *group_clause,
@@ -109,16 +172,6 @@ static int information_schema_validate_logical_not_column_expression(
     struct information_schema_query *query,
     const struct mylite_sql_ast_node *expression,
     size_t *out_column_index
-);
-static int information_schema_validate_unsigned_projection_expression(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *expression
-);
-static int information_schema_validate_numeric_projection_expression(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *expression
 );
 static int information_schema_plan_order(
     struct mylite_db *database,
@@ -177,11 +230,6 @@ static const struct mylite_sql_ast_node *from_table_alias_node(
 static const struct mylite_sql_ast_node *from_table_index_hint_list_node(
     const struct mylite_sql_ast_node *from_table
 );
-static bool scalar_arithmetic_node_stack_push(
-    struct scalar_arithmetic_node_stack *stack,
-    const struct mylite_sql_ast_node *expression
-);
-static void scalar_arithmetic_node_stack_deinit(struct scalar_arithmetic_node_stack *stack);
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
 static bool schema_name_is_information_schema(const char *schema_name);
 static bool selected_schema_is_information_schema(const struct mylite_db *database);
@@ -259,6 +307,17 @@ const struct mylite_execution_catalog_table_definition *mylite_execution_find_in
     const char *table_name
 ) {
     return find_information_schema_table_definition(table_name);
+}
+
+void mylite_execution_information_schema_projection_expression_deinit(
+    struct information_schema_projection_expression *expression
+) {
+    if (expression == NULL) {
+        return;
+    }
+    free(expression->instructions);
+    free(expression->integer_literal_text);
+    *expression = (struct information_schema_projection_expression){0};
 }
 
 #include "mylite_execution_information_schema_query_planning.inc"
@@ -488,41 +547,6 @@ static const struct mylite_sql_ast_node *from_table_index_hint_list_node(
         child = child->next_sibling;
     }
     return NULL;
-}
-
-static bool scalar_arithmetic_node_stack_push(
-    struct scalar_arithmetic_node_stack *stack,
-    const struct mylite_sql_ast_node *expression
-) {
-    const struct mylite_sql_ast_node **items = NULL;
-    size_t capacity = 0U;
-
-    if (stack == NULL) {
-        return false;
-    }
-    if (stack->count == stack->capacity) {
-        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
-        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
-            return false;
-        }
-        items = (const struct mylite_sql_ast_node **)
-            realloc((void *)stack->items, capacity * sizeof(*items));
-        if (items == NULL) {
-            return false;
-        }
-        stack->items = items;
-        stack->capacity = capacity;
-    }
-    stack->items[stack->count++] = expression;
-    return true;
-}
-
-static void scalar_arithmetic_node_stack_deinit(struct scalar_arithmetic_node_stack *stack) {
-    if (stack == NULL) {
-        return;
-    }
-    free((void *)stack->items);
-    *stack = (struct scalar_arithmetic_node_stack){0};
 }
 
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list) {

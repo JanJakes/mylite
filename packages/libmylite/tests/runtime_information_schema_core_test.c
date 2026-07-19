@@ -654,6 +654,30 @@ static int test_information_schema_core_queries(void) {
     static const char *const count_zero[] = {"0"};
     static const char *const one_column[] = {"1"};
     static const char *const expression_column[] = {"expression"};
+    static const char *const wide_projection_columns[] = {
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+    };
+    static const char *const wide_projection_values[] = {
+        "t",
+        "t",
+        "t",
+        "t",
+        "t",
+        "t",
+        "t",
+        "t",
+        "t",
+        "t",
+    };
     static const char *const builtin_schemata_columns[] = {
         "SCHEMA_NAME",
         "DEFAULT_CHARACTER_SET_NAME",
@@ -792,6 +816,21 @@ static int test_information_schema_core_queries(void) {
             .values = table_computed_values,
             .row_count = 1U,
             .context = "tables computed data length projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME AS c1, TABLE_NAME AS c2, TABLE_NAME AS c3, "
+                   "TABLE_NAME AS c4, TABLE_NAME AS c5, TABLE_NAME AS c6, TABLE_NAME AS c7, "
+                   "TABLE_NAME AS c8, TABLE_NAME AS c9, TABLE_NAME AS c10 "
+                   "FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 't'",
+            .column_names = wide_projection_columns,
+            .column_count = sizeof(wide_projection_columns) / sizeof(wide_projection_columns[0]),
+            .values = wide_projection_values,
+            .row_count = 1U,
+            .context = "wide metadata projection capacity growth",
         }
     );
     failures += expect_query(

@@ -76,6 +76,10 @@ static int tamper_drop_physical_index(sqlite3 *sqlite);
 static int tamper_drop_physical_column(sqlite3 *sqlite);
 static int tamper_delete_catalog_column(sqlite3 *sqlite);
 static int tamper_replace_physical_index_definition(sqlite3 *sqlite);
+static int tamper_physical_column_type(sqlite3 *sqlite);
+static int tamper_physical_column_nullability(sqlite3 *sqlite);
+static int tamper_physical_generated_expression(sqlite3 *sqlite);
+static int tamper_remove_physical_check_constraint(sqlite3 *sqlite);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -1190,6 +1194,16 @@ static int test_rejects_catalog_integrity_corruption(void) {
         "USE app",
         "CREATE TABLE t (id INT, value INT)",
     };
+    static const char *const generated_table_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE t (id INT, generated_value INT GENERATED ALWAYS AS (id + 1) STORED)",
+    };
+    static const char *const checked_table_setup[] = {
+        "CREATE DATABASE app",
+        "USE app",
+        "CREATE TABLE t (id INT, CONSTRAINT chk_positive CHECK (id > 0))",
+    };
     static const char *const cross_index_setup[] = {
         "CREATE DATABASE app",
         "USE app",
@@ -1314,6 +1328,34 @@ static int test_rejects_catalog_integrity_corruption(void) {
         sizeof(indexed_table_setup) / sizeof(indexed_table_setup[0]),
         tamper_replace_physical_index_definition,
         "reject mismatched physical index definition"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "wrong_physical_column_type",
+        unindexed_table_setup,
+        sizeof(unindexed_table_setup) / sizeof(unindexed_table_setup[0]),
+        tamper_physical_column_type,
+        "reject mismatched physical column type"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "wrong_physical_column_nullability",
+        unindexed_table_setup,
+        sizeof(unindexed_table_setup) / sizeof(unindexed_table_setup[0]),
+        tamper_physical_column_nullability,
+        "reject mismatched physical column nullability"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "wrong_physical_generated_expression",
+        generated_table_setup,
+        sizeof(generated_table_setup) / sizeof(generated_table_setup[0]),
+        tamper_physical_generated_expression,
+        "reject mismatched physical generated expression"
+    );
+    failures += expect_catalog_tamper_rejected(
+        "missing_physical_check_constraint",
+        checked_table_setup,
+        sizeof(checked_table_setup) / sizeof(checked_table_setup[0]),
+        tamper_remove_physical_check_constraint,
+        "reject missing physical check constraint"
     );
     return failures;
 }
@@ -1530,6 +1572,105 @@ static int tamper_replace_physical_index_definition(sqlite3 *sqlite) {
         index_name,
         table_name
     );
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_physical_column_type(sqlite3 *sqlite) {
+    char table_name[sql_buffer_capacity];
+    char sql[1024];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+        table_name,
+        sizeof(table_name)
+    );
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "ALTER TABLE \"%s\" RENAME TO _mylite_bad_physical; "
+        "CREATE TABLE \"%s\" (\"id\" TEXT, \"value\" INTEGER); "
+        "DROP TABLE _mylite_bad_physical",
+        table_name,
+        table_name
+    );
+
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_physical_column_nullability(sqlite3 *sqlite) {
+    char table_name[sql_buffer_capacity];
+    char sql[1024];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+        table_name,
+        sizeof(table_name)
+    );
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "ALTER TABLE \"%s\" RENAME TO _mylite_bad_physical; "
+        "CREATE TABLE \"%s\" (\"id\" INTEGER, \"value\" INTEGER NOT NULL); "
+        "DROP TABLE _mylite_bad_physical",
+        table_name,
+        table_name
+    );
+
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_physical_generated_expression(sqlite3 *sqlite) {
+    char table_name[sql_buffer_capacity];
+    char sql[1024];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+        table_name,
+        sizeof(table_name)
+    );
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "ALTER TABLE \"%s\" RENAME TO _mylite_bad_physical; "
+        "CREATE TABLE \"%s\" (\"id\" INTEGER, \"generated_value\" INTEGER "
+        "GENERATED ALWAYS AS (id + 2) STORED); DROP TABLE _mylite_bad_physical",
+        table_name,
+        table_name
+    );
+
+    if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    return execute_sql(sqlite, sql);
+}
+
+static int tamper_remove_physical_check_constraint(sqlite3 *sqlite) {
+    char table_name[sql_buffer_capacity];
+    char sql[1024];
+    int rc = query_single_text(
+        sqlite,
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
+        table_name,
+        sizeof(table_name)
+    );
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "ALTER TABLE \"%s\" RENAME TO _mylite_bad_physical; "
+        "CREATE TABLE \"%s\" (\"id\" INTEGER); DROP TABLE _mylite_bad_physical",
+        table_name,
+        table_name
+    );
+
     if (rc != 0 || written < 0 || (size_t)written >= sizeof(sql)) {
         return 1;
     }

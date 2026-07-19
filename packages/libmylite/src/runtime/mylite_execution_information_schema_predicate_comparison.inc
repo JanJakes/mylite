@@ -65,7 +65,7 @@ static int information_schema_comparison_predicate_value(
     size_t *out_column_index,
     struct information_schema_predicate_value *out_right
 ) {
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),
@@ -311,7 +311,7 @@ static int information_schema_between_matches(
     size_t column_index = 0U;
     const char *left_text = NULL;
     char left_buffer[integer_text_capacity];
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),
@@ -440,7 +440,7 @@ static int information_schema_in_matches(
     const char *left_text = NULL;
     char left_buffer[integer_text_capacity];
     bool saw_null = false;
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),

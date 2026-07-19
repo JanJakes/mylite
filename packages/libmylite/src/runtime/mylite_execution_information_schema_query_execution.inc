@@ -23,7 +23,7 @@ static int resolve_information_schema_query(
         return MYLITE_ERROR;
     }
 
-    rc = information_schema_resolve_source(database, from_clause, out_query);
+    rc = mylite_execution_information_schema_resolve_source(database, from_clause, out_query);
     while (rc == MYLITE_OK && optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             where_clause = optional_clause;
@@ -46,13 +46,13 @@ static int resolve_information_schema_query(
         optional_clause = optional_clause->next_sibling;
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_projection(database, select_list, out_query);
+        rc = mylite_execution_information_schema_plan_projection(database, select_list, out_query);
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_plan_where(database, where_clause, out_query);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_group(database, group_clause, out_query);
+        rc = mylite_execution_information_schema_plan_group(database, group_clause, out_query);
     }
     if (rc == MYLITE_OK) {
         out_query->limit = (struct planned_select_limit){
@@ -61,10 +61,10 @@ static int resolve_information_schema_query(
             .has_offset = false,
             .offset = 0,
         };
-        rc = information_schema_plan_order(database, order_clause, out_query);
+        rc = mylite_execution_information_schema_plan_order(database, order_clause, out_query);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_limit(database, limit_clause, out_query);
+        rc = mylite_execution_information_schema_plan_limit(database, limit_clause, out_query);
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_query_plan_materialization(database, statement, out_query);
@@ -182,7 +182,7 @@ static int information_schema_query_require_expression_columns(
             current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
             size_t column_index = 0U;
 
-            rc = information_schema_resolve_column_reference(
+            rc = mylite_execution_information_schema_resolve_column_reference(
                 database,
                 query,
                 current,
@@ -531,7 +531,7 @@ static int information_schema_exact_table_lookup_comparison_matches(
         return MYLITE_OK;
     }
 
-    rc = information_schema_resolve_column_reference(
+    rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate, 0U),
@@ -834,7 +834,7 @@ static int information_schema_catalog_filter_init_from_statement(
         return MYLITE_OK;
     }
     if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
-        (void)information_schema_table_definition_index(
+        (void)mylite_execution_information_schema_table_definition_index(
             query->definition,
             "TABLE_TYPE",
             &out_filter->table_type_column_index
@@ -876,12 +876,12 @@ static bool information_schema_catalog_filter_resolve_schema_table_columns(
         return false;
     }
     if (definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_VIEW_TABLE_USAGE) {
-        has_schema_column = information_schema_table_definition_index(
+        has_schema_column = mylite_execution_information_schema_table_definition_index(
                                 definition,
                                 "VIEW_SCHEMA",
                                 out_schema_column_index
                             ) == MYLITE_OK;
-        has_table_column = information_schema_table_definition_index(
+        has_table_column = mylite_execution_information_schema_table_definition_index(
                                definition,
                                "VIEW_NAME",
                                out_table_column_index
@@ -891,12 +891,12 @@ static bool information_schema_catalog_filter_resolve_schema_table_columns(
         }
     }
 
-    has_schema_column = information_schema_table_definition_index(
+    has_schema_column = mylite_execution_information_schema_table_definition_index(
                             definition,
                             "TABLE_SCHEMA",
                             out_schema_column_index
                         ) == MYLITE_OK;
-    has_table_column = information_schema_table_definition_index(
+    has_table_column = mylite_execution_information_schema_table_definition_index(
                            definition,
                            "TABLE_NAME",
                            out_table_column_index
@@ -971,7 +971,7 @@ static int information_schema_catalog_filter_collect_comparison(
         return MYLITE_OK;
     }
 
-    rc = information_schema_resolve_column_reference(
+    rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate, 0U),

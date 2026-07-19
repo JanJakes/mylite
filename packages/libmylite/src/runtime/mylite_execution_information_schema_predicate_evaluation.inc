@@ -298,7 +298,7 @@ static int information_schema_is_null_predicate_matches(
     size_t column_index = 0U;
     char predicate_value_text[integer_text_capacity];
     const char *predicate_value = NULL;
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),

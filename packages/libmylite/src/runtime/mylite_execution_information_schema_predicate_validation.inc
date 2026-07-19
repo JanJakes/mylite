@@ -108,7 +108,7 @@ static int information_schema_validate_comparison_predicate(
         .is_numeric = false,
     };
     size_t column_index = 0U;
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),
@@ -150,7 +150,7 @@ static int information_schema_validate_is_null_predicate(
 ) {
     size_t column_index = 0U;
 
-    return information_schema_resolve_column_reference(
+    return mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),
@@ -167,7 +167,7 @@ static int information_schema_validate_between_predicate(
     struct information_schema_predicate_value lower = {0};
     struct information_schema_predicate_value upper = {0};
     size_t column_index = 0U;
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),
@@ -203,7 +203,7 @@ static int information_schema_validate_in_predicate(
     const struct mylite_sql_ast_node *values = child_at(predicate_node, 1U);
     const struct mylite_sql_ast_node *value = NULL;
     size_t column_index = 0U;
-    int rc = information_schema_resolve_column_reference(
+    int rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate_node, 0U),

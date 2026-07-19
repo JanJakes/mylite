@@ -1375,7 +1375,7 @@ static int information_schema_numeric_projection_enter_frame(
         size_t column_index = 0U;
         double value = 0.0;
         bool is_null = false;
-        int rc = information_schema_resolve_column_reference(
+        int rc = mylite_execution_information_schema_resolve_column_reference(
             database,
             query,
             unwrapped,
@@ -1850,7 +1850,7 @@ static int information_schema_predicate_marks_connection_control_failed_login_at
         operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
         return MYLITE_OK;
     }
-    rc = information_schema_resolve_column_reference(
+    rc = mylite_execution_information_schema_resolve_column_reference(
         database,
         query,
         child_at(predicate, 0U),

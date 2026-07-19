@@ -2702,7 +2702,7 @@ static int resolve_mysql_system_table_query(
         optional_clause = optional_clause->next_sibling;
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_projection(database, select_list, out_query);
+        rc = mylite_execution_information_schema_plan_projection(database, select_list, out_query);
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_plan_where(database, where_clause, out_query);
@@ -2714,10 +2714,10 @@ static int resolve_mysql_system_table_query(
             .has_offset = false,
             .offset = 0,
         };
-        rc = information_schema_plan_order(database, order_clause, out_query);
+        rc = mylite_execution_information_schema_plan_order(database, order_clause, out_query);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_limit(database, limit_clause, out_query);
+        rc = mylite_execution_information_schema_plan_limit(database, limit_clause, out_query);
     }
     if (rc == MYLITE_OK) {
         return MYLITE_OK;

@@ -297,6 +297,16 @@ complete.
   bytes. This is a boundary and rebuild-isolation improvement, not a binary-size
   reduction; the remaining execution object still dominates compile time and
   requires another higher-yield split before this item can close.
+  INFORMATION_SCHEMA projection, grouped-STATISTICS, ordering, limit, source,
+  built-in-table, and column-reference analysis now form a second independent
+  planner module. The 875-line planner body and the formerly shared column
+  resolver expose eight typed operations and require one support callback for
+  MySQL-compatible string/identifier alias decoding; their other dependencies
+  are existing AST, catalog, diagnostic, text, and ORDER/LIMIT interfaces. The
+  CI execution object fell again from 3,422,352 to 3,411,552 bytes; the metadata
+  planner object is 17,720 bytes. The archive remains effectively size-neutral
+  because explicit interfaces add symbols, while metadata planner changes no
+  longer require compiling that policy inside the main execution object.
   Planner clusters still need the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row

@@ -26,6 +26,8 @@
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_information_schema_join_plan.h"
+#include "mylite_execution_information_schema_plan.h"
+#include "mylite_execution_information_schema_plan_support.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_metadata_setup_metrics.h"
 #include "mylite_execution_parameter_binding.h"
@@ -3214,6 +3216,14 @@ bool mylite_execution_column_descriptor_is_time(
     return column_descriptor_is_time(column);
 }
 
+int mylite_execution_information_schema_copy_select_item_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char **out_text
+) {
+    return copy_select_item_alias_text(database, alias, out_text);
+}
+
 bool mylite_execution_select_order_source_context_is_joined(
     const struct select_source_context *source_context
 ) {
@@ -3796,8 +3806,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_information_schema_predicate_comparison.inc"
 
 #include "mylite_execution_information_schema_predicate_values.inc"
-
-#include "mylite_execution_information_schema_query_planning.inc"
 
 #include "mylite_execution_information_schema_compare_format_helpers.inc"
 

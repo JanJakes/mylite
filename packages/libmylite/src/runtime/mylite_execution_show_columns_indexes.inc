@@ -227,7 +227,7 @@ static int reject_unknown_show_columns_information_schema_table(
         set_reserved_name_error(database, "table", table_name);
         return MYLITE_ERROR;
     }
-    if (find_information_schema_table_definition(table_name) != NULL) {
+    if (mylite_execution_find_information_schema_table_definition(table_name) != NULL) {
         return MYLITE_OK;
     }
 

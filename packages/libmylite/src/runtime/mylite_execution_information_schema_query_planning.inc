@@ -54,7 +54,7 @@ static int information_schema_plan_select_item_projection(
     struct information_schema_query *out_query
 ) {
     const struct mylite_sql_ast_node *expression =
-        unwrap_parenthesized_expression(child_at(item, 0U));
+        mylite_execution_unwrap_parenthesized_expression(child_at(item, 0U));
     enum planned_count_function count_function = count_function_from_expression(expression);
     size_t column_index = 0U;
     int rc = MYLITE_OK;
@@ -313,7 +313,11 @@ static int information_schema_append_projection_slot(
     query->projection_names = names;
 
     if (request->alias != NULL) {
-        rc = copy_select_item_alias_text(database, request->alias, &column_name);
+        rc = mylite_execution_information_schema_copy_select_item_alias(
+            database,
+            request->alias,
+            &column_name
+        );
     } else if (request->expression != NULL) {
         rc = copy_source_span_text(database, &request->expression->span, &column_name);
     } else {
@@ -475,7 +479,7 @@ static int information_schema_validate_group_concat_ordered_column_expression(
         );
         return MYLITE_ERROR;
     }
-    value = unwrap_parenthesized_expression(child_at(expression, 0U));
+    value = mylite_execution_unwrap_parenthesized_expression(child_at(expression, 0U));
     order_clause = child_at(expression, 1U);
     separator = child_at(expression, 2U);
     if (separator != NULL) {
@@ -545,7 +549,7 @@ static int information_schema_validate_logical_not_column_expression(
     int rc = information_schema_resolve_column_reference(
         database,
         query,
-        unwrap_parenthesized_expression(child_at(expression, 0U)),
+        mylite_execution_unwrap_parenthesized_expression(child_at(expression, 0U)),
         COLUMN_REFERENCE_FIELD,
         out_column_index
     );
@@ -593,7 +597,7 @@ static int information_schema_validate_numeric_projection_expression(
     }
     while (rc == MYLITE_OK && stack.count != 0U) {
         const struct mylite_sql_ast_node *unwrapped =
-            unwrap_parenthesized_expression(stack.items[--stack.count]);
+            mylite_execution_unwrap_parenthesized_expression(stack.items[--stack.count]);
 
         if (unwrapped == NULL) {
             set_unsupported_error(
@@ -743,7 +747,7 @@ static int information_schema_resolve_order_reference(
         }
         for (size_t projection_index = 0U; projection_index < query->projection_count;
              ++projection_index) {
-            if (!text_equals_ascii_case_insensitive(
+            if (!mylite_execution_text_equals_ascii_case_insensitive(
                     query->projection_names[projection_index],
                     reference_text
                 )) {
@@ -853,7 +857,7 @@ static int information_schema_table_definition_index(
     size_t *out_index
 ) {
     for (size_t column_index = 0U; column_index < definition->column_count; ++column_index) {
-        if (text_equals_ascii_case_insensitive(
+        if (mylite_execution_text_equals_ascii_case_insensitive(
                 definition->columns[column_index].name,
                 column_name
             )) {

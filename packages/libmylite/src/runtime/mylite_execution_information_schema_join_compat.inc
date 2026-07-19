@@ -343,9 +343,9 @@ static int information_schema_join_compat_execute_columns_statistics_join(
     mylite_result **out_result
 ) {
     const struct mylite_execution_catalog_table_definition *columns_definition =
-        find_information_schema_table_definition("COLUMNS");
+        mylite_execution_find_information_schema_table_definition("COLUMNS");
     const struct mylite_execution_catalog_table_definition *statistics_definition =
-        find_information_schema_table_definition("STATISTICS");
+        mylite_execution_find_information_schema_table_definition("STATISTICS");
     const struct information_schema_join_compat_source_column result_columns[] = {
         {columns_definition, "cols", "DATA_TYPE", "DATA_TYPE"},
         {statistics_definition, "stats", "INDEX_NAME", "INDEX_NAME"},
@@ -413,9 +413,9 @@ static int information_schema_join_compat_execute_columns_statistics_union(
     mylite_result **out_result
 ) {
     const struct mylite_execution_catalog_table_definition *columns_definition =
-        find_information_schema_table_definition("COLUMNS");
+        mylite_execution_find_information_schema_table_definition("COLUMNS");
     const struct mylite_execution_catalog_table_definition *statistics_definition =
-        find_information_schema_table_definition("STATISTICS");
+        mylite_execution_find_information_schema_table_definition("STATISTICS");
     struct information_schema_row_set columns = {0};
     struct information_schema_row_set statistics = {0};
     mylite_result *result = NULL;
@@ -473,9 +473,9 @@ static int information_schema_join_compat_execute_columns_tables_join(
     mylite_result **out_result
 ) {
     const struct mylite_execution_catalog_table_definition *columns_definition =
-        find_information_schema_table_definition("COLUMNS");
+        mylite_execution_find_information_schema_table_definition("COLUMNS");
     const struct mylite_execution_catalog_table_definition *tables_definition =
-        find_information_schema_table_definition("TABLES");
+        mylite_execution_find_information_schema_table_definition("TABLES");
     const struct information_schema_join_compat_source_column result_columns[] = {
         {columns_definition, "c", "TABLE_NAME", "TABLE_NAME"},
         {columns_definition, "c", "COLUMN_NAME", "field"},
@@ -557,7 +557,7 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
     mylite_result **out_result
 ) {
     const struct mylite_execution_catalog_table_definition *definition =
-        find_information_schema_table_definition("TABLES");
+        mylite_execution_find_information_schema_table_definition("TABLES");
     const struct information_schema_join_compat_source_column result_columns[] = {
         {definition, NULL, "TABLE_NAME", "table"},
         {definition, NULL, "TABLE_ROWS", "rows"},
@@ -619,7 +619,7 @@ static int information_schema_join_compat_execute_dynamic_columns_select(
     mylite_result **out_result
 ) {
     const struct mylite_execution_catalog_table_definition *definition =
-        find_information_schema_table_definition("COLUMNS");
+        mylite_execution_find_information_schema_table_definition("COLUMNS");
     struct information_schema_row_set rows = {0};
     struct mylite_catalog_table_descriptor table = {0};
     mylite_result *result = NULL;
@@ -689,9 +689,9 @@ static int information_schema_join_compat_execute_schemata_tables_left_join(
     mylite_result **out_result
 ) {
     const struct mylite_execution_catalog_table_definition *schemata_definition =
-        find_information_schema_table_definition("SCHEMATA");
+        mylite_execution_find_information_schema_table_definition("SCHEMATA");
     const struct mylite_execution_catalog_table_definition *tables_definition =
-        find_information_schema_table_definition("TABLES");
+        mylite_execution_find_information_schema_table_definition("TABLES");
     struct information_schema_row_set schemata = {0};
     struct information_schema_row_set tables = {0};
     mylite_result *result = NULL;

@@ -317,8 +317,8 @@ complete.
   and conversion ownership in their existing modules. The CI execution object
   fell from 3,427,248 to 3,422,352 bytes while the new planner object is 13,328
   bytes. This is a boundary and rebuild-isolation improvement, not a binary-size
-  reduction; the remaining execution object still dominates compile time and
-  requires another higher-yield split before this item can close.
+  reduction; at that stage the remaining execution object still dominated
+  compile time and motivated the higher-yield follow-on extraction below.
   INFORMATION_SCHEMA projection, grouped-STATISTICS, ordering, limit, source,
   built-in-table, and column-reference analysis now form a second independent
   planner module. The 875-line planner body and the formerly shared column
@@ -362,6 +362,16 @@ complete.
   rebuild improvement rather than a size optimization. The incremental
   four-job Release build completed in 84.013 seconds. The complete 687-test
   Debug suite and 16 focused metadata tests under ASan+UBSan pass.
+  Session-system-variable evaluation and its numeric scalar fast path now form
+  another independently compiled module. The 4,404-line evaluator owns system
+  variable resolution, scope handling, scalar/SHOW formatting, warnings, and
+  parsing helpers behind typed SET/SHOW support adapters. Moving the evaluator
+  lowered the CI Release `mylite_execution.c.o` from 3,367,888 to 3,255,704
+  bytes; the new object is 102,480 bytes, making the pair 9,704 bytes smaller.
+  Across the complete split, direct execution includes fell from 283 fragments
+  and approximately 261,000 lines to 252 fragments and 223,807 lines. The full
+  687-test Debug suite and focused scalar, SET, SHOW, and system-variable tests
+  pass after the extraction.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

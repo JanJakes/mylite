@@ -1773,13 +1773,6 @@ static int system_variable_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
-static const char *performance_schema_scalar_system_variable_value(
-    enum mylite_execution_system_variable_kind kind
-);
-static uint64_t information_schema_stats_expiry_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
 static int database_character_set_system_variable_value(
     struct mylite_db *database,
     bool global_scope,
@@ -1799,32 +1792,6 @@ static int format_session_scalar_uint64_value(
     uint64_t value,
     struct session_scalar_cell *out_cell
 );
-static int format_long_query_time_microseconds(
-    struct mylite_db *database,
-    uint64_t microseconds,
-    char *buffer,
-    size_t buffer_size,
-    const char **out_value
-);
-static uint64_t boolean_session_placeholder_system_variable_uint64_value(
-    const struct mylite_db *database,
-    enum mylite_execution_system_variable_kind kind,
-    bool global_scope
-);
-static uint64_t auto_increment_step_system_variable_value(
-    const struct mylite_db *database,
-    enum mylite_execution_system_variable_kind kind,
-    bool global_scope
-);
-static uint64_t sql_select_limit_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t timeout_system_variable_value(
-    const struct mylite_db *database,
-    enum mylite_execution_system_variable_kind kind,
-    bool global_scope
-);
 static uint64_t timeout_system_variable_default_value_for_kind(
     enum mylite_execution_system_variable_kind kind
 );
@@ -1833,59 +1800,6 @@ static uint64_t timeout_system_variable_min_value_for_kind(
 );
 static uint64_t timeout_system_variable_max_value_for_kind(
     enum mylite_execution_system_variable_kind kind
-);
-static uint64_t innodb_parallel_read_threads_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t connection_memory_system_variable_value(
-    const struct mylite_db *database,
-    enum mylite_execution_system_variable_kind kind,
-    bool global_scope
-);
-static uint64_t global_connection_memory_tracking_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *internal_tmp_mem_storage_engine_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t join_buffer_size_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t myisam_sort_buffer_size_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *myisam_stats_method_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t sort_buffer_size_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t open_files_limit_system_variable_value(void);
-static uint64_t temptable_max_ram_default_value(void);
-static uint64_t temptable_max_ram_system_variable_value(const struct mylite_db *database);
-static uint64_t low_priority_updates_system_variable_uint64_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *low_priority_updates_system_variable_show_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *default_sql_mode_value(void);
-static const struct mylite_diagnostics *system_variable_count_diagnostics(
-    const struct mylite_db *database
-);
-static int diagnostics_count_system_variable_value(
-    const struct mylite_diagnostics *diagnostics,
-    enum mylite_execution_system_variable_kind variable,
-    uint64_t *out_count
 );
 static int resolve_session_system_variable(
     struct mylite_db *database,
@@ -1903,21 +1817,6 @@ static int show_system_variable_value(
     char *integer_buffer,
     size_t integer_buffer_size,
     const char **out_value
-);
-static const char *performance_schema_show_system_variable_value(
-    enum mylite_execution_system_variable_kind kind
-);
-static int format_show_system_variable_uint64_value(
-    struct mylite_db *database,
-    uint64_t value,
-    char *integer_buffer,
-    size_t integer_buffer_size,
-    const char **out_value
-);
-static int format_timestamp_system_variable_value(
-    struct mylite_db *database,
-    char *buffer,
-    size_t buffer_size
 );
 static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope);
 static bool show_status_descriptor_visible(

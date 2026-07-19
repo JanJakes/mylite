@@ -285,12 +285,6 @@ static int parse_system_variable_component(
     size_t *offset,
     struct system_variable_component *out_component
 );
-static int append_quoted_system_variable_byte(
-    struct mylite_db *database,
-    struct system_variable_component *component,
-    size_t *component_length,
-    char value
-);
 static bool system_variable_component_equals(
     const struct system_variable_component *component,
     const char *expected

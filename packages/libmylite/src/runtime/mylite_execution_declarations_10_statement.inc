@@ -2360,36 +2360,7 @@ static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
 static unsigned int lexer_modes_for_statement(const struct mylite_db *database);
-static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
-);
-static bool system_variable_expression_has_session_scope(
-    const struct mylite_sql_ast_node *expression
-);
 static bool foreign_key_checks_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t foreign_key_checks_system_variable_uint64_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *foreign_key_checks_system_variable_show_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t sql_require_primary_key_system_variable_uint64_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *sql_require_primary_key_system_variable_show_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static uint64_t big_tables_system_variable_uint64_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
-static const char *big_tables_system_variable_show_value(
     const struct mylite_db *database,
     bool global_scope
 );
@@ -2447,14 +2418,6 @@ static const char *transaction_isolation_value_text(enum mylite_transaction_isol
 static const char *transaction_read_only_scalar_text(enum mylite_transaction_access_mode access_mode
 );
 static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode);
-static const char *transaction_isolation_system_variable_value(
-    const struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
-static const char *transaction_read_only_system_variable_value(
-    const struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
-);
 static enum mylite_transaction_access_mode current_transaction_access_mode(
     const struct mylite_db *database
 );

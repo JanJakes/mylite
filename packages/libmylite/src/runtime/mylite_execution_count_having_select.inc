@@ -765,7 +765,7 @@ static int append_count_having_sql(
     return rc;
 }
 
-static int bind_count_having_select_parameters(
+int bind_count_having_select_parameters(
     sqlite3_stmt *statement,
     const struct planned_count_having_select *plan
 ) {

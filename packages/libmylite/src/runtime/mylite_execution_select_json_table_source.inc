@@ -266,34 +266,6 @@ static int append_json_table_source_sql(
     return rc;
 }
 
-static int bind_json_table_source_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_json_table_source *source,
-    int *parameter_index
-) {
-    int rc = MYLITE_OK;
-
-    if (source == NULL || parameter_index == NULL) {
-        return MYLITE_MISUSE;
-    }
-    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < source->row_count; ++row_index) {
-        for (size_t column_index = 0U; rc == MYLITE_OK && column_index < source->column_count;
-             ++column_index) {
-            const size_t value_index = (row_index * source->column_count) + column_index;
-
-            rc = bind_planned_value_parameter(
-                statement,
-                *parameter_index,
-                &source->values[value_index]
-            );
-            if (rc == MYLITE_OK) {
-                ++(*parameter_index);
-            }
-        }
-    }
-    return rc;
-}
-
 static void planned_json_table_source_deinit(struct planned_json_table_source *source) {
     if (source == NULL) {
         return;

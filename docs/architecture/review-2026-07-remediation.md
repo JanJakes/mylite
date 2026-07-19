@@ -251,9 +251,12 @@ complete.
   under the prepare-time lexer mode after type, schema, or session invalidation.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization. SQLite result
-  extraction/row storage and analyzed-value ownership/parameter binding are now
-  separate translation units with narrow internal headers; subsequent planner,
-  lowering, metadata, and completion clusters still need the same treatment.
+  extraction/row storage and analyzed-value ownership are now separate
+  translation units with narrow internal headers. SELECT, aggregate,
+  predicate, JSON-table, and DML parameter lowering now also compile as one
+  cohesive binder module instead of eleven implementation fragments in the
+  mega translation unit. Subsequent planner, SQL-lowering, metadata, and
+  completion clusters still need the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

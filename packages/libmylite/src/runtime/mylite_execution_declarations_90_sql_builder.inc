@@ -2781,10 +2781,6 @@ static int append_single_update_matched_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan
 );
-static int bind_update_matched_count_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_update *plan
-);
 static int append_joined_update_matched_target_filter_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,

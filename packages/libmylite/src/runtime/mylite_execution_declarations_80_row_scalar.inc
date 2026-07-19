@@ -1383,11 +1383,13 @@ static int append_row_scalar_regexp_string_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+#ifdef MYLITE_EXECUTION_PARAMETER_BINDING_IMPLEMENTATION
 static int bind_row_scalar_regexp_string_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
+#endif
 static int plan_row_scalar_regexp_like_value_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

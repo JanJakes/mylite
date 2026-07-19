@@ -122,6 +122,7 @@ add_library(mylite
   src/runtime/mylite_execution_diagnostics_values.c
   src/runtime/mylite_execution_dml_numeric.c
   src/runtime/mylite_execution_loaded_catalog.c
+  src/runtime/mylite_execution_parameter_binding.c
   src/runtime/mylite_execution_result_rows.c
   src/runtime/mylite_execution_value.c
   src/runtime/mylite_execution_scalar_base_conversion.c

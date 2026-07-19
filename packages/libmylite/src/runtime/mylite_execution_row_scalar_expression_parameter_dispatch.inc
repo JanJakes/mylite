@@ -1,5 +1,5 @@
 
-static int bind_row_scalar_expression_parameters(
+int bind_row_scalar_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index

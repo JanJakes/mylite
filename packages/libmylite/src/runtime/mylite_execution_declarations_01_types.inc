@@ -1,3 +1,14 @@
+enum planned_type_size_budget {
+    PLANNED_PREDICATE_NODE_SIZE_BUDGET = 512U,
+    PLANNED_SELECT_ORDER_ITEM_SIZE_BUDGET = 512U,
+    PLANNED_SELECT_ORDER_SIZE_BUDGET = 128U,
+    PLANNED_ROW_SCALAR_EXPRESSION_SIZE_BUDGET = 1024U,
+    PLANNED_GROUPED_KEY_SIZE_BUDGET = 1024U,
+    PLANNED_GROUPED_PROJECTION_SIZE_BUDGET = 1024U,
+    PLANNED_GROUPED_AGGREGATE_ITEM_SIZE_BUDGET = 2048U,
+    PLANNED_COLUMN_AGGREGATE_SIZE_BUDGET = 16384U,
+};
+
 enum table_maintenance_operation {
     TABLE_MAINTENANCE_ANALYZE = 0,
     TABLE_MAINTENANCE_CHECK = 1,
@@ -1139,7 +1150,7 @@ struct planned_select_predicate_node {
 };
 
 _Static_assert(
-    sizeof(struct planned_select_predicate_node) <= 512U,
+    sizeof(struct planned_select_predicate_node) <= PLANNED_PREDICATE_NODE_SIZE_BUDGET,
     "planned predicate nodes must retain compact column references"
 );
 
@@ -1339,12 +1350,12 @@ struct planned_select_order {
 };
 
 _Static_assert(
-    sizeof(struct planned_select_order_item) <= 512U,
+    sizeof(struct planned_select_order_item) <= PLANNED_SELECT_ORDER_ITEM_SIZE_BUDGET,
     "planned ORDER BY items must retain compact column references"
 );
 
 _Static_assert(
-    sizeof(struct planned_select_order) <= 128U,
+    sizeof(struct planned_select_order) <= PLANNED_SELECT_ORDER_SIZE_BUDGET,
     "planned ORDER BY state must retain compact column references"
 );
 
@@ -1899,7 +1910,7 @@ struct planned_row_scalar_expression {
 };
 
 _Static_assert(
-    sizeof(struct planned_row_scalar_expression) <= 1024U,
+    sizeof(struct planned_row_scalar_expression) <= PLANNED_ROW_SCALAR_EXPRESSION_SIZE_BUDGET,
     "planned row-scalar expressions must retain compact column references"
 );
 
@@ -2373,22 +2384,22 @@ struct planned_grouped_aggregate {
 };
 
 _Static_assert(
-    sizeof(struct planned_grouped_key) <= 1024U,
+    sizeof(struct planned_grouped_key) <= PLANNED_GROUPED_KEY_SIZE_BUDGET,
     "planned grouped keys must retain compact column references"
 );
 
 _Static_assert(
-    sizeof(struct planned_grouped_projection) <= 1024U,
+    sizeof(struct planned_grouped_projection) <= PLANNED_GROUPED_PROJECTION_SIZE_BUDGET,
     "planned grouped projections must retain compact column references"
 );
 
 _Static_assert(
-    sizeof(struct planned_grouped_aggregate_item) <= 2048U,
+    sizeof(struct planned_grouped_aggregate_item) <= PLANNED_GROUPED_AGGREGATE_ITEM_SIZE_BUDGET,
     "planned grouped aggregate items must retain compact column references"
 );
 
 _Static_assert(
-    sizeof(struct planned_column_aggregate) <= 16384U,
+    sizeof(struct planned_column_aggregate) <= PLANNED_COLUMN_AGGREGATE_SIZE_BUDGET,
     "planned column aggregates must retain compact column references"
 );
 

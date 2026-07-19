@@ -1,4 +1,4 @@
-static int bind_select_predicate_parameters(
+int bind_select_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate *predicate,
     int *parameter_index
@@ -73,7 +73,7 @@ static int bind_select_exists_predicate_parameters(
     return rc;
 }
 
-static int bind_select_predicate_parameters_without_exists(
+int bind_select_predicate_parameters_without_exists(
     sqlite3_stmt *statement,
     const struct planned_select_predicate *predicate,
     int *parameter_index
@@ -569,7 +569,7 @@ static int bind_select_quantified_subquery_predicate_parameters(
     return rc;
 }
 
-static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan) {
+int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan) {
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
@@ -676,7 +676,7 @@ static int bind_count_derived_compound_branch_parameters(
     return MYLITE_ERROR;
 }
 
-static int bind_column_aggregate_parameters(
+int bind_column_aggregate_parameters(
     sqlite3_stmt *statement,
     const struct planned_column_aggregate_select *plan
 ) {
@@ -748,21 +748,21 @@ static int bind_column_aggregate_item_parameters(
     return rc;
 }
 
-static int bind_grouped_aggregate_parameters(
+int bind_grouped_aggregate_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
 ) {
     return bind_grouped_aggregate_parameters_with_limit(statement, plan, true);
 }
 
-static int bind_grouped_aggregate_count_parameters(
+int bind_grouped_aggregate_count_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
 ) {
     return bind_grouped_aggregate_parameters_with_limit(statement, plan, false);
 }
 
-static int bind_grouped_aggregate_rollup_parameters(
+int bind_grouped_aggregate_rollup_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
 ) {
@@ -1078,7 +1078,7 @@ static int bind_grouped_key_parameters(
     return rc;
 }
 
-static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan) {
+int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan) {
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
@@ -1111,7 +1111,7 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     return rc;
 }
 
-static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan) {
+int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan) {
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
@@ -1269,7 +1269,7 @@ static int bind_update_auto_update_parameters(
     return rc;
 }
 
-static int bind_joined_update_source_parameters(
+int bind_joined_update_source_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_update *plan
@@ -1285,7 +1285,7 @@ static int bind_joined_update_source_parameters(
     );
 }
 
-static int bind_update_multiple_changed_condition_parameters(
+int bind_update_multiple_changed_condition_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_update *plan
@@ -1320,7 +1320,7 @@ static int bind_update_multiple_changed_condition_parameters(
     return rc;
 }
 
-static int bind_update_row_scalar_changed_condition_parameters(
+int bind_update_row_scalar_changed_condition_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_row_scalar_expression *expression
@@ -1334,7 +1334,7 @@ static int bind_update_row_scalar_changed_condition_parameters(
     return rc;
 }
 
-static int bind_update_assignment_parameter(
+int bind_update_assignment_parameter(
     sqlite3_stmt *statement,
     int parameter_index,
     const struct planned_update *plan
@@ -1352,7 +1352,7 @@ static int bind_update_assignment_parameter(
     return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
 }
 
-static int bind_update_changed_condition_parameter(
+int bind_update_changed_condition_parameter(
     sqlite3_stmt *statement,
     int parameter_index,
     const struct planned_update *plan
@@ -1370,7 +1370,7 @@ static int bind_update_changed_condition_parameter(
     return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
 }
 
-static int bind_update_matched_count_parameters(
+int bind_update_matched_count_parameters(
     sqlite3_stmt *statement,
     const struct planned_update *plan
 ) {

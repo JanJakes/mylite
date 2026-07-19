@@ -1339,16 +1339,7 @@ static int append_predicate_result_index(
     size_t index
 );
 static int pop_predicate_result_index(struct predicate_result_stack *stack, size_t *out_index);
-static int bind_select_predicate_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_select_predicate *predicate,
-    int *parameter_index
-);
-static int bind_select_predicate_parameters_without_exists(
-    sqlite3_stmt *statement,
-    const struct planned_select_predicate *predicate,
-    int *parameter_index
-);
+#ifdef MYLITE_EXECUTION_PARAMETER_BINDING_IMPLEMENTATION
 static int bind_select_exists_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_exists_subquery *subquery,
@@ -1425,6 +1416,7 @@ static int bind_select_quantified_subquery_predicate_parameters(
     const struct planned_select_predicate_node *node,
     int *parameter_index
 );
+#endif
 static int resolve_predicate_column_with_source_index(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,

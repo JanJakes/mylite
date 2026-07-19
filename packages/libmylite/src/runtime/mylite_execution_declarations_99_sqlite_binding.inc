@@ -1,3 +1,4 @@
+#ifndef MYLITE_EXECUTION_PARAMETER_BINDING_ONLY
 static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
 static int handle_insert_unique_key_conflict(
     struct mylite_db *database,
@@ -493,12 +494,8 @@ static int format_binary_key_bytes(
     char *destination,
     size_t destination_size
 );
-static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
-static int bind_select_parameters_at(
-    sqlite3_stmt *statement,
-    const struct planned_select *plan,
-    int *parameter_index
-);
+#endif
+#ifdef MYLITE_EXECUTION_PARAMETER_BINDING_IMPLEMENTATION
 static int bind_select_parameter_work_stack(
     sqlite3_stmt *statement,
     struct select_parameter_bind_stack *stack,
@@ -524,24 +521,11 @@ static int select_parameter_bind_stack_push(
     struct select_parameter_bind_item item
 );
 static void select_parameter_bind_stack_deinit(struct select_parameter_bind_stack *stack);
-static int bind_select_join_condition_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_select_join_condition *condition,
-    int *parameter_index
-);
 static int bind_select_source_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_source *sources,
     size_t source_count,
     int *parameter_index
-);
-static int bind_row_scalar_select_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_row_scalar_select *plan
-);
-static int bind_count_having_select_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_count_having_select *plan
 );
 static int bind_row_scalar_select_parameters_at(
     sqlite3_stmt *statement,
@@ -563,18 +547,9 @@ static int bind_select_order_parameters(
     const struct planned_select_order *order,
     int *parameter_index
 );
-static int bind_insert_select_materialize_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_insert_select *plan
-);
 static int bind_insert_select_compound_parameters(
     sqlite3_stmt *statement,
     const struct planned_insert_select *plan
-);
-static int bind_row_scalar_expression_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_row_scalar_expression *expression,
-    int *parameter_index
 );
 static int bind_row_scalar_non_concat_expression_parameters(
     sqlite3_stmt *statement,
@@ -974,7 +949,6 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     const struct planned_row_scalar_expression *argument,
     int *parameter_index
 );
-static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan);
 static int bind_count_derived_source_parameters(
     sqlite3_stmt *statement,
     const struct planned_count *plan,
@@ -990,26 +964,10 @@ static int bind_count_derived_compound_branch_parameters(
     const struct planned_count_derived_compound_branch *branch,
     int *parameter_index
 );
-static int bind_column_aggregate_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_column_aggregate_select *plan
-);
 static int bind_column_aggregate_item_parameters(
     sqlite3_stmt *statement,
     const struct planned_column_aggregate *item,
     int *parameter_index
-);
-static int bind_grouped_aggregate_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_grouped_aggregate *plan
-);
-static int bind_grouped_aggregate_count_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_grouped_aggregate *plan
-);
-static int bind_grouped_aggregate_rollup_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_grouped_aggregate *plan
 );
 static int bind_grouped_aggregate_parameters_at(
     sqlite3_stmt *statement,
@@ -1047,16 +1005,9 @@ static int bind_grouped_order_parameters(
     const struct planned_grouped_aggregate *plan,
     int *parameter_index
 );
-static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
-static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);
 static int bind_update_multiple_assignment_parameters(
     sqlite3_stmt *statement,
     int *parameter_index,
-    const struct planned_update *plan
-);
-static int bind_update_assignment_parameter(
-    sqlite3_stmt *statement,
-    int parameter_index,
     const struct planned_update *plan
 );
 static int bind_update_date_interval_parameters(
@@ -1069,26 +1020,8 @@ static int bind_update_auto_update_parameters(
     int *parameter_index,
     const struct planned_update *plan
 );
-static int bind_joined_update_source_parameters(
-    sqlite3_stmt *statement,
-    int *parameter_index,
-    const struct planned_update *plan
-);
-static int bind_update_multiple_changed_condition_parameters(
-    sqlite3_stmt *statement,
-    int *parameter_index,
-    const struct planned_update *plan
-);
-static int bind_update_row_scalar_changed_condition_parameters(
-    sqlite3_stmt *statement,
-    int *parameter_index,
-    const struct planned_row_scalar_expression *expression
-);
-static int bind_update_changed_condition_parameter(
-    sqlite3_stmt *statement,
-    int parameter_index,
-    const struct planned_update *plan
-);
+#endif
+#ifndef MYLITE_EXECUTION_PARAMETER_BINDING_ONLY
 static int read_show_table_status_row_count(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
@@ -1104,3 +1037,4 @@ static int format_show_table_status_integer(
     char *buffer,
     size_t buffer_size
 );
+#endif

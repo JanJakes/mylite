@@ -1,4 +1,4 @@
-static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan) {
+int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan) {
     int parameter_index = 1;
     int rc = bind_select_parameters_at(statement, plan, &parameter_index);
 
@@ -14,7 +14,7 @@ static int bind_compound_select_parameters_at(
     int *parameter_index
 );
 
-static int bind_select_parameters_at(
+int bind_select_parameters_at(
     sqlite3_stmt *statement,
     const struct planned_select *plan,
     int *parameter_index
@@ -281,7 +281,7 @@ static int bind_select_source_parameters(
     return rc;
 }
 
-static int bind_select_join_condition_parameters(
+int bind_select_join_condition_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_join_condition *condition,
     int *parameter_index
@@ -308,7 +308,7 @@ static int bind_select_join_condition_parameters(
     return rc;
 }
 
-static int bind_row_scalar_select_parameters(
+int bind_row_scalar_select_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_select *plan
 ) {
@@ -426,7 +426,7 @@ static int bind_select_order_parameters(
     return rc;
 }
 
-static int bind_insert_select_materialize_parameters(
+int bind_insert_select_materialize_parameters(
     sqlite3_stmt *statement,
     const struct planned_insert_select *plan
 ) {

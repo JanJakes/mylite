@@ -492,7 +492,7 @@
   add_executable(mylite_offset_vfs_test
     tests/offset_vfs_test.c
   )
-  target_link_libraries(mylite_offset_vfs_test PRIVATE MyLite::mylite)
+  target_link_libraries(mylite_offset_vfs_test PRIVATE MyLite::mylite MyLite::sqlite)
   target_include_directories(mylite_offset_vfs_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )

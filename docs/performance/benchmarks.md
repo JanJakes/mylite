@@ -81,7 +81,12 @@ selected explicitly with `--scenario`:
 - `runtime.wide_order_128`
 - `runtime.wide_projection_16` and `runtime.wide_projection_128`
 - `runtime.catalog_cache_saturation`
+- `runtime.catalog_ddl_generations`
 - `runtime.concurrent_read_write`
+
+`runtime.catalog_ddl_generations` repeatedly changes a column comment and then
+warms table metadata. It reports `peak_retained_bytes` and fails if completed
+catalog generations or their cold strings escape the catalog cache byte budget.
 
 Runtime databases are created below `TMPDIR`. Use a tmpfs directory to isolate
 CPU and allocator cost, or point `TMPDIR` at a block-backed filesystem to retain

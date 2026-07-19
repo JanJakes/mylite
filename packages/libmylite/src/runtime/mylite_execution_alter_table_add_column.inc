@@ -605,7 +605,7 @@ static int build_temporary_added_column_descriptor(
         "%s",
         plan->column.collation_name
     );
-    return intern_temporary_column_descriptor_strings(database, out_column);
+    return MYLITE_OK;
 }
 
 static int alter_table_add_column_in_mutation(

@@ -10,6 +10,7 @@ struct mylite_benchmark_runtime_stress_measurement {
     size_t bytes;
     size_t ok_count;
     size_t error_count;
+    size_t peak_retained_bytes;
 };
 
 size_t mylite_benchmark_runtime_stress_scenario_count(void);

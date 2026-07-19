@@ -5,6 +5,7 @@
 #include "runtime/mylite_catalog.h"
 #include "runtime/mylite_catalog_string_pool.h"
 #include "runtime/mylite_connection.h"
+#include "runtime/mylite_execution_loaded_catalog.h"
 #include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
@@ -27,6 +28,10 @@ enum {
     expected_catalog_table_count = 6,
     expected_catalog_generation_after_mutations = 5,
     catalog_test_timestamp_epoch = 1700000000,
+    catalog_string_test_generation = 41,
+    catalog_string_test_next_generation = 42,
+    catalog_string_test_final_generation = 43,
+    catalog_string_retained_byte_limit = 4096,
 };
 
 _Static_assert(
@@ -45,6 +50,9 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void);
 static int test_rejects_catalog_integrity_corruption(void);
 static int test_zero_initialized_catalog_cleanup(void);
 static int test_catalog_string_pool_deduplicates_and_grows(void);
+static int test_catalog_string_pool_reclaims_retired_generations(void);
+static int test_catalog_string_memory_stays_bounded_across_ddl_generations(void);
+static int test_pinned_column_descriptors_keep_retired_strings_alive(void);
 static int expect_catalog_tamper_rejected(
     const char *name,
     const char *const *setup_sql,
@@ -107,6 +115,9 @@ int main(void) {
     failures += test_rejects_catalog_integrity_corruption();
     failures += test_zero_initialized_catalog_cleanup();
     failures += test_catalog_string_pool_deduplicates_and_grows();
+    failures += test_catalog_string_pool_reclaims_retired_generations();
+    failures += test_catalog_string_memory_stays_bounded_across_ddl_generations();
+    failures += test_pinned_column_descriptors_keep_retired_strings_alive();
 
     return failures == 0 ? 0 : 1;
 }
@@ -155,6 +166,231 @@ static int test_catalog_string_pool_deduplicates_and_grows(void) {
     failures += expect_int((int)pool.count, string_count + 1, "unique catalog string count");
     mylite_catalog_string_pool_deinit(&pool);
 
+    return failures;
+}
+
+static int test_catalog_string_pool_reclaims_retired_generations(void) {
+    struct mylite_catalog_string_pool pool = {0};
+    struct mylite_catalog_string_pool_reference reference = {0};
+    const char *old_text = NULL;
+    const char *new_text = NULL;
+    size_t old_generation_bytes = 0U;
+    int failures = 0;
+
+    mylite_catalog_string_pool_init(&pool);
+    mylite_catalog_string_pool_set_generation(&pool, catalog_string_test_generation);
+    failures += expect_int(
+        mylite_catalog_string_pool_intern_c_string(&pool, "old-generation", &old_text),
+        MYLITE_OK,
+        "intern old catalog generation"
+    );
+    failures += expect_int(
+        mylite_catalog_string_pool_reference_acquire(
+            &pool,
+            catalog_string_test_generation,
+            &reference
+        ),
+        MYLITE_OK,
+        "pin old catalog generation"
+    );
+    old_generation_bytes = mylite_catalog_string_pool_byte_count(&pool);
+
+    mylite_catalog_string_pool_set_generation(&pool, catalog_string_test_next_generation);
+    failures += expect_int(
+        mylite_catalog_string_pool_intern_c_string(&pool, "new-generation", &new_text),
+        MYLITE_OK,
+        "intern new catalog generation"
+    );
+    failures += expect_text(old_text, "old-generation", "pinned old catalog string remains valid");
+    failures += expect_text(new_text, "new-generation", "new catalog string value");
+    failures += expect_int(
+        (int)mylite_catalog_string_pool_generation_count(&pool),
+        2,
+        "pinned retired catalog generation retained"
+    );
+    failures += expect_true(
+        mylite_catalog_string_pool_byte_count(&pool) > old_generation_bytes,
+        "pinned generations contribute to pool bytes"
+    );
+
+    mylite_catalog_string_pool_reference_release(&reference);
+    failures += expect_int(
+        (int)mylite_catalog_string_pool_generation_count(&pool),
+        1,
+        "last pin reclaims retired catalog generation"
+    );
+    failures += expect_true(
+        mylite_catalog_string_pool_byte_count(&pool) < old_generation_bytes * 2U,
+        "retired catalog string bytes reclaimed"
+    );
+
+    mylite_catalog_string_pool_set_generation(&pool, catalog_string_test_final_generation);
+    failures += expect_int(
+        (int)mylite_catalog_string_pool_generation_count(&pool),
+        0,
+        "unpinned current generation reclaimed on advance"
+    );
+    failures += expect_int(
+        (int)mylite_catalog_string_pool_byte_count(&pool),
+        0,
+        "empty catalog pool has no retained allocation"
+    );
+    mylite_catalog_string_pool_deinit(&pool);
+    return failures;
+}
+
+static int test_catalog_string_memory_stays_bounded_across_ddl_generations(void) {
+    enum { generation_count = 64, ddl_sql_capacity = 256 };
+
+    char path[test_path_capacity];
+    char sql[ddl_sql_capacity];
+    mylite_db *database = NULL;
+    size_t peak_bytes = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "catalog_string_generations") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog string file");
+    failures += execute_mylite_statement(database, "CREATE DATABASE app");
+    failures += execute_mylite_statement(database, "USE app");
+    failures += execute_mylite_statement(
+        database,
+        "CREATE TABLE items (id INT, value VARCHAR(32) COMMENT 'generation-initial')"
+    );
+
+    for (size_t generation = 0U; generation < generation_count && failures == 0; ++generation) {
+        int written = snprintf(
+            sql,
+            sizeof(sql),
+            "ALTER TABLE items MODIFY COLUMN value VARCHAR(32) COMMENT "
+            "'generation-%03zu-abcdefghijklmnopqrstuvwxyz0123456789'",
+            generation
+        );
+        size_t retained_bytes = 0U;
+
+        failures += expect_true(
+            written > 0 && (size_t)written < sizeof(sql),
+            "format catalog generation DDL"
+        );
+        failures += execute_mylite_statement(database, sql);
+        failures += execute_mylite_statement(database, "SELECT value FROM items LIMIT 0");
+        retained_bytes = mylite_catalog_string_pool_byte_count(&database->catalog_strings);
+        for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+            retained_bytes += database->table_columns_cache[index].byte_count;
+        }
+        if (retained_bytes > peak_bytes) {
+            peak_bytes = retained_bytes;
+        }
+        failures += expect_true(
+            retained_bytes <= MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT,
+            "catalog cache budget includes cold string storage"
+        );
+        failures += expect_true(
+            mylite_catalog_string_pool_generation_count(&database->catalog_strings) <= 1U,
+            "completed DDL generations do not retain cold strings"
+        );
+    }
+    failures += expect_true(peak_bytes > 0U, "catalog generation test populated cold strings");
+    failures += expect_true(
+        mylite_catalog_string_pool_byte_count(&database->catalog_strings) <
+            catalog_string_retained_byte_limit,
+        "repeated DDL leaves only the current compact string generation"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_pinned_column_descriptors_keep_retired_strings_alive(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *statement = NULL;
+    struct loaded_table_columns_cache_entry *pinned_entry = NULL;
+    const char *pinned_comment = NULL;
+    const char *next_generation_text = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "catalog_string_pin") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog pin file");
+    failures += execute_mylite_statement(database, "CREATE DATABASE app");
+    failures += execute_mylite_statement(database, "USE app");
+    failures += execute_mylite_statement(
+        database,
+        "CREATE TABLE pinned_items (id INT, value VARCHAR(32) COMMENT 'pinned-comment')"
+    );
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT value FROM pinned_items",
+            sizeof("SELECT value FROM pinned_items") - 1U,
+            &statement
+        ),
+        MYLITE_OK,
+        "prepare cursor with pinned catalog strings"
+    );
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        if (database->table_columns_cache[index].reference_count != 0U) {
+            pinned_entry = &database->table_columns_cache[index];
+            break;
+        }
+    }
+    failures += expect_true(pinned_entry != NULL, "prepared cursor pins column descriptor cache");
+    if (pinned_entry != NULL) {
+        for (size_t index = 0U; index < pinned_entry->column_count; ++index) {
+            if (strcmp(pinned_entry->columns[index].name, "value") == 0) {
+                pinned_comment = pinned_entry->columns[index].comment;
+                break;
+            }
+        }
+    }
+    failures += expect_true(pinned_comment != NULL, "find pinned descriptor comment");
+    if (pinned_comment != NULL) {
+        failures += expect_text(pinned_comment, "pinned-comment", "pinned descriptor comment");
+    }
+
+    mylite_execution_table_columns_cache_invalidate(database);
+    mylite_execution_table_key_metadata_cache_invalidate(database);
+    mylite_catalog_string_pool_set_generation(
+        &database->catalog_strings,
+        database->session.catalog_generation + 1U
+    );
+    failures += expect_int(
+        mylite_catalog_string_pool_intern_c_string(
+            &database->catalog_strings,
+            "next-generation",
+            &next_generation_text
+        ),
+        MYLITE_OK,
+        "create next catalog string generation"
+    );
+    if (pinned_comment != NULL) {
+        failures += expect_text(
+            pinned_comment,
+            "pinned-comment",
+            "retired descriptor string remains valid while pinned"
+        );
+    }
+    failures += expect_int(
+        (int)mylite_catalog_string_pool_generation_count(&database->catalog_strings),
+        2,
+        "pinned descriptor retains retired generation"
+    );
+    failures += expect_int(mylite_stmt_finalize(statement), MYLITE_OK, "release pinned cursor");
+    statement = NULL;
+    failures += expect_int(
+        (int)mylite_catalog_string_pool_generation_count(&database->catalog_strings),
+        1,
+        "cursor release reclaims retired descriptor strings"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

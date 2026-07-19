@@ -507,8 +507,9 @@ static int intern_column_text(
         return MYLITE_ERROR;
     }
 
-    return mylite_catalog_string_pool_intern(
+    return mylite_catalog_string_pool_intern_for_generation(
         &database->catalog_strings,
+        database->session.catalog_generation,
         (const char *)text,
         (size_t)byte_count,
         out_text
@@ -526,7 +527,13 @@ static int intern_nullable_column_text(
     *out_has_value = false;
     *out_text = NULL;
     if (sqlite3_column_type(statement, index) == SQLITE_NULL) {
-        return mylite_catalog_string_pool_intern(&database->catalog_strings, "", 0U, out_text);
+        return mylite_catalog_string_pool_intern_for_generation(
+            &database->catalog_strings,
+            database->session.catalog_generation,
+            "",
+            0U,
+            out_text
+        );
     }
 
     int rc = intern_column_text(database, statement, index, out_text, capacity);

@@ -2,6 +2,7 @@
 #define MYLITE_RUNTIME_MYLITE_EXECUTION_LOADED_CATALOG_H
 
 #include "mylite_catalog.h"
+#include "mylite_catalog_string_pool.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -85,6 +86,7 @@ struct loaded_table_columns_cache_entry {
     size_t column_count;
     size_t byte_count;
     size_t reference_count;
+    struct mylite_catalog_string_pool_reference string_reference;
 };
 
 struct loaded_table_key_metadata_cache_entry {
@@ -96,6 +98,7 @@ struct loaded_table_key_metadata_cache_entry {
     struct loaded_table_key_metadata metadata;
     size_t byte_count;
     size_t reference_count;
+    struct mylite_catalog_string_pool_reference string_reference;
 };
 
 int mylite_execution_load_table_columns(

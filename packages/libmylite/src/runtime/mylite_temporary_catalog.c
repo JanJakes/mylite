@@ -33,6 +33,11 @@ static int build_temporary_index_name(
     char *destination,
     size_t destination_size
 );
+static int copy_column_with_owned_strings(
+    const struct mylite_catalog_column_descriptor *source,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int duplicate_column_string(const char *source, const char **out_text);
 
 void mylite_temporary_catalog_init(struct mylite_temporary_catalog *catalog) {
     if (catalog == NULL) {
@@ -253,6 +258,7 @@ int mylite_temporary_catalog_append_column(
 ) {
     struct mylite_temporary_catalog_table *table = NULL;
     struct mylite_catalog_column_descriptor *columns = NULL;
+    struct mylite_catalog_column_descriptor owned_column = {0};
 
     if (catalog == NULL || column == NULL || table_id >= 0 || column->column_id >= 0 ||
         column->table_id != table_id) {
@@ -273,9 +279,15 @@ int mylite_temporary_catalog_append_column(
         table->column_count + 1U > SIZE_MAX / sizeof(*table->columns)) {
         return MYLITE_NOMEM;
     }
+    int rc = copy_column_with_owned_strings(column, &owned_column);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     columns = realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
     if (columns == NULL) {
+        mylite_temporary_catalog_column_strings_deinit(&owned_column);
         return MYLITE_NOMEM;
     }
     table->columns = columns;
@@ -283,7 +295,7 @@ int mylite_temporary_catalog_append_column(
         table->columns[index] = table->columns[index - 1U];
     }
 
-    table->columns[target_column_index] = *column;
+    table->columns[target_column_index] = owned_column;
     ++table->column_count;
     for (size_t index = 0U; index < table->column_count; ++index) {
         table->columns[index].ordinal_position = (int64_t)index + 1;
@@ -298,6 +310,7 @@ int mylite_temporary_catalog_replace_column(
     const struct mylite_catalog_column_descriptor *column
 ) {
     struct mylite_temporary_catalog_table *table = NULL;
+    struct mylite_catalog_column_descriptor owned_column = {0};
     size_t column_position = 0U;
     bool found = false;
 
@@ -324,15 +337,22 @@ int mylite_temporary_catalog_replace_column(
     if (!found) {
         return MYLITE_ERROR;
     }
+    int rc = copy_column_with_owned_strings(column, &owned_column);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     for (column_position = 0U; column_position < table->column_count; ++column_position) {
         if (table->columns[column_position].column_id == column_id) {
-            table->columns[column_position] = *column;
+            mylite_temporary_catalog_column_strings_deinit(&table->columns[column_position]);
+            table->columns[column_position] = owned_column;
             table->columns[column_position].ordinal_position = (int64_t)column_position + 1;
             return MYLITE_OK;
         }
     }
 
+    mylite_temporary_catalog_column_strings_deinit(&owned_column);
     return MYLITE_ERROR;
 }
 
@@ -372,11 +392,22 @@ int mylite_temporary_catalog_replace_columns(
     if (replacement == NULL) {
         return MYLITE_NOMEM;
     }
-    memcpy(replacement, columns, column_count * sizeof(*replacement));
     for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        int rc = copy_column_with_owned_strings(&columns[column_index], &replacement[column_index]);
+
+        if (rc != MYLITE_OK) {
+            for (size_t owned_index = 0U; owned_index < column_index; ++owned_index) {
+                mylite_temporary_catalog_column_strings_deinit(&replacement[owned_index]);
+            }
+            free(replacement);
+            return rc;
+        }
         replacement[column_index].ordinal_position = (int64_t)column_index + 1;
     }
 
+    for (size_t column_index = 0U; column_index < table->column_count; ++column_index) {
+        mylite_temporary_catalog_column_strings_deinit(&table->columns[column_index]);
+    }
     free(table->columns);
     table->columns = replacement;
     table->column_count = column_count;
@@ -410,6 +441,7 @@ int mylite_temporary_catalog_remove_column_by_id(
         return MYLITE_ERROR;
     }
 
+    mylite_temporary_catalog_column_strings_deinit(&table->columns[column_position]);
     for (size_t index = column_position + 1U; index < table->column_count; ++index) {
         table->columns[index - 1U] = table->columns[index];
     }
@@ -680,10 +712,101 @@ void mylite_temporary_catalog_table_deinit(struct mylite_temporary_catalog_table
         return;
     }
 
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        mylite_temporary_catalog_column_strings_deinit(&table->columns[index]);
+    }
     free(table->columns);
     free(table->indexes);
     free(table->index_columns);
     *table = (struct mylite_temporary_catalog_table){0};
+}
+
+int mylite_temporary_catalog_column_strings_own(struct mylite_catalog_column_descriptor *column) {
+    struct mylite_catalog_column_descriptor owned = {0};
+    int rc = MYLITE_OK;
+
+    if (column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = copy_column_with_owned_strings(column, &owned);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    column->default_text = owned.default_text;
+    column->comment = owned.comment;
+    column->generation_expression = owned.generation_expression;
+    column->sqlite_generation_expression = owned.sqlite_generation_expression;
+    return MYLITE_OK;
+}
+
+void mylite_temporary_catalog_column_strings_deinit(
+    struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        return;
+    }
+
+    free((void *)column->default_text);
+    free((void *)column->comment);
+    free((void *)column->generation_expression);
+    free((void *)column->sqlite_generation_expression);
+    column->default_text = NULL;
+    column->comment = NULL;
+    column->generation_expression = NULL;
+    column->sqlite_generation_expression = NULL;
+}
+
+static int copy_column_with_owned_strings(
+    const struct mylite_catalog_column_descriptor *source,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    int rc = MYLITE_OK;
+
+    *out_column = *source;
+    out_column->default_text = NULL;
+    out_column->comment = NULL;
+    out_column->generation_expression = NULL;
+    out_column->sqlite_generation_expression = NULL;
+    rc = duplicate_column_string(source->default_text, &out_column->default_text);
+    if (rc == MYLITE_OK) {
+        rc = duplicate_column_string(source->comment, &out_column->comment);
+    }
+    if (rc == MYLITE_OK) {
+        rc = duplicate_column_string(
+            source->generation_expression,
+            &out_column->generation_expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = duplicate_column_string(
+            source->sqlite_generation_expression,
+            &out_column->sqlite_generation_expression
+        );
+    }
+    if (rc != MYLITE_OK) {
+        mylite_temporary_catalog_column_strings_deinit(out_column);
+    }
+    return rc;
+}
+
+static int duplicate_column_string(const char *source, const char **out_text) {
+    char *copy = NULL;
+    size_t length = 0U;
+
+    if (source == NULL) {
+        source = "";
+    }
+    length = strlen(source);
+    if (length == SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+    copy = (char *)malloc(length + 1U);
+    if (copy == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, source, length + 1U);
+    *out_text = copy;
+    return MYLITE_OK;
 }
 
 static int allocate_negative_id(int64_t *next_id, int64_t *out_id) {

@@ -2,6 +2,10 @@
 
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_catalog_string_pool.h"
+#include "runtime/mylite_connection.h"
+#include "runtime/mylite_execution_loaded_catalog.h"
+
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -27,6 +31,7 @@ enum {
     stress_safe_name_capacity = 128,
     generated_sql_base_capacity = 128,
     generated_sql_item_capacity = 32,
+    catalog_ddl_sql_capacity = 256,
     nanoseconds_per_second = 1000000000ULL,
     cache_table_count = 66,
     cache_warm_table_count = 64,
@@ -41,6 +46,7 @@ enum runtime_stress_kind {
     runtime_stress_wide_order,
     runtime_stress_wide_projection,
     runtime_stress_cache_saturation,
+    runtime_stress_catalog_ddl_generations,
     runtime_stress_concurrent_read_write,
 };
 
@@ -108,6 +114,17 @@ static int run_cache_saturation_scenario(
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
+static int run_catalog_ddl_generations_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
+static int run_catalog_ddl_generation(
+    mylite_db *database,
+    size_t generation,
+    struct mylite_benchmark_runtime_stress_measurement *measurement
+);
 static int run_concurrent_read_write_scenario(
     const struct runtime_stress_scenario *scenario,
     size_t iterations,
@@ -169,6 +186,7 @@ static const struct runtime_stress_scenario runtime_stress_scenarios[] = {
     {"runtime.wide_projection_16", runtime_stress_wide_projection, 16U},
     {"runtime.wide_projection_128", runtime_stress_wide_projection, 128U},
     {"runtime.catalog_cache_saturation", runtime_stress_cache_saturation, cache_table_count},
+    {"runtime.catalog_ddl_generations", runtime_stress_catalog_ddl_generations, 0U},
     {"runtime.concurrent_read_write", runtime_stress_concurrent_read_write, 0U},
 };
 
@@ -237,6 +255,13 @@ int mylite_benchmark_run_runtime_stress_scenario(
         );
     case runtime_stress_cache_saturation:
         return run_cache_saturation_scenario(
+            scenario,
+            iterations,
+            warmup_iterations,
+            out_measurement
+        );
+    case runtime_stress_catalog_ddl_generations:
+        return run_catalog_ddl_generations_scenario(
             scenario,
             iterations,
             warmup_iterations,
@@ -601,6 +626,100 @@ cleanup:
     mylite_close(database);
     remove_stress_files(path);
     return rc;
+}
+
+static int run_catalog_ddl_generations_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+) {
+    char path[stress_path_capacity];
+    mylite_db *database = NULL;
+    uint64_t started = 0U;
+    int rc = 1;
+
+    if (make_stress_path(path, sizeof(path), scenario->name) != 0) {
+        return 1;
+    }
+    remove_stress_files(path);
+    if (prepare_stress_database(path, &database) != 0 ||
+        execute_stress_sql(
+            database,
+            "CREATE TABLE catalog_generations (id BIGINT, value VARCHAR(32) "
+            "COMMENT 'generation-initial')",
+            sizeof("CREATE TABLE catalog_generations (id BIGINT, value VARCHAR(32) "
+                   "COMMENT 'generation-initial')") -
+                1U
+        ) != 0) {
+        goto cleanup;
+    }
+    for (size_t index = 0U; index < warmup_iterations; ++index) {
+        if (run_catalog_ddl_generation(database, index, NULL) != 0) {
+            goto cleanup;
+        }
+    }
+
+    started = monotonic_now_ns();
+    for (size_t index = 0U; index < iterations; ++index) {
+        if (run_catalog_ddl_generation(database, warmup_iterations + index, out_measurement) != 0) {
+            ++out_measurement->error_count;
+            goto cleanup;
+        }
+    }
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+    rc = 0;
+
+cleanup:
+    mylite_close(database);
+    remove_stress_files(path);
+    return rc;
+}
+
+static int run_catalog_ddl_generation(
+    mylite_db *database,
+    size_t generation,
+    struct mylite_benchmark_runtime_stress_measurement *measurement
+) {
+    static const char select_sql[] = "SELECT value FROM catalog_generations LIMIT 0";
+    char ddl_sql[catalog_ddl_sql_capacity];
+    size_t retained_bytes = 0U;
+    int ddl_length = snprintf(
+        ddl_sql,
+        sizeof(ddl_sql),
+        "ALTER TABLE catalog_generations MODIFY COLUMN value VARCHAR(32) COMMENT "
+        "'generation-%06zu-abcdefghijklmnopqrstuvwxyz0123456789'",
+        generation
+    );
+
+    if (ddl_length < 0 || (size_t)ddl_length >= sizeof(ddl_sql) ||
+        execute_stress_sql(database, ddl_sql, (size_t)ddl_length) != 0 ||
+        execute_stress_sql(database, select_sql, sizeof(select_sql) - 1U) != 0) {
+        return 1;
+    }
+    retained_bytes = mylite_catalog_string_pool_byte_count(&database->catalog_strings);
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        retained_bytes += database->table_columns_cache[index].byte_count;
+    }
+    if (retained_bytes > MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT ||
+        mylite_catalog_string_pool_generation_count(&database->catalog_strings) > 1U) {
+        fprintf(
+            stderr,
+            "catalog generation memory is unbounded: bytes=%zu generations=%zu\n",
+            retained_bytes,
+            mylite_catalog_string_pool_generation_count(&database->catalog_strings)
+        );
+        return 1;
+    }
+    if (measurement != NULL) {
+        ++measurement->operations;
+        ++measurement->ok_count;
+        measurement->bytes += (size_t)ddl_length + sizeof(select_sql) - 1U;
+        if (retained_bytes > measurement->peak_retained_bytes) {
+            measurement->peak_retained_bytes = retained_bytes;
+        }
+    }
+    return 0;
 }
 
 static int run_concurrent_read_write_scenario(

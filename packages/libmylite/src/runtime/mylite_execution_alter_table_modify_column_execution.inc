@@ -117,15 +117,12 @@ static int replace_temporary_column_descriptor(
         );
     } else {
         make_modify_target_descriptor(plan, &replacement);
-        rc = intern_temporary_column_descriptor_strings(database, &replacement);
-        if (rc == MYLITE_OK) {
-            rc = mylite_temporary_catalog_replace_column(
-                &database->session.temporary_catalog,
-                plan->table.table_id,
-                plan->original_column.column_id,
-                &replacement
-            );
-        }
+        rc = mylite_temporary_catalog_replace_column(
+            &database->session.temporary_catalog,
+            plan->table.table_id,
+            plan->original_column.column_id,
+            &replacement
+        );
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update temporary column descriptor");
@@ -265,13 +262,6 @@ static int collect_modify_column_rebuild_columns(
             rebuild_columns[index] = columns[index];
             if (index == out_plan->column_index) {
                 make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
-                int rc =
-                    intern_temporary_column_descriptor_strings(database, &rebuild_columns[index]);
-
-                if (rc != MYLITE_OK) {
-                    free(rebuild_columns);
-                    return rc;
-                }
             }
         }
     } else {
@@ -280,13 +270,6 @@ static int collect_modify_column_rebuild_columns(
         for (size_t index = 0U; index < column_count; ++index) {
             if (index == out_plan->target_column_index) {
                 make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
-                int rc =
-                    intern_temporary_column_descriptor_strings(database, &rebuild_columns[index]);
-
-                if (rc != MYLITE_OK) {
-                    free(rebuild_columns);
-                    return rc;
-                }
             } else {
                 while (source_index < column_count && source_index == out_plan->column_index) {
                     ++source_index;

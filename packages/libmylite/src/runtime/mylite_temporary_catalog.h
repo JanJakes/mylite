@@ -142,5 +142,9 @@ int mylite_temporary_catalog_try_read_primary_index_by_table_id(
 );
 
 void mylite_temporary_catalog_table_deinit(struct mylite_temporary_catalog_table *table);
+int mylite_temporary_catalog_column_strings_own(struct mylite_catalog_column_descriptor *column);
+void mylite_temporary_catalog_column_strings_deinit(
+    struct mylite_catalog_column_descriptor *column
+);
 
 #endif

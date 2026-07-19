@@ -233,6 +233,7 @@ int mylite_execution_acquire_table_columns(
     struct loaded_table_columns_cache_entry **out_cache_entry
 ) {
     struct loaded_table_columns_cache_entry *entry = NULL;
+    struct mylite_catalog_string_pool_reference string_reference = {0};
     int rc = MYLITE_OK;
 
     if (database == NULL || out_columns == NULL || out_column_count == NULL ||
@@ -264,6 +265,14 @@ int mylite_execution_acquire_table_columns(
     if (entry == NULL) {
         return MYLITE_OK;
     }
+    rc = mylite_catalog_string_pool_reference_acquire(
+        &database->catalog_strings,
+        database->session.catalog_generation,
+        &string_reference
+    );
+    if (rc != MYLITE_OK) {
+        return MYLITE_OK;
+    }
     *entry = (struct loaded_table_columns_cache_entry){
         .is_valid = true,
         .table_id = table_id,
@@ -274,6 +283,7 @@ int mylite_execution_acquire_table_columns(
         .column_count = *out_column_count,
         .byte_count = *out_column_count * sizeof(**out_columns),
         .reference_count = 1U,
+        .string_reference = string_reference,
     };
     *out_cache_entry = entry;
     return MYLITE_OK;
@@ -450,6 +460,7 @@ static void maybe_cache_loaded_table_columns(
 ) {
     struct loaded_table_columns_cache_entry *entry = NULL;
     struct mylite_catalog_column_descriptor *copy = NULL;
+    struct mylite_catalog_string_pool_reference string_reference = {0};
 
     if (database == NULL || columns == NULL || column_count == 0U || table_id < 0 ||
         column_count > SIZE_MAX / sizeof(*copy)) {
@@ -470,6 +481,14 @@ static void maybe_cache_loaded_table_columns(
         free(copy);
         return;
     }
+    if (mylite_catalog_string_pool_reference_acquire(
+            &database->catalog_strings,
+            database->session.catalog_generation,
+            &string_reference
+        ) != MYLITE_OK) {
+        free(copy);
+        return;
+    }
 
     *entry = (struct loaded_table_columns_cache_entry){
         .is_valid = true,
@@ -480,6 +499,7 @@ static void maybe_cache_loaded_table_columns(
         .columns = copy,
         .column_count = column_count,
         .byte_count = column_count * sizeof(*copy),
+        .string_reference = string_reference,
     };
 }
 
@@ -573,6 +593,7 @@ int mylite_execution_acquire_table_key_metadata(
 ) {
     struct loaded_table_key_metadata_cache_entry *entry = NULL;
     struct loaded_table_key_metadata metadata = mylite_execution_loaded_table_key_metadata_init();
+    struct mylite_catalog_string_pool_reference string_reference = {0};
     int rc = MYLITE_OK;
 
     if (database == NULL || columns == NULL || column_count == 0U || out_reference == NULL) {
@@ -620,6 +641,16 @@ int mylite_execution_acquire_table_key_metadata(
         out_reference->metadata = &out_reference->owned_metadata;
         return MYLITE_OK;
     }
+    rc = mylite_catalog_string_pool_reference_acquire(
+        &database->catalog_strings,
+        database->session.catalog_generation,
+        &string_reference
+    );
+    if (rc != MYLITE_OK) {
+        out_reference->owned_metadata = metadata;
+        out_reference->metadata = &out_reference->owned_metadata;
+        return MYLITE_OK;
+    }
 
     *entry = (struct loaded_table_key_metadata_cache_entry){
         .is_valid = true,
@@ -630,6 +661,7 @@ int mylite_execution_acquire_table_key_metadata(
         .metadata = metadata,
         .byte_count = metadata_bytes,
         .reference_count = 1U,
+        .string_reference = string_reference,
     };
     out_reference->metadata = &entry->metadata;
     out_reference->cache_entry = entry;
@@ -771,7 +803,7 @@ static bool table_columns_cache_make_room(struct mylite_db *database, size_t req
 }
 
 static size_t table_columns_cache_byte_count(const struct mylite_db *database) {
-    size_t byte_count = 0U;
+    size_t byte_count = mylite_catalog_string_pool_byte_count(&database->catalog_strings);
 
     for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
         size_t entry_bytes = database->table_columns_cache[index].byte_count;
@@ -802,6 +834,7 @@ static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_
     }
 
     free(entry->columns);
+    mylite_catalog_string_pool_reference_release(&entry->string_reference);
     *entry = (struct loaded_table_columns_cache_entry){.is_valid = false};
 }
 
@@ -961,6 +994,7 @@ static void loaded_table_key_metadata_cache_entry_deinit(
     }
 
     mylite_execution_loaded_table_key_metadata_deinit(&entry->metadata);
+    mylite_catalog_string_pool_reference_release(&entry->string_reference);
     *entry = (struct loaded_table_key_metadata_cache_entry){.is_valid = false};
 }
 

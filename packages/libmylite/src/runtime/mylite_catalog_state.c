@@ -109,6 +109,10 @@ void mylite_catalog_invalidate_descriptor_cache(struct mylite_db *database) {
     mylite_catalog_schema_table_cache_invalidate(&database->catalog);
     mylite_execution_table_columns_cache_invalidate(database);
     mylite_execution_table_key_metadata_cache_invalidate(database);
+    mylite_catalog_string_pool_set_generation(
+        &database->catalog_strings,
+        database->session.catalog_generation
+    );
 }
 
 int mylite_catalog_synchronize_snapshot(struct mylite_db *database) {

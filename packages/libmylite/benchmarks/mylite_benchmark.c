@@ -2368,6 +2368,14 @@ static int run_runtime_stress_scenario(
     out_measurement->bytes = measurement.bytes;
     out_measurement->ok_count = measurement.ok_count;
     out_measurement->error_count = measurement.error_count;
+    if (measurement.peak_retained_bytes != 0U) {
+        fprintf(
+            stderr,
+            "%s: peak_retained_bytes=%zu\n",
+            scenario->name,
+            measurement.peak_retained_bytes
+        );
+    }
     if (rc != 0) {
         fprintf(stderr, "%s: stress benchmark failed\n", scenario->name);
     }

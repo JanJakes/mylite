@@ -1381,18 +1381,3 @@ static void planned_insert_deinit(struct planned_insert *plan) {
     mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
     *plan = (struct planned_insert){0};
 }
-
-static void planned_value_deinit(struct planned_value *value) {
-    if (value == NULL) {
-        return;
-    }
-
-    free(value->text);
-    *value = (struct planned_value){
-        .is_null = false,
-        .is_text = false,
-        .integer = 0,
-        .text = NULL,
-        .text_length = 0U,
-    };
-}

@@ -37,6 +37,7 @@
 #include "mylite_execution_statement_transaction.h"
 #include "mylite_execution_system_variables.h"
 #include "mylite_execution_text_internal.h"
+#include "mylite_execution_value.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
 #include "mylite_json_internal.h"

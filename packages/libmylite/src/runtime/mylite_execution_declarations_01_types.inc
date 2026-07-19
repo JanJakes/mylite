@@ -800,22 +800,6 @@ struct wall_clock_timestamp {
     long microsecond;
 };
 
-struct mylite_stmt_binding;
-
-struct planned_value {
-    bool is_null;
-    bool is_text;
-    bool is_blob;
-    bool is_real;
-    bool is_external_parameter;
-    int64_t integer;
-    double real;
-    char *text;
-    size_t text_length;
-    size_t external_parameter_index;
-    const struct mylite_stmt_binding *external_binding;
-};
-
 enum integer_expression_default_text_work_item_kind {
     INTEGER_EXPRESSION_DEFAULT_TEXT_NODE = 0,
     INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES = 1,
@@ -2626,30 +2610,6 @@ enum cursor_plan_attempt_result {
     CURSOR_PLAN_ATTEMPT_READY = 0,
     CURSOR_PLAN_ATTEMPT_UNSUPPORTED,
     CURSOR_PLAN_ATTEMPT_FAILED,
-};
-
-enum mylite_stmt_binding_type {
-    MYLITE_STMT_BINDING_UNBOUND = 0,
-    MYLITE_STMT_BINDING_NULL,
-    MYLITE_STMT_BINDING_INT64,
-    MYLITE_STMT_BINDING_UINT64,
-    MYLITE_STMT_BINDING_DOUBLE,
-    MYLITE_STMT_BINDING_TEXT,
-    MYLITE_STMT_BINDING_BLOB,
-};
-
-struct mylite_stmt_binding {
-    enum mylite_stmt_binding_type type;
-
-    union {
-        int64_t int64_value;
-        uint64_t uint64_value;
-        double double_value;
-    } scalar;
-
-    unsigned char *bytes;
-    size_t size;
-    size_t capacity;
 };
 
 struct mylite_select_analysis_session_key {

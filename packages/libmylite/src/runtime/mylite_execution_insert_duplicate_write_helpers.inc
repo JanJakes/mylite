@@ -1036,25 +1036,6 @@ static void insert_duplicate_assignment_values_deinit(
     *values = (struct insert_duplicate_assignment_values){0};
 }
 
-static int copy_planned_value(
-    struct mylite_db *database,
-    const struct planned_value *source,
-    struct planned_value *out_value
-) {
-    planned_value_deinit(out_value);
-    if (source->is_text) {
-        return copy_text_value(database, source->text, out_value);
-    }
-    if (source->is_blob) {
-        return copy_blob_value(database, source->text, source->text_length, out_value);
-    }
-
-    *out_value = *source;
-    out_value->text = NULL;
-    out_value->text_length = 0U;
-    return MYLITE_OK;
-}
-
 static int materialize_insert_duplicate_row_scalar_expression(
     struct mylite_db *database,
     const struct planned_insert *plan,

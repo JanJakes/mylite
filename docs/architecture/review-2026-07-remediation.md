@@ -223,7 +223,11 @@ complete.
 
 - [ ] Promote existing plan families into a typed analyzer boundary containing
   resolved object IDs, expression types/collations, parameters, side effects,
-  and diagnostics.
+  and diagnostics. Analyzed scalar values and prepared bindings now live in an
+  independently compiled ownership/binding module. The module owns deep-copy
+  and destruction semantics and is the sole primitive SQLite binder for typed
+  values, so planners and executors no longer share those implementations
+  through the mega translation unit.
 - [ ] Remove execution-time AST dependencies incrementally. Row-scalar SELECT
   items now retain owned result labels, normalized aliases, and compact typed
   source-metadata shapes; SQL lowering, result metadata, derived-source
@@ -246,7 +250,10 @@ complete.
   execute warm plan hits without reparsing, and reparse once from owned SQL
   under the prepare-time lexer mode after type, schema, or session invalidation.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
-  internal APIs and preserved caller-before-callee organization.
+  internal APIs and preserved caller-before-callee organization. SQLite result
+  extraction/row storage and analyzed-value ownership/parameter binding are now
+  separate translation units with narrow internal headers; subsequent planner,
+  lowering, metadata, and completion clusters still need the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

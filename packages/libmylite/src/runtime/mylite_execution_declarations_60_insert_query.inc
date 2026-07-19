@@ -138,7 +138,6 @@ static char *copy_load_data_field_text(
 static void load_data_row_deinit(struct load_data_row *row);
 static void load_data_row_reset(struct load_data_row *row);
 static void planned_insert_deinit(struct planned_insert *plan);
-static void planned_value_deinit(struct planned_value *value);
 static int execute_insert_from_plan(
     struct mylite_db *database,
     struct planned_insert *plan,

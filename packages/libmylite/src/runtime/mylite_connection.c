@@ -1,6 +1,7 @@
 #include "mylite_connection.h"
 
 #include "mylite_execution_connection_lifecycle.h"
+#include "mylite_execution_bound_statement.h"
 #include "mylite_execution_sqlite_internal.h"
 #include "mylite_file_open.h"
 #include "mylite_named_locks.h"
@@ -171,6 +172,11 @@ const char *mylite_connection_statement_character_set_client(const struct mylite
     if (database == NULL) {
         return NULL;
     }
+    if (database->active_bound_statement != NULL) {
+        return mylite_execution_bound_statement_character_set_client(
+            database->active_bound_statement
+        );
+    }
     if (database->active_prepared_statement != NULL) {
         return database->active_prepared_statement->character_set_client;
     }
@@ -181,6 +187,11 @@ const char *mylite_connection_statement_character_set_connection(const struct my
     if (database == NULL) {
         return NULL;
     }
+    if (database->active_bound_statement != NULL) {
+        return mylite_execution_bound_statement_character_set_connection(
+            database->active_bound_statement
+        );
+    }
     if (database->active_prepared_statement != NULL) {
         return database->active_prepared_statement->character_set_connection;
     }
@@ -190,6 +201,11 @@ const char *mylite_connection_statement_character_set_connection(const struct my
 const char *mylite_connection_statement_collation_connection(const struct mylite_db *database) {
     if (database == NULL) {
         return NULL;
+    }
+    if (database->active_bound_statement != NULL) {
+        return mylite_execution_bound_statement_collation_connection(
+            database->active_bound_statement
+        );
     }
     if (database->active_prepared_statement != NULL) {
         return database->active_prepared_statement->collation_connection;

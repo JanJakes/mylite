@@ -2692,6 +2692,11 @@ struct mylite_stmt {
     size_t row_count;
     size_t materialized_row_index;
     size_t current_materialized_row;
+    char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
+    char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    bool has_selected_schema;
     bool has_context;
     bool has_parse_result;
     bool has_normalized_sql;

@@ -42,6 +42,7 @@ static int test_metadata_caches_enforce_byte_budgets(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_reset_and_value_nullability(void);
 static int test_native_prepared_scalar_bindings(void);
+static int test_native_prepared_owns_resolution_context(void);
 static int test_native_prepared_owns_sql_text(void);
 static int test_native_prepared_dml_bindings(void);
 static int test_buffered_prepared_statement_releases_connection(void);
@@ -85,6 +86,7 @@ int main(void) {
     failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_reset_and_value_nullability();
     failures += test_native_prepared_scalar_bindings();
+    failures += test_native_prepared_owns_resolution_context();
     failures += test_native_prepared_owns_sql_text();
     failures += test_native_prepared_dml_bindings();
     failures += test_buffered_prepared_statement_releases_connection();
@@ -1335,6 +1337,150 @@ static int test_native_prepared_scalar_bindings(void) {
     failures +=
         expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native reprepare query");
     mylite_close(other_database);
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_native_prepared_owns_resolution_context(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = make_test_path(path, sizeof(path), "native_resolution_context");
+
+    if (failures != 0) {
+        return failures;
+    }
+    remove_related_files(path);
+    failures += expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open native resolution context file"
+    );
+    failures += execute_ok(database, "CREATE DATABASE schema_a");
+    failures += execute_ok(database, "CREATE DATABASE schema_b");
+    failures += execute_ok(database, "USE schema_a");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, value VARCHAR(20))");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1, 'from-a')");
+    failures += execute_ok(database, "USE schema_b");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, value VARCHAR(20))");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1, 'from-b')");
+    failures += execute_ok(database, "USE schema_a");
+    failures += execute_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT value FROM items WHERE id = ?",
+            strlen("SELECT value FROM items WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native statement under schema A"
+    );
+    failures += execute_ok(database, "USE schema_b");
+    failures += execute_ok(database, "SET NAMES latin1 COLLATE latin1_swedish_ci");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 1),
+        MYLITE_OK,
+        "bind native statement after context change"
+    );
+    failures += expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "execute native statement after context change"
+    );
+    failures += expect_cursor_text(stmt, 0U, "from-a", "prepared schema remains schema A");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "prepared schema result done");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize schema context query");
+    stmt = NULL;
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT DATABASE()",
+            .expected = "schema_b",
+            .context = "native execution restores live selected schema",
+        }
+    );
+
+    failures += execute_ok(database, "USE schema_a");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "UPDATE items SET value = ? WHERE id = ?",
+            strlen("UPDATE items SET value = ? WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native DML under schema A"
+    );
+    failures += execute_ok(database, "USE schema_b");
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "updated-a", strlen("updated-a")),
+        MYLITE_OK,
+        "bind native DML value after schema change"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, 1),
+        MYLITE_OK,
+        "bind native DML key after schema change"
+    );
+    failures += expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "execute native DML after schema change"
+    );
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize schema context DML");
+    stmt = NULL;
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT value FROM items WHERE id = 1",
+            .expected = "from-b",
+            .context = "native DML leaves live schema B unchanged",
+        }
+    );
+    failures += execute_ok(database, "USE schema_a");
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT value FROM items WHERE id = 1",
+            .expected = "updated-a",
+            .context = "native DML resolves against prepared schema A",
+        }
+    );
+    failures += execute_ok(database, "USE schema_b");
+
+    failures += execute_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+    failures += expect_int(
+        mylite_prepare_buffered(
+            database,
+            "SELECT MD5('abc') AS prepared_text",
+            strlen("SELECT MD5('abc') AS prepared_text"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native statement under utf8mb4"
+    );
+    failures += execute_ok(database, "SET NAMES latin1 COLLATE latin1_swedish_ci");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "execute native charset context query");
+    failures += expect_cursor_text(
+        stmt,
+        0U,
+        "900150983cd24fb0d6963f7d28e17f72",
+        "native charset context value"
+    );
+    failures += expect_uint32(
+        mylite_stmt_column_charset_id(stmt, 0U),
+        mysql_collation_utf8mb4_0900_ai_ci_id,
+        "native statement retains prepare-time charset"
+    );
+    failures += expect_uint32(
+        mylite_stmt_column_collation_id(stmt, 0U),
+        mysql_collation_utf8mb4_0900_ai_ci_id,
+        "native statement retains prepare-time collation"
+    );
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize charset context query");
 
     mylite_close(database);
     remove_related_files(path);

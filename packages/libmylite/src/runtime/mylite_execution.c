@@ -17,6 +17,7 @@
 #include "mylite_digest.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_ast_internal.h"
+#include "mylite_execution_bound_statement.h"
 #include "mylite_execution_catalog.h"
 #include "mylite_execution_completion.h"
 #include "mylite_execution_connection_lifecycle.h"
@@ -470,6 +471,31 @@ static int prepare_statement(
     mylite_statement_completion_init(&stmt->completion);
     stmt->metadata_context = result_column_metadata_context_init();
     stmt->buffered_results = buffered_results;
+    stmt->has_selected_schema = database->session.has_selected_schema;
+    (void)snprintf(
+        stmt->selected_schema,
+        sizeof(stmt->selected_schema),
+        "%s",
+        database->session.selected_schema
+    );
+    (void)snprintf(
+        stmt->character_set_client,
+        sizeof(stmt->character_set_client),
+        "%s",
+        database->session.character_set_client
+    );
+    (void)snprintf(
+        stmt->character_set_connection,
+        sizeof(stmt->character_set_connection),
+        "%s",
+        database->session.character_set_connection
+    );
+    (void)snprintf(
+        stmt->collation_connection,
+        sizeof(stmt->collation_connection),
+        "%s",
+        database->session.collation_connection
+    );
     rc = prepare_cursor_select_statement(database, sql, sql_size, stmt);
     if (rc != MYLITE_OK) {
         destroy_cursor_statement(stmt);
@@ -489,6 +515,18 @@ static int prepare_statement(
 
 size_t mylite_stmt_parameter_count(const mylite_stmt *stmt) {
     return stmt == NULL ? 0U : stmt->parameter_count;
+}
+
+const char *mylite_execution_bound_statement_character_set_client(const mylite_stmt *stmt) {
+    return stmt == NULL ? NULL : stmt->character_set_client;
+}
+
+const char *mylite_execution_bound_statement_character_set_connection(const mylite_stmt *stmt) {
+    return stmt == NULL ? NULL : stmt->character_set_connection;
+}
+
+const char *mylite_execution_bound_statement_collation_connection(const mylite_stmt *stmt) {
+    return stmt == NULL ? NULL : stmt->collation_connection;
 }
 
 int mylite_stmt_bind_null(mylite_stmt *stmt, size_t index) {
@@ -681,11 +719,26 @@ static int reset_cursor_execution(mylite_stmt *stmt) {
 static int start_cursor_execution(mylite_stmt *stmt) {
     struct mylite_db *database = stmt->database;
     mylite_stmt *saved_active_bound_statement = database->active_bound_statement;
+    bool saved_has_selected_schema = database->session.has_selected_schema;
+    char saved_selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY] = {0};
     int rc = validate_stmt_bindings_complete(stmt);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
+    (void)snprintf(
+        saved_selected_schema,
+        sizeof(saved_selected_schema),
+        "%s",
+        database->session.selected_schema
+    );
+    database->session.has_selected_schema = stmt->has_selected_schema;
+    (void)snprintf(
+        database->session.selected_schema,
+        sizeof(database->session.selected_schema),
+        "%s",
+        stmt->selected_schema
+    );
     if (rc == MYLITE_OK && database->session.statement_id != UINT64_MAX) {
         ++database->session.statement_id;
     }
@@ -712,24 +765,23 @@ static int start_cursor_execution(mylite_stmt *stmt) {
         database->session.active_statement_time =
             (int64_t)mylite_statement_context_time(&stmt->context);
         if (!stmt->returns_rows) {
-            return execute_prepared_materialized_statement(stmt);
-        }
-        if (stmt->statement != NULL) {
+            rc = execute_prepared_materialized_statement(stmt);
+        } else if (stmt->statement != NULL) {
             rc = prepare_statement_transaction_boundary(database, stmt->statement);
         }
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && stmt->returns_rows) {
         rc = begin_read_statement_transaction(database, &stmt->read_transaction);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && stmt->returns_rows) {
         database->active_bound_statement = stmt;
         rc = prepare_cursor_select_execution(stmt);
         database->active_bound_statement = saved_active_bound_statement;
     }
-    if (rc == MYLITE_OK && !stmt->has_materialized_rows) {
+    if (rc == MYLITE_OK && stmt->returns_rows && !stmt->has_materialized_rows) {
         database->active_cursor = stmt;
     }
-    if (rc != MYLITE_OK) {
+    if (rc != MYLITE_OK && stmt->returns_rows) {
         mylite_result *result = NULL;
 
         rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
@@ -741,6 +793,13 @@ static int start_cursor_execution(mylite_stmt *stmt) {
         }
         stmt->done = true;
     }
+    database->session.has_selected_schema = saved_has_selected_schema;
+    (void)snprintf(
+        database->session.selected_schema,
+        sizeof(database->session.selected_schema),
+        "%s",
+        saved_selected_schema
+    );
     return rc;
 }
 

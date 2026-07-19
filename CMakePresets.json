@@ -318,7 +318,7 @@
         "outputOnFailure": true
       },
       "environment": {
-        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1:strict_string_checks=1",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1:strict_string_checks=1:verify_asan_link_order=0",
         "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
       }
     },

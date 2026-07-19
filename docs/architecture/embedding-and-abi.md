@@ -21,7 +21,10 @@ versioned shared library. `MYLITE_ENABLE_LTO=ON` is available for toolchain- and
 host-specific measurement; it is not part of the default production profile.
 
 The `mylite_size_report` target writes a reproducible section/object and sorted
-symbol report beside the library. Production packaging should strip installed
+symbol report beside the library. `mylite_size_reports` enforces reviewed byte
+budgets for the static core, shared core, and each PHP module. A budget increase
+is a release decision and must be justified by measured functionality rather
+than adjusted automatically. Production packaging should strip installed
 artifacts, not the build-tree artifacts that tests and ABI checks inspect.
 
 The formal tag/manual release workflow calls every reusable quality tier,
@@ -31,6 +34,13 @@ checksums, size reports, a source/build manifest, an SPDX 2.3 SBOM, local
 SLSA-style provenance, and GitHub-signed provenance/SBOM attestations when the
 repository supports them. Component license fields remain `NOASSERTION`; the
 SBOM records inventory without selecting a project license.
+
+The binary release workflow currently qualifies and publishes Linux x86-64
+artifacts only. Linux, macOS, and Windows source builds remain CI-qualified, but
+they are not represented as downloadable binary release packages. The release
+job runs inside a digest-pinned PHP image and installs build dependencies from
+a dated Debian snapshot so rebuilding the same commit does not silently select
+new compiler, PHP, or system-package inputs.
 
 ## CMake consumers
 
@@ -71,10 +81,12 @@ consumers outside the exported CMake target define
 exported target propagates it automatically.
 
 Linux shared builds expose `mylite_abi_check`. It compares dynamic exports with
-`packages/libmylite/abi/libmylite-0.symbols`. Adding, removing, or changing a
-public declaration requires an intentional ABI review. An incompatible change
-requires a new major/SOVERSION and a new manifest rather than editing the old
-contract silently.
+`packages/libmylite/abi/libmylite-0.symbols` and compares the complete public
+header with the reviewed ABI-0 header snapshot. This catches source-level
+changes to declarations, types, constants, and macros even when exported symbol
+names are unchanged. Adding, removing, or changing a public declaration
+requires an intentional ABI review. An incompatible change requires a new
+major/SOVERSION and new snapshots rather than editing the old contract silently.
 
 ## PHP modules
 

@@ -35,6 +35,8 @@ jobs:
       - full-mysql
       - performance
     runs-on: ubuntu-24.04
+    container:
+      image: php:8.4-cli-bookworm@sha256:138a210978c7767ef2a26f499c413fe6de1c13233c9a5068139565c81191b1ac
     timeout-minutes: 90
     permissions:
       contents: read
@@ -48,9 +50,15 @@ jobs:
 
       - name: Install release build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake ninja-build php-cli php-dev pkg-config zlib1g-dev
+          sed -i \
+            's|http://deb.debian.org/debian-security|http://snapshot.debian.org/archive/debian-security/20260713T000000Z|' \
+            /etc/apt/sources.list.d/debian.sources
+          sed -i \
+            's|http://deb.debian.org/debian|http://snapshot.debian.org/archive/debian/20260713T000000Z|' \
+            /etc/apt/sources.list.d/debian.sources
+          apt-get -o Acquire::Check-Valid-Until=false update
+          apt-get -o Acquire::Check-Valid-Until=false install -y \
+            build-essential cmake git ninja-build pkg-config python3 zlib1g-dev
 
       - name: Resolve release identity
         id: release

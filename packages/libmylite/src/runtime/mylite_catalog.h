@@ -333,9 +333,10 @@ int mylite_catalog_commit_mutation(
     struct mylite_db *database,
     struct mylite_catalog_mutation *mutation
 );
-void mylite_catalog_rollback_mutation(
+int mylite_catalog_rollback_mutation(
     struct mylite_db *database,
-    struct mylite_catalog_mutation *mutation
+    struct mylite_catalog_mutation *mutation,
+    int primary_rc
 );
 uint64_t mylite_catalog_mutation_generation(const struct mylite_catalog_mutation *mutation);
 

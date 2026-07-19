@@ -541,7 +541,7 @@ static int create_view_from_plan(
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         set_internal_error_if_clear(database, rc, "failed to create view descriptor");
         return rc;
     }

@@ -2,6 +2,7 @@
 
 #include "runtime_test_support.h"
 
+#include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 #include "storage/mylite_file_format.h"
@@ -61,6 +62,10 @@ struct commit_fault_state {
     bool release_denied;
 };
 
+struct catalog_rollback_fault_state {
+    bool rollback_denied;
+};
+
 #ifndef _WIN32
 struct concurrent_write_context {
     mylite_db *database;
@@ -96,6 +101,8 @@ static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int test_failed_statement_rollback_poisons_connection(void);
 static int test_failed_statement_commit_poisons_connection(void);
+static int test_failed_catalog_rollback_poisons_connection(void);
+static int test_checked_close_reports_cursor_cleanup_failure(void);
 static int deny_statement_savepoint_rollback(
     void *context,
     int action,
@@ -105,6 +112,14 @@ static int deny_statement_savepoint_rollback(
     const char *trigger_name
 );
 static int deny_statement_savepoint_release(
+    void *context,
+    int action,
+    const char *first,
+    const char *second,
+    const char *database_name,
+    const char *trigger_name
+);
+static int deny_catalog_transaction_rollback(
     void *context,
     int action,
     const char *first,
@@ -178,8 +193,176 @@ int main(void) {
     failures += test_file_close_rolls_back_transaction();
     failures += test_failed_statement_rollback_poisons_connection();
     failures += test_failed_statement_commit_poisons_connection();
+    failures += test_failed_catalog_rollback_poisons_connection();
+    failures += test_checked_close_reports_cursor_cleanup_failure();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_failed_catalog_rollback_poisons_connection(void) {
+    struct catalog_rollback_fault_state fault = {0};
+    struct mylite_catalog_mutation mutation;
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+    int rc = MYLITE_OK;
+
+    if (make_test_path(path, sizeof(path), "catalog_rollback_failure") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_catalog_mutation_init(&mutation);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog rollback file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        mylite_catalog_begin_mutation(database, &mutation),
+        MYLITE_OK,
+        "begin catalog mutation"
+    );
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, deny_catalog_transaction_rollback, &fault),
+        SQLITE_OK,
+        "install catalog rollback authorizer"
+    );
+    rc = mylite_catalog_rollback_mutation(database, &mutation, MYLITE_ERROR);
+    failures += expect_int(rc, MYLITE_ERROR, "failed catalog rollback status");
+    failures += expect_int(fault.rollback_denied ? 1 : 0, 1, "catalog rollback denied");
+    failures += expect_int(
+        database->transaction_state_uncertain ? 1 : 0,
+        1,
+        "catalog rollback poisons connection"
+    );
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "catalog transaction cleanup failed during ROLLBACK",
+        "catalog rollback diagnostic"
+    );
+    failures += expect_int(
+        mylite_execute(database, "SELECT 1", strlen("SELECT 1"), &result),
+        MYLITE_ERROR,
+        "poisoned catalog connection rejects SQL"
+    );
+    mylite_result_free(result);
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, NULL, NULL),
+        SQLITE_OK,
+        "remove catalog rollback authorizer"
+    );
+    failures += expect_int(
+        sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL),
+        SQLITE_OK,
+        "clean up denied catalog rollback"
+    );
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_checked_close_reports_cursor_cleanup_failure(void) {
+    struct catalog_rollback_fault_state fault = {0};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *statement = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "checked_close_cursor_cleanup") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open checked close file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE close_cursor_t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(database, "INSERT INTO close_cursor_t VALUES (1), (2)", 2);
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM close_cursor_t ORDER BY id",
+            strlen("SELECT id FROM close_cursor_t ORDER BY id"),
+            &statement
+        ),
+        MYLITE_OK,
+        "prepare checked close cursor"
+    );
+    failures += expect_int(mylite_stmt_step(statement), MYLITE_ROW, "start checked close cursor");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, deny_catalog_transaction_rollback, &fault),
+        SQLITE_OK,
+        "install checked close rollback authorizer"
+    );
+
+    failures += expect_int(
+        mylite_close_checked(database),
+        MYLITE_ERROR,
+        "checked close reports cursor rollback failure"
+    );
+    failures += expect_int(fault.rollback_denied ? 1 : 0, 1, "checked close rollback denied");
+    failures += expect_int(
+        database->transaction_state_uncertain ? 1 : 0,
+        1,
+        "checked close poisons uncertain connection"
+    );
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "transaction cleanup failed during ROLLBACK",
+        "checked close cleanup diagnostic"
+    );
+    failures += expect_int(
+        mylite_stmt_step(statement),
+        MYLITE_MISUSE,
+        "checked close detaches cursor after failure"
+    );
+    failures += expect_int(
+        mylite_stmt_finalize(statement),
+        MYLITE_OK,
+        "finalize cursor detached by checked close"
+    );
+    statement = NULL;
+
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, NULL, NULL),
+        SQLITE_OK,
+        "remove checked close rollback authorizer"
+    );
+    failures += expect_int(
+        sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL),
+        SQLITE_OK,
+        "clean up checked close rollback"
+    );
+    failures += expect_int(
+        mylite_close_checked(database),
+        MYLITE_OK,
+        "retry checked close after cleanup"
+    );
+    database = NULL;
+
+    remove_related_files(path);
+    return failures;
+}
+
+static int deny_catalog_transaction_rollback(
+    void *context,
+    int action,
+    const char *first,
+    const char *second,
+    const char *database_name,
+    const char *trigger_name
+) {
+    struct catalog_rollback_fault_state *fault = context;
+
+    (void)second;
+    (void)database_name;
+    (void)trigger_name;
+    if (action == SQLITE_TRANSACTION && first != NULL && strcmp(first, "ROLLBACK") == 0) {
+        fault->rollback_denied = true;
+        return SQLITE_DENY;
+    }
+    return SQLITE_OK;
 }
 
 static int test_failed_statement_rollback_poisons_connection(void) {

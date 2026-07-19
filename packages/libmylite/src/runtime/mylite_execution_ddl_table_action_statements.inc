@@ -182,7 +182,7 @@ static int execute_alter_table_multi_action_statement(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to execute multi-action ALTER TABLE");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
         alter_table_multi_action_state_deinit(&state);
         mylite_result_free(result);

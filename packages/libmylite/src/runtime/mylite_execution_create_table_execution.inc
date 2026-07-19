@@ -65,7 +65,7 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

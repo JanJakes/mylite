@@ -449,7 +449,7 @@ static int rename_table_statement_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to rename table descriptor");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

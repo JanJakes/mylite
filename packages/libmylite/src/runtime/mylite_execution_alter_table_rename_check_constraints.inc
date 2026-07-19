@@ -48,7 +48,7 @@ static int rename_table_from_plan_with_policy(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to rename table descriptor");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

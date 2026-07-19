@@ -79,6 +79,11 @@ static int pdo_mylite_bind_parameter(
     struct pdo_bound_param_data *parameter
 );
 static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const char *fallback);
+static int pdo_mylite_open_error(
+    pdo_dbh_t *dbh,
+    int status,
+    const struct mylite_open_diagnostic *diagnostic
+);
 static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt);
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result);
 static void pdo_mylite_update_statement_status(pdo_dbh_t *dbh, const mylite_stmt *statement);
@@ -166,6 +171,7 @@ ZEND_GET_MODULE(pdo_mylite)
 #endif
 
 static int pdo_mylite_handle_factory(pdo_dbh_t *dbh, zval *driver_options) {
+    struct mylite_open_diagnostic diagnostic;
     (void)driver_options;
     int ok = 0;
     pdo_mylite_db_handle *handle = pecalloc(1, sizeof(*handle), dbh->is_persistent);
@@ -192,13 +198,13 @@ static int pdo_mylite_handle_factory(pdo_dbh_t *dbh, zval *driver_options) {
 
     int status = MYLITE_OK;
     if (strcmp(path, ":memory:") == 0) {
-        status = mylite_open_memory(&handle->db);
+        status = mylite_open_memory_with_diagnostic(&handle->db, &diagnostic);
     } else {
-        status = mylite_open(path, &handle->db);
+        status = mylite_open_with_diagnostic(path, &handle->db, &diagnostic);
     }
     efree(path);
     if (status != MYLITE_OK) {
-        pdo_mylite_error(dbh, NULL, status, "could not open MyLite database");
+        pdo_mylite_open_error(dbh, status, &diagnostic);
         goto cleanup;
     }
 
@@ -649,6 +655,39 @@ static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const 
         memcpy(*pdo_error, sqlstate, sqlstate_size);
         (*pdo_error)[sqlstate_size] = '\0';
     }
+    if (handle != NULL) {
+        handle->native_errno = native_errno;
+        if (handle->errmsg != NULL) {
+            zend_string_release(handle->errmsg);
+        }
+        handle->errmsg = zend_string_init(message, strlen(message), false);
+    }
+    return status;
+}
+
+static int pdo_mylite_open_error(
+    pdo_dbh_t *dbh,
+    int status,
+    const struct mylite_open_diagnostic *diagnostic
+) {
+    pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
+    const char *message = diagnostic == NULL ? NULL : diagnostic->message;
+    const char *sqlstate = diagnostic == NULL ? "HY000" : diagnostic->sqlstate;
+    unsigned native_errno = diagnostic == NULL ? (unsigned)status
+                                                : (unsigned)diagnostic->error_code;
+    size_t sqlstate_size = strlen(sqlstate);
+
+    if (message == NULL || message[0] == '\0') {
+        message = "could not open MyLite database";
+    }
+    if (native_errno == 0U) {
+        native_errno = (unsigned)status;
+    }
+    if (sqlstate_size >= sizeof(dbh->error_code)) {
+        sqlstate_size = sizeof(dbh->error_code) - 1U;
+    }
+    memcpy(dbh->error_code, sqlstate, sqlstate_size);
+    dbh->error_code[sqlstate_size] = '\0';
     if (handle != NULL) {
         handle->native_errno = native_errno;
         if (handle->errmsg != NULL) {

@@ -564,7 +564,7 @@ static int create_table_select_from_plan(
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

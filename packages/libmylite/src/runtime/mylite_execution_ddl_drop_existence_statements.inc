@@ -337,7 +337,7 @@ static int execute_drop_view_from_plan(
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         set_internal_error_if_clear(database, rc, "failed to drop view descriptor");
     }
     return rc;
@@ -479,7 +479,7 @@ static int execute_drop_table_from_plan(
     }
     if (rc != MYLITE_OK) {
         if (has_persistent_targets) {
-            mylite_catalog_rollback_mutation(database, &mutation);
+            rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         }
         return rc;
     }
@@ -677,7 +677,7 @@ static int execute_drop_schema_statement(
         rc = drop_schema_from_plan(database, &mutation, &plan, result);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
     }
     planned_drop_schema_deinit(&plan);
     if (rc != MYLITE_OK) {

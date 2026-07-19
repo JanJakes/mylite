@@ -211,7 +211,7 @@ static int alter_table_drop_primary_key_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to drop primary key");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -1000,7 +1000,7 @@ static int alter_table_drop_column_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to drop table column");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -1256,7 +1256,7 @@ static int alter_table_rename_column_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to rename table column");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

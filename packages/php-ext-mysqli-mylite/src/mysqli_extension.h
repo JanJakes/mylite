@@ -238,7 +238,7 @@ bool mylite_mysqli_connect_link(
     bool port_is_null,
     zend_long flags
 );
-void mylite_mysqli_close_link(mylite_mysqli_link *link);
+bool mylite_mysqli_close_link(mylite_mysqli_link *link);
 bool mylite_mysqli_link_query(
     mylite_mysqli_link *link,
     const char *sql,

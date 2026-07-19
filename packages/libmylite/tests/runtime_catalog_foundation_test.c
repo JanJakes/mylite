@@ -926,6 +926,7 @@ static int test_catalog_default_text_validation(void) {
 }
 
 static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
+    struct mylite_open_diagnostic diagnostic;
     char path[test_path_capacity];
     char sql[sql_buffer_capacity];
     mylite_db *database = NULL;
@@ -950,8 +951,22 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject bad version");
+    failures += expect_int(
+        mylite_open_with_diagnostic(path, &database, &diagnostic),
+        MYLITE_ERROR,
+        "reject bad version"
+    );
     failures += expect_true(database == NULL, "bad version leaves output null");
+    failures += expect_int(
+        diagnostic.error_code,
+        1105,
+        "bad version preserves open error code"
+    );
+    failures += expect_text(diagnostic.sqlstate, "HY000", "bad version preserves SQLSTATE");
+    failures += expect_true(
+        strstr(diagnostic.message, "catalog is incompatible or corrupt") != NULL,
+        "bad version preserves open diagnostic message"
+    );
     remove_related_files(path);
 
     if (make_test_path(path, sizeof(path), "v36_migration") != 0) {

@@ -83,7 +83,10 @@ static bool php_mylite_bind_statement_value(
 );
 static bool php_mylite_bind_array_values(php_mylite_statement *statement, zval *params);
 static void php_mylite_throw_db(mylite_db *db, int status, const char *fallback);
-static void php_mylite_throw_status(int status, const char *fallback);
+static void php_mylite_throw_open(
+    int status,
+    const struct mylite_open_diagnostic *diagnostic
+);
 static void php_mylite_update_connection_status(
     php_mylite_connection *connection,
     const mylite_result *result
@@ -169,6 +172,7 @@ PHP_FUNCTION(mylite_open) {
 
 PHP_METHOD(MyLite_Connection, __construct) {
     php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(ZEND_THIS);
+    struct mylite_open_diagnostic diagnostic;
     char *path = NULL;
     size_t path_len = 0U;
 
@@ -188,12 +192,12 @@ PHP_METHOD(MyLite_Connection, __construct) {
     mylite_db *db = NULL;
     int status = MYLITE_OK;
     if (path_len == strlen(":memory:") && memcmp(path, ":memory:", path_len) == 0) {
-        status = mylite_open_memory(&db);
+        status = mylite_open_memory_with_diagnostic(&db, &diagnostic);
     } else {
-        status = mylite_open(path, &db);
+        status = mylite_open_with_diagnostic(path, &db, &diagnostic);
     }
     if (status != MYLITE_OK) {
-        php_mylite_throw_status(status, "could not open MyLite database");
+        php_mylite_throw_open(status, &diagnostic);
         RETURN_THROWS();
     }
     connection->db = db;
@@ -201,11 +205,16 @@ PHP_METHOD(MyLite_Connection, __construct) {
 
 PHP_METHOD(MyLite_Connection, close) {
     php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(ZEND_THIS);
+    int status = MYLITE_OK;
 
     ZEND_PARSE_PARAMETERS_NONE();
 
     if (connection->db != NULL) {
-        mylite_close(connection->db);
+        status = mylite_close_checked(connection->db);
+        if (status != MYLITE_OK) {
+            php_mylite_throw_db(connection->db, status, "could not close MyLite database");
+            RETURN_THROWS();
+        }
         connection->db = NULL;
     }
     RETURN_TRUE;
@@ -592,20 +601,21 @@ static mylite_db *php_mylite_require_db(php_mylite_connection *connection) {
 }
 
 static void php_mylite_open_into_object(zval *return_value, const char *path, size_t path_len) {
+    struct mylite_open_diagnostic diagnostic;
     object_init_ex(return_value, php_mylite_connection_ce);
     php_mylite_connection *connection = Z_MYLITE_CONNECTION_P(return_value);
     mylite_db *db = NULL;
     int status = MYLITE_OK;
 
     if (path_len == strlen(":memory:") && memcmp(path, ":memory:", path_len) == 0) {
-        status = mylite_open_memory(&db);
+        status = mylite_open_memory_with_diagnostic(&db, &diagnostic);
     } else {
-        status = mylite_open(path, &db);
+        status = mylite_open_with_diagnostic(path, &db, &diagnostic);
     }
     if (status != MYLITE_OK) {
         zval_ptr_dtor(return_value);
         ZVAL_UNDEF(return_value);
-        php_mylite_throw_status(status, "could not open MyLite database");
+        php_mylite_throw_open(status, &diagnostic);
         return;
     }
     connection->db = db;
@@ -804,8 +814,20 @@ static void php_mylite_throw_db(mylite_db *db, int status, const char *fallback)
     zend_throw_exception(php_mylite_exception_ce, message, code);
 }
 
-static void php_mylite_throw_status(int status, const char *fallback) {
-    zend_throw_exception(php_mylite_exception_ce, fallback, status);
+static void php_mylite_throw_open(
+    int status,
+    const struct mylite_open_diagnostic *diagnostic
+) {
+    const char *message = diagnostic == NULL ? NULL : diagnostic->message;
+    int code = diagnostic == NULL ? status : diagnostic->error_code;
+
+    if (message == NULL || message[0] == '\0') {
+        message = "could not open MyLite database";
+    }
+    if (code == MYLITE_OK) {
+        code = status;
+    }
+    zend_throw_exception(php_mylite_exception_ce, message, code);
 }
 
 static void php_mylite_update_connection_status(

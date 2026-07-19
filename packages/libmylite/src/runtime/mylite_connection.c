@@ -22,6 +22,12 @@ static int open_memory_sqlite(struct mylite_db *database);
 static int open_file_sqlite(struct mylite_db *database, const char *path);
 static int bootstrap_sqlite_connection(struct mylite_db *database);
 static int initialize_file_backed_catalog(struct mylite_db *database);
+static void initialize_open_diagnostic(struct mylite_open_diagnostic *diagnostic);
+static void capture_open_diagnostic(
+    struct mylite_open_diagnostic *diagnostic,
+    const struct mylite_db *database,
+    int status
+);
 static void destroy_database_handle(struct mylite_db *database);
 static int sqlite_status_to_mylite(int sqlite_status);
 static int register_processlist_session(struct mylite_db *database);
@@ -50,10 +56,19 @@ static void copy_session_text(char *destination, size_t destination_size, const 
 static struct mylite_db *processlist_registry_head = NULL;
 
 int mylite_open_memory(mylite_db **out_db) {
+    return mylite_open_memory_with_diagnostic(out_db, NULL);
+}
+
+int mylite_open_memory_with_diagnostic(
+    mylite_db **out_db,
+    struct mylite_open_diagnostic *out_diagnostic
+) {
     struct mylite_db *database = NULL;
     int rc = MYLITE_OK;
 
+    initialize_open_diagnostic(out_diagnostic);
     if (out_db == NULL) {
+        capture_open_diagnostic(out_diagnostic, NULL, MYLITE_MISUSE);
         return MYLITE_MISUSE;
     }
 
@@ -61,11 +76,13 @@ int mylite_open_memory(mylite_db **out_db) {
 
     rc = allocate_database_handle(&database);
     if (rc != MYLITE_OK) {
+        capture_open_diagnostic(out_diagnostic, NULL, rc);
         return rc;
     }
 
     rc = open_memory_sqlite(database);
     if (rc != MYLITE_OK) {
+        capture_open_diagnostic(out_diagnostic, database, rc);
         destroy_database_handle(database);
         return rc;
     }
@@ -76,15 +93,26 @@ int mylite_open_memory(mylite_db **out_db) {
 }
 
 int mylite_open(const char *path, mylite_db **out_db) {
+    return mylite_open_with_diagnostic(path, out_db, NULL);
+}
+
+int mylite_open_with_diagnostic(
+    const char *path,
+    mylite_db **out_db,
+    struct mylite_open_diagnostic *out_diagnostic
+) {
     struct mylite_db *database = NULL;
     int rc = MYLITE_OK;
 
+    initialize_open_diagnostic(out_diagnostic);
     if (out_db == NULL) {
+        capture_open_diagnostic(out_diagnostic, NULL, MYLITE_MISUSE);
         return MYLITE_MISUSE;
     }
 
     *out_db = NULL;
     if (path == NULL || path[0] == '\0') {
+        capture_open_diagnostic(out_diagnostic, NULL, MYLITE_MISUSE);
         return MYLITE_MISUSE;
     }
 
@@ -93,6 +121,7 @@ int mylite_open(const char *path, mylite_db **out_db) {
         rc = open_file_sqlite(database, path);
     }
     if (rc != MYLITE_OK) {
+        capture_open_diagnostic(out_diagnostic, database, rc);
         destroy_database_handle(database);
         return rc;
     }
@@ -437,6 +466,42 @@ static int initialize_file_backed_catalog(struct mylite_db *database) {
     return mylite_catalog_initialize_file_backed(database);
 }
 
+static void initialize_open_diagnostic(struct mylite_open_diagnostic *diagnostic) {
+    if (diagnostic == NULL) {
+        return;
+    }
+    diagnostic->error_code = MYLITE_OK;
+    (void)snprintf(diagnostic->sqlstate, sizeof(diagnostic->sqlstate), "%s", "00000");
+    diagnostic->message[0] = '\0';
+}
+
+static void capture_open_diagnostic(
+    struct mylite_open_diagnostic *diagnostic,
+    const struct mylite_db *database,
+    int status
+) {
+    const char *message = "could not open MyLite database";
+    const char *sqlstate = "HY000";
+    int error_code = status;
+
+    if (diagnostic == NULL) {
+        return;
+    }
+    if (database != NULL && mylite_errcode(database) != MYLITE_OK) {
+        error_code = mylite_errcode(database);
+        sqlstate = mylite_sqlstate(database);
+        message = mylite_errmsg(database);
+    } else if (status == MYLITE_NOMEM) {
+        sqlstate = "HY001";
+        message = "out of memory while opening MyLite database";
+    } else if (status == MYLITE_MISUSE) {
+        message = "invalid MyLite open arguments";
+    }
+    diagnostic->error_code = error_code;
+    (void)snprintf(diagnostic->sqlstate, sizeof(diagnostic->sqlstate), "%s", sqlstate);
+    (void)snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", message);
+}
+
 static void destroy_database_handle(struct mylite_db *database) {
     if (database == NULL) {
         return;
@@ -445,7 +510,7 @@ static void destroy_database_handle(struct mylite_db *database) {
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_detach(database);
 #endif
-    mylite_execution_detach_connection_statements(database);
+    (void)mylite_execution_detach_connection_statements(database);
     mylite_named_lock_release_all_for_connection(database->session.connection_id);
     unregister_processlist_session(database);
     sqlite3_mutex_free(database->processlist_snapshot_mutex);
@@ -505,7 +570,7 @@ static void destroy_database_handle(struct mylite_db *database) {
     mylite_catalog_string_pool_deinit(&database->catalog_strings);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {
-        (void)sqlite3_close(database->sqlite);
+        (void)sqlite3_close_v2(database->sqlite);
     }
     database->sqlite = NULL;
     mylite_diagnostics_deinit(&database->previous_diagnostics);

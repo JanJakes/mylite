@@ -4,6 +4,6 @@
 struct mylite_db;
 
 int mylite_execution_prepare_connection_close(struct mylite_db *database);
-void mylite_execution_detach_connection_statements(struct mylite_db *database);
+int mylite_execution_detach_connection_statements(struct mylite_db *database);
 
 #endif

@@ -27,7 +27,7 @@ static int alter_table_modify_column_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, plan->failure_message);
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

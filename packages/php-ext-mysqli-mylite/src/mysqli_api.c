@@ -236,8 +236,7 @@ PHP_FUNCTION(mysqli_close) {
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    mylite_mysqli_close_link(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)));
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_close_link(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))));
 }
 
 PHP_FUNCTION(mysqli_connect_errno) {
@@ -1931,8 +1930,7 @@ PHP_METHOD(mysqli, use_result) {
 
 PHP_METHOD(mysqli, close) {
     ZEND_PARSE_PARAMETERS_NONE();
-    mylite_mysqli_close_link(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())));
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_close_link(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()))));
 }
 
 PHP_METHOD(mysqli, prepare) {

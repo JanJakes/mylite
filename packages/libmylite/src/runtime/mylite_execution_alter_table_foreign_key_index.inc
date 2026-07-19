@@ -514,7 +514,7 @@ static int alter_table_add_foreign_key_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to add foreign key");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -859,7 +859,7 @@ static int alter_table_drop_foreign_key_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to drop foreign key");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -1867,7 +1867,7 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to drop index");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -2095,7 +2095,7 @@ static int rename_index_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to rename index");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

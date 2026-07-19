@@ -28,7 +28,6 @@ static bool prepared_statement_requires_object_validation(
     const struct mylite_sql_ast_node *statement
 );
 static int validate_prepared_statement_objects(mylite_stmt *stmt);
-static bool prepared_analysis_error_is_object_resolution(int error_code);
 static int execute_prepared_materialized_statement(mylite_stmt *stmt);
 static void release_stmt_bindings(mylite_stmt *stmt);
 static int prepare_cursor_select_statement(
@@ -66,10 +65,11 @@ static int publish_buffered_statement_completion(mylite_stmt *stmt);
 static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc);
 static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc);
 static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted);
+static int finish_failed_cursor_statement(mylite_stmt *stmt, int rc);
 static void register_live_statement(mylite_stmt *stmt);
 static void unregister_live_statement(mylite_stmt *stmt);
-static void detach_cursor_statement(mylite_stmt *stmt);
-static void release_cursor_statement_resources(mylite_stmt *stmt);
+static int detach_cursor_statement(mylite_stmt *stmt, int rc);
+static int release_cursor_statement_resources(mylite_stmt *stmt, int rc);
 static void destroy_cursor_statement(mylite_stmt *stmt);
 static int set_materialized_cursor_found_row_count(mylite_stmt *stmt);
 static int set_cursor_found_row_count(mylite_stmt *stmt);

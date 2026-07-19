@@ -82,7 +82,7 @@ static int alter_table_default_charset_collation_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update table charset/collation");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -179,7 +179,7 @@ static int alter_table_convert_character_set_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to convert table character set metadata");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -258,7 +258,7 @@ static int alter_table_comment_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update table comment");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -315,7 +315,7 @@ static int alter_table_storage_statistics_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update table options");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 
@@ -462,7 +462,7 @@ static int alter_schema_default_charset_collation_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update schema charset/collation");
-        mylite_catalog_rollback_mutation(database, &mutation);
+        rc = mylite_catalog_rollback_mutation(database, &mutation, rc);
         return rc;
     }
 

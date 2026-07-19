@@ -4,12 +4,14 @@
 
 #include "mylite_connection.h"
 #include "mylite_file_format.h"
+#include "mylite_mysql_error_codes.h"
 #include "mylite_sqlite_registration.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -41,7 +43,7 @@ static int read_data_version(sqlite3 *sqlite, uint64_t *out_data_version);
 static int apply_catalog_state(struct mylite_db *database, const struct mylite_catalog *catalog);
 static int begin_catalog_transaction(sqlite3 *sqlite);
 static int commit_catalog_transaction(sqlite3 *sqlite);
-static void rollback_catalog_transaction(sqlite3 *sqlite);
+static int rollback_catalog_transaction(struct mylite_db *database, int primary_rc);
 static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation);
 static void reset_descriptor_cache_state(struct mylite_catalog *catalog);
 
@@ -89,6 +91,14 @@ int mylite_catalog_initialize_file_backed(struct mylite_db *database) {
 
     rc = ensure_catalog_schema(database);
     if (rc != MYLITE_OK) {
+        if (mylite_errcode(database) == MYLITE_OK) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(database),
+                mysql_error_unknown,
+                "HY000",
+                "MyLite catalog is incompatible or corrupt"
+            );
+        }
         mylite_catalog_deinit(&database->catalog);
         return rc;
     }
@@ -193,13 +203,12 @@ int mylite_catalog_begin_mutation(
 
     rc = read_catalog_state(database->sqlite, &catalog);
     if (rc != MYLITE_OK) {
-        rollback_catalog_transaction(database->sqlite);
-        return rc;
+        return rollback_catalog_transaction(database, rc);
     }
     if (catalog.generation == UINT64_MAX) {
-        rollback_catalog_transaction(database->sqlite);
+        rc = rollback_catalog_transaction(database, MYLITE_ERROR);
         mylite_catalog_invalidate_descriptor_cache(database);
-        return MYLITE_ERROR;
+        return rc;
     }
 
     mutation->active = true;
@@ -229,7 +238,7 @@ int mylite_catalog_commit_mutation(
         rc = commit_catalog_transaction(database->sqlite);
     }
     if (rc != MYLITE_OK) {
-        rollback_catalog_transaction(database->sqlite);
+        rc = rollback_catalog_transaction(database, rc);
         database->catalog.descriptor_cache_is_suspended = false;
         mylite_catalog_invalidate_descriptor_cache(database);
         mylite_catalog_mutation_deinit(mutation);
@@ -245,16 +254,18 @@ int mylite_catalog_commit_mutation(
     return MYLITE_OK;
 }
 
-void mylite_catalog_rollback_mutation(
+int mylite_catalog_rollback_mutation(
     struct mylite_db *database,
-    struct mylite_catalog_mutation *mutation
+    struct mylite_catalog_mutation *mutation,
+    int primary_rc
 ) {
     if (database != NULL && mutation != NULL && mutation->active) {
-        rollback_catalog_transaction(database->sqlite);
+        primary_rc = rollback_catalog_transaction(database, primary_rc);
         database->catalog.descriptor_cache_is_suspended = false;
         mylite_catalog_invalidate_descriptor_cache(database);
     }
     mylite_catalog_mutation_deinit(mutation);
+    return primary_rc;
 }
 
 uint64_t mylite_catalog_mutation_generation(const struct mylite_catalog_mutation *mutation) {
@@ -279,13 +290,12 @@ int mylite_catalog_begin_generation_change(
 
     rc = read_catalog_state(database->sqlite, &catalog);
     if (rc != MYLITE_OK) {
-        rollback_catalog_transaction(database->sqlite);
+        rc = rollback_catalog_transaction(database, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
     if (catalog.generation == UINT64_MAX) {
-        rollback_catalog_transaction(database->sqlite);
-        return MYLITE_ERROR;
+        return rollback_catalog_transaction(database, MYLITE_ERROR);
     }
 
     out_change->next_generation = catalog.generation + 1U;
@@ -303,7 +313,7 @@ int mylite_catalog_finish_generation_change(
         rc = commit_catalog_transaction(database->sqlite);
     }
     if (rc != MYLITE_OK) {
-        rollback_catalog_transaction(database->sqlite);
+        rc = rollback_catalog_transaction(database, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
@@ -315,8 +325,8 @@ int mylite_catalog_finish_generation_change(
     return MYLITE_OK;
 }
 
-void mylite_catalog_abandon_generation_change(sqlite3 *sqlite) {
-    rollback_catalog_transaction(sqlite);
+int mylite_catalog_abandon_generation_change(struct mylite_db *database, int primary_rc) {
+    return rollback_catalog_transaction(database, primary_rc);
 }
 
 static int ensure_catalog_schema(struct mylite_db *database) {
@@ -576,8 +586,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         rc = mylite_catalog_execute_sql(database->sqlite, "COMMIT;");
     }
     if (rc != MYLITE_OK) {
-        rollback_catalog_transaction(database->sqlite);
-        return rc;
+        return rollback_catalog_transaction(database, rc);
     }
 
     rc = read_catalog_state(database->sqlite, &catalog);
@@ -856,12 +865,40 @@ static int commit_catalog_transaction(sqlite3 *sqlite) {
     return mylite_catalog_execute_sql(sqlite, "COMMIT");
 }
 
-static void rollback_catalog_transaction(sqlite3 *sqlite) {
-    if (sqlite == NULL) {
-        return;
+static int rollback_catalog_transaction(struct mylite_db *database, int primary_rc) {
+    struct mylite_diagnostic_record primary = {0};
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int sqlite_rc = SQLITE_MISUSE;
+
+    if (database == NULL || database->sqlite == NULL) {
+        return primary_rc;
+    }
+    primary = mylite_connection_diagnostics(database)->condition;
+    sqlite_rc = sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
+    if (sqlite_rc == SQLITE_OK) {
+        return primary_rc;
     }
 
-    (void)sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL);
+    database->transaction_state_uncertain = true;
+    if (primary.code == MYLITE_OK) {
+        primary.code = mysql_error_unknown;
+        (void)snprintf(primary.sqlstate, sizeof(primary.sqlstate), "%s", "HY000");
+        (void)snprintf(primary.message, sizeof(primary.message), "%s", "catalog operation failed");
+    }
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "%.112s; catalog transaction cleanup failed during ROLLBACK: %.80s",
+        primary.message,
+        sqlite3_errmsg(database->sqlite)
+    );
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        primary.code,
+        primary.sqlstate,
+        message
+    );
+    return primary_rc == MYLITE_OK ? mylite_sqlite_status_to_mylite(sqlite_rc) : primary_rc;
 }
 
 static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation) {

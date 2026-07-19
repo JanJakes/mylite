@@ -49,6 +49,7 @@ static int test_buffered_prepared_statement_releases_connection(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_statement_surface(void);
 static int test_cursor_read_transaction_lifecycle(void);
+static int test_streaming_cursor_reports_select_row_count(void);
 static int test_cursor_connection_close_order(void);
 static int test_materialized_cursor_does_not_overwrite_later_statement_state(void);
 static int execute_ok(mylite_db *database, const char *sql);
@@ -93,10 +94,66 @@ int main(void) {
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_statement_surface();
     failures += test_cursor_read_transaction_lifecycle();
+    failures += test_streaming_cursor_reports_select_row_count();
     failures += test_cursor_connection_close_order();
     failures += test_materialized_cursor_does_not_overwrite_later_statement_state();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_streaming_cursor_reports_select_row_count(void) {
+    const struct mylite_session_state *session = NULL;
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open cursor row count");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL)");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1), (2)");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare early-finalized cursor row count"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step early-finalized cursor");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize partial cursor");
+    stmt = NULL;
+    session = mylite_connection_session_state(database);
+    failures += expect_true(
+        session != NULL && session->previous_row_count == -1,
+        "partial SELECT publishes ROW_COUNT -1"
+    );
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare exhausted cursor row count"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step exhausted cursor row one");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step exhausted cursor row two");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "finish exhausted cursor");
+    session = mylite_connection_session_state(database);
+    failures += expect_true(
+        session != NULL && session->previous_row_count == -1,
+        "exhausted SELECT publishes ROW_COUNT -1"
+    );
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize exhausted cursor");
+
+    mylite_close(database);
+    return failures;
 }
 
 static int test_cursor_connection_close_order(void) {
@@ -1869,6 +1926,18 @@ static int test_cursor_prepare_statement_surface(void) {
         mylite_errmsg(database),
         "Unknown column 'missing_column'",
         "cursor planning diagnostic"
+    );
+
+    failures += expect_int(
+        mylite_prepare(database, "SELECT ABS(1, ?)", strlen("SELECT ABS(1, ?)"), &stmt),
+        MYLITE_ERROR,
+        "preserve parameter-independent prepare error"
+    );
+    failures += expect_true(stmt == NULL, "semantic prepare failure leaves null statement");
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "Incorrect parameter count",
+        "semantic prepare diagnostic"
     );
 
     failures += expect_int(

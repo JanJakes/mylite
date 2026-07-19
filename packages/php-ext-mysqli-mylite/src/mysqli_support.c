@@ -321,6 +321,7 @@ bool mylite_mysqli_connect_link(
     bool port_is_null,
     zend_long flags
 ) {
+    struct mylite_open_diagnostic diagnostic;
     bool memory = false;
     bool use_database = false;
     zend_string *path = mylite_mysqli_resolve_path(
@@ -366,15 +367,19 @@ bool mylite_mysqli_connect_link(
     }
     link->path = zend_string_copy(path);
 
-    status =
-        memory ? mylite_open_memory(&link->database) : mylite_open(ZSTR_VAL(path), &link->database);
+    status = memory ? mylite_open_memory_with_diagnostic(&link->database, &diagnostic)
+                    : mylite_open_with_diagnostic(
+                          ZSTR_VAL(path),
+                          &link->database,
+                          &diagnostic
+                      );
     zend_string_release(path);
     if (status != MYLITE_OK) {
         mylite_mysqli_set_error(
             link,
             MYLITE_MYSQLI_ERROR_CONNECTION,
-            "HY000",
-            "failed to open MyLite database"
+            diagnostic.sqlstate,
+            diagnostic.message
         );
         mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
         mylite_mysqli_report_link_error(link);
@@ -405,15 +410,27 @@ bool mylite_mysqli_connect_link(
     return true;
 }
 
-void mylite_mysqli_close_link(mylite_mysqli_link *link) {
+bool mylite_mysqli_close_link(mylite_mysqli_link *link) {
     if (link->database != NULL) {
+        int status = MYLITE_OK;
+
         mylite_mysqli_link_clear_pending_result(link);
         mylite_mysqli_link_clear_last_result(link);
-        mylite_close(link->database);
+        status = mylite_close_checked(link->database);
+        if (status != MYLITE_OK) {
+            (void)mylite_mysqli_capture_link_status(
+                link,
+                status,
+                "could not close MyLite database"
+            );
+            mylite_mysqli_update_link_properties(link);
+            return false;
+        }
         link->database = NULL;
     }
     link->connected = false;
     mylite_mysqli_update_link_properties(link);
+    return true;
 }
 
 bool mylite_mysqli_link_query(

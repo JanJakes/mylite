@@ -105,7 +105,7 @@ int mylite_catalog_create_schema_with_defaults(
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -246,7 +246,7 @@ int mylite_catalog_delete_schema(struct mylite_db *database, int64_t schema_id) 
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -301,7 +301,7 @@ int mylite_catalog_create_table(
     }
     rc = mylite_catalog_read_schema_by_id_from_sqlite(database->sqlite, schema_id, &schema);
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -380,7 +380,7 @@ int mylite_catalog_create_table(
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -451,7 +451,7 @@ int mylite_catalog_update_table_name(
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -570,7 +570,7 @@ int mylite_catalog_delete_table(struct mylite_db *database, int64_t table_id) {
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -649,7 +649,7 @@ int mylite_catalog_create_column(
     }
     rc = mylite_catalog_read_table_by_id_from_sqlite(database->sqlite, table_id, &table);
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -682,7 +682,7 @@ int mylite_catalog_create_column(
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 
@@ -731,7 +731,7 @@ int mylite_catalog_delete_column(struct mylite_db *database, int64_t column_id) 
         rc = mylite_catalog_finish_generation_change(database, &generation);
     }
     if (rc != MYLITE_OK) {
-        mylite_catalog_abandon_generation_change(database->sqlite);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         return rc;
     }
 

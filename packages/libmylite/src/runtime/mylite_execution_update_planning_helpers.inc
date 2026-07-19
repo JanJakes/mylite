@@ -1115,6 +1115,37 @@ static void set_update_duplicate_assignment_unsupported_error(struct mylite_db *
     set_unsupported_error(database, "UPDATE multiple assignments do not support duplicate targets");
 }
 
+static int plan_update_assignment_warnings(
+    struct mylite_db *database,
+    struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+            if (!planned_update_assignment_is_noop(&plan->assignments[index])) {
+                rc = plan_session_scalar_expression_warnings(
+                    database,
+                    plan->assignments[index].value_node,
+                    &plan->assignments[index].warnings
+                );
+            }
+        }
+        return rc;
+    }
+    if (plan->generated_default_noop) {
+        return MYLITE_OK;
+    }
+    return plan_session_scalar_expression_warnings(
+        database,
+        plan->assignment_value_node,
+        &plan->assignment_warnings
+    );
+}
+
 static int validate_update_default_function_sources(
     struct mylite_db *database,
     const struct planned_update *plan,

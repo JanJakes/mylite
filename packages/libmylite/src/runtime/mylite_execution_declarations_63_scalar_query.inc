@@ -244,6 +244,21 @@ static int append_session_scalar_expression_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 );
+static int plan_session_scalar_expression_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_scalar_warnings *out_warnings
+);
+static int append_planned_scalar_warnings(
+    struct mylite_db *database,
+    const struct planned_scalar_warnings *warnings
+);
+static int planned_scalar_warnings_append(
+    struct mylite_db *database,
+    struct planned_scalar_warnings *warnings,
+    struct planned_scalar_warning warning
+);
+static void planned_scalar_warnings_deinit(struct planned_scalar_warnings *warnings);
 static int append_select_modifier_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement

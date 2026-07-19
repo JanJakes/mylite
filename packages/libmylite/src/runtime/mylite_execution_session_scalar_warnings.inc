@@ -127,6 +127,154 @@ static int append_session_scalar_expression_warnings(
     return rc;
 }
 
+static int plan_session_scalar_expression_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_scalar_warnings *out_warnings
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (out_warnings == NULL) {
+        return MYLITE_MISUSE;
+    }
+    planned_scalar_warnings_deinit(out_warnings);
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        struct planned_scalar_warning warning = {0};
+        bool has_warning = false;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION) {
+            warning.kind = PLANNED_SCALAR_WARNING_FOUND_ROWS_DEPRECATED;
+            has_warning = true;
+        } else if (current->kind == MYLITE_SQL_AST_JSON_MERGE_FUNCTION) {
+            warning.kind = PLANNED_SCALAR_WARNING_JSON_MERGE_DEPRECATED;
+            has_warning = true;
+        } else if (current->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION ||
+                   current->kind == MYLITE_SQL_AST_CHAR_FUNCTION) {
+            struct scalar_convert_charset_info info = {0};
+
+            if (current->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
+                rc = scalar_convert_charset_info_for_expression(database, current, &info);
+            } else {
+                rc = mylite_execution_scalar_char_charset_info_for_expression(
+                    database,
+                    current,
+                    &info
+                );
+            }
+            if (rc == MYLITE_OK && info.warning == SCALAR_CONVERT_CHARSET_WARNING_UTF8_ALIAS) {
+                warning.kind = PLANNED_SCALAR_WARNING_UTF8_ALIAS;
+                has_warning = true;
+            } else if (rc == MYLITE_OK &&
+                       info.warning == SCALAR_CONVERT_CHARSET_WARNING_UTF8MB3_DEPRECATED) {
+                warning.kind = PLANNED_SCALAR_WARNING_UTF8MB3_DEPRECATED;
+                has_warning = true;
+            }
+        } else if (current->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+            enum mylite_execution_system_variable_kind variable =
+                MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+
+            rc = resolve_session_system_variable(database, current, &variable);
+            if (rc == MYLITE_OK &&
+                mylite_execution_system_variable_warns_on_scalar_read(variable)) {
+                warning.kind = PLANNED_SCALAR_WARNING_SYSTEM_VARIABLE_READ;
+                warning.system_variable = variable;
+                has_warning = true;
+            }
+        }
+        if (rc == MYLITE_OK && has_warning) {
+            rc = planned_scalar_warnings_append(database, out_warnings, warning);
+        }
+        if (rc == MYLITE_OK && !scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    if (rc != MYLITE_OK) {
+        planned_scalar_warnings_deinit(out_warnings);
+    }
+    return rc;
+}
+
+static int append_planned_scalar_warnings(
+    struct mylite_db *database,
+    const struct planned_scalar_warnings *warnings
+) {
+    int rc = MYLITE_OK;
+
+    if (warnings == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < warnings->count; ++index) {
+        switch (warnings->items[index].kind) {
+        case PLANNED_SCALAR_WARNING_FOUND_ROWS_DEPRECATED:
+            rc = append_found_rows_deprecation_warning(database);
+            break;
+        case PLANNED_SCALAR_WARNING_JSON_MERGE_DEPRECATED:
+            rc = append_json_merge_deprecation_warning(database);
+            break;
+        case PLANNED_SCALAR_WARNING_UTF8_ALIAS:
+            rc = append_utf8_alias_warning(database);
+            break;
+        case PLANNED_SCALAR_WARNING_UTF8MB3_DEPRECATED:
+            rc = append_utf8mb3_deprecation_warning(database);
+            break;
+        case PLANNED_SCALAR_WARNING_SYSTEM_VARIABLE_READ:
+            rc = append_system_variable_read_warning(
+                database,
+                warnings->items[index].system_variable
+            );
+            break;
+        }
+    }
+    return rc;
+}
+
+static int planned_scalar_warnings_append(
+    struct mylite_db *database,
+    struct planned_scalar_warnings *warnings,
+    struct planned_scalar_warning warning
+) {
+    if (warnings->count == warnings->capacity) {
+        size_t new_capacity = warnings->capacity == 0U ? planned_scalar_warning_initial_capacity
+                                                       : warnings->capacity * 2U;
+        struct planned_scalar_warning *items = NULL;
+
+        if (new_capacity < warnings->capacity || new_capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = realloc(warnings->items, new_capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        warnings->items = items;
+        warnings->capacity = new_capacity;
+    }
+    warnings->items[warnings->count++] = warning;
+    return MYLITE_OK;
+}
+
+static void planned_scalar_warnings_deinit(struct planned_scalar_warnings *warnings) {
+    if (warnings == NULL) {
+        return;
+    }
+    free(warnings->items);
+    *warnings = (struct planned_scalar_warnings){0};
+}
+
 static int append_select_modifier_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement

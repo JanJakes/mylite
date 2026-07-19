@@ -3,10 +3,20 @@ static int plan_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 ) {
+    int rc = MYLITE_OK;
+
     if (statement != NULL && statement->kind == MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT) {
-        return plan_joined_update(database, statement, out_plan);
+        rc = plan_joined_update(database, statement, out_plan);
+    } else {
+        rc = plan_single_table_update(database, statement, out_plan);
     }
-    return plan_single_table_update(database, statement, out_plan);
+    if (rc == MYLITE_OK) {
+        rc = plan_update_assignment_warnings(database, out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_update_deinit(out_plan);
+    }
+    return rc;
 }
 
 static int plan_single_table_update(
@@ -1034,12 +1044,14 @@ static void planned_update_deinit(struct planned_update *plan) {
     planned_column_aggregate_deinit(&plan->assignment_scalar_aggregate);
     planned_row_scalar_expression_deinit(&plan->assignment_scalar_aggregate_rhs);
     planned_row_scalar_expression_deinit(&plan->assignment_row_scalar_expression);
+    planned_scalar_warnings_deinit(&plan->assignment_warnings);
     planned_value_deinit(&plan->assignment_value);
     planned_value_deinit(&plan->auto_update_value);
     if (plan->assignments != NULL) {
         for (size_t index = 0U; index < plan->assignment_count; ++index) {
             planned_row_scalar_expression_deinit(&plan->assignments[index].row_scalar_expression);
             planned_value_deinit(&plan->assignments[index].value);
+            planned_scalar_warnings_deinit(&plan->assignments[index].warnings);
         }
     }
     free(plan->assignments);

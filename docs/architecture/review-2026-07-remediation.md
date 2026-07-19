@@ -245,7 +245,10 @@ complete.
   UPDATE and `ON DUPLICATE KEY UPDATE` same-column arithmetic plans now retain
   the parsed delta and its validity instead of a literal AST pointer. Deferred
   execution errors remain conditional on a matching UPDATE row or an actual
-  duplicate-key evaluation. Reusable prepared SELECT plans are now fully
+  duplicate-key evaluation. UPDATE post-success scalar warnings are also
+  analyzed into an ordered, owned warning plan; execution no longer walks the
+  assignment AST after mutation to rediscover deprecations or resolved system
+  variables. Reusable prepared SELECT plans are now fully
   AST-independent after analysis and lowering: they release the parse tree,
   execute warm plan hits without reparsing, and reparse once from owned SQL
   under the prepare-time lexer mode after type, schema, or session invalidation.

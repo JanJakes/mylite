@@ -378,10 +378,7 @@ static int append_update_assignment_warnings(
     if (planned_update_has_multiple_assignments(plan)) {
         for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
             if (!planned_update_assignment_is_noop(&plan->assignments[index])) {
-                rc = append_session_scalar_expression_warnings(
-                    database,
-                    plan->assignments[index].value_node
-                );
+                rc = append_planned_scalar_warnings(database, &plan->assignments[index].warnings);
             }
         }
         return rc;
@@ -389,5 +386,5 @@ static int append_update_assignment_warnings(
     if (plan->generated_default_noop) {
         return MYLITE_OK;
     }
-    return append_session_scalar_expression_warnings(database, plan->assignment_value_node);
+    return append_planned_scalar_warnings(database, &plan->assignment_warnings);
 }

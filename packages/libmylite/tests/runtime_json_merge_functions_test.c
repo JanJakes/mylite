@@ -291,6 +291,16 @@ static int test_table_backed_json_merge_values(void) {
         ("'JSON_MERGE' is deprecated and will be removed in a future release. Please use "
          "JSON_MERGE_PRESERVE/JSON_MERGE_PATCH instead"),
     };
+    static const char *const nested_warning_values[] = {
+        "Warning",
+        "1287",
+        ("'JSON_MERGE' is deprecated and will be removed in a future release. Please use "
+         "JSON_MERGE_PRESERVE/JSON_MERGE_PATCH instead"),
+        "Warning",
+        "1287",
+        ("'JSON_MERGE' is deprecated and will be removed in a future release. Please use "
+         "JSON_MERGE_PRESERVE/JSON_MERGE_PATCH instead"),
+    };
     static const char *const columns_updated[] = {"id", "j"};
     static const char *const values_updated[] = {
         "1",
@@ -384,6 +394,36 @@ static int test_table_backed_json_merge_values(void) {
             .values = warning_values,
             .row_count = 1U,
             .context = "JSON_MERGE update deprecation warning",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "UPDATE t SET j = JSON_MERGE(JSON_MERGE(j, doc_text), doc_text) WHERE id = 99",
+        &result
+    );
+    if (failures == 0) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "nested JSON_MERGE no-match update affected rows"
+        );
+        failures += expect_size(
+            mylite_result_warning_count(result),
+            2U,
+            "nested JSON_MERGE no-match update warning count"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = warning_columns,
+            .column_count = sizeof(warning_columns) / sizeof(warning_columns[0]),
+            .values = nested_warning_values,
+            .row_count = 2U,
+            .context = "nested JSON_MERGE no-match update deprecation warnings",
         }
     );
     failures += execute_ok(database, "UPDATE t SET doc_text = '{bad}' WHERE id = 1", NULL);

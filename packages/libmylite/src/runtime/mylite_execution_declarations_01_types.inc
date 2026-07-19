@@ -940,6 +940,29 @@ enum planned_update_assignment_value_kind {
     PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR = 4,
 };
 
+enum planned_scalar_warning_kind {
+    PLANNED_SCALAR_WARNING_FOUND_ROWS_DEPRECATED = 0,
+    PLANNED_SCALAR_WARNING_JSON_MERGE_DEPRECATED = 1,
+    PLANNED_SCALAR_WARNING_UTF8_ALIAS = 2,
+    PLANNED_SCALAR_WARNING_UTF8MB3_DEPRECATED = 3,
+    PLANNED_SCALAR_WARNING_SYSTEM_VARIABLE_READ = 4,
+};
+
+struct planned_scalar_warning {
+    enum planned_scalar_warning_kind kind;
+    enum mylite_execution_system_variable_kind system_variable;
+};
+
+struct planned_scalar_warnings {
+    struct planned_scalar_warning *items;
+    size_t count;
+    size_t capacity;
+};
+
+enum {
+    planned_scalar_warning_initial_capacity = 4,
+};
+
 enum {
     update_date_interval_parameter_count = 4,
 };
@@ -2486,6 +2509,7 @@ struct planned_update_assignment {
     enum planned_update_assignment_value_kind value_kind;
     struct planned_row_scalar_expression row_scalar_expression;
     struct planned_value value;
+    struct planned_scalar_warnings warnings;
     bool generated_default_noop;
 };
 
@@ -2521,6 +2545,7 @@ struct planned_update {
     struct planned_row_scalar_expression assignment_scalar_aggregate_rhs;
     struct planned_select assignment_subquery;
     struct planned_column_aggregate assignment_scalar_aggregate;
+    struct planned_scalar_warnings assignment_warnings;
     enum mylite_sql_ast_join_kind join_kind;
     enum planned_update_assignment_value_kind assignment_value_kind;
     enum mylite_sql_ast_operator arithmetic_operator;

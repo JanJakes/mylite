@@ -185,6 +185,7 @@ static bool source_span_equals_ascii_case_insensitive(
 );
 static int lowercase_ascii_byte(int byte);
 static void planned_update_deinit(struct planned_update *plan);
+static int plan_update_assignment_warnings(struct mylite_db *database, struct planned_update *plan);
 static bool planned_update_has_multiple_assignments(const struct planned_update *plan);
 static bool planned_update_assignment_is_noop(const struct planned_update_assignment *assignment);
 static const struct planned_update_assignment *planned_update_assignment_for_column(

@@ -176,6 +176,7 @@ expect_success \
 expect_success \
     "expression group and order keys" \
     "USE ${DATABASE}; "\
+"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'ONLY_FULL_GROUP_BY', ''); "\
 "SELECT c, COUNT(*) FROM t GROUP BY 1; "\
 "SELECT c, COUNT(*) FROM t GROUP BY c COLLATE utf8mb4_0900_ai_ci ORDER BY BINARY c; "\
 "SELECT c, SUM(n) FROM t GROUP BY c ORDER BY SUM(n) DESC;"

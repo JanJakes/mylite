@@ -98,7 +98,7 @@ b	NO" \
 
 expect_success \
     "temporal repeated nullability corpus ddl" \
-    "USE ${DATABASE}; CREATE TABLE temporal_residual ("\
+    "USE ${DATABASE}; SET sql_mode = ''; CREATE TABLE temporal_residual ("\
 "col_time_not_null_key time not null, "\
 "col_timestamp_6_not_null_key timestamp(6) not null NULL DEFAULT 0, "\
 "col_datetime_6_not_null_key datetime(6) not null, "\

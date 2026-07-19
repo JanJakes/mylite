@@ -140,9 +140,12 @@ Compatibility query bridges:
 
 Bridge admission is based on the parsed statement structure, including source
 tables, aliases, projections, predicates, join keys, grouping, ordering, union
-modifier, and literal values. Text inside comments or string literals cannot
-select a bridge. Extra clauses that a bridge does not implement are rejected
-instead of being silently ignored.
+modifier, and filter values. Filter values may be string literals or native
+prepared parameters for the listed bridge shapes. Parameter values are
+deferred during prepare-time object validation and resolved from typed bindings
+for each execution. Text inside comments or string literals cannot select a
+bridge. Extra clauses that a bridge does not implement are rejected instead of
+being silently ignored.
 
 Bridge results expose the same typed field descriptors as direct
 `INFORMATION_SCHEMA` projections. Source columns retain their source schema,

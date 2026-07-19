@@ -252,6 +252,7 @@ int mylite_execution_active_stmt_parameter_cell(
     const struct mylite_sql_ast_node *parameter,
     struct session_scalar_cell *out_cell
 );
+bool mylite_execution_active_stmt_is_analyzing_unbound_parameters(const struct mylite_db *database);
 int mylite_execution_scalar_base_conversion_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

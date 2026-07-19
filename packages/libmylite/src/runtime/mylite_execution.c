@@ -3104,6 +3104,12 @@ int mylite_execution_active_stmt_parameter_cell(
     return copy_active_stmt_parameter_cell(database, parameter, out_cell);
 }
 
+bool mylite_execution_active_stmt_is_analyzing_unbound_parameters(const struct mylite_db *database
+) {
+    return database != NULL && database->active_bound_statement != NULL &&
+           database->active_bound_statement->analyzing_unbound_parameters;
+}
+
 int mylite_execution_information_schema_copy_select_item_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *alias,

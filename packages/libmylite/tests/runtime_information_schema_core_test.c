@@ -52,6 +52,7 @@ static int test_information_schema_result_metadata(void);
 static int test_information_schema_core_queries(void);
 static int test_information_schema_wordpress_bridge_queries(void);
 static int test_information_schema_doctrine_bridge_queries(void);
+static int expect_doctrine_prepared_columns_query(mylite_db *database);
 static int seed_database(mylite_db *database);
 static int expect_drupal_prepared_table_exists_query(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
@@ -1267,7 +1268,6 @@ static int test_information_schema_core_queries(void) {
             .context = "dropped table metadata rows",
         }
     );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;
@@ -1735,9 +1735,82 @@ static int test_information_schema_doctrine_bridge_queries(void) {
             .context = "Doctrine STATISTICS information_schema bridge",
         }
     );
+    failures += expect_doctrine_prepared_columns_query(database);
 
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int expect_doctrine_prepared_columns_query(mylite_db *database) {
+    static const char sql[] =
+        "SELECT c.TABLE_NAME, c.COLUMN_NAME AS field, c.DATA_TYPE AS type, "
+        "c.COLUMN_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.CHARACTER_OCTET_LENGTH, "
+        "c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.IS_NULLABLE AS `null`, "
+        "c.COLUMN_KEY AS `key`, c.COLUMN_DEFAULT AS `default`, c.EXTRA, "
+        "c.COLUMN_COMMENT AS comment, c.CHARACTER_SET_NAME AS characterset, "
+        "c.COLLATION_NAME AS collation FROM information_schema.COLUMNS c "
+        "INNER JOIN information_schema.TABLES t ON t.TABLE_NAME = c.TABLE_NAME "
+        "WHERE c.TABLE_SCHEMA = ? AND t.TABLE_SCHEMA = ? AND t.TABLE_NAME = ? "
+        "AND t.TABLE_TYPE = 'BASE TABLE' ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION";
+    static const char *const expected_fields[] = {"id", "email", "name", "score"};
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_int(
+        mylite_prepare(database, sql, strlen(sql), &stmt),
+        MYLITE_OK,
+        "prepare Doctrine COLUMNS/TABLES information schema bridge"
+    );
+    if (stmt == NULL) {
+        return failures;
+    }
+    failures += expect_size(
+        mylite_stmt_parameter_count(stmt),
+        3U,
+        "Doctrine information schema parameter count"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "app", strlen("app")),
+        MYLITE_OK,
+        "bind Doctrine columns schema"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "app", strlen("app")),
+        MYLITE_OK,
+        "bind Doctrine tables schema"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 2U, "doctrine_users", strlen("doctrine_users")),
+        MYLITE_OK,
+        "bind Doctrine table name"
+    );
+    for (size_t row = 0U; row < sizeof(expected_fields) / sizeof(expected_fields[0]); ++row) {
+        failures +=
+            expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step Doctrine information schema row");
+        failures += expect_size(
+            mylite_stmt_column_count(stmt),
+            15U,
+            "Doctrine information schema column count"
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_value_text(stmt, 0U),
+            "doctrine_users",
+            "Doctrine information schema table name"
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_value_text(stmt, 1U),
+            expected_fields[row],
+            "Doctrine information schema field name"
+        );
+    }
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "finish Doctrine information schema query");
+    failures += expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize Doctrine information schema query"
+    );
     return failures;
 }
 

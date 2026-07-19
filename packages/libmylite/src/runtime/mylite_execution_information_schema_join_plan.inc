@@ -14,7 +14,7 @@ struct information_schema_join_compat_column_equality {
     struct information_schema_join_compat_column_reference right;
 };
 
-struct information_schema_join_compat_literal_filter {
+struct information_schema_join_compat_value_filter {
     const char *qualifier;
     const char *name;
     char **out_value;
@@ -79,12 +79,13 @@ static bool information_schema_join_compat_column_equalities_match(
     const struct information_schema_join_compat_column_equality *expected,
     size_t expected_count
 );
-static int information_schema_join_compat_copy_literal_filters(
+static int information_schema_join_compat_copy_filter_values(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate,
-    struct information_schema_join_compat_literal_filter *filters,
+    struct information_schema_join_compat_value_filter *filters,
     size_t filter_count,
-    bool *out_matches
+    bool *out_matches,
+    bool *out_has_deferred_values
 );
 static bool information_schema_join_compat_order_matches(
     const struct mylite_sql_ast_node *statement,
@@ -231,6 +232,8 @@ static int information_schema_join_compat_plan_columns_statistics_union(
     char *indexes_schema = NULL;
     char *indexes_table = NULL;
     bool filters_match = false;
+    bool columns_filters_have_deferred_values = false;
+    bool indexes_filters_have_deferred_values = false;
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
@@ -295,7 +298,7 @@ static int information_schema_join_compat_plan_columns_statistics_union(
         )) {
         return MYLITE_OK;
     }
-    rc = information_schema_join_compat_copy_literal_filters(
+    rc = information_schema_join_compat_copy_filter_values(
         database,
         child_at(
             information_schema_join_compat_direct_child_kind(
@@ -304,17 +307,18 @@ static int information_schema_join_compat_plan_columns_statistics_union(
             ),
             0U
         ),
-        (struct information_schema_join_compat_literal_filter[]){
+        (struct information_schema_join_compat_value_filter[]){
             {.name = "TABLE_SCHEMA", .out_value = &columns_schema},
             {.name = "TABLE_NAME", .out_value = &columns_table},
         },
         2U,
-        &filters_match
+        &filters_match,
+        &columns_filters_have_deferred_values
     );
     if (rc != MYLITE_OK || !filters_match) {
         goto cleanup;
     }
-    rc = information_schema_join_compat_copy_literal_filters(
+    rc = information_schema_join_compat_copy_filter_values(
         database,
         child_at(
             information_schema_join_compat_direct_child_kind(
@@ -323,16 +327,18 @@ static int information_schema_join_compat_plan_columns_statistics_union(
             ),
             0U
         ),
-        (struct information_schema_join_compat_literal_filter[]){
+        (struct information_schema_join_compat_value_filter[]){
             {.name = "TABLE_SCHEMA", .out_value = &indexes_schema},
             {.name = "TABLE_NAME", .out_value = &indexes_table},
         },
         2U,
-        &filters_match
+        &filters_match,
+        &indexes_filters_have_deferred_values
     );
     if (rc != MYLITE_OK || !filters_match ||
-        !mylite_execution_text_equals_ascii_case_insensitive(columns_schema, indexes_schema) ||
-        !mylite_execution_text_equals_ascii_case_insensitive(columns_table, indexes_table)) {
+        (!(columns_filters_have_deferred_values || indexes_filters_have_deferred_values) &&
+         (!mylite_execution_text_equals_ascii_case_insensitive(columns_schema, indexes_schema) ||
+          !mylite_execution_text_equals_ascii_case_insensitive(columns_table, indexes_table)))) {
         goto cleanup;
     }
     union_terms = child_at(compound, 1U);
@@ -440,7 +446,7 @@ static int information_schema_join_compat_plan_columns_statistics(
         )) {
         return MYLITE_OK;
     }
-    rc = information_schema_join_compat_copy_literal_filters(
+    rc = information_schema_join_compat_copy_filter_values(
         database,
         child_at(
             information_schema_join_compat_direct_child_kind(
@@ -449,12 +455,13 @@ static int information_schema_join_compat_plan_columns_statistics(
             ),
             0U
         ),
-        (struct information_schema_join_compat_literal_filter[]){
+        (struct information_schema_join_compat_value_filter[]){
             {.qualifier = "cols", .name = "TABLE_SCHEMA", .out_value = &out_plan->schema_name},
             {.qualifier = "cols", .name = "TABLE_NAME", .out_value = &out_plan->table_name},
         },
         2U,
-        &filters_match
+        &filters_match,
+        NULL
     );
     if (rc == MYLITE_OK && filters_match) {
         out_plan->kind = INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS;
@@ -498,6 +505,7 @@ static int information_schema_join_compat_plan_columns_tables(
     char *table_schema = NULL;
     char *table_type = NULL;
     bool filters_match = false;
+    bool filters_have_deferred_values = false;
     int rc = MYLITE_OK;
 
     *out_matches = false;
@@ -537,7 +545,7 @@ static int information_schema_join_compat_plan_columns_tables(
         )) {
         return MYLITE_OK;
     }
-    rc = information_schema_join_compat_copy_literal_filters(
+    rc = information_schema_join_compat_copy_filter_values(
         database,
         child_at(
             information_schema_join_compat_direct_child_kind(
@@ -546,18 +554,23 @@ static int information_schema_join_compat_plan_columns_tables(
             ),
             0U
         ),
-        (struct information_schema_join_compat_literal_filter[]){
+        (struct information_schema_join_compat_value_filter[]){
             {.qualifier = "c", .name = "TABLE_SCHEMA", .out_value = &out_plan->schema_name},
             {.qualifier = "t", .name = "TABLE_SCHEMA", .out_value = &table_schema},
             {.qualifier = "t", .name = "TABLE_NAME", .out_value = &out_plan->table_name},
             {.qualifier = "t", .name = "TABLE_TYPE", .out_value = &table_type},
         },
         4U,
-        &filters_match
+        &filters_match,
+        &filters_have_deferred_values
     );
     if (rc == MYLITE_OK && filters_match &&
-        mylite_execution_text_equals_ascii_case_insensitive(out_plan->schema_name, table_schema) &&
-        mylite_execution_text_equals_ascii_case_insensitive(table_type, "BASE TABLE")) {
+        (filters_have_deferred_values ||
+         (mylite_execution_text_equals_ascii_case_insensitive(
+              out_plan->schema_name,
+              table_schema
+          ) &&
+          mylite_execution_text_equals_ascii_case_insensitive(table_type, "BASE TABLE")))) {
         out_plan->kind = INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_TABLES;
         *out_matches = true;
     } else if (rc == MYLITE_OK) {
@@ -796,12 +809,13 @@ static bool information_schema_join_compat_column_equalities_match(
     return true;
 }
 
-static int information_schema_join_compat_copy_literal_filters(
+static int information_schema_join_compat_copy_filter_values(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate,
-    struct information_schema_join_compat_literal_filter *filters,
+    struct information_schema_join_compat_value_filter *filters,
     size_t filter_count,
-    bool *out_matches
+    bool *out_matches,
+    bool *out_has_deferred_values
 ) {
     const struct mylite_sql_ast_node *stack[information_schema_join_predicate_stack_capacity];
     bool matched[information_schema_join_predicate_stack_capacity] = {false};
@@ -814,6 +828,9 @@ static int information_schema_join_compat_copy_literal_filters(
         return MYLITE_MISUSE;
     }
     *out_matches = false;
+    if (out_has_deferred_values != NULL) {
+        *out_has_deferred_values = false;
+    }
     if (predicate == NULL) {
         return MYLITE_OK;
     }
@@ -841,12 +858,15 @@ static int information_schema_join_compat_copy_literal_filters(
         }
         column = child_at(current, 0U);
         literal = child_at(current, 1U);
-        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        if (literal == NULL || (literal->kind != MYLITE_SQL_AST_LITERAL &&
+                                literal->kind != MYLITE_SQL_AST_PARAMETER)) {
             column = child_at(current, 1U);
             literal = child_at(current, 0U);
         }
-        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING) {
+        if (literal == NULL ||
+            (literal->kind != MYLITE_SQL_AST_PARAMETER &&
+             (literal->kind != MYLITE_SQL_AST_LITERAL ||
+              mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING))) {
             break;
         }
         for (size_t index = 0U; index < filter_count; ++index) {
@@ -862,16 +882,53 @@ static int information_schema_join_compat_copy_literal_filters(
         if (match_index == filter_count) {
             break;
         }
-        size_t value_length = 0U;
+        if (literal->kind == MYLITE_SQL_AST_PARAMETER) {
+            struct session_scalar_cell cell = {0};
+            size_t value_length = 0U;
 
-        rc = mylite_execution_decode_sql_string_literal(
-            database,
-            literal,
-            "INFORMATION_SCHEMA compatibility filters require string literals",
-            "INFORMATION_SCHEMA compatibility filters do not support NUL bytes",
-            filters[match_index].out_value,
-            &value_length
-        );
+            if (mylite_execution_active_stmt_is_analyzing_unbound_parameters(database)) {
+                *filters[match_index].out_value = malloc(1U);
+                if (*filters[match_index].out_value == NULL) {
+                    mylite_execution_set_nomem_error(database);
+                    rc = MYLITE_NOMEM;
+                } else {
+                    (*filters[match_index].out_value)[0] = '\0';
+                    if (out_has_deferred_values != NULL) {
+                        *out_has_deferred_values = true;
+                    }
+                }
+            } else {
+                rc = mylite_execution_active_stmt_parameter_cell(database, literal, &cell);
+                if (rc == MYLITE_OK && cell.value == NULL) {
+                    break;
+                }
+                if (rc == MYLITE_OK) {
+                    value_length = cell.has_value_size ? cell.value_size : strlen(cell.value);
+                    if (memchr(cell.value, '\0', value_length) != NULL) {
+                        break;
+                    }
+                    *filters[match_index].out_value = malloc(value_length + 1U);
+                    if (*filters[match_index].out_value == NULL) {
+                        mylite_execution_set_nomem_error(database);
+                        rc = MYLITE_NOMEM;
+                    } else {
+                        memcpy(*filters[match_index].out_value, cell.value, value_length);
+                        (*filters[match_index].out_value)[value_length] = '\0';
+                    }
+                }
+            }
+        } else {
+            size_t value_length = 0U;
+
+            rc = mylite_execution_decode_sql_string_literal(
+                database,
+                literal,
+                "INFORMATION_SCHEMA compatibility filters require string literals or parameters",
+                "INFORMATION_SCHEMA compatibility filters do not support NUL bytes",
+                filters[match_index].out_value,
+                &value_length
+            );
+        }
         if (rc == MYLITE_OK) {
             matched[match_index] = true;
             ++leaf_count;
@@ -1201,6 +1258,7 @@ static int information_schema_join_compat_plan_dynamic_columns(
     const struct mylite_sql_ast_node *coalesce_arguments = child_at(coalesce, 0U);
     char *table_name = NULL;
     bool filters_match = false;
+    bool filters_have_deferred_values = false;
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
@@ -1303,20 +1361,22 @@ static int information_schema_join_compat_plan_dynamic_columns(
         information_schema_join_compat_has_direct_child_kind(inner, MYLITE_SQL_AST_LIMIT_CLAUSE)) {
         return MYLITE_OK;
     }
-    rc = information_schema_join_compat_copy_literal_filters(
+    rc = information_schema_join_compat_copy_filter_values(
         database,
         child_at(
             information_schema_join_compat_direct_child_kind(inner, MYLITE_SQL_AST_WHERE_CLAUSE),
             0U
         ),
-        (struct information_schema_join_compat_literal_filter[]){
+        (struct information_schema_join_compat_value_filter[]){
             {.qualifier = "c", .name = "table_name", .out_value = &table_name},
         },
         1U,
-        &filters_match
+        &filters_match,
+        &filters_have_deferred_values
     );
     if (rc == MYLITE_OK && filters_match &&
-        mylite_execution_text_equals_ascii_case_insensitive(table_name, "t")) {
+        (filters_have_deferred_values ||
+         mylite_execution_text_equals_ascii_case_insensitive(table_name, "t"))) {
         *out_matches = true;
     }
     free(table_name);

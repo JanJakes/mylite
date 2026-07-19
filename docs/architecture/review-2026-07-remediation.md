@@ -443,6 +443,11 @@ complete.
   leak detection. The full sweep exposed and fixed retained heap-backed AST
   cache chunks plus lost ownership of allocated IF/CASE scalar results; the
   installed pkg-config consumer also propagates sanitizer runtime linkage.
+  A separate PHP-extension tier runs all eight adapter suites under strict
+  ASan+UBSan. Leak detection remains enforced by the complete native tier but
+  is disabled for the PHP host process because an empty stock `php -r ''`
+  invocation reproduces its process-global libxml allocation set without any
+  MyLite module loaded.
 - [x] Add focused LSan and deterministic TSan concurrency tiers. Leak detection
   covers the complete native suite. The labeled two-test TSan tier passes for
   PROCESSLIST publication and active-reader/writer contention. The latter uses

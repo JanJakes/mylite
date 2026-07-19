@@ -113,6 +113,15 @@
       }
     },
     {
+      "name": "php-asan-ubsan",
+      "displayName": "PHP extensions with AddressSanitizer and UndefinedBehaviorSanitizer",
+      "inherits": "asan-ubsan",
+      "binaryDir": "${sourceDir}/build/php-asan-ubsan",
+      "cacheVariables": {
+        "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
+      }
+    },
+    {
       "name": "tsan",
       "displayName": "Debug build with ThreadSanitizer",
       "inherits": "dev",
@@ -186,6 +195,15 @@
     {
       "name": "asan-ubsan",
       "configurePreset": "asan-ubsan"
+    },
+    {
+      "name": "php-asan-ubsan",
+      "configurePreset": "php-asan-ubsan",
+      "targets": [
+        "mylite_php_extension",
+        "mylite_php_mysqli_extension",
+        "mylite_php_pdo_extension"
+      ]
     },
     {
       "name": "tsan",
@@ -285,6 +303,22 @@
       },
       "environment": {
         "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1:strict_string_checks=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      }
+    },
+    {
+      "name": "php-asan-ubsan",
+      "configurePreset": "php-asan-ubsan",
+      "filter": {
+        "include": {
+          "name": "^php-ext"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1:strict_string_checks=1",
         "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
       }
     },

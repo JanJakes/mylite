@@ -199,6 +199,8 @@ jobs:
         include:
           - name: asan-ubsan
             preset: asan-ubsan
+          - name: php-asan-ubsan
+            preset: php-asan-ubsan
           - name: tsan-concurrency
             preset: tsan
           - name: allocator-fault-injection
@@ -212,7 +214,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang libclang-rt-dev ninja-build
+          sudo apt-get install -y clang libclang-rt-dev ninja-build php-cli php-dev
 
       - name: Configure
         env:
@@ -223,16 +225,25 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test
-        run: >-
-          ctest --preset ${{ matrix.preset }} --output-on-failure
-          --output-junit build/${{ matrix.preset }}/ctest.xml
+        run: |
+          if [ '${{ matrix.preset }}' = php-asan-ubsan ]; then
+            sanitizer_runtime=$(clang -print-file-name=libclang_rt.asan-x86_64.so)
+            LD_PRELOAD="$sanitizer_runtime" \
+              ctest --preset '${{ matrix.preset }}' --output-on-failure \
+                --output-junit 'build/${{ matrix.preset }}/ctest.xml'
+          else
+            ctest --preset '${{ matrix.preset }}' --output-on-failure \
+              --output-junit 'build/${{ matrix.preset }}/ctest.xml'
+          fi
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ctest-${{ matrix.name }}
-          path: build/${{ matrix.preset }}/ctest.xml
+          path: |
+            build/${{ matrix.preset }}/ctest.xml
+            build/fuzz/packages/libmylite/fuzz/artifacts
           if-no-files-found: ignore
 
   clang-tools:

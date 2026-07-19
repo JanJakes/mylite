@@ -103,7 +103,10 @@ static int execute_update_from_plan(
         return report_update_execution_error(database, rc);
     }
 
-    mylite_result_set_affected_rows(result, affected_rows);
+    mylite_result_set_affected_rows(
+        result,
+        database->session.client_found_rows ? (int64_t)matched_row_count : affected_rows
+    );
     {
         char info[update_info_buffer_capacity];
         size_t warning_count =

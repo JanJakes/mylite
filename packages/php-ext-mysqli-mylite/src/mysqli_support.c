@@ -328,6 +328,7 @@ bool mylite_mysqli_connect_link(
     zend_long flags
 ) {
     static const zend_long default_port = 3306;
+    static const zend_long supported_client_flags = MYLITE_MYSQLI_CLIENT_FOUND_ROWS;
     struct mylite_open_diagnostic diagnostic;
     bool memory = false;
     bool use_database = false;
@@ -335,12 +336,14 @@ bool mylite_mysqli_connect_link(
     int status = MYLITE_OK;
 
     mylite_mysqli_clear_error(link);
-    if ((!port_is_null && port != 0 && port != default_port) || flags != 0) {
+    if ((!port_is_null && port != 0 && port != default_port) ||
+        (flags & ~supported_client_flags) != 0) {
         mylite_mysqli_set_connect_error(
             link,
             MYLITE_MYSQLI_ERROR_UNSUPPORTED,
             "42000",
-            "non-default network ports and client flags are not supported by the embedded driver"
+            "non-default network ports and unsupported client flags are not supported by the "
+            "embedded driver"
         );
         return false;
     }
@@ -380,6 +383,21 @@ bool mylite_mysqli_connect_link(
             MYLITE_MYSQLI_ERROR_CONNECTION,
             diagnostic.sqlstate,
             diagnostic.message
+        );
+        return false;
+    }
+    status = mylite_set_client_found_rows(
+        link->database,
+        (flags & MYLITE_MYSQLI_CLIENT_FOUND_ROWS) != 0
+    );
+    if (status != MYLITE_OK) {
+        mylite_close(link->database);
+        link->database = NULL;
+        mylite_mysqli_set_connect_error(
+            link,
+            MYLITE_MYSQLI_ERROR_CLIENT,
+            "HY000",
+            "could not configure client found-row behavior"
         );
         return false;
     }

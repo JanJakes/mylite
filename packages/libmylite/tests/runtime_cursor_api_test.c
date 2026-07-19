@@ -1825,6 +1825,11 @@ static int test_native_prepared_dml_bindings(void) {
     mylite_stmt *stmt = NULL;
     int failures = 0;
 
+    failures += expect_int(
+        mylite_set_client_found_rows(NULL, 1),
+        MYLITE_MISUSE,
+        "reject null client found rows database"
+    );
     if (make_test_path(path, sizeof(path), "native_dml_bindings") != 0) {
         return 1;
     }
@@ -1963,6 +1968,33 @@ static int test_native_prepared_dml_bindings(void) {
         mylite_stmt_info(stmt),
         "Rows matched: 1  Changed: 1  Warnings: 0",
         "native UPDATE info"
+    );
+    failures += expect_int(
+        mylite_set_client_found_rows(database, 1),
+        MYLITE_OK,
+        "enable native UPDATE found rows"
+    );
+    failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native UPDATE found rows");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native UPDATE found rows");
+    failures +=
+        expect_true(mylite_stmt_affected_rows(stmt) == 1, "native UPDATE matched affected rows");
+    failures += expect_text(
+        mylite_stmt_info(stmt),
+        "Rows matched: 1  Changed: 0  Warnings: 0",
+        "native UPDATE found rows info"
+    );
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT ROW_COUNT()",
+            .expected = "1",
+            .context = "native UPDATE found rows row count",
+        }
+    );
+    failures += expect_int(
+        mylite_set_client_found_rows(database, 0),
+        MYLITE_OK,
+        "disable native UPDATE found rows"
     );
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native UPDATE");
     stmt = NULL;

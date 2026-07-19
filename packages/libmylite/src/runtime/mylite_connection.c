@@ -156,6 +156,15 @@ int mylite_close_checked(mylite_db *database) {
     return MYLITE_OK;
 }
 
+int mylite_set_client_found_rows(mylite_db *database, int enabled) {
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->session.client_found_rows = enabled != 0;
+    return MYLITE_OK;
+}
+
 int mylite_session_no_backslash_escapes(const mylite_db *database) {
     if (database == NULL) {
         return -1;
@@ -739,6 +748,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->big_tables = false;
     session->foreign_key_checks_enabled = true;
     session->sql_require_primary_key = false;
+    session->client_found_rows = false;
     mylite_temporary_catalog_init(&session->temporary_catalog);
     session->connection_id = allocate_session_connection_id();
     session->previous_row_count = -1;

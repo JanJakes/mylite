@@ -132,6 +132,8 @@ MYLITE_API void mylite_close(mylite_db *database);
  * detached and are valid only for finalize.
  */
 MYLITE_API int mylite_close_checked(mylite_db *database);
+/* Nonzero enables MySQL CLIENT_FOUND_ROWS affected-row semantics for UPDATE. */
+MYLITE_API int mylite_set_client_found_rows(mylite_db *database, int enabled);
 
 /* On success, out_result is caller-owned and must be released with result_free. */
 MYLITE_API int mylite_execute(

@@ -299,6 +299,7 @@ struct mylite_session_state {
     bool big_tables;
     bool foreign_key_checks_enabled;
     bool sql_require_primary_key;
+    bool client_found_rows;
     bool low_priority_updates;
     bool autocommit_enabled;
     bool user_transaction_active;

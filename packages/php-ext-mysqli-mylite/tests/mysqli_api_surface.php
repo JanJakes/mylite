@@ -62,11 +62,53 @@ expect_false(
 expect_same(1235, mysqli_connect_errno(), 'non-default network port connect errno');
 expect_same(1235, $portLink->connect_errno, 'non-default network port object errno');
 $flagLink = mysqli_init();
-expect_false(
-    $flagLink->real_connect('localhost', '', '', null, 0, null, MYSQLI_CLIENT_FOUND_ROWS),
-    'client flags must be rejected'
+expect_true(
+    $flagLink->real_connect(':memory:', '', '', null, 0, null, MYSQLI_CLIENT_FOUND_ROWS),
+    'found-rows client flag must be accepted'
 );
-expect_same(1235, $flagLink->connect_errno, 'client flag connect errno');
+expect_true($flagLink->query('CREATE DATABASE found_rows'), 'create found-rows database');
+expect_true($flagLink->query('USE found_rows'), 'select found-rows database');
+expect_true(
+    $flagLink->query('CREATE TABLE values_table (id INT PRIMARY KEY, value INT NOT NULL)'),
+    'create found-rows table'
+);
+expect_true(
+    $flagLink->query('INSERT INTO values_table VALUES (1, 10), (2, 10)'),
+    'seed found-rows table'
+);
+expect_true(
+    $flagLink->query('UPDATE values_table SET value = 10 WHERE id >= 1'),
+    'execute found-rows direct update'
+);
+expect_same(2, $flagLink->affected_rows, 'direct update matched rows');
+expect_same(
+    '2',
+    $flagLink->query('SELECT ROW_COUNT()')->fetch_column(),
+    'direct update matched SQL row count'
+);
+$flagStatement = $flagLink->prepare('UPDATE values_table SET value = ? WHERE id >= ?');
+expect_true($flagStatement->execute([10, 1]), 'execute found-rows prepared update');
+expect_same(2, $flagStatement->affected_rows, 'prepared statement matched rows');
+expect_same(2, $flagLink->affected_rows, 'prepared link matched rows');
+expect_same(
+    '2',
+    $flagLink->query('SELECT ROW_COUNT()')->fetch_column(),
+    'prepared update matched SQL row count'
+);
+$unsupportedFlagLink = mysqli_init();
+expect_false(
+    $unsupportedFlagLink->real_connect(
+        ':memory:',
+        '',
+        '',
+        null,
+        0,
+        null,
+        MYSQLI_CLIENT_FOUND_ROWS | MYSQLI_CLIENT_COMPRESS
+    ),
+    'mixed unsupported client flags must be rejected'
+);
+expect_same(1235, $unsupportedFlagLink->connect_errno, 'unsupported client flag connect errno');
 
 expect_false($mysqli->query('SELECT 1', MYSQLI_ASYNC), 'async query mode must be rejected');
 expect_same(1235, $mysqli->errno, 'async query mode errno');

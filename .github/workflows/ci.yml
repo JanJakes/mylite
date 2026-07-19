@@ -320,6 +320,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install client expectation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-mysql
+
       - name: Run isolated MySQL runtime expectation scripts
         run: tools/run-mysql-runtime-expectations
 

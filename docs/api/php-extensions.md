@@ -72,3 +72,10 @@ For mysqli callers, pass the `.mylite` file as a socket path, as a path-like
 host, or as `localhost:/path/to/file.mylite` for WordPress-style DB host
 parsing. The replacement module must be loaded in a PHP process that has not
 already loaded PHP's stock `mysqli` module.
+
+The mysqli replacement accepts `MYSQLI_CLIENT_FOUND_ROWS` during
+`mysqli_real_connect()`. Direct and native prepared UPDATEs then expose rows
+matched by the predicate through the connection and statement
+`affected_rows` properties. Connections without the flag expose changed rows,
+and SQL `ROW_COUNT()` follows the same connection policy. Other nonzero client
+flags remain unsupported.

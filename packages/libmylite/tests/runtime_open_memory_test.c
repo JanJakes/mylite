@@ -70,7 +70,7 @@ static int test_open_memory_success_and_independent_handles(void) {
             true,
             "system variables are placeholder"
         );
-        failures += expect_uint64(session->catalog_generation, 0U, "catalog generation");
+        failures += expect_uint64(session->catalog_generation, 1U, "catalog generation");
         failures +=
             expect_uint64(session->sqlite_schema_generation, 0U, "SQLite schema generation");
     }

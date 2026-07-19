@@ -433,7 +433,8 @@ static int validate_catalog_table_checks(sqlite3 *sqlite, const struct catalog_t
     if (rc == MYLITE_OK) {
         sql = (const char *)sqlite3_column_text(statement, 0);
         for (size_t index = 0U; index < spec->check_count; ++index) {
-            if (sql == NULL || !normalized_sql_contains((struct normalized_sql_search
+            if (sql == NULL || !normalized_sql_contains((
+                                   struct normalized_sql_search
                                ){.sql = sql, .fragment = spec->checks[index]})) {
                 rc = MYLITE_ERROR;
                 break;
@@ -544,8 +545,11 @@ static int validate_catalog_indexes(sqlite3 *sqlite) {
          true,
          index_ordinal,
          MYLITE_ARRAY_COUNT(index_ordinal)},
-        {"_mylite_catalog_index_columns", NULL, true, index_column, MYLITE_ARRAY_COUNT(index_column)
-        },
+        {"_mylite_catalog_index_columns",
+         NULL,
+         true,
+         index_column,
+         MYLITE_ARRAY_COUNT(index_column)},
         {"_mylite_catalog_foreign_keys", NULL, true, child_name, MYLITE_ARRAY_COUNT(child_name)},
         {"_mylite_catalog_foreign_keys",
          "_mylite_catalog_foreign_keys_parent_table_id",
@@ -557,8 +561,11 @@ static int validate_catalog_indexes(sqlite3 *sqlite) {
          true,
          foreign_key_ordinal,
          MYLITE_ARRAY_COUNT(foreign_key_ordinal)},
-        {"_mylite_catalog_check_constraints", NULL, true, table_name, MYLITE_ARRAY_COUNT(table_name)
-        },
+        {"_mylite_catalog_check_constraints",
+         NULL,
+         true,
+         table_name,
+         MYLITE_ARRAY_COUNT(table_name)},
         {"_mylite_catalog_check_constraints",
          NULL,
          true,
@@ -806,7 +813,11 @@ static int validate_physical_schema(sqlite3 *sqlite) {
         "JOIN _mylite_catalog_tables AS t ON t.table_id = c.table_id "
         "JOIN pragma_table_xinfo(t.physical_name) AS p ON p.name = c.name "
         "WHERE t.kind = 1 AND (UPPER(TRIM(p.type)) <> UPPER(TRIM(c.physical_type)) "
-        "OR p.\"notnull\" <> CASE c.is_nullable WHEN 1 THEN 0 ELSE 1 END "
+        "OR (p.\"notnull\" <> CASE c.is_nullable WHEN 1 THEN 0 ELSE 1 END AND NOT ("
+        "c.is_nullable = 0 AND p.\"notnull\" = 0 AND EXISTS ("
+        "SELECT 1 FROM _mylite_catalog_indexes AS pki "
+        "JOIN _mylite_catalog_index_columns AS pkic ON pkic.index_id = pki.index_id "
+        "WHERE pki.table_id = c.table_id AND pki.kind = 1 AND pkic.column_id = c.column_id))) "
         "OR p.hidden <> CASE WHEN c.is_generated = 0 THEN 0 "
         "WHEN c.generated_kind = 2 THEN 3 ELSE 2 END) LIMIT 1",
         "SELECT 1 FROM _mylite_catalog_columns AS c "
@@ -814,7 +825,8 @@ static int validate_physical_schema(sqlite3 *sqlite) {
         "JOIN sqlite_schema AS s ON s.name = t.physical_name AND s.type = 'table' "
         "WHERE t.kind = 1 AND c.is_generated = 1 AND INSTR("
         "REPLACE(REPLACE(REPLACE(REPLACE(LOWER(s.sql), ' ', ''), CHAR(9), ''), CHAR(10), ''), "
-        "CHAR(13), ''), '""' || REPLACE(LOWER(c.name), '""', '""""') || '""' || "
+        "CHAR(13), ''), CHAR(34) || REPLACE(LOWER(c.name), CHAR(34), "
+        "CHAR(34) || CHAR(34)) || CHAR(34) || "
         "LOWER(c.physical_type) || 'generatedalwaysas(' || "
         "REPLACE(REPLACE(REPLACE(REPLACE(LOWER(c.sqlite_generation_expression), ' ', ''), "
         "CHAR(9), ''), CHAR(10), ''), CHAR(13), '') || ')' || "
@@ -824,8 +836,9 @@ static int validate_physical_schema(sqlite3 *sqlite) {
         "JOIN sqlite_schema AS s ON s.name = t.physical_name AND s.type = 'table' "
         "WHERE t.kind = 1 AND cc.is_enforced = 1 AND INSTR("
         "REPLACE(REPLACE(REPLACE(REPLACE(LOWER(s.sql), ' ', ''), CHAR(9), ''), CHAR(10), ''), "
-        "CHAR(13), ''), 'constraint""' || "
-        "REPLACE(LOWER(cc.physical_name), '""', '""""') || '""check(' || "
+        "CHAR(13), ''), 'constraint' || CHAR(34) || "
+        "REPLACE(LOWER(cc.physical_name), CHAR(34), CHAR(34) || CHAR(34)) || "
+        "CHAR(34) || 'check(' || "
         "REPLACE(REPLACE(REPLACE(REPLACE(LOWER(cc.sqlite_expression), ' ', ''), CHAR(9), ''), "
         "CHAR(10), ''), CHAR(13), '') || ')') = 0 LIMIT 1",
         "SELECT 1 FROM _mylite_catalog_indexes AS i "

@@ -600,29 +600,23 @@ static bool placeholder_scan_find_matching_right_paren(
     size_t left_paren_index,
     size_t *out_right_paren_index
 ) {
-    int paren_depth = 0;
+    size_t right_paren_index = 0U;
 
     if (scan == NULL || left_paren_index >= scan->token_count ||
+        scan->matching_parenthesis_indexes == NULL ||
         !mylite_sql_parser_token_is_left_paren(&scan->tokens[left_paren_index])) {
         return false;
     }
-    for (size_t index = left_paren_index; index < scan->token_count; ++index) {
-        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-            ++paren_depth;
-        } else if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
-            --paren_depth;
-            if (paren_depth < 0) {
-                return false;
-            }
-            if (paren_depth == 0) {
-                if (out_right_paren_index != NULL) {
-                    *out_right_paren_index = index;
-                }
-                return true;
-            }
-        }
+    right_paren_index = scan->matching_parenthesis_indexes[left_paren_index];
+    if (right_paren_index == SIZE_MAX || right_paren_index <= left_paren_index ||
+        right_paren_index >= scan->token_count ||
+        !mylite_sql_parser_token_is_right_paren(&scan->tokens[right_paren_index])) {
+        return false;
     }
-    return false;
+    if (out_right_paren_index != NULL) {
+        *out_right_paren_index = right_paren_index;
+    }
+    return true;
 }
 
 static bool placeholder_scan_query_expression_starts_at(
@@ -878,41 +872,13 @@ static bool placeholder_scan_function_call_arguments_are_well_formed(
     size_t left_paren_index,
     size_t right_paren_index
 ) {
-    int paren_depth = 0;
-    bool previous_top_level_token_was_separator = true;
-
-    if (scan == NULL || left_paren_index + 1U >= right_paren_index) {
+    if (scan == NULL || left_paren_index + 1U >= right_paren_index ||
+        scan->matching_parenthesis_indexes == NULL || scan->parenthesis_flags == NULL ||
+        scan->matching_parenthesis_indexes[left_paren_index] != right_paren_index) {
         return false;
     }
-    for (size_t index = left_paren_index + 1U; index < right_paren_index; ++index) {
-        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-            ++paren_depth;
-            previous_top_level_token_was_separator = false;
-            continue;
-        }
-        if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
-            --paren_depth;
-            if (paren_depth < 0) {
-                return false;
-            }
-            if (paren_depth == 0) {
-                previous_top_level_token_was_separator = false;
-            }
-            continue;
-        }
-        if (paren_depth != 0) {
-            continue;
-        }
-        if (!mylite_sql_parser_token_is_comma(&scan->tokens[index])) {
-            previous_top_level_token_was_separator = false;
-            continue;
-        }
-        if (previous_top_level_token_was_separator) {
-            return false;
-        }
-        previous_top_level_token_was_separator = true;
-    }
-    return paren_depth == 0 && !previous_top_level_token_was_separator;
+    return (scan->parenthesis_flags[left_paren_index] &
+            placeholder_parenthesis_has_well_formed_arguments) != 0U;
 }
 
 static bool placeholder_scan_token_can_follow_function_call_surface(
@@ -2537,34 +2503,20 @@ static bool placeholder_scan_row_tuple_starts_at(
     size_t *out_right_paren_index
 ) {
     size_t right_paren_index = 0U;
-    int paren_depth = 0;
 
     if (!placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
         right_paren_index <= left_paren_index + 2U ||
         placeholder_scan_left_paren_starts_function_arguments(scan, left_paren_index) ||
-        placeholder_scan_query_expression_starts_at(scan, left_paren_index + 1U)) {
+        placeholder_scan_query_expression_starts_at(scan, left_paren_index + 1U) ||
+        scan->parenthesis_flags == NULL ||
+        (scan->parenthesis_flags[left_paren_index] & placeholder_parenthesis_has_top_level_comma) ==
+            0U) {
         return false;
     }
-    for (size_t index = left_paren_index + 1U; index < right_paren_index; ++index) {
-        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-            ++paren_depth;
-            continue;
-        }
-        if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
-            --paren_depth;
-            if (paren_depth < 0) {
-                return false;
-            }
-            continue;
-        }
-        if (paren_depth == 0 && mylite_sql_parser_token_is_comma(&scan->tokens[index])) {
-            if (out_right_paren_index != NULL) {
-                *out_right_paren_index = right_paren_index;
-            }
-            return true;
-        }
+    if (out_right_paren_index != NULL) {
+        *out_right_paren_index = right_paren_index;
     }
-    return false;
+    return true;
 }
 
 static bool placeholder_scan_left_paren_starts_function_arguments(
@@ -3809,52 +3761,40 @@ static bool placeholder_scan_parentheses_are_balanced(
     const struct placeholder_statement_scan *scan,
     size_t start_index
 ) {
-    int paren_depth = 0;
-
     if (scan == NULL || start_index > scan->token_count) {
         return false;
     }
-    for (size_t index = start_index; index < scan->token_count; ++index) {
-        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-            ++paren_depth;
-        } else if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
-            --paren_depth;
-            if (paren_depth < 0) {
-                return false;
+    if (start_index == 0U) {
+        return scan->parentheses_balanced;
+    }
+    {
+        int paren_depth = 0;
+
+        for (size_t index = start_index; index < scan->token_count; ++index) {
+            if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
+                ++paren_depth;
+            } else if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
+                --paren_depth;
+                if (paren_depth < 0) {
+                    return false;
+                }
             }
         }
+        return paren_depth == 0;
     }
-    return paren_depth == 0;
 }
 
 static bool placeholder_scan_parenthesized_operand_is_complete(
     const struct placeholder_statement_scan *scan,
     size_t left_paren_index
 ) {
-    int paren_depth = 0;
+    size_t right_paren_index = 0U;
 
-    if (scan == NULL || left_paren_index >= scan->token_count ||
-        !mylite_sql_parser_token_is_left_paren(&scan->tokens[left_paren_index])) {
+    if (!placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index)) {
         return false;
     }
-    for (size_t index = left_paren_index; index < scan->token_count; ++index) {
-        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-            ++paren_depth;
-            continue;
-        }
-        if (!mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
-            continue;
-        }
-        --paren_depth;
-        if (paren_depth < 0) {
-            return false;
-        }
-        if (paren_depth == 0) {
-            return index > left_paren_index + 1U &&
-                   !mylite_sql_parser_token_is_comma(&scan->tokens[index - 1U]);
-        }
-    }
-    return false;
+    return right_paren_index > left_paren_index + 1U &&
+           !mylite_sql_parser_token_is_comma(&scan->tokens[right_paren_index - 1U]);
 }
 
 static bool placeholder_scan_token_is_comparison_operator(

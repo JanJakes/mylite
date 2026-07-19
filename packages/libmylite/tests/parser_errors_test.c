@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum {
+    syntax_retry_callback_count = 8,
+};
+
 static int test_syntax_errors(void);
 static int test_large_nested_syntax_error(void);
 static int test_lexer_errors(void);
@@ -29,6 +33,16 @@ static int test_syntax_errors(void) {
         fprintf(stderr, "expected syntax error token FROM\n");
         failures = 1;
     }
+    if (result.retry_tokenization_count != 1U ||
+        result.retry_callback_count != syntax_retry_callback_count) {
+        fprintf(
+            stderr,
+            "expected one shared tokenization across eight retries, got %zu and %zu\n",
+            result.retry_tokenization_count,
+            result.retry_callback_count
+        );
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT 1 +;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -41,6 +55,10 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT 1 WHERE TRUE;", MYLITE_SQL_PARSE_OK, &result);
+    if (result.retry_tokenization_count != 0U || result.retry_callback_count != 0U) {
+        fprintf(stderr, "successful parse unexpectedly initialized syntax recovery\n");
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -1807,9 +1825,9 @@ static int test_large_nested_syntax_error(void) {
     static const char prefix[] = "SELECT ";
     static const char separator[] = ", ";
     static const char suffix[] = " +;";
-    size_t expression_size = (size_t)parenthesis_depth * 2U + 1U;
-    size_t sql_size = sizeof(prefix) - 1U + (size_t)expression_count * expression_size +
-                      (size_t)(expression_count - 1) * (sizeof(separator) - 1U) + sizeof(suffix) -
+    size_t expression_size = ((size_t)parenthesis_depth * 2U) + 1U;
+    size_t sql_size = (sizeof(prefix) - 1U) + ((size_t)expression_count * expression_size) +
+                      ((size_t)(expression_count - 1) * (sizeof(separator) - 1U)) + sizeof(suffix) -
                       1U;
     char *sql = (char *)malloc(sql_size + 1U);
     char *cursor = sql;
@@ -1836,6 +1854,16 @@ static int test_large_nested_syntax_error(void) {
     memcpy(cursor, suffix, sizeof(suffix));
 
     failures += parser_test_parse_sql(sql, MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    if (result.retry_tokenization_count != 1U ||
+        result.retry_callback_count != syntax_retry_callback_count) {
+        fprintf(
+            stderr,
+            "nested syntax recovery used %zu tokenizations across %zu callbacks\n",
+            result.retry_tokenization_count,
+            result.retry_callback_count
+        );
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
     free(sql);
     return failures;

@@ -15,3 +15,12 @@ if(MYLITE_ENABLE_PROFILING)
   target_compile_definitions(mylite_benchmark PRIVATE MYLITE_ENABLE_PROFILING=1)
 endif()
 mylite_configure_c_target(mylite_benchmark)
+
+add_executable(mylite_parser_recovery_benchmark EXCLUDE_FROM_ALL
+  benchmarks/mylite_parser_recovery_benchmark.c
+)
+target_link_libraries(mylite_parser_recovery_benchmark PRIVATE MyLite::mylite)
+target_include_directories(mylite_parser_recovery_benchmark PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+mylite_configure_c_target(mylite_parser_recovery_benchmark)

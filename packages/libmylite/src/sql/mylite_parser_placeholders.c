@@ -23,9 +23,13 @@ enum placeholder_statement_kind {
 
 struct placeholder_statement_scan {
     const struct mylite_sql_token *tokens;
+    const size_t *matching_parenthesis_indexes;
+    const size_t *left_parenthesis_run_predecessors;
+    const unsigned char *parenthesis_flags;
     uint8_t *predicate_context_flags;
     size_t token_count;
     bool has_non_trailing_semicolon;
+    bool parentheses_balanced;
 };
 
 struct mylite_sql_parse_error {
@@ -76,6 +80,11 @@ enum {
     row_bitwise_order_by_min_token_count = 5,
     placeholder_predicate_context_in_where = 1U << 0,
     placeholder_predicate_context_top_level_where = 1U << 1,
+    placeholder_parenthesis_has_top_level_comma = 1U << 0,
+    placeholder_parenthesis_has_well_formed_arguments = 1U << 1,
+    placeholder_parenthesis_saw_argument_token = 1U << 2,
+    placeholder_parenthesis_previous_token_was_separator = 1U << 3,
+    placeholder_parenthesis_has_malformed_arguments = 1U << 4,
 };
 
 enum placeholder_row_bitwise_order_key_end_mode {
@@ -882,6 +891,37 @@ static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
     struct mylite_sql_token **out_tokens,
     size_t *out_token_count,
     bool *out_has_non_trailing_semicolon
+);
+static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
+    struct mylite_sql_parser_retry_context *context
+);
+static bool placeholder_retry_context_has_parenthesis(
+    const struct mylite_sql_parser_retry_context *context
+);
+static void placeholder_parenthesis_index_push(
+    struct mylite_sql_parser_retry_context *context,
+    size_t index,
+    size_t *open_parentheses,
+    size_t *open_parenthesis_count
+);
+static void placeholder_parenthesis_index_pop(
+    struct mylite_sql_parser_retry_context *context,
+    size_t index,
+    const size_t *open_parentheses,
+    size_t *open_parenthesis_count
+);
+static void placeholder_parenthesis_index_record_token(
+    struct mylite_sql_parser_retry_context *context,
+    size_t index,
+    const size_t *open_parentheses,
+    size_t open_parenthesis_count
+);
+static void build_left_parenthesis_run_predecessors(
+    const struct mylite_sql_parser_retry_context *context,
+    size_t *out_predecessors
+);
+static struct placeholder_statement_scan placeholder_statement_scan_from_retry_context(
+    const struct mylite_sql_parser_retry_context *context
 );
 static enum mylite_sql_parse_status scan_placeholder_lexer_tokens(
     struct mylite_sql_lexer *lexer,

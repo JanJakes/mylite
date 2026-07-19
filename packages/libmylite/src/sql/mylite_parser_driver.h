@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 
+struct mylite_sql_parser_retry_context;
+
 void *mylite_sql_lemonAlloc(void *(*malloc_proc)(size_t));
 void mylite_sql_lemon(
     void *parser,
@@ -25,7 +27,8 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon(
 enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *out_result,
-    bool inject_parenthesized_row_constructors
+    bool inject_parenthesized_row_constructors,
+    const struct mylite_sql_parser_retry_context *retry_context
 );
 void mylite_sql_parser_reset_parse_result(struct mylite_sql_parse_result *out_result);
 enum mylite_sql_parse_status mylite_sql_parser_push_version_comment_payload_lexer(

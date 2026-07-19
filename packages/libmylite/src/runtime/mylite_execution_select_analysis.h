@@ -16,12 +16,16 @@ struct mylite_select_analysis_session_key {
     bool sql_auto_is_null;
 };
 
+struct mylite_select_analysis_generation_key {
+    uint64_t catalog;
+    uint64_t sqlite_schema;
+};
+
 struct mylite_select_analysis_state {
     char *lowered_sql;
     enum mylite_stmt_binding_type *binding_types;
     struct mylite_select_analysis_session_key session_key;
-    uint64_t catalog_generation;
-    uint64_t sqlite_schema_generation;
+    struct mylite_select_analysis_generation_key generation_key;
     size_t binding_type_count;
     bool parameter_values_are_reusable;
     bool valid;
@@ -36,16 +40,14 @@ bool mylite_execution_select_analysis_matches(
     const struct mylite_stmt_binding *bindings,
     size_t binding_count,
     struct mylite_select_analysis_session_key session_key,
-    uint64_t catalog_generation,
-    uint64_t sqlite_schema_generation
+    struct mylite_select_analysis_generation_key generation_key
 );
 int mylite_execution_select_analysis_capture(
     struct mylite_select_analysis_state *analysis,
     const struct mylite_stmt_binding *bindings,
     size_t binding_count,
     struct mylite_select_analysis_session_key session_key,
-    uint64_t catalog_generation,
-    uint64_t sqlite_schema_generation,
+    struct mylite_select_analysis_generation_key generation_key,
     bool parameter_values_are_reusable
 );
 void mylite_execution_select_analysis_deinit(struct mylite_select_analysis_state *analysis);

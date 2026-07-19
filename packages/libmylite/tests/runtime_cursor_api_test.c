@@ -27,7 +27,20 @@ enum {
     cache_budget_table_count = 40,
     cache_budget_column_count = 16,
     diagnostic_text_capacity = 256,
+    native_signed_binding_value = -42,
+    native_rebind_value = 7,
+    classified_marker_value = 31,
+    ansi_marker_value = 32,
+    executable_marker_value = 41,
+    ordinary_marker_value = 42,
+    ordered_first_value = 11,
+    ordered_second_value = 22,
+    retained_sql_value = 17,
+    recovered_insert_id = 5,
+    update_arithmetic_delta = 10,
 };
+
+static const double native_double_binding_value = 1.25;
 
 struct expected_query_scalar_text {
     const char *sql;
@@ -50,6 +63,14 @@ static int test_cursor_select_streams_rows_and_metadata(void);
 static int test_cursor_keeps_borrowed_metadata_across_invalidation(void);
 static int test_key_metadata_cache_uses_lru_replacement(void);
 static int test_metadata_caches_enforce_byte_budgets(void);
+static int create_cache_budget_tables(mylite_db *database, char *sql, size_t sql_capacity);
+static bool append_cache_budget_column_list(
+    char *sql,
+    size_t sql_capacity,
+    size_t *length,
+    bool include_types
+);
+static int prepare_cache_budget_selects(mylite_db *database, char *sql, size_t sql_capacity);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_reset_and_value_nullability(void);
 static int test_native_prepared_scalar_bindings(void);
@@ -895,7 +916,6 @@ static int test_metadata_caches_enforce_byte_budgets(void) {
     char path[test_path_capacity];
     char sql[cache_budget_sql_capacity];
     mylite_db *database = NULL;
-    mylite_stmt *stmt = NULL;
     size_t column_cache_bytes = 0U;
     size_t key_cache_bytes = 0U;
     int failures = 0;
@@ -908,72 +928,8 @@ static int test_metadata_caches_enforce_byte_budgets(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cache budget file");
     failures += execute_ok(database, "CREATE DATABASE app");
     failures += execute_ok(database, "USE app");
-    for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
-        int written = snprintf(sql, sizeof(sql), "CREATE TABLE budget_%zu (", table_index);
-        size_t length = written > 0 ? (size_t)written : sizeof(sql);
-
-        for (size_t column_index = 0U;
-             length < sizeof(sql) && column_index < cache_budget_column_count;
-             ++column_index) {
-            written = snprintf(
-                sql + length,
-                sizeof(sql) - length,
-                "%sc%zu INT NOT NULL",
-                column_index == 0U ? "" : ",",
-                column_index
-            );
-            length = written > 0 && (size_t)written < sizeof(sql) - length
-                         ? length + (size_t)written
-                         : sizeof(sql);
-        }
-        if (length < sizeof(sql)) {
-            written = snprintf(sql + length, sizeof(sql) - length, ",PRIMARY KEY (");
-            length = written > 0 && (size_t)written < sizeof(sql) - length
-                         ? length + (size_t)written
-                         : sizeof(sql);
-        }
-        for (size_t column_index = 0U;
-             length < sizeof(sql) && column_index < cache_budget_column_count;
-             ++column_index) {
-            written = snprintf(
-                sql + length,
-                sizeof(sql) - length,
-                "%sc%zu",
-                column_index == 0U ? "" : ",",
-                column_index
-            );
-            length = written > 0 && (size_t)written < sizeof(sql) - length
-                         ? length + (size_t)written
-                         : sizeof(sql);
-        }
-        if (length < sizeof(sql)) {
-            written = snprintf(sql + length, sizeof(sql) - length, "))");
-            length = written > 0 && (size_t)written < sizeof(sql) - length
-                         ? length + (size_t)written
-                         : sizeof(sql);
-        }
-        failures += expect_true(length < sizeof(sql), "format cache budget table");
-        if (length < sizeof(sql)) {
-            failures += execute_ok(database, sql);
-        }
-    }
-
-    for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
-        int written =
-            snprintf(sql, sizeof(sql), "SELECT c0 FROM budget_%zu WHERE c0 = 0", table_index);
-
-        failures +=
-            expect_true(written > 0 && (size_t)written < sizeof(sql), "format cache budget select");
-        if (written > 0 && (size_t)written < sizeof(sql)) {
-            failures += expect_int(
-                mylite_prepare(database, sql, (size_t)written, &stmt),
-                MYLITE_OK,
-                "prepare cache budget select"
-            );
-            failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize budget select");
-            stmt = NULL;
-        }
-    }
+    failures += create_cache_budget_tables(database, sql, sizeof(sql));
+    failures += prepare_cache_budget_selects(database, sql, sizeof(sql));
 
     for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
         column_cache_bytes += database->table_columns_cache[index].byte_count;
@@ -1002,6 +958,89 @@ static int test_metadata_caches_enforce_byte_budgets(void) {
 
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int create_cache_budget_tables(mylite_db *database, char *sql, size_t sql_capacity) {
+    int failures = 0;
+
+    for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
+        int written = snprintf(sql, sql_capacity, "CREATE TABLE budget_%zu (", table_index);
+        size_t length = written > 0 ? (size_t)written : sql_capacity;
+
+        if (!append_cache_budget_column_list(sql, sql_capacity, &length, true) ||
+            length >= sql_capacity) {
+            length = sql_capacity;
+        }
+        if (length < sql_capacity) {
+            written = snprintf(sql + length, sql_capacity - length, ",PRIMARY KEY (");
+            length = written > 0 && (size_t)written < sql_capacity - length
+                         ? length + (size_t)written
+                         : sql_capacity;
+        }
+        if (!append_cache_budget_column_list(sql, sql_capacity, &length, false) ||
+            length >= sql_capacity) {
+            length = sql_capacity;
+        }
+        if (length < sql_capacity) {
+            written = snprintf(sql + length, sql_capacity - length, "))");
+            length = written > 0 && (size_t)written < sql_capacity - length
+                         ? length + (size_t)written
+                         : sql_capacity;
+        }
+        failures += expect_true(length < sql_capacity, "format cache budget table");
+        if (length < sql_capacity) {
+            failures += execute_ok(database, sql);
+        }
+    }
+    return failures;
+}
+
+static bool append_cache_budget_column_list(
+    char *sql,
+    size_t sql_capacity,
+    size_t *length,
+    bool include_types
+) {
+    for (size_t index = 0U; *length < sql_capacity && index < cache_budget_column_count; ++index) {
+        int written = snprintf(
+            sql + *length,
+            sql_capacity - *length,
+            include_types ? "%sc%zu INT NOT NULL" : "%sc%zu",
+            index == 0U ? "" : ",",
+            index
+        );
+
+        if (written <= 0 || (size_t)written >= sql_capacity - *length) {
+            return false;
+        }
+        *length += (size_t)written;
+    }
+    return *length < sql_capacity;
+}
+
+static int prepare_cache_budget_selects(mylite_db *database, char *sql, size_t sql_capacity) {
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    for (size_t table_index = 0U; table_index < cache_budget_table_count; ++table_index) {
+        int written =
+            snprintf(sql, sql_capacity, "SELECT c0 FROM budget_%zu WHERE c0 = 0", table_index);
+
+        failures += expect_true(
+            written > 0 && (size_t)written < sql_capacity,
+            "format cache budget select"
+        );
+        if (written > 0 && (size_t)written < sql_capacity) {
+            failures += expect_int(
+                mylite_prepare(database, sql, (size_t)written, &stmt),
+                MYLITE_OK,
+                "prepare cache budget select"
+            );
+            failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize budget select");
+            stmt = NULL;
+        }
+    }
     return failures;
 }
 
@@ -1190,12 +1229,15 @@ static int test_native_prepared_scalar_bindings(void) {
         MYLITE_MISUSE,
         "native missing binding fails before execution"
     );
-    failures +=
-        expect_int(mylite_stmt_bind_int64(stmt, 0U, -42), MYLITE_OK, "bind native signed integer");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, native_signed_binding_value),
+        MYLITE_OK,
+        "bind native signed integer"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native signed integer row");
     failures += expect_cursor_text(stmt, 0U, "-42", "native signed integer value");
     failures += expect_int(
-        mylite_stmt_bind_int64(stmt, 0U, 7),
+        mylite_stmt_bind_int64(stmt, 0U, native_rebind_value),
         MYLITE_MISUSE,
         "reject native rebind while row is active"
     );
@@ -1240,8 +1282,11 @@ static int test_native_prepared_scalar_bindings(void) {
         expect_cursor_text(stmt, 0U, "18446744073709551615", "native maximum unsigned value");
 
     failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset native double binding");
-    failures +=
-        expect_int(mylite_stmt_bind_double(stmt, 0U, 1.25), MYLITE_OK, "bind native double");
+    failures += expect_int(
+        mylite_stmt_bind_double(stmt, 0U, native_double_binding_value),
+        MYLITE_OK,
+        "bind native double"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native double row");
     failures += expect_cursor_text(stmt, 0U, "1.25", "native double value");
 
@@ -1334,8 +1379,11 @@ static int test_native_prepared_scalar_bindings(void) {
     );
     failures +=
         expect_size(mylite_stmt_parameter_count(stmt), 1U, "quoted and commented marker count");
-    failures +=
-        expect_int(mylite_stmt_bind_int64(stmt, 0U, 31), MYLITE_OK, "bind classified marker");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, classified_marker_value),
+        MYLITE_OK,
+        "bind classified marker"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "classified marker row");
     failures += expect_cursor_text(stmt, 0U, "?", "quoted string marker value");
     failures += expect_cursor_text(stmt, 1U, "?", "double-quoted string marker value");
@@ -1356,8 +1404,11 @@ static int test_native_prepared_scalar_bindings(void) {
         "prepare native ANSI_QUOTES marker classification"
     );
     failures += expect_size(mylite_stmt_parameter_count(stmt), 1U, "ANSI_QUOTES marker count");
-    failures +=
-        expect_int(mylite_stmt_bind_int64(stmt, 0U, 32), MYLITE_OK, "bind ANSI_QUOTES marker");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, ansi_marker_value),
+        MYLITE_OK,
+        "bind ANSI_QUOTES marker"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "ANSI_QUOTES marker row");
     failures += expect_cursor_text(stmt, 0U, "1", "ANSI_QUOTES identifier marker value");
     failures += expect_cursor_text(stmt, 1U, "32", "ANSI_QUOTES bound marker value");
@@ -1379,12 +1430,12 @@ static int test_native_prepared_scalar_bindings(void) {
     failures +=
         expect_size(mylite_stmt_parameter_count(stmt), 2U, "version-gated executable marker count");
     failures += expect_int(
-        mylite_stmt_bind_int64(stmt, 0U, 41),
+        mylite_stmt_bind_int64(stmt, 0U, executable_marker_value),
         MYLITE_OK,
         "bind executable-comment marker"
     );
     failures += expect_int(
-        mylite_stmt_bind_int64(stmt, 1U, 42),
+        mylite_stmt_bind_int64(stmt, 1U, ordinary_marker_value),
         MYLITE_OK,
         "bind ordinary marker after executable comment"
     );
@@ -1532,10 +1583,16 @@ static int test_native_prepared_scalar_bindings(void) {
         "prepare native parameter order query"
     );
     failures += expect_size(mylite_stmt_parameter_count(stmt), 2U, "native ordered parameters");
-    failures +=
-        expect_int(mylite_stmt_bind_int64(stmt, 0U, 11), MYLITE_OK, "bind native first slot");
-    failures +=
-        expect_int(mylite_stmt_bind_int64(stmt, 1U, 22), MYLITE_OK, "bind native second slot");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, ordered_first_value),
+        MYLITE_OK,
+        "bind native first slot"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, ordered_second_value),
+        MYLITE_OK,
+        "bind native second slot"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native ordered parameter row");
     failures += expect_cursor_text(stmt, 0U, "11", "native first parameter order");
     failures += expect_cursor_text(stmt, 1U, "22", "native second parameter order");
@@ -1802,7 +1859,11 @@ static int test_native_prepared_owns_sql_text(void) {
     free(caller_sql);
     caller_sql = NULL;
 
-    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 17), MYLITE_OK, "bind retained SQL");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, retained_sql_value),
+        MYLITE_OK,
+        "bind retained SQL"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "execute retained SQL");
     failures += expect_cursor_text(stmt, 0U, "17", "retained SQL result");
     failures += expect_text(
@@ -1935,7 +1996,11 @@ static int test_native_prepared_dml_bindings(void) {
     failures +=
         expect_int(mylite_stmt_step(stmt), MYLITE_ERROR, "native INSERT reports constraint error");
     failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset failed native INSERT");
-    failures += expect_int(mylite_stmt_bind_int64(stmt, 0U, 5), MYLITE_OK, "rebind recovered id");
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, recovered_insert_id),
+        MYLITE_OK,
+        "rebind recovered id"
+    );
     failures += expect_int(
         mylite_stmt_bind_text(stmt, 1U, "recovered", strlen("recovered")),
         MYLITE_OK,
@@ -2010,7 +2075,7 @@ static int test_native_prepared_dml_bindings(void) {
         "prepare native UPDATE arithmetic parameters"
     );
     failures += expect_int(
-        mylite_stmt_bind_int64(stmt, 0U, 10),
+        mylite_stmt_bind_int64(stmt, 0U, update_arithmetic_delta),
         MYLITE_OK,
         "bind native UPDATE arithmetic delta"
     );

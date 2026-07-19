@@ -33,18 +33,11 @@ void mylite_statement_completion_reset(struct mylite_statement_completion *compl
 int mylite_statement_completion_capture(
     struct mylite_statement_completion *completion,
     const struct mylite_db *database,
-    int status,
-    int64_t row_count,
-    int64_t affected_rows,
-    uint64_t found_rows,
-    uint64_t insert_id,
-    size_t warning_count,
-    bool updates_found_rows,
-    bool preserves_diagnostics_snapshot
+    const struct mylite_statement_completion_values *values
 ) {
     int rc = MYLITE_OK;
 
-    if (completion == NULL || database == NULL) {
+    if (completion == NULL || database == NULL || values == NULL) {
         return MYLITE_MISUSE;
     }
 
@@ -54,14 +47,14 @@ int mylite_statement_completion_capture(
         return rc;
     }
 
-    completion->status = status;
-    completion->row_count = row_count;
-    completion->affected_rows = affected_rows;
-    completion->found_rows = found_rows;
-    completion->insert_id = insert_id;
-    completion->warning_count = warning_count;
-    completion->updates_found_rows = updates_found_rows;
-    completion->preserves_diagnostics_snapshot = preserves_diagnostics_snapshot;
+    completion->status = values->status;
+    completion->row_count = values->row_count;
+    completion->affected_rows = values->affected_rows;
+    completion->found_rows = values->found_rows;
+    completion->insert_id = values->insert_id;
+    completion->warning_count = values->warning_count;
+    completion->updates_found_rows = values->updates_found_rows;
+    completion->preserves_diagnostics_snapshot = values->preserves_diagnostics_snapshot;
     completion->captured = true;
     return MYLITE_OK;
 }

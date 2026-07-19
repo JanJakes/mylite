@@ -18,6 +18,7 @@ enum {
     sql_capacity = 1024,
     qualified_left_join_column_count = 5,
     wordpress_post_fixture_row_count = 8,
+    drupal_joined_age = 27,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_column_ambiguous = 1052,
@@ -625,7 +626,7 @@ static int test_left_join_derived_grouped_source(void) {
             "native Drupal joined derived parameter count"
         );
         failures += expect_int(
-            mylite_stmt_bind_int64(stmt, 0U, 27),
+            mylite_stmt_bind_int64(stmt, 0U, drupal_joined_age),
             MYLITE_OK,
             "bind native Drupal joined derived age"
         );

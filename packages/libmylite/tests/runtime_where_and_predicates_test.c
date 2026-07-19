@@ -5081,7 +5081,7 @@ static int test_large_logical_predicate(void) {
 
     char path[test_path_capacity];
     char *sql = NULL;
-    size_t sql_length = sizeof(prefix) - 1U + (logical_term_count - 1U) * (sizeof(term) - 1U);
+    size_t sql_length = (sizeof(prefix) - 1U) + ((logical_term_count - 1U) * (sizeof(term) - 1U));
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -5096,7 +5096,7 @@ static int test_large_logical_predicate(void) {
     memcpy(sql, prefix, sizeof(prefix) - 1U);
     for (size_t index = 1U; index < logical_term_count; ++index) {
         memcpy(
-            sql + sizeof(prefix) - 1U + (index - 1U) * (sizeof(term) - 1U),
+            sql + (sizeof(prefix) - 1U) + ((index - 1U) * (sizeof(term) - 1U)),
             term,
             sizeof(term) - 1U
         );

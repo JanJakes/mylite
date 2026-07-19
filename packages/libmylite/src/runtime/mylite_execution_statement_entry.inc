@@ -21,14 +21,14 @@ static int finish_failed_statement(
     completion_rc = mylite_statement_completion_capture(
         target,
         database,
-        rc,
-        -1,
-        -1,
-        database->session.found_rows,
-        0U,
-        mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database)),
-        false,
-        false
+        &(const struct mylite_statement_completion_values){
+            .status = rc,
+            .row_count = -1,
+            .affected_rows = -1,
+            .found_rows = database->session.found_rows,
+            .warning_count =
+                mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database)),
+        }
     );
     if (completion_rc == MYLITE_OK) {
         completion_rc = mylite_statement_completion_publish(target, database);
@@ -81,14 +81,16 @@ static int finish_completed_statement(
     rc = mylite_statement_completion_capture(
         target,
         database,
-        MYLITE_OK,
-        completed_row_count,
-        affected_rows,
-        found_rows,
-        insert_id,
-        warning_count,
-        completed_statement_is_select,
-        preserve_diagnostics_snapshot
+        &(const struct mylite_statement_completion_values){
+            .status = MYLITE_OK,
+            .row_count = completed_row_count,
+            .affected_rows = affected_rows,
+            .found_rows = found_rows,
+            .insert_id = insert_id,
+            .warning_count = warning_count,
+            .updates_found_rows = completed_statement_is_select,
+            .preserves_diagnostics_snapshot = preserve_diagnostics_snapshot,
+        }
     );
     if (rc == MYLITE_OK && *out_result != NULL) {
         mylite_result_set_warning_count(*out_result, target->warning_count);

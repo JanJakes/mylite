@@ -1014,6 +1014,8 @@ static int run_prepared_statement_iterations(
     size_t iterations,
     struct benchmark_measurement *measurement
 );
+static int bind_prepared_statement(mylite_stmt *statement, const struct runtime_scenario *scenario);
+static int step_prepared_statement(mylite_stmt *statement, size_t *out_value_bytes);
 static int run_runtime_stress_scenario(
     const struct runtime_scenario *scenario,
     const struct runtime_repetition_options *repeat_options,
@@ -2309,22 +2311,11 @@ static int run_prepared_statement_iterations(
         size_t value_bytes = 0U;
         int rc = mylite_stmt_reset(statement);
 
-        for (size_t binding_index = 0U;
-             binding_index < scenario->prepared_binding_count && rc == MYLITE_OK;
-             ++binding_index) {
-            const struct benchmark_query *binding = &scenario->prepared_bindings[binding_index];
-
-            rc = mylite_stmt_bind_text(statement, binding_index, binding->sql, binding->length);
+        if (rc == MYLITE_OK) {
+            rc = bind_prepared_statement(statement, scenario);
         }
-        while (rc == MYLITE_OK || rc == MYLITE_ROW) {
-            rc = mylite_stmt_step(statement);
-            if (rc == MYLITE_ROW) {
-                size_t column_count = mylite_stmt_column_count(statement);
-
-                for (size_t column = 0U; column < column_count; ++column) {
-                    value_bytes += mylite_stmt_value_size(statement, column);
-                }
-            }
+        if (rc == MYLITE_OK) {
+            rc = step_prepared_statement(statement, &value_bytes);
         }
         if (measurement != NULL) {
             ++measurement->operations;
@@ -2348,6 +2339,36 @@ static int run_prepared_statement_iterations(
         (void)value_bytes;
     }
     return 0;
+}
+
+static int bind_prepared_statement(
+    mylite_stmt *statement,
+    const struct runtime_scenario *scenario
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; index < scenario->prepared_binding_count && rc == MYLITE_OK; ++index) {
+        const struct benchmark_query *binding = &scenario->prepared_bindings[index];
+
+        rc = mylite_stmt_bind_text(statement, index, binding->sql, binding->length);
+    }
+    return rc;
+}
+
+static int step_prepared_statement(mylite_stmt *statement, size_t *out_value_bytes) {
+    int rc = MYLITE_OK;
+
+    while (rc == MYLITE_OK || rc == MYLITE_ROW) {
+        rc = mylite_stmt_step(statement);
+        if (rc == MYLITE_ROW) {
+            size_t column_count = mylite_stmt_column_count(statement);
+
+            for (size_t column = 0U; column < column_count; ++column) {
+                *out_value_bytes += mylite_stmt_value_size(statement, column);
+            }
+        }
+    }
+    return rc;
 }
 
 static int run_runtime_stress_scenario(

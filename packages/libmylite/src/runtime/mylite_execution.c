@@ -1848,14 +1848,15 @@ static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
         rc = mylite_statement_completion_capture(
             &stmt->completion,
             stmt->database,
-            MYLITE_OK,
-            -1,
-            mylite_result_affected_rows(stmt->metadata_result),
-            stmt->completion.found_rows,
-            mylite_result_insert_id(stmt->metadata_result),
-            mylite_result_warning_count(stmt->metadata_result),
-            true,
-            false
+            &(const struct mylite_statement_completion_values){
+                .status = MYLITE_OK,
+                .row_count = -1,
+                .affected_rows = mylite_result_affected_rows(stmt->metadata_result),
+                .found_rows = stmt->completion.found_rows,
+                .insert_id = mylite_result_insert_id(stmt->metadata_result),
+                .warning_count = mylite_result_warning_count(stmt->metadata_result),
+                .updates_found_rows = true,
+            }
         );
     }
     if (rc == MYLITE_OK) {
@@ -1974,6 +1975,10 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
     struct mylite_db *database = stmt->database;
     struct mylite_select_analysis_session_key session_key =
         current_select_analysis_session_key(database);
+    struct mylite_select_analysis_generation_key generation_key = {
+        .catalog = database->session.catalog_generation,
+        .sqlite_schema = database->session.sqlite_schema_generation,
+    };
     bool parameter_contexts_are_reusable = false;
 #ifdef MYLITE_ENABLE_PROFILING
     uint64_t profile_plan_started_ns = 0U;
@@ -1985,8 +1990,7 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
                                stmt->bindings,
                                stmt->parameter_count,
                                session_key,
-                               database->session.catalog_generation,
-                               database->session.sqlite_schema_generation
+                               generation_key
                            )) {
         deinit_analyzed_select_plan(analyzed);
     }
@@ -2028,8 +2032,7 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
         stmt->bindings,
         stmt->parameter_count,
         session_key,
-        database->session.catalog_generation,
-        database->session.sqlite_schema_generation,
+        generation_key,
         stmt->parameter_plan_reusable
     );
     if (rc != MYLITE_OK) {
@@ -2180,14 +2183,15 @@ static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
         rc = mylite_statement_completion_capture(
             &stmt->completion,
             database,
-            MYLITE_OK,
-            -1,
-            mylite_result_affected_rows(stmt->metadata_result),
-            stmt->completion.found_rows,
-            mylite_result_insert_id(stmt->metadata_result),
-            mylite_result_warning_count(stmt->metadata_result),
-            true,
-            false
+            &(const struct mylite_statement_completion_values){
+                .status = MYLITE_OK,
+                .row_count = -1,
+                .affected_rows = mylite_result_affected_rows(stmt->metadata_result),
+                .found_rows = stmt->completion.found_rows,
+                .insert_id = mylite_result_insert_id(stmt->metadata_result),
+                .warning_count = mylite_result_warning_count(stmt->metadata_result),
+                .updates_found_rows = true,
+            }
         );
     } else {
         stmt->completion.row_count = -1;
@@ -2444,14 +2448,14 @@ static int finish_parse_failure(
     completion_rc = mylite_statement_completion_capture(
         &completion,
         database,
-        rc,
-        -1,
-        -1,
-        database->session.found_rows,
-        0U,
-        mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database)),
-        false,
-        false
+        &(const struct mylite_statement_completion_values){
+            .status = rc,
+            .row_count = -1,
+            .affected_rows = -1,
+            .found_rows = database->session.found_rows,
+            .warning_count =
+                mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database)),
+        }
     );
     if (completion_rc == MYLITE_OK) {
         completion_rc = mylite_statement_completion_publish(&completion, database);

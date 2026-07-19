@@ -87,7 +87,7 @@ static int open_sqlite(const char *path, int flags, bool exclusive_create, sqlit
 
 static int control_sqlite_initialization(sqlite3 *sqlite, bool commit) {
     sqlite3_file *file = NULL;
-    int rc = sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &file);
+    int rc = sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&file);
 
     if (rc != SQLITE_OK) {
         return rc;

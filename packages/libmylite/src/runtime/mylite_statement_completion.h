@@ -9,6 +9,17 @@
 
 struct mylite_db;
 
+struct mylite_statement_completion_values {
+    int status;
+    int64_t row_count;
+    int64_t affected_rows;
+    uint64_t found_rows;
+    uint64_t insert_id;
+    size_t warning_count;
+    bool updates_found_rows;
+    bool preserves_diagnostics_snapshot;
+};
+
 struct mylite_statement_completion {
     struct mylite_diagnostics diagnostics;
     int status;
@@ -29,14 +40,7 @@ void mylite_statement_completion_reset(struct mylite_statement_completion *compl
 int mylite_statement_completion_capture(
     struct mylite_statement_completion *completion,
     const struct mylite_db *database,
-    int status,
-    int64_t row_count,
-    int64_t affected_rows,
-    uint64_t found_rows,
-    uint64_t insert_id,
-    size_t warning_count,
-    bool updates_found_rows,
-    bool preserves_diagnostics_snapshot
+    const struct mylite_statement_completion_values *values
 );
 int mylite_statement_completion_publish(
     struct mylite_statement_completion *completion,

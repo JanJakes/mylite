@@ -12,6 +12,8 @@
 
 enum {
     test_path_capacity = 1024,
+    doctrine_information_schema_column_count = 15,
+    mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
     mysql_error_unknown_table_in_schema = 1109,
 };
@@ -39,12 +41,12 @@ struct expected_column_metadata {
     const char *origin_schema_name;
     const char *origin_table_name;
     const char *origin_column_name;
+    uint64_t display_length;
     enum mylite_result_column_type type;
     uint32_t flag_mask;
     uint32_t flags;
     uint32_t charset_id;
     uint32_t collation_id;
-    uint64_t display_length;
     int nullable;
 };
 
@@ -898,7 +900,7 @@ static int test_information_schema_core_queries(void) {
                    "AND cols.COLUMN_NAME = stats.COLUMN_NAME "
                    "WHERE cols.TABLE_SCHEMA = 'app' AND cols.TABLE_NAME = 'wp_users' "
                    "ORDER BY INDEX_NAME ASC LIMIT 1",
-            .code = 1064,
+            .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "INFORMATION_SCHEMA SELECT requires a schema-qualified metadata table",
         }
@@ -992,7 +994,7 @@ static int test_information_schema_core_queries(void) {
                    "AND TABLE_NAME = 'wp_users') "
                    "SELECT CONCAT(column_name, ' wrong') AS name FROM cols UNION ALL "
                    "SELECT CONCAT(index_name, ' (index)') AS name FROM indexes ORDER BY name",
-            .code = 1064,
+            .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SELECT supports only descriptor-backed table reads",
         }
@@ -1790,7 +1792,7 @@ static int expect_doctrine_prepared_columns_query(mylite_db *database) {
             expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step Doctrine information schema row");
         failures += expect_size(
             mylite_stmt_column_count(stmt),
-            15U,
+            doctrine_information_schema_column_count,
             "Doctrine information schema column count"
         );
         failures += expect_text_or_null(

@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+enum { invalid_lifecycle_state_byte = 0xffU };
+
 static int test_preamble_init_sets_format_fields(void);
 static int test_preamble_lifecycle_states(void);
 static int test_legacy_preamble_is_committed(void);
@@ -83,7 +85,7 @@ static int test_preamble_lifecycle_states(void) {
         expect_int(mylite_file_preamble_validate(preamble), 0, "recovery-required not openable");
 
     mylite_file_preamble_init(preamble);
-    preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = 0xffU;
+    preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = invalid_lifecycle_state_byte;
     failures += expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INVALID,

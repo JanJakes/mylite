@@ -1,8 +1,22 @@
 #include "parser_test_support.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+enum {
+    parameter_index_capacity = 8,
+    select_parameter_count = 5,
+    parameter_traversal_depth = 256,
+    source_literal_offset = 7,
+};
+
+struct parameter_traversal_frame {
+    const struct mylite_sql_ast_node *node;
+    const struct mylite_sql_ast_node *next_child;
+    bool visited;
+};
 
 static int test_empty_script(void);
 static int test_prepared_parameters(void);
@@ -75,7 +89,7 @@ static int test_prepared_parameters(void) {
     static const char update_sql[] = "UPDATE t SET c = ? WHERE id = ? LIMIT ?";
     struct mylite_sql_parse_result result;
     enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
-    size_t indices[8] = {0};
+    size_t indices[parameter_index_capacity] = {0};
     size_t count = 0U;
     int failures = 0;
 
@@ -102,13 +116,18 @@ static int test_prepared_parameters(void) {
         );
         ++failures;
     }
-    collect_parameter_indices(result.root, indices, 8U, &count);
+    collect_parameter_indices(result.root, indices, parameter_index_capacity, &count);
     failures += parser_test_expect_true(
-        result.parameter_count == 5U,
+        result.parameter_count == select_parameter_count,
         "prepared SELECT reported parameter count"
     );
-    if (count != 5U) {
-        fprintf(stderr, "prepared SELECT parameter count: expected 5, got %zu\n", count);
+    if (count != select_parameter_count) {
+        fprintf(
+            stderr,
+            "prepared SELECT parameter count: expected %d, got %zu\n",
+            select_parameter_count,
+            count
+        );
         ++failures;
     }
     for (size_t index = 0U; index < count; ++index) {
@@ -133,7 +152,7 @@ static int test_prepared_parameters(void) {
         status == MYLITE_SQL_PARSE_OK,
         "prepared LIKE parameter parse status"
     );
-    collect_parameter_indices(result.root, indices, 8U, &count);
+    collect_parameter_indices(result.root, indices, parameter_index_capacity, &count);
     failures += parser_test_expect_true(
         result.parameter_count == 2U,
         "prepared LIKE reported parameter count"
@@ -153,7 +172,7 @@ static int test_prepared_parameters(void) {
                     },
                     &result
                 ) != MYLITE_SQL_PARSE_OK;
-    collect_parameter_indices(result.root, indices, 8U, &count);
+    collect_parameter_indices(result.root, indices, parameter_index_capacity, &count);
     failures += parser_test_expect_true(
         result.parameter_count == 2U,
         "prepared INSERT reported parameter count"
@@ -184,7 +203,7 @@ static int test_prepared_parameters(void) {
         );
         ++failures;
     }
-    collect_parameter_indices(result.root, indices, 8U, &count);
+    collect_parameter_indices(result.root, indices, parameter_index_capacity, &count);
     failures += parser_test_expect_true(
         result.parameter_count == 3U,
         "prepared UPDATE reported parameter count"
@@ -211,7 +230,7 @@ static int test_prepared_parameters(void) {
             status == MYLITE_SQL_PARSE_OK,
             "extended prepared parameter parse status"
         );
-        collect_parameter_indices(result.root, indices, 8U, &count);
+        collect_parameter_indices(result.root, indices, parameter_index_capacity, &count);
         failures += parser_test_expect_true(
             result.parameter_count == extended_cases[case_index].parameter_count,
             "extended prepared reported parameter count"
@@ -249,18 +268,37 @@ static void collect_parameter_indices(
     size_t capacity,
     size_t *count
 ) {
+    struct parameter_traversal_frame stack[parameter_traversal_depth];
+    size_t stack_count = 0U;
+
     if (node == NULL || indices == NULL || count == NULL) {
         return;
     }
-    if (node->kind == MYLITE_SQL_AST_PARAMETER) {
-        if (*count < capacity) {
-            indices[*count] = mylite_sql_ast_node_parameter_index(node);
+    stack[stack_count++] = (struct parameter_traversal_frame){.node = node};
+    while (stack_count != 0U) {
+        struct parameter_traversal_frame *frame = &stack[stack_count - 1U];
+
+        if (!frame->visited) {
+            frame->visited = true;
+            frame->next_child = frame->node->first_child;
+            if (frame->node->kind == MYLITE_SQL_AST_PARAMETER) {
+                if (*count < capacity) {
+                    indices[*count] = mylite_sql_ast_node_parameter_index(frame->node);
+                }
+                ++*count;
+            }
         }
-        ++*count;
-    }
-    for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
-         child = child->next_sibling) {
-        collect_parameter_indices(child, indices, capacity, count);
+        if (frame->next_child == NULL) {
+            --stack_count;
+            continue;
+        }
+        node = frame->next_child;
+        frame->next_child = node->next_sibling;
+        if (stack_count == parameter_traversal_depth) {
+            *count = capacity + 1U;
+            return;
+        }
+        stack[stack_count++] = (struct parameter_traversal_frame){.node = node};
     }
 }
 
@@ -1633,9 +1671,9 @@ static int test_source_span_bounds(void) {
 
     failures += parser_test_expect_true(
         mylite_sql_source_span_is_valid((struct mylite_sql_source_span){
-            .text = source + 7U,
+            .text = source + source_literal_offset,
             .length = 1U,
-            .offset = 7U,
+            .offset = source_literal_offset,
             .source_length = sizeof(source) - 1U,
         }),
         "bounded source span"
@@ -1655,9 +1693,9 @@ static int test_source_span_bounds(void) {
         &ast,
         MYLITE_SQL_AST_LITERAL,
         (struct mylite_sql_source_span){
-            .text = source + 7U,
+            .text = source + source_literal_offset,
             .length = 2U,
-            .offset = 7U,
+            .offset = source_literal_offset,
             .source_length = sizeof(source) - 1U,
         }
     );

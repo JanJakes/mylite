@@ -20,6 +20,7 @@
 enum {
     test_path_capacity = 1024,
     locale_name_capacity = 128,
+    locale_format_capacity = 32,
     show_columns_field_count = 6,
     approx_type_column_count = 17,
     approx_values_column_count = 7,
@@ -38,6 +39,8 @@ enum {
 };
 
 static const int64_t affected_rows_not_checked = INT64_MIN;
+static const double locale_decimal_value = 1.25;
+static const long double locale_decimal_long_double_value = 1.25L;
 
 struct expected_sql_error {
     int code;
@@ -885,8 +888,8 @@ static int test_float_double_locale_independent_numeric_io(void) {
         "1.50 KiB",
     };
     char *parse_end = NULL;
-    char locale_format[32];
-    char native_format[32];
+    char locale_format[locale_format_capacity];
+    char native_format[locale_format_capacity];
     char original_locale[locale_name_capacity];
     char path[test_path_capacity] = {0};
     const char *current_locale = setlocale(LC_NUMERIC, NULL);
@@ -912,7 +915,7 @@ static int test_float_double_locale_independent_numeric_io(void) {
     if (!changed_locale) {
         return 0;
     }
-    written = snprintf(native_format, sizeof(native_format), "%.2f", 1.25);
+    written = snprintf(native_format, sizeof(native_format), "%.2f", locale_decimal_value);
     if (written < 0 || (size_t)written >= sizeof(native_format) ||
         strchr(native_format, ',') == NULL) {
         fprintf(stderr, "selected LC_NUMERIC locale does not use a comma decimal separator\n");
@@ -920,13 +923,18 @@ static int test_float_double_locale_independent_numeric_io(void) {
         goto cleanup;
     }
     errno = 0;
-    if (mylite_numeric_parse_double("1.25tail", &parse_end) != 1.25 || errno != 0 ||
+    if (mylite_numeric_parse_double("1.25tail", &parse_end) != locale_decimal_value || errno != 0 ||
         parse_end == NULL || strcmp(parse_end, "tail") != 0) {
         fprintf(stderr, "C-locale partial numeric parse contract failed\n");
         failures += 1;
         goto cleanup;
     }
-    written = mylite_numeric_format(locale_format, sizeof(locale_format), "%.2Lf", 1.25L);
+    written = mylite_numeric_format(
+        locale_format,
+        sizeof(locale_format),
+        "%.2Lf",
+        locale_decimal_long_double_value
+    );
     if (written != 4 || strcmp(locale_format, "1.25") != 0) {
         fprintf(stderr, "C-locale numeric format contract failed\n");
         failures += 1;

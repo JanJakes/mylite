@@ -32,10 +32,16 @@ enum {
     catalog_string_test_next_generation = 42,
     catalog_string_test_final_generation = 43,
     catalog_string_retained_byte_limit = 4096,
+    compact_column_descriptor_size_limit = 3072,
+    catalog_string_buffer_capacity = 32,
+    catalog_string_duplicate_index = 117,
+    mysql_error_unknown = 1105,
+    replacement_index_sql_extra_capacity = 64,
+    catalog_tamper_sql_capacity = 1024,
 };
 
 _Static_assert(
-    sizeof(struct mylite_catalog_column_descriptor) <= 3072U,
+    sizeof(struct mylite_catalog_column_descriptor) <= compact_column_descriptor_size_limit,
     "catalog column descriptors must keep cold text out of line"
 );
 
@@ -133,7 +139,7 @@ static int test_catalog_string_pool_deduplicates_and_grows(void) {
     const char *strings[string_count] = {0};
     const char *duplicate = NULL;
     const char *empty = NULL;
-    char text[32];
+    char text[catalog_string_buffer_capacity];
     int failures = 0;
 
     mylite_catalog_string_pool_init(&pool);
@@ -159,7 +165,10 @@ static int test_catalog_string_pool_deduplicates_and_grows(void) {
         MYLITE_OK,
         "re-intern catalog string"
     );
-    failures += expect_true(duplicate == strings[117], "catalog string pointer deduplication");
+    failures += expect_true(
+        duplicate == strings[catalog_string_duplicate_index],
+        "catalog string pointer deduplication"
+    );
     for (size_t index = 0U; index < string_count; ++index) {
         int written = snprintf(text, sizeof(text), "catalog-string-%zu", index);
 
@@ -961,7 +970,11 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
         "reject bad version"
     );
     failures += expect_true(database == NULL, "bad version leaves output null");
-    failures += expect_int(diagnostic.error_code, 1105, "bad version preserves open error code");
+    failures += expect_int(
+        diagnostic.error_code,
+        mysql_error_unknown,
+        "bad version preserves open error code"
+    );
     failures += expect_text(diagnostic.sqlstate, "HY000", "bad version preserves SQLSTATE");
     failures += expect_true(
         strstr(diagnostic.message, "catalog is incompatible or corrupt") != NULL,
@@ -1543,7 +1556,7 @@ static int tamper_delete_catalog_column(sqlite3 *sqlite) {
 static int tamper_replace_physical_index_definition(sqlite3 *sqlite) {
     char index_name[sql_buffer_capacity];
     char table_name[sql_buffer_capacity];
-    char sql[(sql_buffer_capacity * 3) + 64];
+    char sql[(sql_buffer_capacity * 3) + replacement_index_sql_extra_capacity];
     int rc = query_single_text(
         sqlite,
         "SELECT physical_name FROM _mylite_catalog_indexes WHERE name = 'idx_value'",
@@ -1576,7 +1589,7 @@ static int tamper_replace_physical_index_definition(sqlite3 *sqlite) {
 
 static int tamper_physical_column_type(sqlite3 *sqlite) {
     char table_name[sql_buffer_capacity];
-    char sql[1024];
+    char sql[catalog_tamper_sql_capacity];
     int rc = query_single_text(
         sqlite,
         "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
@@ -1601,7 +1614,7 @@ static int tamper_physical_column_type(sqlite3 *sqlite) {
 
 static int tamper_physical_column_nullability(sqlite3 *sqlite) {
     char table_name[sql_buffer_capacity];
-    char sql[1024];
+    char sql[catalog_tamper_sql_capacity];
     int rc = query_single_text(
         sqlite,
         "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
@@ -1626,7 +1639,7 @@ static int tamper_physical_column_nullability(sqlite3 *sqlite) {
 
 static int tamper_physical_generated_expression(sqlite3 *sqlite) {
     char table_name[sql_buffer_capacity];
-    char sql[1024];
+    char sql[catalog_tamper_sql_capacity];
     int rc = query_single_text(
         sqlite,
         "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",
@@ -1651,7 +1664,7 @@ static int tamper_physical_generated_expression(sqlite3 *sqlite) {
 
 static int tamper_remove_physical_check_constraint(sqlite3 *sqlite) {
     char table_name[sql_buffer_capacity];
-    char sql[1024];
+    char sql[catalog_tamper_sql_capacity];
     int rc = query_single_text(
         sqlite,
         "SELECT physical_name FROM _mylite_catalog_tables WHERE kind = 1 LIMIT 1",

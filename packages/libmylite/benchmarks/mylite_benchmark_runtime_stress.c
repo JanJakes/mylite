@@ -6,6 +6,7 @@
 #include "runtime/mylite_connection.h"
 #include "runtime/mylite_execution_loaded_catalog.h"
 
+#include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -83,6 +84,17 @@ struct runtime_processlist_context {
     pthread_t threads[processlist_worker_count];
     bool thread_started[processlist_worker_count];
 #endif
+};
+
+struct runtime_processlist_configuration {
+    size_t worker_count;
+    size_t warmup_iterations;
+};
+
+struct balanced_or_frame {
+    size_t first_term;
+    size_t term_count;
+    unsigned int state;
 };
 
 static int run_cold_open_scenario(
@@ -164,8 +176,7 @@ static int run_processlist_concurrent_scenario(
 );
 static int initialize_processlist_context(
     struct runtime_processlist_context *context,
-    size_t worker_count,
-    size_t warmup_iterations
+    const struct runtime_processlist_configuration *configuration
 );
 static int start_processlist_workers(
     struct runtime_processlist_context *context,
@@ -1016,7 +1027,13 @@ static int run_processlist_concurrent_scenario(
 
     atomic_init(&context.start, false);
     if (scenario->scale != processlist_worker_count ||
-        initialize_processlist_context(&context, scenario->scale, warmup_iterations) != 0 ||
+        initialize_processlist_context(
+            &context,
+            &(const struct runtime_processlist_configuration){
+                .worker_count = scenario->scale,
+                .warmup_iterations = warmup_iterations,
+            }
+        ) != 0 ||
         start_processlist_workers(&context, iterations) != 0) {
         goto cleanup;
     }
@@ -1043,13 +1060,12 @@ cleanup:
 
 static int initialize_processlist_context(
     struct runtime_processlist_context *context,
-    size_t worker_count,
-    size_t warmup_iterations
+    const struct runtime_processlist_configuration *configuration
 ) {
     static const char observer_sql[] = "SHOW PROCESSLIST";
     static const char worker_sql[] = "USE information_schema";
 
-    context->worker_count = worker_count;
+    context->worker_count = configuration->worker_count;
     if (mylite_open_memory(&context->observer) != MYLITE_OK) {
         return 1;
     }
@@ -1058,7 +1074,7 @@ static int initialize_processlist_context(
             return 1;
         }
     }
-    for (size_t index = 0U; index < warmup_iterations; ++index) {
+    for (size_t index = 0U; index < configuration->warmup_iterations; ++index) {
         if (execute_stress_sql(context->observer, observer_sql, sizeof(observer_sql) - 1U) != 0) {
             return 1;
         }
@@ -1266,26 +1282,57 @@ static bool append_balanced_or_query(
     size_t first_term,
     size_t term_count
 ) {
-    size_t left_count = 0U;
+    struct balanced_or_frame stack[(sizeof(size_t) * CHAR_BIT) + 1U];
+    size_t stack_count = 0U;
 
     if (term_count == 0U) {
         return false;
     }
-    if (term_count == 1U) {
-        return append_generated_indexed_sql(sql, capacity, length, "id = %zu", first_term);
+    stack[stack_count++] = (struct balanced_or_frame){
+        .first_term = first_term,
+        .term_count = term_count,
+    };
+    while (stack_count != 0U) {
+        struct balanced_or_frame *frame = &stack[stack_count - 1U];
+        size_t left_count = frame->term_count / 2U;
+
+        if (frame->term_count == 1U) {
+            if (!append_generated_indexed_sql(
+                    sql,
+                    capacity,
+                    length,
+                    "id = %zu",
+                    frame->first_term
+                )) {
+                return false;
+            }
+            --stack_count;
+        } else if (frame->state == 0U) {
+            if (!append_generated_sql(sql, capacity, length, "(")) {
+                return false;
+            }
+            frame->state = 1U;
+            stack[stack_count++] = (struct balanced_or_frame){
+                .first_term = frame->first_term,
+                .term_count = left_count,
+            };
+        } else if (frame->state == 1U) {
+            if (!append_generated_sql(sql, capacity, length, " OR ")) {
+                return false;
+            }
+            frame->state = 2U;
+            stack[stack_count++] = (struct balanced_or_frame){
+                .first_term = frame->first_term + left_count,
+                .term_count = frame->term_count - left_count,
+            };
+        } else {
+            if (!append_generated_sql(sql, capacity, length, ")")) {
+                return false;
+            }
+            --stack_count;
+        }
     }
-    left_count = term_count / 2U;
-    return append_generated_sql(sql, capacity, length, "(") &&
-           append_balanced_or_query(sql, capacity, length, first_term, left_count) &&
-           append_generated_sql(sql, capacity, length, " OR ") &&
-           append_balanced_or_query(
-               sql,
-               capacity,
-               length,
-               first_term + left_count,
-               term_count - left_count
-           ) &&
-           append_generated_sql(sql, capacity, length, ")");
+    return true;
 }
 
 static char *build_scalar_projection_query(size_t expression_count, size_t *out_length) {

@@ -27,6 +27,16 @@ enum {
     sqlite_header_size = 16,
     reopen_marker_value = 73,
     updated_reopen_marker_value = 74,
+    initialization_child_argument_count = 5,
+    lock_gap_control_size = 1024 * 1024,
+    path_wait_attempt_count = 500,
+    path_wait_sleep_ms = 10,
+};
+
+struct initialization_child_paths {
+    const char *database;
+    const char *ready;
+    const char *release;
 };
 
 static int test_open_rejects_invalid_arguments(void);
@@ -50,11 +60,7 @@ static int test_hot_journal_recovery_after_process_death(void);
 static int test_symlink_failure_preserves_path_identity(void);
 static int create_file_symlink(const char *target_path, const char *link_path);
 static int path_is_symlink(const char *path);
-static int initialization_child_main(
-    const char *path,
-    const char *ready_path,
-    const char *release_path
-);
+static int initialization_child_main(const struct initialization_child_paths *paths);
 static int wait_for_path(const char *path);
 static int path_exists(const char *path);
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -92,8 +98,13 @@ static int expect_not_bytes(
 int main(int argc, char **argv) {
     int failures = 0;
 
-    if (argc == 5 && strcmp(argv[1], "--initialization-child") == 0) {
-        return initialization_child_main(argv[2], argv[3], argv[4]);
+    if (argc == initialization_child_argument_count &&
+        strcmp(argv[1], "--initialization-child") == 0) {
+        return initialization_child_main(&(const struct initialization_child_paths){
+            .database = argv[2],
+            .ready = argv[3],
+            .release = argv[4],
+        });
     }
 
     failures += test_open_rejects_invalid_arguments();
@@ -536,7 +547,11 @@ static int test_rejects_concurrent_process_opener(const char *executable_path) {
 #else
     child = fork();
     if (child == 0) {
-        _exit(initialization_child_main(path, ready_path, release_path));
+        _exit(initialization_child_main(&(const struct initialization_child_paths){
+            .database = path,
+            .ready = ready_path,
+            .release = release_path,
+        }));
     }
 #endif
     if (child == -1) {
@@ -652,7 +667,7 @@ static int test_vfs_fault_injection(void) {
     );
     if (sqlite != NULL) {
         failures += expect_int(
-            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &file),
+            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&file),
             SQLITE_OK,
             "load direct VFS file"
         );
@@ -761,9 +776,9 @@ static int test_lock_byte_gap_mapping(void) {
     sqlite3 *sqlite = NULL;
     sqlite3_file *main_file = NULL;
     sqlite3_int64 logical_size = 0;
-    sqlite3_int64 mmap_size = 1024 * 1024;
+    sqlite3_int64 mmap_size = lock_gap_control_size;
     long physical_size = 0;
-    int chunk_size = 1024 * 1024;
+    int chunk_size = lock_gap_control_size;
     int characteristics = 0;
     int failures = 0;
     size_t page_index = 0U;
@@ -777,7 +792,7 @@ static int test_lock_byte_gap_mapping(void) {
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += expect_int(
-            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &main_file),
+            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&main_file),
             SQLITE_OK,
             "get lock-gap main file"
         );
@@ -928,7 +943,7 @@ static int test_legacy_lock_boundary_containment(void) {
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += expect_int(
-            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &main_file),
+            sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&main_file),
             SQLITE_OK,
             "get legacy main file"
         );
@@ -1260,23 +1275,19 @@ static int test_hot_journal_recovery_after_process_death(void) {
 }
 #endif
 
-static int initialization_child_main(
-    const char *path,
-    const char *ready_path,
-    const char *release_path
-) {
+static int initialization_child_main(const struct initialization_child_paths *paths) {
     sqlite3 *initializing = NULL;
-    int rc = mylite_storage_open_sqlite_payload(path, &initializing);
+    int rc = mylite_storage_open_sqlite_payload(paths->database, &initializing);
 
     if (rc != MYLITE_OK || initializing == NULL) {
         return 1;
     }
-    if (write_file_bytes(ready_path, "", 0U) != 0) {
+    if (write_file_bytes(paths->ready, "", 0U) != 0) {
         mylite_storage_abort_sqlite_initialization(initializing);
         (void)sqlite3_close(initializing);
         return 1;
     }
-    if (wait_for_path(release_path) != 0) {
+    if (wait_for_path(paths->release) != 0) {
         mylite_storage_abort_sqlite_initialization(initializing);
         (void)sqlite3_close(initializing);
         return 1;
@@ -1287,11 +1298,11 @@ static int initialization_child_main(
 }
 
 static int wait_for_path(const char *path) {
-    for (int attempt = 0; attempt < 500; ++attempt) {
+    for (int attempt = 0; attempt < path_wait_attempt_count; ++attempt) {
         if (path_exists(path)) {
             return 0;
         }
-        (void)sqlite3_sleep(10);
+        (void)sqlite3_sleep(path_wait_sleep_ms);
     }
 
     fprintf(stderr, "timed out waiting for path: %s\n", path);

@@ -20,6 +20,9 @@
 enum {
     test_path_capacity = 1024,
     related_file_suffix_capacity = 8,
+    concurrent_table_name_capacity = 128,
+    concurrent_statement_capacity = 256,
+    concurrent_load_sql_extra_capacity = 128,
     show_table_status_query_capacity = 128,
     show_columns_field_count = 6,
     show_table_status_field_count = 18,
@@ -33,6 +36,9 @@ enum {
     mysql_error_wrong_auto_key = 1075,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_failed_read_auto_increment = 1467,
+    interleaved_first_explicit_id = 10,
+    interleaved_writer_explicit_id = 20,
+    interleaved_next_generated_id = 21,
 };
 
 struct expected_sql_error {
@@ -63,6 +69,17 @@ struct interleaved_auto_increment_writer {
     bool triggered;
 };
 
+struct interleaved_auto_increment_expectation {
+    mylite_db *first;
+    mylite_db *second;
+    const char *writer_sql;
+    const char *first_sql;
+    int64_t expected_first_affected_rows;
+    uint64_t expected_first_insert_id;
+    uint64_t expected_writer_insert_id;
+    const char *context;
+};
+
 static int test_auto_increment_concurrent_writer_rebase(void);
 static int test_auto_increment_close_and_process_death(void);
 static int test_auto_increment_success_metadata_persistence_and_mutation(void);
@@ -70,14 +87,7 @@ static int test_auto_increment_user_rollback_high_water(void);
 static int test_auto_increment_type_families_and_diagnostics(void);
 static int test_auto_increment_independent_handles(void);
 static int expect_interleaved_auto_increment_statement(
-    mylite_db *first,
-    mylite_db *second,
-    const char *writer_sql,
-    const char *first_sql,
-    int64_t expected_first_affected_rows,
-    uint64_t expected_first_insert_id,
-    uint64_t expected_writer_insert_id,
-    const char *context
+    const struct interleaved_auto_increment_expectation *expected
 );
 static int execute_interleaved_writer_before_begin(
     unsigned int trace_kind,
@@ -153,12 +163,12 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
 
     static const char *const expected_rows[] = {"1", "200", "2", "100"};
     char path[test_path_capacity];
-    char table_name[128];
-    char create_sql[256];
-    char writer_sql[256];
-    char query_sql[256];
+    char table_name[concurrent_table_name_capacity];
+    char create_sql[concurrent_statement_capacity];
+    char writer_sql[concurrent_statement_capacity];
+    char query_sql[concurrent_statement_capacity];
     char load_path[test_path_capacity];
-    char load_sql[test_path_capacity + 128U];
+    char load_sql[test_path_capacity + concurrent_load_sql_extra_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
@@ -201,14 +211,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         );
         failures += expect_statement_ok(first, create_sql);
         failures += expect_interleaved_auto_increment_statement(
-            first,
-            second,
-            writer_sql,
-            cases[index].statement,
-            1,
-            2U,
-            1U,
-            cases[index].name
+            &(const struct interleaved_auto_increment_expectation){
+                .first = first,
+                .second = second,
+                .writer_sql = writer_sql,
+                .first_sql = cases[index].statement,
+                .expected_first_affected_rows = 1,
+                .expected_first_insert_id = 2U,
+                .expected_writer_insert_id = 1U,
+                .context = cases[index].name,
+            }
         );
 
         written =
@@ -241,14 +253,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         "CREATE TABLE concurrent_multi (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
     failures += expect_interleaved_auto_increment_statement(
-        first,
-        second,
-        "INSERT INTO concurrent_multi(v) VALUES(200)",
-        "INSERT INTO concurrent_multi(v) VALUES(100),(101)",
-        2,
-        2U,
-        1U,
-        "multi-row generated rebase"
+        &(const struct interleaved_auto_increment_expectation){
+            .first = first,
+            .second = second,
+            .writer_sql = "INSERT INTO concurrent_multi(v) VALUES(200)",
+            .first_sql = "INSERT INTO concurrent_multi(v) VALUES(100),(101)",
+            .expected_first_affected_rows = 2,
+            .expected_first_insert_id = 2U,
+            .expected_writer_insert_id = 1U,
+            .context = "multi-row generated rebase",
+        }
     );
     failures += expect_query_values(
         second,
@@ -266,14 +280,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         "CREATE TABLE concurrent_explicit (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
     failures += expect_interleaved_auto_increment_statement(
-        first,
-        second,
-        "INSERT INTO concurrent_explicit(id, v) VALUES(20, 200)",
-        "INSERT INTO concurrent_explicit(id, v) VALUES(10, 100)",
-        1,
-        10U,
-        20U,
-        "explicit counter non-regression"
+        &(const struct interleaved_auto_increment_expectation){
+            .first = first,
+            .second = second,
+            .writer_sql = "INSERT INTO concurrent_explicit(id, v) VALUES(20, 200)",
+            .first_sql = "INSERT INTO concurrent_explicit(id, v) VALUES(10, 100)",
+            .expected_first_affected_rows = 1,
+            .expected_first_insert_id = interleaved_first_explicit_id,
+            .expected_writer_insert_id = interleaved_writer_explicit_id,
+            .context = "explicit counter non-regression",
+        }
     );
     {
         mylite_result *result = NULL;
@@ -282,7 +298,7 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         if (result != NULL) {
             failures += expect_uint64(
                 mylite_result_insert_id(result),
-                21U,
+                interleaved_next_generated_id,
                 "explicit interleave preserves higher counter"
             );
         }
@@ -306,14 +322,17 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         "CREATE TABLE concurrent_table_select (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
     failures += expect_interleaved_auto_increment_statement(
-        first,
-        second,
-        "INSERT INTO concurrent_table_select(v) VALUES(200)",
-        "INSERT INTO concurrent_table_select(v) SELECT v FROM concurrent_select_source",
-        1,
-        2U,
-        1U,
-        "table insert-select rebase"
+        &(const struct interleaved_auto_increment_expectation){
+            .first = first,
+            .second = second,
+            .writer_sql = "INSERT INTO concurrent_table_select(v) VALUES(200)",
+            .first_sql =
+                "INSERT INTO concurrent_table_select(v) SELECT v FROM concurrent_select_source",
+            .expected_first_affected_rows = 1,
+            .expected_first_insert_id = 2U,
+            .expected_writer_insert_id = 1U,
+            .context = "table insert-select rebase",
+        }
     );
     failures += expect_query_values(
         second,
@@ -331,14 +350,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         "CREATE TABLE concurrent_row_select (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
     failures += expect_interleaved_auto_increment_statement(
-        first,
-        second,
-        "INSERT INTO concurrent_row_select(v) VALUES(200)",
-        "INSERT INTO concurrent_row_select(v) SELECT 100",
-        1,
-        2U,
-        1U,
-        "row-scalar insert-select rebase"
+        &(const struct interleaved_auto_increment_expectation){
+            .first = first,
+            .second = second,
+            .writer_sql = "INSERT INTO concurrent_row_select(v) VALUES(200)",
+            .first_sql = "INSERT INTO concurrent_row_select(v) SELECT 100",
+            .expected_first_affected_rows = 1,
+            .expected_first_insert_id = 2U,
+            .expected_writer_insert_id = 1U,
+            .context = "row-scalar insert-select rebase",
+        }
     );
     failures += expect_query_values(
         second,
@@ -387,14 +408,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         "CREATE TABLE concurrent_load (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
     failures += expect_interleaved_auto_increment_statement(
-        first,
-        second,
-        "INSERT INTO concurrent_load(v) VALUES(200)",
-        load_sql,
-        1,
-        2U,
-        1U,
-        "LOAD DATA rebase"
+        &(const struct interleaved_auto_increment_expectation){
+            .first = first,
+            .second = second,
+            .writer_sql = "INSERT INTO concurrent_load(v) VALUES(200)",
+            .first_sql = load_sql,
+            .expected_first_affected_rows = 1,
+            .expected_first_insert_id = 2U,
+            .expected_writer_insert_id = 1U,
+            .context = "LOAD DATA rebase",
+        }
     );
     failures += expect_query_values(
         second,
@@ -413,14 +436,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
     );
     failures += expect_statement_ok(first, "INSERT INTO concurrent_update VALUES(5, 50)");
     failures += expect_interleaved_auto_increment_statement(
-        first,
-        second,
-        "INSERT INTO concurrent_update(id, v) VALUES(20, 200)",
-        "UPDATE concurrent_update SET id=10 WHERE id=5",
-        1,
-        0U,
-        20U,
-        "UPDATE counter non-regression"
+        &(const struct interleaved_auto_increment_expectation){
+            .first = first,
+            .second = second,
+            .writer_sql = "INSERT INTO concurrent_update(id, v) VALUES(20, 200)",
+            .first_sql = "UPDATE concurrent_update SET id=10 WHERE id=5",
+            .expected_first_affected_rows = 1,
+            .expected_first_insert_id = 0U,
+            .expected_writer_insert_id = interleaved_writer_explicit_id,
+            .context = "UPDATE counter non-regression",
+        }
     );
     {
         mylite_result *result = NULL;
@@ -429,7 +454,7 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         if (result != NULL) {
             failures += expect_uint64(
                 mylite_result_insert_id(result),
-                21U,
+                interleaved_next_generated_id,
                 "UPDATE interleave preserves higher counter"
             );
         }
@@ -454,21 +479,14 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
 }
 
 static int expect_interleaved_auto_increment_statement(
-    mylite_db *first,
-    mylite_db *second,
-    const char *writer_sql,
-    const char *first_sql,
-    int64_t expected_first_affected_rows,
-    uint64_t expected_first_insert_id,
-    uint64_t expected_writer_insert_id,
-    const char *context
+    const struct interleaved_auto_increment_expectation *expected
 ) {
     struct interleaved_auto_increment_writer writer = {
-        .database = second,
-        .sql = writer_sql,
+        .database = expected->second,
+        .sql = expected->writer_sql,
         .rc = MYLITE_ERROR,
     };
-    sqlite3 *sqlite = mylite_connection_sqlite_for_test(first);
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(expected->first);
     mylite_result *result = NULL;
     int failures = 0;
 
@@ -482,26 +500,29 @@ static int expect_interleaved_auto_increment_statement(
         SQLITE_OK,
         "install auto-increment writer trace"
     );
-    failures += execute_ok(first, first_sql, &result);
+    failures += execute_ok(expected->first, expected->first_sql, &result);
     failures += expect_int(
         sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
         SQLITE_OK,
         "remove auto-increment writer trace"
     );
-    failures += expect_int(writer.triggered, 1, context);
+    failures += expect_int(writer.triggered, 1, expected->context);
     failures += expect_int(writer.rc, MYLITE_OK, "interleaved writer committed");
     failures += expect_int64(writer.affected_rows, 1, "interleaved writer affected rows");
-    failures +=
-        expect_uint64(writer.insert_id, expected_writer_insert_id, "interleaved writer insert id");
+    failures += expect_uint64(
+        writer.insert_id,
+        expected->expected_writer_insert_id,
+        "interleaved writer insert id"
+    );
     if (result != NULL) {
         failures += expect_int64(
             mylite_result_affected_rows(result),
-            expected_first_affected_rows,
+            expected->expected_first_affected_rows,
             "rebased statement affected rows"
         );
         failures += expect_uint64(
             mylite_result_insert_id(result),
-            expected_first_insert_id,
+            expected->expected_first_insert_id,
             "rebased statement insert id"
         );
     }
@@ -509,6 +530,8 @@ static int expect_interleaved_auto_increment_statement(
     return failures;
 }
 
+/* sqlite3_trace_v2 fixes this callback's opaque parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
 static int execute_interleaved_writer_before_begin(
     unsigned int trace_kind,
     void *context,
@@ -538,6 +561,8 @@ static int execute_interleaved_writer_before_begin(
     mylite_result_free(result);
     return 0;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int test_auto_increment_close_and_process_death(void) {
     static const char *const empty_rows[] = {"0"};

@@ -11,13 +11,17 @@
 #include <stdio.h>
 #include <string.h>
 
+struct transaction_failure_context {
+    const char *primary_sqlite_error;
+    const char *failure_kind;
+    const char *operation;
+    const char *failure_error;
+    int emergency_rc;
+};
+
 static void mark_transaction_state_uncertain(
     struct mylite_db *database,
-    const char *primary_sqlite_error,
-    const char *failure_kind,
-    const char *operation,
-    const char *failure_error,
-    int emergency_rc
+    const struct transaction_failure_context *failure
 );
 
 int mylite_execution_begin_statement_transaction(
@@ -184,11 +188,13 @@ int mylite_execution_commit_statement_transaction(
     mylite_catalog_invalidate_descriptor_cache(database);
     mark_transaction_state_uncertain(
         database,
-        commit_error,
-        "completion",
-        failed_operation,
-        commit_error,
-        emergency_rc
+        &(const struct transaction_failure_context){
+            .primary_sqlite_error = commit_error,
+            .failure_kind = "completion",
+            .operation = failed_operation,
+            .failure_error = commit_error,
+            .emergency_rc = emergency_rc,
+        }
     );
     return rc;
 }
@@ -251,27 +257,28 @@ int mylite_execution_rollback_statement_transaction(
     }
     mark_transaction_state_uncertain(
         database,
-        primary_sqlite_error,
-        "cleanup",
-        failed_operation,
-        cleanup_error,
-        emergency_rc
+        &(const struct transaction_failure_context){
+            .primary_sqlite_error = primary_sqlite_error,
+            .failure_kind = "cleanup",
+            .operation = failed_operation,
+            .failure_error = cleanup_error,
+            .emergency_rc = emergency_rc,
+        }
     );
     return primary_rc == MYLITE_OK ? cleanup_rc : primary_rc;
 }
 
 static void mark_transaction_state_uncertain(
     struct mylite_db *database,
-    const char *primary_sqlite_error,
-    const char *failure_kind,
-    const char *operation,
-    const char *failure_error,
-    int emergency_rc
+    const struct transaction_failure_context *failure
 ) {
     struct mylite_diagnostics *diagnostics = mylite_connection_diagnostics(database);
     struct mylite_diagnostic_record primary = diagnostics->condition;
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
 
+    if (failure == NULL) {
+        return;
+    }
     database->transaction_state_uncertain = true;
     if (primary.code == MYLITE_OK) {
         primary.code = mysql_error_unknown;
@@ -280,18 +287,19 @@ static void mark_transaction_state_uncertain(
             primary.message,
             sizeof(primary.message),
             "%s",
-            primary_sqlite_error[0] == '\0' ? "statement execution failed" : primary_sqlite_error
+            failure->primary_sqlite_error[0] == '\0' ? "statement execution failed"
+                                                     : failure->primary_sqlite_error
         );
     }
-    if (emergency_rc == MYLITE_OK) {
+    if (failure->emergency_rc == MYLITE_OK) {
         (void)snprintf(
             message,
             sizeof(message),
             "%.112s; transaction %s failed during %s: %.72s",
             primary.message,
-            failure_kind,
-            operation,
-            failure_error
+            failure->failure_kind,
+            failure->operation,
+            failure->failure_error
         );
     } else {
         (void)snprintf(
@@ -299,9 +307,9 @@ static void mark_transaction_state_uncertain(
             sizeof(message),
             "%.88s; transaction %s failed during %s: %.56s; emergency rollback failed",
             primary.message,
-            failure_kind,
-            operation,
-            failure_error
+            failure->failure_kind,
+            failure->operation,
+            failure->failure_error
         );
     }
     mylite_diagnostics_set_error(diagnostics, primary.code, primary.sqlstate, message);

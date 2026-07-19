@@ -834,13 +834,23 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arith
     return MYLITE_SQL_PARSE_OK;
 }
 
+struct placeholder_predicate_context_state {
+    bool in_where;
+    bool top_level_where_disqualified;
+    bool top_level_where_valid;
+    int top_level_where_depth;
+};
+
+static void placeholder_scan_update_predicate_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    struct placeholder_predicate_context_state *state
+);
+
 static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
     struct placeholder_statement_scan *scan
 ) {
-    bool in_where = false;
-    bool top_level_where_disqualified = false;
-    bool top_level_where_valid = false;
-    int top_level_where_depth = 0;
+    struct placeholder_predicate_context_state state = {0};
 
     if (scan == NULL || scan->tokens == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
@@ -855,50 +865,58 @@ static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
 
     for (size_t index = 0U; index < scan->token_count; ++index) {
         uint8_t context_flags = 0U;
-        bool starts_predicate_clause = false;
-        bool stops_predicate_clause_search = false;
 
-        if (in_where) {
+        if (state.in_where) {
             context_flags |= placeholder_predicate_context_in_where;
         }
-        if (top_level_where_valid && top_level_where_depth == 0) {
+        if (state.top_level_where_valid && state.top_level_where_depth == 0) {
             context_flags |= placeholder_predicate_context_top_level_where;
         }
         scan->predicate_context_flags[index] = context_flags;
-
-        if (placeholder_scan_token_text_equals(scan, index, "WHERE")) {
-            in_where = true;
-            if (!top_level_where_disqualified) {
-                top_level_where_valid = true;
-                top_level_where_depth = 0;
-            }
-            continue;
-        }
-        starts_predicate_clause = placeholder_scan_token_starts_predicate_clause(scan, index);
-        stops_predicate_clause_search =
-            placeholder_scan_token_stops_predicate_clause_search(scan, index);
-        if (starts_predicate_clause || stops_predicate_clause_search) {
-            in_where = false;
-        }
-        if (!top_level_where_valid) {
-            continue;
-        }
-        if (stops_predicate_clause_search) {
-            top_level_where_valid = false;
-            top_level_where_disqualified = true;
-            continue;
-        }
-        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-            ++top_level_where_depth;
-        } else if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
-            --top_level_where_depth;
-            if (top_level_where_depth < 0) {
-                top_level_where_valid = false;
-                top_level_where_disqualified = true;
-            }
-        }
+        placeholder_scan_update_predicate_context(scan, index, &state);
     }
     return MYLITE_SQL_PARSE_OK;
+}
+
+static void placeholder_scan_update_predicate_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    struct placeholder_predicate_context_state *state
+) {
+    bool starts_predicate_clause = false;
+    bool stops_predicate_clause_search = false;
+
+    if (placeholder_scan_token_text_equals(scan, index, "WHERE")) {
+        state->in_where = true;
+        if (!state->top_level_where_disqualified) {
+            state->top_level_where_valid = true;
+            state->top_level_where_depth = 0;
+        }
+        return;
+    }
+    starts_predicate_clause = placeholder_scan_token_starts_predicate_clause(scan, index);
+    stops_predicate_clause_search =
+        placeholder_scan_token_stops_predicate_clause_search(scan, index);
+    if (starts_predicate_clause || stops_predicate_clause_search) {
+        state->in_where = false;
+    }
+    if (!state->top_level_where_valid) {
+        return;
+    }
+    if (stops_predicate_clause_search) {
+        state->top_level_where_valid = false;
+        state->top_level_where_disqualified = true;
+        return;
+    }
+    if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
+        ++state->top_level_where_depth;
+    } else if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
+        --state->top_level_where_depth;
+        if (state->top_level_where_depth < 0) {
+            state->top_level_where_valid = false;
+            state->top_level_where_disqualified = true;
+        }
+    }
 }
 
 static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_retries(
@@ -3938,6 +3956,18 @@ static enum mylite_sql_parse_status replace_parenthesized_row_arithmetic_retry_s
     return MYLITE_SQL_PARSE_OK;
 }
 
+struct row_arithmetic_subject_parse_request {
+    struct mylite_sql_parse_config config;
+    const struct placeholder_statement_scan *scan;
+    size_t start_index;
+    size_t end_index;
+};
+
+static enum mylite_sql_parse_status feed_row_arithmetic_subject_tokens(
+    const struct row_arithmetic_subject_parse_request *request,
+    struct mylite_sql_parse_result *out_result
+);
+
 static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_tokens(
     struct mylite_sql_parse_config config,
     const struct placeholder_statement_scan *scan,
@@ -3946,47 +3976,16 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
     struct mylite_sql_parse_result *out_result,
     struct mylite_sql_ast_node **out_expression
 ) {
-    static const char do_text[] = "DO";
-    static const char row_text[] = "ROW";
-    struct mylite_sql_parser_state state;
-    struct mylite_sql_parser_token_history token_history = {0};
-    void *parser = NULL;
-    bool previous_token_was_dot = false;
-    bool inject_parenthesized_row_constructor = false;
+    const struct row_arithmetic_subject_parse_request request = {
+        .config = config,
+        .scan = scan,
+        .start_index = start_index,
+        .end_index = end_index,
+    };
+    struct mylite_sql_parse_result expression_result = {0};
     struct mylite_sql_ast_node *statement = NULL;
     struct mylite_sql_ast_node *expression_list = NULL;
     struct mylite_sql_ast_node *expression = NULL;
-    struct mylite_sql_parse_result expression_result = {0};
-    struct mylite_sql_token do_token = {
-        .kind = MYLITE_SQL_TOKEN_KEYWORD,
-        .text = do_text,
-        .span_text = config.input == NULL || scan == NULL || start_index >= scan->token_count
-                         ? NULL
-                         : config.input + scan->tokens[start_index].offset,
-        .length = sizeof(do_text) - 1U,
-        .offset = scan == NULL || start_index >= scan->token_count
-                      ? 0U
-                      : scan->tokens[start_index].offset,
-        .source_length = config.length,
-    };
-    struct mylite_sql_token row_token = {
-        .kind = MYLITE_SQL_TOKEN_KEYWORD,
-        .text = row_text,
-        .span_text = config.input == NULL || scan == NULL || start_index >= scan->token_count
-                         ? NULL
-                         : config.input + scan->tokens[start_index].offset,
-        .length = sizeof(row_text) - 1U,
-        .offset = scan == NULL || start_index >= scan->token_count
-                      ? 0U
-                      : scan->tokens[start_index].offset,
-        .source_length = config.length,
-    };
-    struct mylite_sql_token eof_token = {
-        .kind = MYLITE_SQL_TOKEN_EOF,
-        .text = config.input == NULL ? NULL : config.input + config.length,
-        .offset = config.length,
-        .source_length = config.length,
-    };
     enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
 
     if (scan == NULL || scan->tokens == NULL || out_result == NULL || out_expression == NULL ||
@@ -3994,10 +3993,73 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
         return MYLITE_SQL_PARSE_MISUSE;
     }
     *out_expression = NULL;
+    status = feed_row_arithmetic_subject_tokens(&request, &expression_result);
+    if (status == MYLITE_SQL_PARSE_OK) {
+        statement = mylite_sql_parser_child_at(expression_result.root, 0U);
+        expression_list = mylite_sql_parser_child_at(statement, 0U);
+        expression = mylite_sql_parser_child_at(expression_list, 0U);
+        if (expression == NULL) {
+            status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        } else {
+            *out_expression =
+                clone_row_arithmetic_retry_expression_tree(&out_result->ast, expression);
+            if (*out_expression == NULL) {
+                status = MYLITE_SQL_PARSE_NOMEM;
+            }
+        }
+    }
+    mylite_sql_parse_result_deinit(&expression_result);
+    return status;
+}
 
+static enum mylite_sql_parse_status feed_row_arithmetic_subject_tokens(
+    const struct row_arithmetic_subject_parse_request *request,
+    struct mylite_sql_parse_result *out_result
+) {
+    static const char do_text[] = "DO";
+    static const char row_text[] = "ROW";
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_parser_token_history token_history = {0};
+    void *parser = NULL;
+    bool previous_token_was_dot = false;
+    bool inject_parenthesized_row_constructor = false;
+    struct mylite_sql_token do_token = {
+        .kind = MYLITE_SQL_TOKEN_KEYWORD,
+        .text = do_text,
+        .span_text =
+            request->config.input == NULL
+                ? NULL
+                : request->config.input + request->scan->tokens[request->start_index].offset,
+        .length = sizeof(do_text) - 1U,
+        .offset = request->scan->tokens[request->start_index].offset,
+        .source_length = request->config.length,
+    };
+    struct mylite_sql_token row_token = {
+        .kind = MYLITE_SQL_TOKEN_KEYWORD,
+        .text = row_text,
+        .span_text =
+            request->config.input == NULL
+                ? NULL
+                : request->config.input + request->scan->tokens[request->start_index].offset,
+        .length = sizeof(row_text) - 1U,
+        .offset = request->scan->tokens[request->start_index].offset,
+        .source_length = request->config.length,
+    };
+    struct mylite_sql_token eof_token = {
+        .kind = MYLITE_SQL_TOKEN_EOF,
+        .text =
+            request->config.input == NULL ? NULL : request->config.input + request->config.length,
+        .offset = request->config.length,
+        .source_length = request->config.length,
+    };
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_result == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
     state = (struct mylite_sql_parser_state){
-        .result = &expression_result,
-        .modes = config.modes,
+        .result = out_result,
+        .modes = request->config.modes,
         .accepted = false,
     };
     parser = mylite_sql_lemonAlloc(malloc);
@@ -4005,10 +4067,10 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
         return MYLITE_SQL_PARSE_NOMEM;
     }
     inject_parenthesized_row_constructor =
-        placeholder_scan_row_tuple_starts_at(scan, start_index, NULL);
+        placeholder_scan_row_tuple_starts_at(request->scan, request->start_index, NULL);
 
     status = feed_token_with_parser_token_override(
-        config,
+        request->config,
         parser,
         &state,
         &token_history,
@@ -4018,7 +4080,7 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
     );
     if (status == MYLITE_SQL_PARSE_OK && inject_parenthesized_row_constructor) {
         status = feed_token_with_parser_token_override(
-            config,
+            request->config,
             parser,
             &state,
             &token_history,
@@ -4027,19 +4089,21 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
             MYLITE_SQL_PARSE_ROW
         );
     }
-    for (size_t index = start_index; status == MYLITE_SQL_PARSE_OK && index <= end_index; ++index) {
+    for (size_t index = request->start_index;
+         status == MYLITE_SQL_PARSE_OK && index <= request->end_index;
+         ++index) {
         status = feed_row_arithmetic_subject_expression_token(
-            config,
+            request->config,
             parser,
             &state,
             &token_history,
             &previous_token_was_dot,
-            &scan->tokens[index]
+            &request->scan->tokens[index]
         );
     }
     if (status == MYLITE_SQL_PARSE_OK) {
         status = feed_token_with_parser_token_override(
-            config,
+            request->config,
             parser,
             &state,
             &token_history,
@@ -4050,31 +4114,13 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
     }
     mylite_sql_lemonFree(parser, free);
 
-    if (expression_result.status == MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_OK) {
-        expression_result.status = status;
+    if (out_result->status == MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_OK) {
+        out_result->status = status;
     }
-    if (expression_result.status == MYLITE_SQL_PARSE_OK && !state.accepted) {
-        expression_result.status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
+        out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
     }
-    if (expression_result.status == MYLITE_SQL_PARSE_OK) {
-        statement = mylite_sql_parser_child_at(expression_result.root, 0U);
-        expression_list = mylite_sql_parser_child_at(statement, 0U);
-        expression = mylite_sql_parser_child_at(expression_list, 0U);
-        if (expression != NULL) {
-            *out_expression =
-                clone_row_arithmetic_retry_expression_tree(&out_result->ast, expression);
-            if (*out_expression == NULL) {
-                expression_result.status = MYLITE_SQL_PARSE_NOMEM;
-            }
-        }
-    }
-
-    status = expression_result.status;
-    mylite_sql_parse_result_deinit(&expression_result);
-    if (status != MYLITE_SQL_PARSE_OK) {
-        return status;
-    }
-    return *out_expression == NULL ? MYLITE_SQL_PARSE_SYNTAX_ERROR : MYLITE_SQL_PARSE_OK;
+    return out_result->status;
 }
 
 static struct mylite_sql_ast_node *clone_row_arithmetic_retry_expression_tree(

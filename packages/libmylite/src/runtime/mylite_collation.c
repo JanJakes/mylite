@@ -412,6 +412,8 @@ static bool collation_tertiary_weight(uint32_t codepoint, uint32_t *out_weight) 
     return true;
 }
 
+/* Unicode code points, UTF-8 masks, and encoded key widths are format data. */
+// NOLINTBEGIN(readability-magic-numbers)
 static size_t collation_primary_expansion(uint32_t codepoint, uint32_t out_codepoints[3]) {
     switch (codepoint) {
     case 0x00c6U:
@@ -663,6 +665,8 @@ static int reserve_collation_key(
     builder->capacity = capacity;
     return MYLITE_OK;
 }
+
+// NOLINTEND(readability-magic-numbers)
 
 static bool text_has_ascii_case_insensitive_suffix(const char *text, const char *suffix) {
     size_t text_size = 0U;

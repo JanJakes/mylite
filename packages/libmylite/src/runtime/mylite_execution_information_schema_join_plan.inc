@@ -20,6 +20,11 @@ struct information_schema_join_compat_value_filter {
     char **out_value;
 };
 
+struct information_schema_join_compat_filter_result {
+    bool matches;
+    bool has_deferred_values;
+};
+
 struct information_schema_join_compat_table_source {
     const char *schema_name;
     const char *table_name;
@@ -84,8 +89,7 @@ static int information_schema_join_compat_copy_filter_values(
     const struct mylite_sql_ast_node *predicate,
     struct information_schema_join_compat_value_filter *filters,
     size_t filter_count,
-    bool *out_matches,
-    bool *out_has_deferred_values
+    struct information_schema_join_compat_filter_result *out_result
 );
 static bool information_schema_join_compat_order_matches(
     const struct mylite_sql_ast_node *statement,
@@ -231,9 +235,8 @@ static int information_schema_join_compat_plan_columns_statistics_union(
     char *columns_table = NULL;
     char *indexes_schema = NULL;
     char *indexes_table = NULL;
-    bool filters_match = false;
-    bool columns_filters_have_deferred_values = false;
-    bool indexes_filters_have_deferred_values = false;
+    struct information_schema_join_compat_filter_result columns_filter_result = {0};
+    struct information_schema_join_compat_filter_result indexes_filter_result = {0};
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
@@ -312,10 +315,9 @@ static int information_schema_join_compat_plan_columns_statistics_union(
             {.name = "TABLE_NAME", .out_value = &columns_table},
         },
         2U,
-        &filters_match,
-        &columns_filters_have_deferred_values
+        &columns_filter_result
     );
-    if (rc != MYLITE_OK || !filters_match) {
+    if (rc != MYLITE_OK || !columns_filter_result.matches) {
         goto cleanup;
     }
     rc = information_schema_join_compat_copy_filter_values(
@@ -332,11 +334,11 @@ static int information_schema_join_compat_plan_columns_statistics_union(
             {.name = "TABLE_NAME", .out_value = &indexes_table},
         },
         2U,
-        &filters_match,
-        &indexes_filters_have_deferred_values
+        &indexes_filter_result
     );
-    if (rc != MYLITE_OK || !filters_match ||
-        (!(columns_filters_have_deferred_values || indexes_filters_have_deferred_values) &&
+    if (rc != MYLITE_OK || !indexes_filter_result.matches ||
+        (!(columns_filter_result.has_deferred_values || indexes_filter_result.has_deferred_values
+         ) &&
          (!mylite_execution_text_equals_ascii_case_insensitive(columns_schema, indexes_schema) ||
           !mylite_execution_text_equals_ascii_case_insensitive(columns_table, indexes_table)))) {
         goto cleanup;
@@ -406,7 +408,7 @@ static int information_schema_join_compat_plan_columns_statistics(
         {NULL, "INDEX_NAME"},
     };
     const struct mylite_sql_ast_node *source = child_at(statement, 1U);
-    bool filters_match = false;
+    struct information_schema_join_compat_filter_result filter_result = {0};
     int rc = MYLITE_OK;
 
     *out_matches = false;
@@ -460,10 +462,9 @@ static int information_schema_join_compat_plan_columns_statistics(
             {.qualifier = "cols", .name = "TABLE_NAME", .out_value = &out_plan->table_name},
         },
         2U,
-        &filters_match,
-        NULL
+        &filter_result
     );
-    if (rc == MYLITE_OK && filters_match) {
+    if (rc == MYLITE_OK && filter_result.matches) {
         out_plan->kind = INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS;
         *out_matches = true;
     } else if (rc == MYLITE_OK) {
@@ -504,8 +505,7 @@ static int information_schema_join_compat_plan_columns_tables(
     };
     char *table_schema = NULL;
     char *table_type = NULL;
-    bool filters_match = false;
-    bool filters_have_deferred_values = false;
+    struct information_schema_join_compat_filter_result filter_result = {0};
     int rc = MYLITE_OK;
 
     *out_matches = false;
@@ -561,11 +561,10 @@ static int information_schema_join_compat_plan_columns_tables(
             {.qualifier = "t", .name = "TABLE_TYPE", .out_value = &table_type},
         },
         4U,
-        &filters_match,
-        &filters_have_deferred_values
+        &filter_result
     );
-    if (rc == MYLITE_OK && filters_match &&
-        (filters_have_deferred_values ||
+    if (rc == MYLITE_OK && filter_result.matches &&
+        (filter_result.has_deferred_values ||
          (mylite_execution_text_equals_ascii_case_insensitive(
               out_plan->schema_name,
               table_schema
@@ -814,8 +813,7 @@ static int information_schema_join_compat_copy_filter_values(
     const struct mylite_sql_ast_node *predicate,
     struct information_schema_join_compat_value_filter *filters,
     size_t filter_count,
-    bool *out_matches,
-    bool *out_has_deferred_values
+    struct information_schema_join_compat_filter_result *out_result
 ) {
     const struct mylite_sql_ast_node *stack[information_schema_join_predicate_stack_capacity];
     bool matched[information_schema_join_predicate_stack_capacity] = {false};
@@ -823,14 +821,11 @@ static int information_schema_join_compat_copy_filter_values(
     size_t leaf_count = 0U;
     int rc = MYLITE_OK;
 
-    if (out_matches == NULL || filters == NULL || filter_count == 0U ||
+    if (out_result == NULL || filters == NULL || filter_count == 0U ||
         filter_count > sizeof(matched) / sizeof(matched[0])) {
         return MYLITE_MISUSE;
     }
-    *out_matches = false;
-    if (out_has_deferred_values != NULL) {
-        *out_has_deferred_values = false;
-    }
+    *out_result = (struct information_schema_join_compat_filter_result){0};
     if (predicate == NULL) {
         return MYLITE_OK;
     }
@@ -893,9 +888,7 @@ static int information_schema_join_compat_copy_filter_values(
                     rc = MYLITE_NOMEM;
                 } else {
                     (*filters[match_index].out_value)[0] = '\0';
-                    if (out_has_deferred_values != NULL) {
-                        *out_has_deferred_values = true;
-                    }
+                    out_result->has_deferred_values = true;
                 }
             } else {
                 rc = mylite_execution_active_stmt_parameter_cell(database, literal, &cell);
@@ -935,9 +928,9 @@ static int information_schema_join_compat_copy_filter_values(
         }
     }
     if (rc == MYLITE_OK && stack_count == 0U && leaf_count == filter_count) {
-        *out_matches = true;
+        out_result->matches = true;
     }
-    if (!*out_matches) {
+    if (!out_result->matches) {
         for (size_t index = 0U; index < filter_count; ++index) {
             if (filters[index].out_value != NULL) {
                 free(*filters[index].out_value);
@@ -1257,8 +1250,7 @@ static int information_schema_join_compat_plan_dynamic_columns(
     const struct mylite_sql_ast_node *coalesce = child_at(concat_arguments, 0U);
     const struct mylite_sql_ast_node *coalesce_arguments = child_at(coalesce, 0U);
     char *table_name = NULL;
-    bool filters_match = false;
-    bool filters_have_deferred_values = false;
+    struct information_schema_join_compat_filter_result filter_result = {0};
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
@@ -1371,11 +1363,10 @@ static int information_schema_join_compat_plan_dynamic_columns(
             {.qualifier = "c", .name = "table_name", .out_value = &table_name},
         },
         1U,
-        &filters_match,
-        &filters_have_deferred_values
+        &filter_result
     );
-    if (rc == MYLITE_OK && filters_match &&
-        (filters_have_deferred_values ||
+    if (rc == MYLITE_OK && filter_result.matches &&
+        (filter_result.has_deferred_values ||
          mylite_execution_text_equals_ascii_case_insensitive(table_name, "t"))) {
         *out_matches = true;
     }

@@ -92,15 +92,14 @@ bool mylite_execution_select_analysis_matches(
     const struct mylite_stmt_binding *bindings,
     size_t binding_count,
     struct mylite_select_analysis_session_key session_key,
-    uint64_t catalog_generation,
-    uint64_t sqlite_schema_generation
+    struct mylite_select_analysis_generation_key generation_key
 ) {
     if (analysis == NULL || !analysis->valid || !analysis->parameter_values_are_reusable ||
         analysis->binding_type_count != binding_count ||
         (binding_count != 0U && analysis->binding_types == NULL) ||
         (binding_count != 0U && bindings == NULL) ||
-        analysis->catalog_generation != catalog_generation ||
-        analysis->sqlite_schema_generation != sqlite_schema_generation ||
+        analysis->generation_key.catalog != generation_key.catalog ||
+        analysis->generation_key.sqlite_schema != generation_key.sqlite_schema ||
         analysis->session_key.sql_mode != session_key.sql_mode ||
         analysis->session_key.last_insert_id != session_key.last_insert_id ||
         analysis->session_key.time_zone_offset_minutes != session_key.time_zone_offset_minutes ||
@@ -121,8 +120,7 @@ int mylite_execution_select_analysis_capture(
     const struct mylite_stmt_binding *bindings,
     size_t binding_count,
     struct mylite_select_analysis_session_key session_key,
-    uint64_t catalog_generation,
-    uint64_t sqlite_schema_generation,
+    struct mylite_select_analysis_generation_key generation_key,
     bool parameter_values_are_reusable
 ) {
     enum mylite_stmt_binding_type *binding_types = NULL;
@@ -148,8 +146,7 @@ int mylite_execution_select_analysis_capture(
     analysis->binding_types = binding_types;
     analysis->binding_type_count = binding_count;
     analysis->session_key = session_key;
-    analysis->catalog_generation = catalog_generation;
-    analysis->sqlite_schema_generation = sqlite_schema_generation;
+    analysis->generation_key = generation_key;
     analysis->parameter_values_are_reusable = parameter_values_are_reusable;
     analysis->valid = true;
     return MYLITE_OK;

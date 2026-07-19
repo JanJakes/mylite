@@ -376,7 +376,7 @@ static int information_schema_reserve_projections(
         return MYLITE_NOMEM;
     }
     query->projection_expressions = expressions;
-    names = realloc(query->projection_names, capacity * sizeof(*names));
+    names = (char **)realloc((void *)query->projection_names, capacity * sizeof(*names));
     if (names == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;

@@ -260,7 +260,7 @@ static int test_expression_collate_predicates(void) {
                    "GROUP BY name ORDER BY MIN(id)",
             .values = unicode_group_values,
             .column_count = 2U,
-            .row_count = 5U,
+            .row_count = ordered_people_row_count,
             .context = "Unicode default collation grouping",
         }
     );

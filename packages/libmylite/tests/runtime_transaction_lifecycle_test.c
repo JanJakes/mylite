@@ -119,6 +119,8 @@ static int deny_statement_savepoint_release(
     const char *database_name,
     const char *trigger_name
 );
+/* sqlite3_set_authorizer fixes this callback's string parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
 static int deny_catalog_transaction_rollback(
     void *context,
     int action,
@@ -362,6 +364,8 @@ static int deny_catalog_transaction_rollback(
     return SQLITE_OK;
 }
 
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
 static int test_failed_statement_rollback_poisons_connection(void) {
     static const char *const no_rows[] = {"0"};
     struct rollback_fault_state fault = {0};
@@ -454,6 +458,8 @@ static int test_failed_statement_rollback_poisons_connection(void) {
     return failures;
 }
 
+/* sqlite3_set_authorizer fixes this callback's string parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
 static int deny_statement_savepoint_rollback(
     void *context,
     int action,
@@ -480,6 +486,8 @@ static int deny_statement_savepoint_rollback(
     }
     return SQLITE_OK;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int test_failed_statement_commit_poisons_connection(void) {
     static const char *const no_rows[] = {"0"};
@@ -557,6 +565,8 @@ static int test_failed_statement_commit_poisons_connection(void) {
     return failures;
 }
 
+/* sqlite3_set_authorizer fixes this callback's string parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
 static int deny_statement_savepoint_release(
     void *context,
     int action,
@@ -583,6 +593,8 @@ static int deny_statement_savepoint_release(
     }
     return SQLITE_OK;
 }
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int test_transaction_control_and_dml(void) {
     static const char *const one_committed[] = {"1", "10"};

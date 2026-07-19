@@ -43,13 +43,16 @@ expect_true($stmt instanceof PDOStatement, 'prepare did not return PDOStatement'
 expect_true($stmt->execute([2, 'Grace']), 'prepared INSERT failed');
 expect_true($stmt->rowCount() === 1, 'prepared INSERT row count mismatch');
 expect_true($pdo->lastInsertId() === '0', 'prepared INSERT last insert ID mismatch');
-$namedInsertIdRejected = false;
-try {
-    $namedInsertIdRejected = $pdo->lastInsertId('sequence_name') === false;
-} catch (PDOException) {
-    $namedInsertIdRejected = true;
-}
-expect_true($namedInsertIdRejected, 'named insert-ID sequence must be rejected');
+expect_true($pdo->lastInsertId('id') === '0', 'named last insert ID mismatch');
+
+expect_true($pdo->exec(
+    'CREATE TABLE generated_people (' .
+    'id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(32) NOT NULL)'
+) >= 0, 'generated people table creation failed');
+$generatedInsert = $pdo->prepare('INSERT INTO generated_people (name) VALUES (?)');
+expect_true($generatedInsert->execute(['Lin']), 'generated prepared INSERT failed');
+expect_true($pdo->lastInsertId() === '1', 'generated prepared INSERT last insert ID mismatch');
+expect_true($pdo->lastInsertId('id') === '1', 'generated named last insert ID mismatch');
 
 $stmt = $pdo->prepare('SELECT name FROM people WHERE name = ?');
 expect_true($stmt->execute(['Grace']), 'prepared SELECT failed');

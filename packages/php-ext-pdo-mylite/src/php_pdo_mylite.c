@@ -344,16 +344,7 @@ static bool pdo_mylite_handle_rollback(pdo_dbh_t *dbh) {
 
 static zend_string *pdo_mylite_last_insert_id(pdo_dbh_t *dbh, const zend_string *name) {
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
-
-    if (name != NULL && ZSTR_LEN(name) != 0U) {
-        pdo_mylite_error(
-            dbh,
-            NULL,
-            MYLITE_MISUSE,
-            "named insert-ID sequences are not supported by the MyLite PDO driver"
-        );
-        return NULL;
-    }
+    (void)name;
     return zend_string_copy(handle->last_insert_id);
 }
 

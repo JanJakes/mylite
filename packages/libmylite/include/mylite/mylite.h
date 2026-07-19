@@ -289,6 +289,8 @@ MYLITE_API const char *mylite_result_info(const mylite_result *result);
 MYLITE_API uint64_t mylite_result_insert_id(const mylite_result *result);
 MYLITE_API size_t mylite_result_warning_count(const mylite_result *result);
 
+/* Returns 1 when enabled, 0 when disabled, and -1 for an invalid handle. */
+MYLITE_API int mylite_session_no_backslash_escapes(const mylite_db *database);
 MYLITE_API int mylite_errcode(const mylite_db *database);
 /* SQLSTATE and message pointers remain valid until the next database API call. */
 MYLITE_API const char *mylite_sqlstate(const mylite_db *database);

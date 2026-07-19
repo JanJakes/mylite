@@ -671,6 +671,13 @@ static int test_sql_mode_assignment_and_effects(void) {
     mylite_file_preamble_init(expected_preamble);
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open sql mode SET file");
+    failures += expect_int(
+        mylite_session_no_backslash_escapes(database),
+        0,
+        "default session uses backslash escapes"
+    );
+    failures +=
+        expect_int(mylite_session_no_backslash_escapes(NULL), -1, "invalid session mode handle");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     session = mylite_connection_session_state(database);
@@ -911,6 +918,11 @@ static int test_sql_mode_assignment_and_effects(void) {
         "preamble after sql mode SET"
     );
     failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'");
+    failures += expect_int(
+        mylite_session_no_backslash_escapes(database),
+        1,
+        "NO_BACKSLASH_ESCAPES session mode getter"
+    );
     failures += expect_query_result(
         database,
         "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
@@ -922,6 +934,11 @@ static int test_sql_mode_assignment_and_effects(void) {
         }
     );
     failures += execute_statement_ok(database, "SET sql_mode = TRADITIONAL");
+    failures += expect_int(
+        mylite_session_no_backslash_escapes(database),
+        0,
+        "session mode getter after replacing sql_mode"
+    );
     failures += expect_query_result(
         database,
         "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",

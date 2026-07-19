@@ -82,6 +82,7 @@ enum mylite_mysqli_error_code {
     MYLITE_MYSQLI_ERROR_NONE = 0,
     MYLITE_MYSQLI_ERROR_CLIENT = 2000,
     MYLITE_MYSQLI_ERROR_CONNECTION = 2002,
+    MYLITE_MYSQLI_ERROR_INSECURE_API = 2061,
     MYLITE_MYSQLI_ERROR_PARSE = 1064,
     MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE = 1153,
     MYLITE_MYSQLI_ERROR_UNSUPPORTED = 1235,
@@ -286,7 +287,12 @@ void mylite_mysqli_result_fetch_field(
 zend_long mylite_mysqli_result_num_rows(const mylite_mysqli_result *result);
 void mylite_mysqli_result_discard(mylite_mysqli_result *result);
 zend_string *mylite_mysqli_quote_identifier(const char *value, size_t length);
-zend_string *mylite_mysqli_escape_string(const char *value, size_t length);
+bool mylite_mysqli_escape_string(
+    mylite_mysqli_link *link,
+    const char *value,
+    size_t length,
+    zend_string **out_escaped
+);
 void mylite_mysqli_set_error(
     mylite_mysqli_link *link,
     int error_code,

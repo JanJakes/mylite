@@ -87,7 +87,11 @@ static int pdo_mylite_open_error(
 static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt);
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result);
 static void pdo_mylite_update_statement_status(pdo_dbh_t *dbh, const mylite_stmt *statement);
-static zend_string *pdo_mylite_quote_string(const char *value, size_t length);
+static zend_string *pdo_mylite_quote_string(
+    const char *value,
+    size_t length,
+    bool no_backslash_escapes
+);
 static char *pdo_mylite_resolve_path(pdo_dbh_t *dbh);
 
 static const struct pdo_dbh_methods pdo_mylite_dbh_methods = {
@@ -310,12 +314,11 @@ static zend_string *pdo_mylite_handle_quoter(
     const zend_string *unquoted,
     enum pdo_param_type paramtype
 ) {
-    (void)dbh;
     (void)paramtype;
-    zend_string *escaped = pdo_mylite_quote_string(ZSTR_VAL(unquoted), ZSTR_LEN(unquoted));
-    zend_string *quoted = zend_strpprintf(0, "'%s'", ZSTR_VAL(escaped));
-    zend_string_release(escaped);
-    return quoted;
+    pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
+    const bool no_backslash_escapes = mylite_session_no_backslash_escapes(handle->db) > 0;
+
+    return pdo_mylite_quote_string(ZSTR_VAL(unquoted), ZSTR_LEN(unquoted), no_backslash_escapes);
 }
 
 static bool pdo_mylite_handle_begin(pdo_dbh_t *dbh) {
@@ -724,36 +727,49 @@ static void pdo_mylite_update_statement_status(pdo_dbh_t *dbh, const mylite_stmt
     handle->last_insert_id = zend_u64_to_str(mylite_stmt_insert_id(statement));
 }
 
-static zend_string *pdo_mylite_quote_string(const char *value, size_t length) {
-    smart_str escaped = {0};
+static zend_string *pdo_mylite_quote_string(
+    const char *value,
+    size_t length,
+    bool no_backslash_escapes
+) {
+    smart_str quoted = {0};
 
+    smart_str_appendc(&quoted, '\'');
     for (size_t index = 0U; index < length; ++index) {
+        if (no_backslash_escapes) {
+            if (value[index] == '\'') {
+                smart_str_appendc(&quoted, '\'');
+            }
+            smart_str_appendc(&quoted, value[index]);
+            continue;
+        }
         switch (value[index]) {
         case '\0':
-            smart_str_appendl(&escaped, "\\0", 2);
+            smart_str_appendl(&quoted, "\\0", 2);
             break;
         case '\n':
-            smart_str_appendl(&escaped, "\\n", 2);
+            smart_str_appendl(&quoted, "\\n", 2);
             break;
         case '\r':
-            smart_str_appendl(&escaped, "\\r", 2);
+            smart_str_appendl(&quoted, "\\r", 2);
             break;
         case '\\':
         case '\'':
         case '"':
-            smart_str_appendc(&escaped, '\\');
-            smart_str_appendc(&escaped, value[index]);
+            smart_str_appendc(&quoted, '\\');
+            smart_str_appendc(&quoted, value[index]);
             break;
         case '\032':
-            smart_str_appendl(&escaped, "\\Z", 2);
+            smart_str_appendl(&quoted, "\\Z", 2);
             break;
         default:
-            smart_str_appendc(&escaped, value[index]);
+            smart_str_appendc(&quoted, value[index]);
             break;
         }
     }
-    smart_str_0(&escaped);
-    return escaped.s == NULL ? zend_string_init("", 0, false) : escaped.s;
+    smart_str_appendc(&quoted, '\'');
+    smart_str_0(&quoted);
+    return quoted.s;
 }
 
 static char *pdo_mylite_resolve_path(pdo_dbh_t *dbh) {

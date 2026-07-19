@@ -166,8 +166,21 @@ expect_true($pdo->rollBack(), 'rollBack failed');
 expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '2', 'name' => 'Grace'], 'buffered SELECT unread row mismatch');
 expect_true($pdo->query('SELECT COUNT(*) AS total FROM people')->fetch() === ['total' => '2'], 'rollback count mismatch');
 
-$expectedEscape = 'A' . '\\0' . '\\n' . '\\r' . '\\\\' . "\\'" . '\\"' . '\\Z' . 'B';
-expect_true($pdo->quote("A\0\n\r\\'\"\x1aB") === "'" . $expectedEscape . "'", 'PDO quote mismatch');
+$quotedPayload = "A\0\n\r\\'\"\x1aB";
+$quotedLiteral = $pdo->quote($quotedPayload);
+expect_true(
+    $quotedLiteral === "'" . str_replace("'", "''", $quotedPayload) . "'",
+    'PDO NO_BACKSLASH_ESCAPES quote mismatch'
+);
+expect_true(
+    $pdo->query('SELECT ' . $quotedLiteral)->fetchColumn() === $quotedPayload,
+    'PDO quoted binary payload round trip mismatch'
+);
+$quotedAttack = $pdo->quote("Ada' OR 1=1 -- ");
+expect_true(
+    $pdo->query('SELECT COUNT(*) FROM people WHERE name = ' . $quotedAttack)->fetchColumn() === '0',
+    'PDO quote allowed SQL injection'
+);
 
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_SILENT);
 expect_true($pdo->exec('INSERT INTO missing_table VALUES (1)') === false, 'silent invalid query should fail');

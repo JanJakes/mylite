@@ -548,12 +548,19 @@ PHP_FUNCTION(mysqli_real_escape_string) {
     Z_PARAM_STRING(value, value_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    escaped = mylite_mysqli_escape_string(value, value_length);
+    if (!mylite_mysqli_escape_string(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+            value,
+            value_length,
+            &escaped
+        )) {
+        RETURN_FALSE;
+    }
     RETURN_STR(escaped);
 }
 
 PHP_FUNCTION(mysqli_escape_string) {
-    ZEND_MN(mysqli_real_escape_string)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+    zif_mysqli_real_escape_string(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
 PHP_FUNCTION(mysqli_autocommit) {
@@ -2233,12 +2240,21 @@ PHP_METHOD(mysqli, poll) {
 PHP_METHOD(mysqli, real_escape_string) {
     char *value = NULL;
     size_t value_length = 0U;
+    zend_string *escaped = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_STRING(value, value_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_STR(mylite_mysqli_escape_string(value, value_length));
+    if (!mylite_mysqli_escape_string(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+            value,
+            value_length,
+            &escaped
+        )) {
+        RETURN_FALSE;
+    }
+    RETURN_STR(escaped);
 }
 
 PHP_METHOD(mysqli, reap_async_query) {
@@ -2249,12 +2265,21 @@ PHP_METHOD(mysqli, reap_async_query) {
 PHP_METHOD(mysqli, escape_string) {
     char *value = NULL;
     size_t value_length = 0U;
+    zend_string *escaped = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_STRING(value, value_length)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_STR(mylite_mysqli_escape_string(value, value_length));
+    if (!mylite_mysqli_escape_string(
+            mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+            value,
+            value_length,
+            &escaped
+        )) {
+        RETURN_FALSE;
+    }
+    RETURN_STR(escaped);
 }
 
 PHP_METHOD(mysqli, select_db) {

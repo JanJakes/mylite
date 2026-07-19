@@ -454,8 +454,7 @@ bool mylite_mysqli_link_query(
             return false;
         }
     } else if (use_buffered_cursor) {
-        if (!mylite_mysqli_execute_buffered_cursor_sql(link, sql, sql_length, out_result) &&
-            !mylite_mysqli_execute_sql(link, sql, sql_length, out_result)) {
+        if (!mylite_mysqli_execute_buffered_cursor_sql(link, sql, sql_length, out_result)) {
             return false;
         }
     } else if (!mylite_mysqli_execute_sql(link, sql, sql_length, out_result)) {
@@ -488,11 +487,7 @@ bool mylite_mysqli_link_real_query(mylite_mysqli_link *link, const char *sql, si
             mylite_mysqli_link_clear_last_result(link);
             return true;
         }
-        if (link->error_code == MYLITE_MYSQLI_ERROR_CONNECTION ||
-            link->error_code == MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE ||
-            link->error_code == MYLITE_MYSQLI_ERROR_CLIENT) {
-            return false;
-        }
+        return false;
     }
 
     ok = mylite_mysqli_execute_sql(link, sql, sql_length, &result);
@@ -1257,10 +1252,13 @@ static bool mylite_mysqli_prepare_pending_cursor_sql(
         execute_ns = mylite_mysqli_profile_elapsed_ns(execute_start_ns);
     }
     if (status != MYLITE_OK) {
+        if (MYLITE_MYSQLI_G(profile_enabled)) {
+            mylite_mysqli_profile_record(sql, sql_length, false, true, execute_ns, 0U, 0U, 0U);
+        }
         if (native_stmt != NULL) {
             (void)mylite_stmt_finalize(native_stmt);
         }
-        return false;
+        return mylite_mysqli_capture_link_status(link, status, "could not prepare statement");
     }
 
     column_count = mylite_stmt_column_count(native_stmt);
@@ -2600,9 +2598,37 @@ zend_string *mylite_mysqli_quote_identifier(const char *value, size_t length) {
     return quoted.s;
 }
 
-zend_string *mylite_mysqli_escape_string(const char *value, size_t length) {
+bool mylite_mysqli_escape_string(
+    mylite_mysqli_link *link,
+    const char *value,
+    size_t length,
+    zend_string **out_escaped
+) {
     smart_str escaped = {0};
 
+    *out_escaped = NULL;
+    if (link->database == NULL) {
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_CONNECTION,
+            "HY000",
+            "mysqli object is not connected"
+        );
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
+    if (mylite_session_no_backslash_escapes(link->database) > 0) {
+        mylite_mysqli_set_error(
+            link,
+            MYLITE_MYSQLI_ERROR_INSECURE_API,
+            "HY000",
+            "mysql_real_escape_string cannot be used with NO_BACKSLASH_ESCAPES sql mode"
+        );
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
+
+    mylite_mysqli_clear_error(link);
     for (size_t index = 0U; index < length; index++) {
         switch (value[index]) {
         case '\0':
@@ -2629,7 +2655,8 @@ zend_string *mylite_mysqli_escape_string(const char *value, size_t length) {
         }
     }
     smart_str_0(&escaped);
-    return escaped.s == NULL ? zend_string_init("", 0, false) : escaped.s;
+    *out_escaped = escaped.s == NULL ? zend_string_init("", 0, false) : escaped.s;
+    return true;
 }
 
 void mylite_mysqli_set_error(

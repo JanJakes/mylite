@@ -156,6 +156,15 @@ int mylite_close_checked(mylite_db *database) {
     return MYLITE_OK;
 }
 
+int mylite_session_no_backslash_escapes(const mylite_db *database) {
+    if (database == NULL) {
+        return -1;
+    }
+
+    return (database->session.sql_mode & MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U ? 1
+                                                                                             : 0;
+}
+
 int mylite_errcode(const mylite_db *database) {
     if (database == NULL) {
         return MYLITE_MISUSE;

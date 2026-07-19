@@ -369,12 +369,14 @@ struct mylite_db {
     bool cursor_plan_attempt_active;
     bool cursor_plan_attempt_unsupported;
     bool transaction_state_uncertain;
+    struct sqlite3_mutex *processlist_snapshot_mutex;
     struct mylite_processlist_session_snapshot processlist_snapshot;
     struct mylite_db *processlist_next;
 };
 
 struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *database);
-const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
+const struct mylite_session_state *mylite_connection_session_state(
+    const struct mylite_db *database
 );
 const char *mylite_connection_statement_character_set_client(const struct mylite_db *database);
 const char *mylite_connection_statement_character_set_connection(const struct mylite_db *database);
@@ -385,6 +387,8 @@ int mylite_connection_collect_processlist_sessions(
     size_t *out_count
 );
 void mylite_connection_publish_processlist_session(struct mylite_db *database);
+void mylite_connection_lock_processlist_registry_for_test(void);
+void mylite_connection_unlock_processlist_registry_for_test(void);
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database);
 const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_state_for_test(

@@ -1,7 +1,7 @@
 #include "mylite_connection.h"
 
-#include "mylite_execution_connection_lifecycle.h"
 #include "mylite_execution_bound_statement.h"
+#include "mylite_execution_connection_lifecycle.h"
 #include "mylite_execution_sqlite_internal.h"
 #include "mylite_file_open.h"
 #include "mylite_named_locks.h"
@@ -24,14 +24,14 @@ static int bootstrap_sqlite_connection(struct mylite_db *database);
 static int initialize_file_backed_catalog(struct mylite_db *database);
 static void destroy_database_handle(struct mylite_db *database);
 static int sqlite_status_to_mylite(int sqlite_status);
-static void register_processlist_session(struct mylite_db *database);
+static int register_processlist_session(struct mylite_db *database);
 static void unregister_processlist_session(struct mylite_db *database);
 static sqlite3_mutex *processlist_registry_mutex(void);
 static void sort_processlist_session_snapshots(
     struct mylite_processlist_session_snapshot *sessions,
     size_t count
 );
-static int compare_processlist_session_snapshots(const void *left, const void *right);
+static int compare_processlist_session_snapshots(const void *lhs, const void *rhs);
 static void copy_processlist_session_snapshot(
     const struct mylite_db *database,
     struct mylite_processlist_session_snapshot *snapshot
@@ -159,7 +159,8 @@ struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *datab
     return &database->diagnostics;
 }
 
-const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
+const struct mylite_session_state *mylite_connection_session_state(
+    const struct mylite_db *database
 ) {
     if (database == NULL) {
         return NULL;
@@ -263,7 +264,10 @@ int mylite_connection_collect_processlist_sessions(
                 retry = true;
                 break;
             }
+            /* Registry-before-snapshot keeps the handle alive and is the only lock order. */
+            sqlite3_mutex_enter(database->processlist_snapshot_mutex);
             sessions[index] = database->processlist_snapshot;
+            sqlite3_mutex_leave(database->processlist_snapshot_mutex);
             sessions[index].is_current = database == current;
             ++index;
         }
@@ -293,19 +297,20 @@ int mylite_connection_collect_processlist_sessions(
 }
 
 void mylite_connection_publish_processlist_session(struct mylite_db *database) {
-    sqlite3_mutex *mutex = NULL;
-
     if (database == NULL) {
         return;
     }
-    mutex = processlist_registry_mutex();
-    if (mutex != NULL) {
-        sqlite3_mutex_enter(mutex);
-    }
+    sqlite3_mutex_enter(database->processlist_snapshot_mutex);
     copy_processlist_session_snapshot(database, &database->processlist_snapshot);
-    if (mutex != NULL) {
-        sqlite3_mutex_leave(mutex);
-    }
+    sqlite3_mutex_leave(database->processlist_snapshot_mutex);
+}
+
+void mylite_connection_lock_processlist_registry_for_test(void) {
+    sqlite3_mutex_enter(processlist_registry_mutex());
+}
+
+void mylite_connection_unlock_processlist_registry_for_test(void) {
+    sqlite3_mutex_leave(processlist_registry_mutex());
 }
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database) {
@@ -355,6 +360,7 @@ bool mylite_connection_sql_notes_enabled(const struct mylite_db *database) {
 
 static int allocate_database_handle(struct mylite_db **out_database) {
     struct mylite_db *database = calloc(1U, sizeof(*database));
+    int rc = MYLITE_OK;
 
     if (database == NULL) {
         return MYLITE_NOMEM;
@@ -365,7 +371,11 @@ static int allocate_database_handle(struct mylite_db **out_database) {
     initialize_session_state(&database->session);
     mylite_catalog_init(&database->catalog);
     mylite_catalog_string_pool_init(&database->catalog_strings);
-    register_processlist_session(database);
+    rc = register_processlist_session(database);
+    if (rc != MYLITE_OK) {
+        destroy_database_handle(database);
+        return rc;
+    }
     *out_database = database;
 
     return MYLITE_OK;
@@ -438,6 +448,8 @@ static void destroy_database_handle(struct mylite_db *database) {
     mylite_execution_detach_connection_statements(database);
     mylite_named_lock_release_all_for_connection(database->session.connection_id);
     unregister_processlist_session(database);
+    sqlite3_mutex_free(database->processlist_snapshot_mutex);
+    database->processlist_snapshot_mutex = NULL;
     if (database->sqlite != NULL && database->session.user_transaction_active) {
         (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
         database->session.user_transaction_active = false;
@@ -515,9 +527,13 @@ static int sqlite_status_to_mylite(int sqlite_status) {
     return MYLITE_ERROR;
 }
 
-static void register_processlist_session(struct mylite_db *database) {
+static int register_processlist_session(struct mylite_db *database) {
     sqlite3_mutex *mutex = processlist_registry_mutex();
 
+    database->processlist_snapshot_mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
+    if (database->processlist_snapshot_mutex == NULL) {
+        return MYLITE_NOMEM;
+    }
     copy_processlist_session_snapshot(database, &database->processlist_snapshot);
     if (mutex != NULL) {
         sqlite3_mutex_enter(mutex);
@@ -527,6 +543,8 @@ static void register_processlist_session(struct mylite_db *database) {
     if (mutex != NULL) {
         sqlite3_mutex_leave(mutex);
     }
+
+    return MYLITE_OK;
 }
 
 static void unregister_processlist_session(struct mylite_db *database) {
@@ -560,9 +578,9 @@ static void sort_processlist_session_snapshots(
     qsort(sessions, count, sizeof(*sessions), compare_processlist_session_snapshots);
 }
 
-static int compare_processlist_session_snapshots(const void *left, const void *right) {
-    const struct mylite_processlist_session_snapshot *left_session = left;
-    const struct mylite_processlist_session_snapshot *right_session = right;
+static int compare_processlist_session_snapshots(const void *lhs, const void *rhs) {
+    const struct mylite_processlist_session_snapshot *left_session = lhs;
+    const struct mylite_processlist_session_snapshot *right_session = rhs;
 
     if (left_session->connection_id < right_session->connection_id) {
         return -1;

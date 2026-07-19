@@ -14,6 +14,7 @@
 #else
 #  include <pthread.h>
 #  include <sched.h>
+#  include <time.h>
 #  include <unistd.h>
 #endif
 
@@ -38,6 +39,8 @@ enum {
 #ifndef _WIN32
     processlist_worker_count = 4,
     processlist_worker_iterations = 100,
+    processlist_lifetime_iterations = 100,
+    processlist_publication_wait_iterations = 5000,
 #endif
 };
 
@@ -65,6 +68,19 @@ struct processlist_worker_context {
     atomic_size_t *active_workers;
     atomic_int *failures;
 };
+
+struct processlist_publication_context {
+    mylite_db *database;
+    atomic_bool start;
+    atomic_bool done;
+    atomic_int failures;
+};
+
+struct processlist_lifetime_context {
+    atomic_bool *start;
+    atomic_size_t *active_workers;
+    atomic_int *failures;
+};
 #endif
 
 static const char *const show_processlist_names[show_processlist_column_count] = {
@@ -82,12 +98,20 @@ static int test_show_processlist_result_shape_session_info_and_preamble(void);
 static int test_show_processlist_diagnostics_and_unsupported_forms(void);
 static int test_independent_show_processlist_handles(void);
 static int test_concurrent_processlist_snapshots(void);
+static int test_processlist_publication_does_not_take_registry_lock(void);
+static int test_concurrent_processlist_handle_lifetimes(void);
 #ifndef _WIN32
 static void *mutate_processlist_session(void *argument);
+static void *publish_processlist_session(void *argument);
+static void *churn_processlist_session_lifetime(void *argument);
 static int validate_concurrent_processlist_snapshot(
     const struct mylite_processlist_session_snapshot *sessions,
     size_t count,
     size_t expected_count
+);
+static int validate_processlist_lifetime_snapshot(
+    const struct mylite_processlist_session_snapshot *sessions,
+    size_t count
 );
 #endif
 static int expect_show_processlist_result(
@@ -135,6 +159,8 @@ int main(void) {
     failures += test_show_processlist_diagnostics_and_unsupported_forms();
     failures += test_independent_show_processlist_handles();
     failures += test_concurrent_processlist_snapshots();
+    failures += test_processlist_publication_does_not_take_registry_lock();
+    failures += test_concurrent_processlist_handle_lifetimes();
 
     return failures == 0 ? 0 : 1;
 }
@@ -198,8 +224,8 @@ static int test_concurrent_processlist_snapshots(void) {
                 );
             }
             free(sessions);
-        } while (failures == 0 && atomic_load_explicit(&active_workers, memory_order_acquire) != 0U
-        );
+        } while (failures == 0 &&
+                 atomic_load_explicit(&active_workers, memory_order_acquire) != 0U);
     }
     for (size_t index = 0U; index < thread_count; ++index) {
         if (pthread_join(threads[index], NULL) != 0) {
@@ -211,6 +237,129 @@ static int test_concurrent_processlist_snapshots(void) {
     for (size_t index = 0U; index < processlist_worker_count; ++index) {
         mylite_close(workers[index]);
     }
+    mylite_close(observer);
+    return failures;
+#endif
+}
+
+static int test_processlist_publication_does_not_take_registry_lock(void) {
+#ifdef _WIN32
+    return 0;
+#else
+    static const struct timespec wait_interval = {
+        .tv_sec = 0,
+        .tv_nsec = 1000000,
+    };
+    struct processlist_publication_context context = {0};
+    pthread_t thread;
+    bool thread_created = false;
+    int failures = 0;
+
+    atomic_init(&context.start, false);
+    atomic_init(&context.done, false);
+    atomic_init(&context.failures, 0);
+    failures += expect_int(
+        mylite_open_memory(&context.database),
+        MYLITE_OK,
+        "open independent processlist publisher"
+    );
+    if (failures == 0 &&
+        pthread_create(&thread, NULL, publish_processlist_session, &context) != 0) {
+        fprintf(stderr, "create independent processlist publisher: failed\n");
+        ++failures;
+    } else if (failures == 0) {
+        thread_created = true;
+    }
+
+    if (thread_created) {
+        mylite_connection_lock_processlist_registry_for_test();
+        atomic_store_explicit(&context.start, true, memory_order_release);
+        for (size_t iteration = 0U; iteration < processlist_publication_wait_iterations &&
+                                    !atomic_load_explicit(&context.done, memory_order_acquire);
+             ++iteration) {
+            (void)nanosleep(&wait_interval, NULL);
+        }
+        if (!atomic_load_explicit(&context.done, memory_order_acquire)) {
+            fprintf(stderr, "processlist publication waited for the registry lock\n");
+            ++failures;
+        }
+        mylite_connection_unlock_processlist_registry_for_test();
+        if (pthread_join(thread, NULL) != 0) {
+            fprintf(stderr, "join independent processlist publisher: failed\n");
+            ++failures;
+        }
+        failures += atomic_load_explicit(&context.failures, memory_order_relaxed);
+    }
+    mylite_close(context.database);
+    return failures;
+#endif
+}
+
+static int test_concurrent_processlist_handle_lifetimes(void) {
+#ifdef _WIN32
+    return 0;
+#else
+    mylite_db *observer = NULL;
+    pthread_t threads[processlist_worker_count];
+    struct processlist_lifetime_context contexts[processlist_worker_count];
+    atomic_bool start;
+    atomic_size_t active_workers;
+    atomic_int worker_failures;
+    size_t thread_count = 0U;
+    int failures = 0;
+
+    atomic_init(&start, false);
+    atomic_init(&active_workers, processlist_worker_count);
+    atomic_init(&worker_failures, 0);
+    failures +=
+        expect_int(mylite_open_memory(&observer), MYLITE_OK, "open processlist lifetime observer");
+    for (size_t index = 0U; failures == 0 && index < processlist_worker_count; ++index) {
+        contexts[index] = (struct processlist_lifetime_context){
+            .start = &start,
+            .active_workers = &active_workers,
+            .failures = &worker_failures,
+        };
+        if (pthread_create(
+                &threads[index],
+                NULL,
+                churn_processlist_session_lifetime,
+                &contexts[index]
+            ) != 0) {
+            fprintf(stderr, "create processlist lifetime worker: failed\n");
+            ++failures;
+        } else {
+            ++thread_count;
+        }
+    }
+    if (thread_count < processlist_worker_count) {
+        atomic_fetch_sub_explicit(
+            &active_workers,
+            processlist_worker_count - thread_count,
+            memory_order_relaxed
+        );
+    }
+    atomic_store_explicit(&start, true, memory_order_release);
+    if (failures == 0) {
+        do {
+            struct mylite_processlist_session_snapshot *sessions = NULL;
+            size_t count = 0U;
+            int rc = mylite_connection_collect_processlist_sessions(observer, &sessions, &count);
+
+            failures += expect_int(rc, MYLITE_OK, "collect processlist lifetime sessions");
+            if (rc == MYLITE_OK) {
+                failures += validate_processlist_lifetime_snapshot(sessions, count);
+            }
+            free(sessions);
+        } while (failures == 0 &&
+                 atomic_load_explicit(&active_workers, memory_order_acquire) != 0U);
+    }
+    for (size_t index = 0U; index < thread_count; ++index) {
+        if (pthread_join(threads[index], NULL) != 0) {
+            fprintf(stderr, "join processlist lifetime worker: failed\n");
+            ++failures;
+        }
+    }
+    failures += atomic_load_explicit(&worker_failures, memory_order_relaxed);
     mylite_close(observer);
     return failures;
 #endif
@@ -240,6 +389,41 @@ static void *mutate_processlist_session(void *argument) {
                 break;
             }
         }
+    }
+    atomic_fetch_sub_explicit(context->active_workers, 1U, memory_order_release);
+    return NULL;
+}
+
+static void *publish_processlist_session(void *argument) {
+    struct processlist_publication_context *context = argument;
+
+    while (!atomic_load_explicit(&context->start, memory_order_acquire)) {
+        sched_yield();
+    }
+    if (execute_statement_ok(context->database, "USE information_schema") != 0) {
+        atomic_fetch_add_explicit(&context->failures, 1, memory_order_relaxed);
+    }
+    atomic_store_explicit(&context->done, true, memory_order_release);
+    return NULL;
+}
+
+static void *churn_processlist_session_lifetime(void *argument) {
+    struct processlist_lifetime_context *context = argument;
+    bool failed = false;
+
+    while (!atomic_load_explicit(context->start, memory_order_acquire)) {
+        sched_yield();
+    }
+    for (size_t iteration = 0U; !failed && iteration < processlist_lifetime_iterations;
+         ++iteration) {
+        mylite_db *database = NULL;
+
+        if (mylite_open_memory(&database) != MYLITE_OK ||
+            execute_statement_ok(database, "USE information_schema") != 0) {
+            atomic_fetch_add_explicit(context->failures, 1, memory_order_relaxed);
+            failed = true;
+        }
+        mylite_close(database);
     }
     atomic_fetch_sub_explicit(context->active_workers, 1U, memory_order_release);
     return NULL;
@@ -281,11 +465,61 @@ static int validate_concurrent_processlist_snapshot(
             fprintf(stderr, "concurrent processlist schema: absent schema has text\n");
             ++failures;
         }
+        if (sessions[index].autocommit_enabled && sessions[index].user_transaction_active) {
+            fprintf(stderr, "concurrent processlist transaction state: incoherent snapshot\n");
+            ++failures;
+        }
         if (sessions[index].is_current) {
             ++current_count;
         }
     }
     failures += expect_size(current_count, 1U, "concurrent processlist current session count");
+    return failures;
+}
+
+static int validate_processlist_lifetime_snapshot(
+    const struct mylite_processlist_session_snapshot *sessions,
+    size_t count
+) {
+    size_t current_count = 0U;
+    int failures = 0;
+
+    if (count == 0U || count > processlist_worker_count + 1U) {
+        fprintf(stderr, "processlist lifetime session count: got %zu\n", count);
+        ++failures;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        if (index > 0U && sessions[index - 1U].connection_id >= sessions[index].connection_id) {
+            fprintf(stderr, "processlist lifetime connection order: not strictly increasing\n");
+            ++failures;
+        }
+        if (memchr(
+                sessions[index].selected_schema,
+                '\0',
+                sizeof(sessions[index].selected_schema)
+            ) == NULL ||
+            memchr(
+                sessions[index].client_user_identity,
+                '\0',
+                sizeof(sessions[index].client_user_identity)
+            ) == NULL) {
+            fprintf(stderr, "processlist lifetime text: not null terminated\n");
+            ++failures;
+        }
+        if (sessions[index].has_selected_schema &&
+            strcmp(sessions[index].selected_schema, "information_schema") != 0) {
+            fprintf(stderr, "processlist lifetime schema: unexpected value\n");
+            ++failures;
+        }
+        if (!sessions[index].has_selected_schema && sessions[index].selected_schema[0] != '\0') {
+            fprintf(stderr, "processlist lifetime schema: absent schema has text\n");
+            ++failures;
+        }
+        if (sessions[index].is_current) {
+            ++current_count;
+        }
+    }
+    failures += expect_size(current_count, 1U, "processlist lifetime current session count");
     return failures;
 }
 #endif

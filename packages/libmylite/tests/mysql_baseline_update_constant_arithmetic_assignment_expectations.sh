@@ -5,7 +5,7 @@ set -eu
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
 MYSQL_BIN="${MYLITE_MYSQL_BIN:-}"
 MYSQL_SOCKET="${MYLITE_MYSQL_SOCKET:-}"
-DATABASE="mylite_update_constant_arithmetic_assignment_expectations_$$"
+DATABASE="mylite_update_constant_arithmetic_$$"
 
 fail() {
     printf '%s\n' "mysql_baseline_update_constant_arithmetic_assignment_expectations: $1" >&2

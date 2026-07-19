@@ -489,6 +489,15 @@
   )
   mylite_configure_c_target(mylite_file_format_test)
 
+  add_executable(mylite_offset_vfs_test
+    tests/offset_vfs_test.c
+  )
+  target_link_libraries(mylite_offset_vfs_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_offset_vfs_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_offset_vfs_test)
+
   add_executable(mylite_version_test
     tests/version_test.c
   )

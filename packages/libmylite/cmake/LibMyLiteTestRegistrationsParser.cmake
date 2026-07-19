@@ -267,3 +267,4 @@
   )
   add_test(NAME libmylite.parser.errors COMMAND mylite_parser_errors_test)
   add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
+  add_test(NAME libmylite.storage.offset_vfs COMMAND mylite_offset_vfs_test)

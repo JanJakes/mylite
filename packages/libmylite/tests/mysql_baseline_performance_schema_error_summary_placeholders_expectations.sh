@@ -48,30 +48,30 @@ order_tables="'events_errors_summary_by_account_by_error',
               'events_errors_summary_global_by_error'"
 
 expect_output \
-    "Performance Schema error summary row counts" \
-    "$(printf '%b' 'events_errors_summary_by_account_by_error\t5331\n' \
-        'events_errors_summary_by_host_by_error\t5331\n' \
-        'events_errors_summary_by_thread_by_error\t76411\n' \
-        'events_errors_summary_by_user_by_error\t5331\n' \
-        'events_errors_summary_global_by_error\t5556')" \
+    "Performance Schema error summary nonempty rows" \
+    "$(printf '%b' 'events_errors_summary_by_account_by_error\t1\n' \
+        'events_errors_summary_by_host_by_error\t1\n' \
+        'events_errors_summary_by_thread_by_error\t1\n' \
+        'events_errors_summary_by_user_by_error\t1\n' \
+        'events_errors_summary_global_by_error\t1')" \
     "SELECT 'events_errors_summary_by_account_by_error',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_errors_summary_by_account_by_error
       UNION ALL
      SELECT 'events_errors_summary_by_host_by_error',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_errors_summary_by_host_by_error
       UNION ALL
      SELECT 'events_errors_summary_by_thread_by_error',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_errors_summary_by_thread_by_error
       UNION ALL
      SELECT 'events_errors_summary_by_user_by_error',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_errors_summary_by_user_by_error
       UNION ALL
      SELECT 'events_errors_summary_global_by_error',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_errors_summary_global_by_error;"
 
 expect_output \

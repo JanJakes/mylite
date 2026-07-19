@@ -68,8 +68,9 @@ expect_show_status_row() {
         *) fail "$label: expected non-NULL Create_time datetime, got [$create_time]" ;;
     esac
     case "$update_time" in
+        NULL) ;;
         ????-??-??\ ??:??:??) ;;
-        *) fail "$label: expected non-NULL Update_time datetime, got [$update_time]" ;;
+        *) fail "$label: expected NULL or Update_time datetime, got [$update_time]" ;;
     esac
     expected_tail=$(printf '%b' 'NULL\tutf8mb3_bin\tNULL\trow_format=DYNAMIC stats_persistent=0')
     if [ "$stable_tail" != "$expected_tail" ]; then
@@ -88,15 +89,16 @@ esac
 
 tables_expected=$(
     printf '%b' \
-        'innodb_index_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t1\t1\t0\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t\n' \
-        'innodb_table_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t1\t1\t0\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t'
+        'innodb_index_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t1\t1\t1\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t\n' \
+        'innodb_table_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t1\t1\t1\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t'
 )
 expect_output \
     "mysql system stats INFORMATION_SCHEMA.TABLES rows" \
     "$tables_expected" \
     "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
             AUTO_INCREMENT IS NULL, CREATE_TIME IS NOT NULL,
-            UPDATE_TIME IS NULL, CHECK_TIME IS NULL, TABLE_COLLATION,
+            (UPDATE_TIME IS NULL OR UPDATE_TIME <= CURRENT_TIMESTAMP),
+            CHECK_TIME IS NULL, TABLE_COLLATION,
             CHECKSUM IS NULL, CREATE_OPTIONS, TABLE_COMMENT
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql'
@@ -114,12 +116,12 @@ expect_show_status_row \
     "$(printf '%b' 'innodb_table_stats\tInnoDB\t10\tDynamic')"
 
 expect_output \
-    "mysql system stats non-NULL update-time count" \
+    "mysql system stats valid update-time count" \
     "2" \
     "SELECT COUNT(*)
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql'
         AND TABLE_NAME IN ('innodb_table_stats', 'innodb_index_stats')
-        AND UPDATE_TIME IS NOT NULL;"
+        AND (UPDATE_TIME IS NULL OR UPDATE_TIME <= CURRENT_TIMESTAMP);"
 
 printf '%s\n' "mysql_baseline_mysql_system_stats_table_status_expectations: ok"

@@ -19,11 +19,11 @@ run_mysql() {
     if [ -n "$MYSQL_SOCKET" ]; then
         printf '%s\n' "$sql" \
             | "$MYSQL_BIN" --no-defaults --protocol=SOCKET --socket="$MYSQL_SOCKET" -uroot \
-                --batch --raw --skip-column-names "$@"
+                --default-character-set=utf8mb4 --batch --raw --skip-column-names "$@"
     else
         printf '%s\n' "$sql" \
-            | docker exec -i "$MYSQL_CONTAINER" mysql -uroot --batch --raw \
-                --skip-column-names "$@"
+            | docker exec -i "$MYSQL_CONTAINER" mysql -uroot \
+                --default-character-set=utf8mb4 --batch --raw --skip-column-names "$@"
     fi
 }
 

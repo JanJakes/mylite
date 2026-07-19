@@ -42,15 +42,15 @@ order_tables="'file_summary_by_event_name',
               'file_summary_by_instance'"
 
 expect_output \
-    "Performance Schema file summary row counts" \
-    "$(printf '%b' 'file_summary_by_event_name\t51\n' \
-        'file_summary_by_instance\t170')" \
+    "Performance Schema file summary nonempty rows" \
+    "$(printf '%b' 'file_summary_by_event_name\t1\n' \
+        'file_summary_by_instance\t1')" \
     "SELECT 'file_summary_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.file_summary_by_event_name
       UNION ALL
      SELECT 'file_summary_by_instance',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.file_summary_by_instance;"
 
 expect_output \

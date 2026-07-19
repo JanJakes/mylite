@@ -35,8 +35,9 @@ The MySQL manual documents `INFORMATION_SCHEMA.TABLES` and
 `SHOW TABLE STATUS` as exposing table status and storage statistics. Runtime
 checks against MySQL 8.4.9 show the table-status shape for the two InnoDB
 persistent-statistics tables. Row and storage estimates are live InnoDB
-statistics and change as reused comparison runtimes accumulate analyzed tables,
-while creation and update timestamps are non-`NULL` but host-runtime-specific.
+statistics and change as reused comparison runtimes accumulate analyzed tables.
+Creation timestamps are non-`NULL`; update timestamps can be `NULL` immediately
+after initialization or runtime-specific datetimes after statistics activity.
 
 ## Supported Behavior
 
@@ -80,12 +81,13 @@ For both rows:
 - `TABLE_COMMENT` / `Comment` is the empty string.
 
 MySQL's exact row estimates, storage-size fields, `CREATE_TIME`, and
-`UPDATE_TIME` values are installation and runtime dependent. The MySQL
-expectation artifact verifies numeric shape for the sampled fields and exact
-stable metadata for engine, row format, collation, options, and comments.
-MyLite renders both timestamp fields from the current statement timestamp for
-these synthetic rows, preserving the non-`NULL` datetime shape without
-inventing durable server startup or InnoDB update-time state.
+`UPDATE_TIME` values are installation and runtime dependent, and a fresh
+runtime can report `NULL` for `UPDATE_TIME`. The MySQL expectation artifact
+verifies numeric shape for the sampled fields and exact stable metadata for
+engine, row format, collation, options, and comments. MyLite deliberately
+renders both timestamp fields from the current statement timestamp for these
+synthetic rows, preserving its deterministic non-`NULL` placeholder shape
+without inventing durable server startup or InnoDB update-time state.
 
 ## Diagnostics And Limits
 
@@ -125,7 +127,8 @@ The recorded MySQL 8.4.9 probe is:
 SELECT VERSION();
 SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
        AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE,
-       AUTO_INCREMENT IS NULL, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
+       AUTO_INCREMENT IS NULL, CREATE_TIME IS NOT NULL,
+       (UPDATE_TIME IS NULL OR UPDATE_TIME <= CURRENT_TIMESTAMP),
        CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL, CREATE_OPTIONS,
        TABLE_COMMENT
   FROM information_schema.tables
@@ -140,8 +143,8 @@ Observed output:
 
 ```text
 8.4.9
-innodb_index_stats	BASE TABLE	InnoDB	10	Dynamic	6	2730	16384	0	0	4194304	1	1	0	1	utf8mb3_bin	1	row_format=DYNAMIC stats_persistent=0	<empty TABLE_COMMENT>
-innodb_table_stats	BASE TABLE	InnoDB	10	Dynamic	2	8192	16384	0	0	4194304	1	1	0	1	utf8mb3_bin	1	row_format=DYNAMIC stats_persistent=0	<empty TABLE_COMMENT>
+innodb_index_stats	BASE TABLE	InnoDB	10	Dynamic	6	2730	16384	0	0	4194304	1	1	1	1	utf8mb3_bin	1	row_format=DYNAMIC stats_persistent=0	<empty TABLE_COMMENT>
+innodb_table_stats	BASE TABLE	InnoDB	10	Dynamic	2	8192	16384	0	0	4194304	1	1	1	1	utf8mb3_bin	1	row_format=DYNAMIC stats_persistent=0	<empty TABLE_COMMENT>
 innodb_index_stats	InnoDB	10	Dynamic	6	2730	16384	0	0	4194304	NULL	2026-05-27 21:13:20	2026-05-29 13:57:24	NULL	utf8mb3_bin	NULL	row_format=DYNAMIC stats_persistent=0	<empty Comment>
 innodb_table_stats	InnoDB	10	Dynamic	2	8192	16384	0	0	4194304	NULL	2026-05-27 21:13:20	2026-05-29 12:07:33	NULL	utf8mb3_bin	NULL	row_format=DYNAMIC stats_persistent=0	<empty Comment>
 ```

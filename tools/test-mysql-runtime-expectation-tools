@@ -206,6 +206,9 @@ if ! grep -F -- \
     "$DOCKER_LOG" >/dev/null; then
     fail 'reset helper did not start the fixture on its fresh data volume'
 fi
+if grep -F -- '--skip-log-bin' "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper disabled binary logging from the pinned runtime default'
+fi
 
 : >"$DOCKER_LOG"
 PATH="$TEMP_DIR:$PATH" \

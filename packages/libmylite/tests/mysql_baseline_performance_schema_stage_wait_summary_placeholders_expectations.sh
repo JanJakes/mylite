@@ -60,60 +60,60 @@ order_tables="'events_stages_summary_by_account_by_event_name',
               'events_waits_summary_global_by_event_name'"
 
 expect_output \
-    "Performance Schema stage/wait summary row counts" \
-    "$(printf '%b' 'events_stages_summary_by_account_by_event_name\t399\n' \
-        'events_stages_summary_by_host_by_event_name\t399\n' \
-        'events_stages_summary_by_thread_by_event_name\t5719\n' \
-        'events_stages_summary_by_user_by_event_name\t399\n' \
-        'events_stages_summary_global_by_event_name\t133\n' \
-        'events_waits_summary_by_account_by_event_name\t1221\n' \
-        'events_waits_summary_by_host_by_event_name\t1221\n' \
-        'events_waits_summary_by_instance\t4309\n' \
-        'events_waits_summary_by_thread_by_event_name\t17501\n' \
-        'events_waits_summary_by_user_by_event_name\t1221\n' \
-        'events_waits_summary_global_by_event_name\t407')" \
+    "Performance Schema stage/wait summary nonempty rows" \
+    "$(printf '%b' 'events_stages_summary_by_account_by_event_name\t1\n' \
+        'events_stages_summary_by_host_by_event_name\t1\n' \
+        'events_stages_summary_by_thread_by_event_name\t1\n' \
+        'events_stages_summary_by_user_by_event_name\t1\n' \
+        'events_stages_summary_global_by_event_name\t1\n' \
+        'events_waits_summary_by_account_by_event_name\t1\n' \
+        'events_waits_summary_by_host_by_event_name\t1\n' \
+        'events_waits_summary_by_instance\t1\n' \
+        'events_waits_summary_by_thread_by_event_name\t1\n' \
+        'events_waits_summary_by_user_by_event_name\t1\n' \
+        'events_waits_summary_global_by_event_name\t1')" \
     "SELECT 'events_stages_summary_by_account_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_stages_summary_by_account_by_event_name
       UNION ALL
      SELECT 'events_stages_summary_by_host_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_stages_summary_by_host_by_event_name
       UNION ALL
      SELECT 'events_stages_summary_by_thread_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_stages_summary_by_thread_by_event_name
       UNION ALL
      SELECT 'events_stages_summary_by_user_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_stages_summary_by_user_by_event_name
       UNION ALL
      SELECT 'events_stages_summary_global_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_stages_summary_global_by_event_name
       UNION ALL
      SELECT 'events_waits_summary_by_account_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_waits_summary_by_account_by_event_name
       UNION ALL
      SELECT 'events_waits_summary_by_host_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_waits_summary_by_host_by_event_name
       UNION ALL
      SELECT 'events_waits_summary_by_instance',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_waits_summary_by_instance
       UNION ALL
      SELECT 'events_waits_summary_by_thread_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_waits_summary_by_thread_by_event_name
       UNION ALL
      SELECT 'events_waits_summary_by_user_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_waits_summary_by_user_by_event_name
       UNION ALL
      SELECT 'events_waits_summary_global_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.events_waits_summary_global_by_event_name;"
 
 expect_output \

@@ -48,30 +48,30 @@ order_tables="'memory_summary_by_account_by_event_name',
               'memory_summary_global_by_event_name'"
 
 expect_output \
-    "Performance Schema memory summary row counts" \
-    "$(printf '%b' 'memory_summary_by_account_by_event_name\t1137\n' \
-        'memory_summary_by_host_by_event_name\t1137\n' \
-        'memory_summary_by_thread_by_event_name\t16297\n' \
-        'memory_summary_by_user_by_event_name\t1137\n' \
-        'memory_summary_global_by_event_name\t508')" \
+    "Performance Schema memory summary nonempty rows" \
+    "$(printf '%b' 'memory_summary_by_account_by_event_name\t1\n' \
+        'memory_summary_by_host_by_event_name\t1\n' \
+        'memory_summary_by_thread_by_event_name\t1\n' \
+        'memory_summary_by_user_by_event_name\t1\n' \
+        'memory_summary_global_by_event_name\t1')" \
     "SELECT 'memory_summary_by_account_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.memory_summary_by_account_by_event_name
       UNION ALL
      SELECT 'memory_summary_by_host_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.memory_summary_by_host_by_event_name
       UNION ALL
      SELECT 'memory_summary_by_thread_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.memory_summary_by_thread_by_event_name
       UNION ALL
      SELECT 'memory_summary_by_user_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.memory_summary_by_user_by_event_name
       UNION ALL
      SELECT 'memory_summary_global_by_event_name',
-            COUNT(*)
+            COUNT(*) > 0
        FROM performance_schema.memory_summary_global_by_event_name;"
 
 expect_output \

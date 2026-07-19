@@ -134,10 +134,16 @@ forced_output=$(
 )
 set -e
 case "$forced_output" in
-    *"ERROR 1048 (23000)"*"Column 'id' cannot be null"*\
-*"Warning	3005	REPLACE DELAYED is no longer supported. The statement was converted to REPLACE."*\
-*"Error	1048	Column 'id' cannot be null"*) ;;
-    *) fail "delayed warning plus error diagnostics: got [$forced_output]" ;;
+    *"ERROR 1048 (23000)"*"Column 'id' cannot be null"*) ;;
+    *) fail "delayed client error diagnostics: got [$forced_output]" ;;
+esac
+case "$forced_output" in
+    *"Warning	3005	REPLACE DELAYED is no longer supported. The statement was converted to REPLACE."*) ;;
+    *) fail "delayed conversion warning diagnostics: got [$forced_output]" ;;
+esac
+case "$forced_output" in
+    *"Error	1048	Column 'id' cannot be null"*) ;;
+    *) fail "delayed server error diagnostics: got [$forced_output]" ;;
 esac
 
 expect_error \

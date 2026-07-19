@@ -62,8 +62,7 @@ start_mysql_container() {
         -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
         -e MYSQL_ROOT_HOST=% \
         -v "$volume:/var/lib/mysql" \
-        -d "$MYSQL_IMAGE" \
-        --skip-log-bin >/dev/null
+        -d "$MYSQL_IMAGE" >/dev/null
 }
 
 template_image=$(

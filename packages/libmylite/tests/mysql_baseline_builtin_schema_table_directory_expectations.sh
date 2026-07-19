@@ -42,6 +42,22 @@ expect_contains() {
     esac
 }
 
+ensure_plugin_active() {
+    plugin_name=$1
+    plugin_library=$2
+
+    plugin_status=$(run_mysql \
+        "SELECT COALESCE(MAX(PLUGIN_STATUS), '') FROM INFORMATION_SCHEMA.PLUGINS "\
+"WHERE PLUGIN_NAME = '${plugin_name}';")
+    case "$plugin_status" in
+        ACTIVE) return 0 ;;
+        "") ;;
+        *) fail "${plugin_name} plugin status is ${plugin_status}" ;;
+    esac
+
+    run_mysql "INSTALL PLUGIN ${plugin_name} SONAME '${plugin_library}';" >/dev/null
+}
+
 append_tsv_row() {
     printf '%s' "$1"
     shift
@@ -57,6 +73,9 @@ case "$version" in
     8.4.9*) ;;
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
+
+ensure_plugin_active "CONNECTION_CONTROL" "connection_control.so"
+ensure_plugin_active "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS" "connection_control.so"
 
 counts_expected=$(cat <<\EXPECTED
 information_schema	79	3b9c6a6d41ad41ddeaaaf053e7d0bdba87aee624e70bf5a30be89f87960e17ab

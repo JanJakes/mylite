@@ -102,14 +102,13 @@ expect_output \
 "SELECT a,b,c,d,e,f,n,@@warning_count,ROW_COUNT() FROM exprs ORDER BY a IS NULL, a;" \
     "$DATABASE"
 
-show_columns_expected=$(printf '%s\n' \
-    $'a\tint\tYES\t\tNULL\t' \
-    $'b\tint\tYES\t\tNULL\tVIRTUAL GENERATED' \
-    $'c\tint\tYES\t\tNULL\tVIRTUAL GENERATED' \
-    $'d\tint\tYES\t\tNULL\tSTORED GENERATED' \
-    $'e\tint\tYES\t\tNULL\tVIRTUAL GENERATED' \
-    $'f\tint\tYES\t\tNULL\tVIRTUAL GENERATED' \
-    $'n\tint\tYES\t\tNULL\tVIRTUAL GENERATED')
+show_columns_expected=$(printf \
+    'a\tint\tYES\t\tNULL\t\nb\tint\tYES\t\tNULL\tVIRTUAL GENERATED\n'\
+'c\tint\tYES\t\tNULL\tVIRTUAL GENERATED\n'\
+'d\tint\tYES\t\tNULL\tSTORED GENERATED\n'\
+'e\tint\tYES\t\tNULL\tVIRTUAL GENERATED\n'\
+'f\tint\tYES\t\tNULL\tVIRTUAL GENERATED\n'\
+'n\tint\tYES\t\tNULL\tVIRTUAL GENERATED')
 expect_output \
     "SHOW COLUMNS generated extras" \
     "$show_columns_expected" \
@@ -134,14 +133,13 @@ expect_output \
     "SHOW CREATE TABLE exprs;" \
     "$DATABASE"
 
-information_schema_expected=$(printf '%s\n' \
-    $'a\tNULL\tYES\t\t\t' \
-    $'b\tNULL\tYES\tVIRTUAL GENERATED\t(`a` + 1)\t' \
-    $'c\tNULL\tYES\tVIRTUAL GENERATED\t(`a` - 1)\t' \
-    $'d\tNULL\tYES\tSTORED GENERATED\t(`a` * 2)\t' \
-    $'e\tNULL\tYES\tVIRTUAL GENERATED\t-(`a`)\t' \
-    $'f\tNULL\tYES\tVIRTUAL GENERATED\t`a`\t' \
-    $'n\tNULL\tYES\tVIRTUAL GENERATED\tNULL\t')
+information_schema_expected=$(printf \
+    'a\tNULL\tYES\t\t\t\nb\tNULL\tYES\tVIRTUAL GENERATED\t(`a` + 1)\t\n'\
+'c\tNULL\tYES\tVIRTUAL GENERATED\t(`a` - 1)\t\n'\
+'d\tNULL\tYES\tSTORED GENERATED\t(`a` * 2)\t\n'\
+'e\tNULL\tYES\tVIRTUAL GENERATED\t-(`a`)\t\n'\
+'f\tNULL\tYES\tVIRTUAL GENERATED\t`a`\t\n'\
+'n\tNULL\tYES\tVIRTUAL GENERATED\tNULL\t')
 expect_output \
     "INFORMATION_SCHEMA generated expressions" \
     "$information_schema_expected" \

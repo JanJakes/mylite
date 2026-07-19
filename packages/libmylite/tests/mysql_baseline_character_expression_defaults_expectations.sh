@@ -22,7 +22,8 @@ run_mysql() {
     else
         printf '%s\n' "$sql" \
             | docker exec -i "$MYSQL_CONTAINER" \
-                mysql -uroot --batch --raw --skip-column-names "$@"
+                mysql -uroot --batch --raw --skip-column-names \
+                    --default-character-set=utf8mb4 "$@"
     fi
 }
 

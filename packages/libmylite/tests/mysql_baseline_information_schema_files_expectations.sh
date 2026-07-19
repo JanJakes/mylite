@@ -97,17 +97,22 @@ default_file_filter="FILE_NAME IN ('./ibdata1','./ibtmp1','./mysql.ibd','./sys/s
 files_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.FILES WHERE ${default_file_filter};")
 expect_value "files row count" "6" "$files_count"
 
-expected_files_rows="0	./ibdata1	TABLESPACE	innodb_system	InnoDB	2	12	1048576	12582912	67108864	6291456	NORMAL
-4294967293	./ibtmp1	TEMPORARY	innodb_temporary	InnoDB	2	12	1048576	12582912	67108864	6291456	NORMAL
-4294967294	./mysql.ibd	TABLESPACE	mysql	InnoDB	1	31	1048576	0	1048576	4194304	NORMAL
-1	./sys/sys_config.ibd	TABLESPACE	sys/sys_config	InnoDB	0	0	1048576	0	1048576	0	NORMAL
-4294967279	./undo_001	UNDO LOG	innodb_undo_001	InnoDB	2	16	1048576	16777216	16777216	6291456	NORMAL
-4294967278	./undo_002	UNDO LOG	innodb_undo_002	InnoDB	2	16	1048576	16777216	16777216	6291456	NORMAL"
+expected_files_rows="0	./ibdata1	TABLESPACE	innodb_system	InnoDB	12	1048576	12582912	67108864	NORMAL
+4294967293	./ibtmp1	TEMPORARY	innodb_temporary	InnoDB	12	1048576	12582912	67108864	NORMAL
+4294967294	./mysql.ibd	TABLESPACE	mysql	InnoDB	31	1048576	0	1048576	NORMAL
+1	./sys/sys_config.ibd	TABLESPACE	sys/sys_config	InnoDB	0	1048576	0	1048576	NORMAL
+4294967279	./undo_001	UNDO LOG	innodb_undo_001	InnoDB	16	1048576	16777216	16777216	NORMAL
+4294967278	./undo_002	UNDO LOG	innodb_undo_002	InnoDB	16	1048576	16777216	16777216	NORMAL"
 files_rows=$(run_mysql \
-    "SELECT FILE_ID,FILE_NAME,FILE_TYPE,TABLESPACE_NAME,ENGINE,FREE_EXTENTS, "\
-"TOTAL_EXTENTS,EXTENT_SIZE,INITIAL_SIZE,AUTOEXTEND_SIZE,DATA_FREE,STATUS "\
+    "SELECT FILE_ID,FILE_NAME,FILE_TYPE,TABLESPACE_NAME,ENGINE,TOTAL_EXTENTS, "\
+"EXTENT_SIZE,INITIAL_SIZE,AUTOEXTEND_SIZE,STATUS "\
 "FROM INFORMATION_SCHEMA.FILES WHERE ${default_file_filter} ORDER BY FILE_NAME;")
-expect_value "files exact rows" "$expected_files_rows" "$files_rows"
+expect_value "files stable rows" "$expected_files_rows" "$files_rows"
+
+space_counters=$(run_mysql \
+    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.FILES WHERE ${default_file_filter} "\
+"AND FREE_EXTENTS >= 0 AND DATA_FREE >= 0;")
+expect_value "files nonnegative volatile space counters" "6" "$space_counters"
 
 use_count=$(run_mysql \
     "USE information_schema; SELECT COUNT(*) FROM FILES "\

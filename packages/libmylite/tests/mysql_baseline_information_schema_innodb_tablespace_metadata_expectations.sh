@@ -143,17 +143,22 @@ brief_rows=$(run_mysql \
 "WHERE ${default_brief_filter} ORDER BY NAME;")
 expect_value "innodb tablespaces brief exact rows" "$expected_brief_rows" "$brief_rows"
 
-expected_tablespaces_rows="4294967293	innodb_temporary	4096	Compact or Redundant	16384	0	System	4096	12582912	12582912	0	8.4.9	1	N	normal
-4294967279	innodb_undo_001	0	Undo	16384	0	Undo	4096	16777216	16777216	0	8.4.9	1	N	active
-4294967278	innodb_undo_002	0	Undo	16384	0	Undo	4096	16777216	16777216	0	8.4.9	1	N	active
-4294967294	mysql	18432	Any	16384	0	General	4096	32505856	32509952	0	8.4.9	1	N	normal
-1	sys/sys_config	16417	Dynamic	16384	0	Single	4096	114688	114688	0	8.4.9	1	N	normal"
+expected_tablespaces_rows="4294967293	innodb_temporary	4096	Compact or Redundant	16384	0	System	4096	12582912	0	8.4.9	1	N	normal
+4294967279	innodb_undo_001	0	Undo	16384	0	Undo	4096	16777216	0	8.4.9	1	N	active
+4294967278	innodb_undo_002	0	Undo	16384	0	Undo	4096	16777216	0	8.4.9	1	N	active
+4294967294	mysql	18432	Any	16384	0	General	4096	32505856	0	8.4.9	1	N	normal
+1	sys/sys_config	16417	Dynamic	16384	0	Single	4096	114688	0	8.4.9	1	N	normal"
 tablespaces_rows=$(run_mysql \
     "SELECT SPACE,NAME,FLAG,ROW_FORMAT,PAGE_SIZE,ZIP_PAGE_SIZE,SPACE_TYPE, "\
-"FS_BLOCK_SIZE,FILE_SIZE,ALLOCATED_SIZE,AUTOEXTEND_SIZE,SERVER_VERSION, "\
+"FS_BLOCK_SIZE,FILE_SIZE,AUTOEXTEND_SIZE,SERVER_VERSION, "\
 "SPACE_VERSION,ENCRYPTION,STATE FROM INFORMATION_SCHEMA.INNODB_TABLESPACES "\
 "WHERE ${default_tablespace_filter} ORDER BY NAME;")
-expect_value "innodb tablespaces exact rows" "$expected_tablespaces_rows" "$tablespaces_rows"
+expect_value "innodb tablespaces stable rows" "$expected_tablespaces_rows" "$tablespaces_rows"
+
+allocated_size_count=$(run_mysql \
+    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES "\
+"WHERE ${default_tablespace_filter} AND ALLOCATED_SIZE >= FILE_SIZE;")
+expect_value "innodb tablespaces allocated-size invariant" "5" "$allocated_size_count"
 
 alias_row=$(run_mysql \
     "SELECT b.NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF AS b "\

@@ -690,10 +690,7 @@ static int append_row_scalar_select_query_sql(
     return rc;
 }
 
-int build_row_scalar_select_sql(
-    const struct planned_row_scalar_select *plan,
-    char **out_sql
-) {
+int build_row_scalar_select_sql(const struct planned_row_scalar_select *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;

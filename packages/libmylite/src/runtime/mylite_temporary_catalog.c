@@ -739,8 +739,7 @@ int mylite_temporary_catalog_column_strings_own(struct mylite_catalog_column_des
     return MYLITE_OK;
 }
 
-void mylite_temporary_catalog_column_strings_deinit(
-    struct mylite_catalog_column_descriptor *column
+void mylite_temporary_catalog_column_strings_deinit(struct mylite_catalog_column_descriptor *column
 ) {
     if (column == NULL) {
         return;

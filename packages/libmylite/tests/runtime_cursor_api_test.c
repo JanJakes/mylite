@@ -1410,11 +1410,8 @@ static int test_native_prepared_owns_resolution_context(void) {
         return failures;
     }
     remove_related_files(path);
-    failures += expect_int(
-        mylite_open(path, &database),
-        MYLITE_OK,
-        "open native resolution context file"
-    );
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open native resolution context file");
     failures += execute_ok(database, "CREATE DATABASE schema_a");
     failures += execute_ok(database, "CREATE DATABASE schema_b");
     failures += execute_ok(database, "USE schema_a");
@@ -1482,11 +1479,8 @@ static int test_native_prepared_owns_resolution_context(void) {
         MYLITE_OK,
         "bind native DML key after schema change"
     );
-    failures += expect_int(
-        mylite_stmt_step(stmt),
-        MYLITE_DONE,
-        "execute native DML after schema change"
-    );
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native DML after schema change");
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize schema context DML");
     stmt = NULL;
     failures += expect_query_scalar_text(
@@ -1520,7 +1514,8 @@ static int test_native_prepared_owns_resolution_context(void) {
         "prepare native statement under utf8mb4"
     );
     failures += execute_ok(database, "SET NAMES latin1 COLLATE latin1_swedish_ci");
-    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "execute native charset context query");
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "execute native charset context query");
     failures += expect_cursor_text(
         stmt,
         0U,

@@ -58,8 +58,7 @@ static bool planned_secondary_index_is_fulltext(const struct planned_secondary_i
 static bool planned_secondary_index_is_spatial(const struct planned_secondary_index *index);
 static bool planned_column_is_char_or_varchar(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
-static bool column_descriptor_is_string_family(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_descriptor_is_string_family(const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_char_or_varchar(
     const struct mylite_catalog_column_descriptor *column
@@ -119,8 +118,7 @@ static bool planned_column_is_string_family(const struct planned_column *column)
     return mylite_execution_ddl_planned_column_is_string_family(column);
 }
 
-static bool column_descriptor_is_string_family(
-    const struct mylite_catalog_column_descriptor *column
+static bool column_descriptor_is_string_family(const struct mylite_catalog_column_descriptor *column
 ) {
     return mylite_execution_ddl_column_descriptor_is_string_family(column);
 }

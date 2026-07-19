@@ -649,8 +649,8 @@ static int run_catalog_ddl_generations_scenario(
             "CREATE TABLE catalog_generations (id BIGINT, value VARCHAR(32) "
             "COMMENT 'generation-initial')",
             sizeof("CREATE TABLE catalog_generations (id BIGINT, value VARCHAR(32) "
-                   "COMMENT 'generation-initial')") -
-                1U
+                   "COMMENT 'generation-initial')"
+            ) - 1U
         ) != 0) {
         goto cleanup;
     }

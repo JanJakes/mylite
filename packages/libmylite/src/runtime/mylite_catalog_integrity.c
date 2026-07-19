@@ -433,8 +433,7 @@ static int validate_catalog_table_checks(sqlite3 *sqlite, const struct catalog_t
     if (rc == MYLITE_OK) {
         sql = (const char *)sqlite3_column_text(statement, 0);
         for (size_t index = 0U; index < spec->check_count; ++index) {
-            if (sql == NULL || !normalized_sql_contains((
-                                   struct normalized_sql_search
+            if (sql == NULL || !normalized_sql_contains((struct normalized_sql_search
                                ){.sql = sql, .fragment = spec->checks[index]})) {
                 rc = MYLITE_ERROR;
                 break;
@@ -545,11 +544,8 @@ static int validate_catalog_indexes(sqlite3 *sqlite) {
          true,
          index_ordinal,
          MYLITE_ARRAY_COUNT(index_ordinal)},
-        {"_mylite_catalog_index_columns",
-         NULL,
-         true,
-         index_column,
-         MYLITE_ARRAY_COUNT(index_column)},
+        {"_mylite_catalog_index_columns", NULL, true, index_column, MYLITE_ARRAY_COUNT(index_column)
+        },
         {"_mylite_catalog_foreign_keys", NULL, true, child_name, MYLITE_ARRAY_COUNT(child_name)},
         {"_mylite_catalog_foreign_keys",
          "_mylite_catalog_foreign_keys_parent_table_id",
@@ -561,11 +557,8 @@ static int validate_catalog_indexes(sqlite3 *sqlite) {
          true,
          foreign_key_ordinal,
          MYLITE_ARRAY_COUNT(foreign_key_ordinal)},
-        {"_mylite_catalog_check_constraints",
-         NULL,
-         true,
-         table_name,
-         MYLITE_ARRAY_COUNT(table_name)},
+        {"_mylite_catalog_check_constraints", NULL, true, table_name, MYLITE_ARRAY_COUNT(table_name)
+        },
         {"_mylite_catalog_check_constraints",
          NULL,
          true,

@@ -334,11 +334,8 @@ static int test_checked_close_reports_cursor_cleanup_failure(void) {
         SQLITE_OK,
         "clean up checked close rollback"
     );
-    failures += expect_int(
-        mylite_close_checked(database),
-        MYLITE_OK,
-        "retry checked close after cleanup"
-    );
+    failures +=
+        expect_int(mylite_close_checked(database), MYLITE_OK, "retry checked close after cleanup");
     database = NULL;
 
     remove_related_files(path);

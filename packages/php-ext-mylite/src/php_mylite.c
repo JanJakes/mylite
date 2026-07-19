@@ -83,10 +83,7 @@ static bool php_mylite_bind_statement_value(
 );
 static bool php_mylite_bind_array_values(php_mylite_statement *statement, zval *params);
 static void php_mylite_throw_db(mylite_db *db, int status, const char *fallback);
-static void php_mylite_throw_open(
-    int status,
-    const struct mylite_open_diagnostic *diagnostic
-);
+static void php_mylite_throw_open(int status, const struct mylite_open_diagnostic *diagnostic);
 static void php_mylite_update_connection_status(
     php_mylite_connection *connection,
     const mylite_result *result
@@ -814,10 +811,7 @@ static void php_mylite_throw_db(mylite_db *db, int status, const char *fallback)
     zend_throw_exception(php_mylite_exception_ce, message, code);
 }
 
-static void php_mylite_throw_open(
-    int status,
-    const struct mylite_open_diagnostic *diagnostic
-) {
+static void php_mylite_throw_open(int status, const struct mylite_open_diagnostic *diagnostic) {
     const char *message = diagnostic == NULL ? NULL : diagnostic->message;
     int code = diagnostic == NULL ? status : diagnostic->error_code;
 

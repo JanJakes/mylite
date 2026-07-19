@@ -58,9 +58,8 @@ static int retain_planned_select_predicate_column(
     for (size_t index = 0U; index < predicate->owned_column_count; ++index) {
         const struct mylite_catalog_column_descriptor *owned = predicate->owned_columns[index];
 
-        if (planned_select_predicate_columns_match(
-                &(const struct catalog_column_descriptor_pair){.left = owned, .right = column}
-            )) {
+        if (planned_select_predicate_columns_match(&(const struct catalog_column_descriptor_pair
+            ){.left = owned, .right = column})) {
             *out_column = owned;
             return MYLITE_OK;
         }
@@ -123,8 +122,8 @@ static bool planned_select_predicate_columns_match(
            (left->sqlite_generation_expression == right->sqlite_generation_expression ||
             (left->sqlite_generation_expression != NULL &&
              right->sqlite_generation_expression != NULL &&
-             strcmp(left->sqlite_generation_expression, right->sqlite_generation_expression) ==
-                 0)) &&
+             strcmp(left->sqlite_generation_expression, right->sqlite_generation_expression) == 0)
+           ) &&
            left->descriptor_version == right->descriptor_version &&
            left->created_catalog_generation == right->created_catalog_generation &&
            left->updated_catalog_generation == right->updated_catalog_generation;
@@ -235,8 +234,7 @@ static int append_deprecated_logical_or_warning(struct mylite_db *database) {
     return rc;
 }
 
-static bool planned_select_predicate_has_expression(
-    const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
 ) {
     if (predicate == NULL) {
         return false;

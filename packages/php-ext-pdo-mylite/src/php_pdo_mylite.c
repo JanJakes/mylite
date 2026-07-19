@@ -673,8 +673,8 @@ static int pdo_mylite_open_error(
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
     const char *message = diagnostic == NULL ? NULL : diagnostic->message;
     const char *sqlstate = diagnostic == NULL ? "HY000" : diagnostic->sqlstate;
-    unsigned native_errno = diagnostic == NULL ? (unsigned)status
-                                                : (unsigned)diagnostic->error_code;
+    unsigned native_errno =
+        diagnostic == NULL ? (unsigned)status : (unsigned)diagnostic->error_code;
     size_t sqlstate_size = strlen(sqlstate);
 
     if (message == NULL || message[0] == '\0') {

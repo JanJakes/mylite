@@ -68,12 +68,7 @@ static int test_cursor_failure_completes_and_resets(void) {
 
     failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open cursor sweep handle");
     failures += expect_int(
-        mylite_execute(
-            database,
-            "CREATE DATABASE app",
-            strlen("CREATE DATABASE app"),
-            &result
-        ),
+        mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
         MYLITE_OK,
         "create cursor sweep schema"
     );

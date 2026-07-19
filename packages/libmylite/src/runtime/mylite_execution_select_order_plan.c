@@ -216,8 +216,7 @@ int mylite_execution_plan_select_order_row_scalar_expression(
     );
 }
 
-bool mylite_execution_select_order_key_is_like_predicate(
-    const struct mylite_sql_ast_node *order_key
+bool mylite_execution_select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key
 ) {
     return select_order_key_is_like_predicate(order_key);
 }

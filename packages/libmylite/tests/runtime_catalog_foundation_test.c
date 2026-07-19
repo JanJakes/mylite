@@ -961,11 +961,7 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
         "reject bad version"
     );
     failures += expect_true(database == NULL, "bad version leaves output null");
-    failures += expect_int(
-        diagnostic.error_code,
-        1105,
-        "bad version preserves open error code"
-    );
+    failures += expect_int(diagnostic.error_code, 1105, "bad version preserves open error code");
     failures += expect_text(diagnostic.sqlstate, "HY000", "bad version preserves SQLSTATE");
     failures += expect_true(
         strstr(diagnostic.message, "catalog is incompatible or corrupt") != NULL,

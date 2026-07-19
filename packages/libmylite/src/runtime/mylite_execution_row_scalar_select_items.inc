@@ -398,7 +398,7 @@ static int append_row_scalar_qualified_wildcard_select_items(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -412,7 +412,7 @@ static int append_row_scalar_qualified_wildcard_select_items(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }
@@ -523,11 +523,9 @@ static int finalize_planned_row_scalar_select_item(
             item->has_alias = true;
             item->alias_is_identifier = source->alias->kind == MYLITE_SQL_AST_IDENTIFIER;
         }
-    } else if (
-        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN &&
-        (unwrapped_expression == NULL ||
-         unwrapped_expression->kind != MYLITE_SQL_AST_ANY_VALUE_FUNCTION)
-    ) {
+    } else if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN &&
+               (unwrapped_expression == NULL ||
+                unwrapped_expression->kind != MYLITE_SQL_AST_ANY_VALUE_FUNCTION)) {
         rc = duplicate_text(database, item->expression.column->name, &label);
     } else if (source->expression != NULL) {
         rc = copy_scalar_projection_column_name(database, source->expression, &label);

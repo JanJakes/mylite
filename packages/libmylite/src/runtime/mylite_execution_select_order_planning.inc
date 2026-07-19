@@ -350,8 +350,7 @@ static void apply_select_order_item_direction(
     }
 }
 
-static bool order_item_list_contains_field_order_key(
-    const struct mylite_sql_ast_node *order_items
+static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items
 ) {
     const struct mylite_sql_ast_node *item = NULL;
 

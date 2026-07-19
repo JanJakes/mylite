@@ -37,8 +37,7 @@ int mylite_execution_plan_select_order_row_scalar_expression(
     size_t table_column_count,
     struct planned_select_order_item *out_item
 );
-bool mylite_execution_select_order_key_is_like_predicate(
-    const struct mylite_sql_ast_node *order_key
+bool mylite_execution_select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key
 );
 bool mylite_execution_select_order_key_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *order_key

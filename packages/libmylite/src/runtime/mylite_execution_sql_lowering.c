@@ -66,8 +66,7 @@ enum quantified_subquery_exists_kind {
 
 static bool column_aggregate_function_is_count(enum planned_column_aggregate_function function);
 static bool grouped_aggregate_function_is_bitwise(enum planned_grouped_aggregate_function function);
-static bool planned_select_predicate_has_expression(
-    const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
 );
 static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_regexp(enum mylite_sql_ast_operator operator_kind);
@@ -100,16 +99,14 @@ static bool column_aggregate_function_is_count(enum planned_column_aggregate_fun
             function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN) != 0;
 }
 
-static bool grouped_aggregate_function_is_bitwise(
-    enum planned_grouped_aggregate_function function
+static bool grouped_aggregate_function_is_bitwise(enum planned_grouped_aggregate_function function
 ) {
     return function == PLANNED_GROUPED_AGGREGATE_BIT_AND ||
            function == PLANNED_GROUPED_AGGREGATE_BIT_OR ||
            function == PLANNED_GROUPED_AGGREGATE_BIT_XOR;
 }
 
-static bool planned_select_predicate_has_expression(
-    const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
 ) {
     return predicate != NULL && predicate->has_root;
 }

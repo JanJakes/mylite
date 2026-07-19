@@ -263,9 +263,8 @@ static int validate_update_subquery_predicate_node_source(
                     return MYLITE_ERROR;
                 }
             }
-        } else if (
-            subquery->has_table_source && subquery->source.table.table_id == plan->table.table_id
-        ) {
+        } else if (subquery->has_table_source &&
+                   subquery->source.table.table_id == plan->table.table_id) {
             set_update_table_used_error(database, plan->target.table_name);
             return MYLITE_ERROR;
         }
@@ -279,10 +278,8 @@ static int validate_update_subquery_predicate_node_source(
                 return MYLITE_ERROR;
             }
         }
-    } else if (
-        node->kind == PLANNED_SELECT_PREDICATE_IN && node->in_subquery != NULL &&
-        node->in_subquery->source.table.table_id == plan->table.table_id
-    ) {
+    } else if (node->kind == PLANNED_SELECT_PREDICATE_IN && node->in_subquery != NULL &&
+               node->in_subquery->source.table.table_id == plan->table.table_id) {
         set_update_table_used_error(database, plan->target.table_name);
         return MYLITE_ERROR;
     }

@@ -264,10 +264,7 @@ static const char *union_modifier_sql(enum mylite_sql_ast_union_modifier modifie
     }
 }
 
-int build_column_aggregate_sql(
-    const struct planned_column_aggregate_select *plan,
-    char **out_sql
-) {
+int build_column_aggregate_sql(const struct planned_column_aggregate_select *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;
@@ -801,10 +798,7 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
     return "";
 }
 
-int build_grouped_aggregate_sql(
-    const struct planned_grouped_aggregate *plan,
-    char **out_sql
-) {
+int build_grouped_aggregate_sql(const struct planned_grouped_aggregate *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;

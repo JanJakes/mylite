@@ -407,10 +407,10 @@ static int reserve_catalog_string_pool(
 }
 
 static size_t catalog_string_pool_load_limit(size_t capacity) {
-    return ((capacity / catalog_string_pool_load_denominator) *
-            catalog_string_pool_load_numerator) +
-           (((capacity % catalog_string_pool_load_denominator) *
-             catalog_string_pool_load_numerator) /
+    return ((capacity / catalog_string_pool_load_denominator) * catalog_string_pool_load_numerator
+           ) +
+           (((capacity % catalog_string_pool_load_denominator) * catalog_string_pool_load_numerator
+            ) /
             catalog_string_pool_load_denominator);
 }
 

@@ -368,11 +368,7 @@ bool mylite_mysqli_connect_link(
     link->path = zend_string_copy(path);
 
     status = memory ? mylite_open_memory_with_diagnostic(&link->database, &diagnostic)
-                    : mylite_open_with_diagnostic(
-                          ZSTR_VAL(path),
-                          &link->database,
-                          &diagnostic
-                      );
+                    : mylite_open_with_diagnostic(ZSTR_VAL(path), &link->database, &diagnostic);
     zend_string_release(path);
     if (status != MYLITE_OK) {
         mylite_mysqli_set_error(
@@ -418,11 +414,8 @@ bool mylite_mysqli_close_link(mylite_mysqli_link *link) {
         mylite_mysqli_link_clear_last_result(link);
         status = mylite_close_checked(link->database);
         if (status != MYLITE_OK) {
-            (void)mylite_mysqli_capture_link_status(
-                link,
-                status,
-                "could not close MyLite database"
-            );
+            (void
+            )mylite_mysqli_capture_link_status(link, status, "could not close MyLite database");
             mylite_mysqli_update_link_properties(link);
             return false;
         }

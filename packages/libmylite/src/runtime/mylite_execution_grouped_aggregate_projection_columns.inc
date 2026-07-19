@@ -46,17 +46,13 @@ static int plan_grouped_aggregate_projection_columns(
                 table_column_count,
                 out_plan
             );
-        } else if (
-            grouped_aggregate_function_from_expression(
-                unwrap_parenthesized_expression(expression)
-            ) != PLANNED_GROUPED_AGGREGATE_NONE
-        ) {
+        } else if (grouped_aggregate_function_from_expression(
+                       unwrap_parenthesized_expression(expression)
+                   ) != PLANNED_GROUPED_AGGREGATE_NONE) {
             *out_first_aggregate_index = item_index;
             return MYLITE_OK;
-        } else if (
-            expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
-            child_at(item, 1U) == NULL
-        ) {
+        } else if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
+                   child_at(item, 1U) == NULL) {
             rc = plan_grouped_aggregate_wildcard_projection_columns(
                 database,
                 expression_index,
@@ -851,7 +847,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -865,7 +861,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }

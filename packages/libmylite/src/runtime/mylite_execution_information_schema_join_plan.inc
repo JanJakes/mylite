@@ -690,11 +690,9 @@ static bool information_schema_join_compat_source_table_matches(
         return false;
     }
     if ((expected->alias == NULL && source_alias != NULL) ||
-        (expected->alias != NULL && !information_schema_join_compat_identifier_parts_match(
-                                        source_alias,
-                                        &expected->alias,
-                                        1U
-                                    ))) {
+        (expected->alias != NULL &&
+         !information_schema_join_compat_identifier_parts_match(source_alias, &expected->alias, 1U)
+        )) {
         return false;
     }
     return expected->schema_name == NULL

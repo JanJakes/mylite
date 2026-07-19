@@ -100,23 +100,25 @@ static int test_payload_spans_are_rebased(void) {
                 .offset = 0U,
                 .source_length = decimal_source_length,
             },
-        .payload.decimal_type = {
-            .has_precision = 1,
-            .has_scale = 1,
-            .precision_span =
-                {
-                    .text = source + decimal_precision_offset,
-                    .length = 2U,
-                    .offset = decimal_precision_offset,
-                    .source_length = decimal_source_length,
-                },
-            .scale_span = {
-                .text = source + decimal_scale_offset,
-                .length = 1U,
-                .offset = decimal_scale_offset,
-                .source_length = decimal_source_length,
+        .payload.decimal_type =
+            {
+                .has_precision = 1,
+                .has_scale = 1,
+                .precision_span =
+                    {
+                        .text = source + decimal_precision_offset,
+                        .length = 2U,
+                        .offset = decimal_precision_offset,
+                        .source_length = decimal_source_length,
+                    },
+                .scale_span =
+                    {
+                        .text = source + decimal_scale_offset,
+                        .length = 1U,
+                        .offset = decimal_scale_offset,
+                        .source_length = decimal_source_length,
+                    },
             },
-        },
     };
     struct mylite_sql_ast_snapshot snapshot;
     const struct mylite_sql_ast_node *snapshot_root = NULL;

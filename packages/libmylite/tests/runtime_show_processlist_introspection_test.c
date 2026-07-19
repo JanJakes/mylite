@@ -224,8 +224,8 @@ static int test_concurrent_processlist_snapshots(void) {
                 );
             }
             free(sessions);
-        } while (failures == 0 &&
-                 atomic_load_explicit(&active_workers, memory_order_acquire) != 0U);
+        } while (failures == 0 && atomic_load_explicit(&active_workers, memory_order_acquire) != 0U
+        );
     }
     for (size_t index = 0U; index < thread_count; ++index) {
         if (pthread_join(threads[index], NULL) != 0) {
@@ -350,8 +350,8 @@ static int test_concurrent_processlist_handle_lifetimes(void) {
                 failures += validate_processlist_lifetime_snapshot(sessions, count);
             }
             free(sessions);
-        } while (failures == 0 &&
-                 atomic_load_explicit(&active_workers, memory_order_acquire) != 0U);
+        } while (failures == 0 && atomic_load_explicit(&active_workers, memory_order_acquire) != 0U
+        );
     }
     for (size_t index = 0U; index < thread_count; ++index) {
         if (pthread_join(threads[index], NULL) != 0) {

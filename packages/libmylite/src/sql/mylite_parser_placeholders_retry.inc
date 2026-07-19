@@ -44,8 +44,8 @@ bool mylite_sql_parser_retry_context_parenthesis_has_top_level_comma(
         return false;
     }
     index = *inout_token_index;
-    while (index < context->token_count &&
-           context->tokens[index].offset < left_parenthesis->offset) {
+    while (index < context->token_count && context->tokens[index].offset < left_parenthesis->offset
+    ) {
         ++index;
     }
     *inout_token_index = index;

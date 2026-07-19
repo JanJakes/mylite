@@ -447,10 +447,8 @@ static int append_count_expression_aggregate_item(
                 planned_select_predicate_deinit(&item.predicate);
                 return rc;
             }
-        } else if (
-            expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
-            count_expression_aggregate_argument(expression) != NULL
-        ) {
+        } else if (expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
+                   count_expression_aggregate_argument(expression) != NULL) {
             const struct mylite_catalog_table_descriptor *table =
                 select_source_context_is_joined(source_context) ? NULL : &out_plan->source.table;
             const struct mylite_sql_ast_node *argument =
@@ -747,9 +745,8 @@ static int append_count_expression_aggregate_select_item_sql(
 
     if (rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR) {
         rc = mylite_dynamic_string_append(string, "*");
-    } else if (
-        rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE
-    ) {
+    } else if (rc == MYLITE_OK &&
+               item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE) {
         if (item->is_distinct) {
             rc = mylite_dynamic_string_append(string, "DISTINCT ");
         }

@@ -23,8 +23,7 @@ struct select_parameter_context_stack {
     size_t capacity;
 };
 
-static bool select_parameter_context_is_reusable(
-    const struct select_parameter_context_frame *frame
+static bool select_parameter_context_is_reusable(const struct select_parameter_context_frame *frame
 );
 static bool select_parameter_context_stack_push(
     struct select_parameter_context_stack *stack,
@@ -166,8 +165,7 @@ void mylite_execution_select_analysis_deinit(struct mylite_select_analysis_state
     *analysis = (struct mylite_select_analysis_state){0};
 }
 
-static bool select_parameter_context_is_reusable(
-    const struct select_parameter_context_frame *frame
+static bool select_parameter_context_is_reusable(const struct select_parameter_context_frame *frame
 ) {
     if (frame == NULL) {
         return false;

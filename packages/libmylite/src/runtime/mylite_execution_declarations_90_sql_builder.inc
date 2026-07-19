@@ -769,10 +769,7 @@ int build_create_table_select_insert_sql(
     char **out_sql
 );
 int build_select_sql(const struct planned_select *plan, char **out_sql);
-int build_row_scalar_select_sql(
-    const struct planned_row_scalar_select *plan,
-    char **out_sql
-);
+int build_row_scalar_select_sql(const struct planned_row_scalar_select *plan, char **out_sql);
 static int build_count_having_select_sql(
     const struct planned_count_having_select *plan,
     char **out_sql
@@ -1527,19 +1524,13 @@ static int append_row_scalar_string_slice_operand_sql(
 #ifndef MYLITE_EXECUTION_ROW_SCALAR_SQL_ONLY
 int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql);
 int build_count_sql(const struct planned_count *plan, char **out_sql);
-int build_column_aggregate_sql(
-    const struct planned_column_aggregate_select *plan,
-    char **out_sql
-);
+int build_column_aggregate_sql(const struct planned_column_aggregate_select *plan, char **out_sql);
 int append_column_aggregate_select_item_sql(
     struct mylite_dynamic_string *string,
     const struct planned_column_aggregate *item,
     size_t *next_parameter
 );
-int build_grouped_aggregate_sql(
-    const struct planned_grouped_aggregate *plan,
-    char **out_sql
-);
+int build_grouped_aggregate_sql(const struct planned_grouped_aggregate *plan, char **out_sql);
 int build_grouped_aggregate_rollup_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
@@ -1782,15 +1773,9 @@ static int append_sqlite_blob_default(
     size_t byte_count
 );
 static int append_quoted_sql_text(struct mylite_dynamic_string *string, const char *text);
-static int append_mysql_quoted_default_text(
-    struct mylite_dynamic_string *string,
-    const char *text
-);
+static int append_mysql_quoted_default_text(struct mylite_dynamic_string *string, const char *text);
 static int append_mysql_quoted_text(struct mylite_dynamic_string *string, const char *text);
-static int append_mysql_quoted_comment_text(
-    struct mylite_dynamic_string *string,
-    const char *text
-);
+static int append_mysql_quoted_comment_text(struct mylite_dynamic_string *string, const char *text);
 static int build_alter_table_drop_column_sql(
     const struct planned_alter_table_drop_column *plan,
     char **out_sql

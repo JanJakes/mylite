@@ -1910,10 +1910,8 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
     }
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (
-        rc != MYLITE_OK &&
-        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-    ) {
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -2993,8 +2991,7 @@ const char *mylite_execution_temporal_constructor_function_name(
     return temporal_constructor_function_name(ast_kind);
 }
 
-bool mylite_execution_is_temporal_constructor_function_kind(
-    enum mylite_sql_ast_node_kind ast_kind
+bool mylite_execution_is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind
 ) {
     return is_temporal_constructor_function_kind(ast_kind);
 }

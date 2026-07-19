@@ -188,8 +188,7 @@ struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *datab
     return &database->diagnostics;
 }
 
-const struct mylite_session_state *mylite_connection_session_state(
-    const struct mylite_db *database
+const struct mylite_session_state *mylite_connection_session_state(const struct mylite_db *database
 ) {
     if (database == NULL) {
         return NULL;

@@ -105,7 +105,7 @@ time_zone  NOW()
 +00:00     2023-11-14 22:13:20
 +02:30     2023-11-15 00:43:20
 -06:00     2023-11-14 16:13:20
-UTC        2023-11-14 22:13:20
+utc        2023-11-14 22:13:20
 ```
 
 MySQL also converts `TIMESTAMP` column storage and retrieval through UTC. That
@@ -269,7 +269,8 @@ String and unquoted names are ASCII case-insensitive.
 Accepted values:
 
 - `SYSTEM`, read back as `SYSTEM`, effective offset `0`;
-- `UTC`, read back as `UTC`, effective offset `0`;
+- `UTC`, accepted case-insensitively and read back as `utc`, effective offset
+  `0`;
 - signed offsets with one or two hour digits, one colon, and one or two minute
   digits.
 

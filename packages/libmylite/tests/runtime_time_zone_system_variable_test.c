@@ -102,8 +102,8 @@ static int test_time_zone_defaults_and_assignments(void) {
         {"SET @@session.Time_Zone = '+0:00'", "+00:00", 0, "set case-insensitive target"},
         {"SET time_zone = DEFAULT", "SYSTEM", 0, "set default"},
         {"SET time_zone = 'system'", "SYSTEM", 0, "set lowercase system string"},
-        {"SET time_zone = 'utc'", "UTC", 0, "set lowercase utc string"},
-        {"SET time_zone = UTC", "UTC", 0, "set unquoted utc"},
+        {"SET time_zone = 'utc'", "utc", 0, "set lowercase utc string"},
+        {"SET time_zone = UTC", "utc", 0, "set unquoted utc"},
         {"SET time_zone = SYSTEM", "SYSTEM", 0, "set unquoted system"},
     };
     const struct mylite_session_state *session = NULL;

@@ -102,8 +102,8 @@ expect_output \
 +00:00	0	0
 SYSTEM	SYSTEM	0	0
 SYSTEM	0	0
-UTC	0	0
-UTC	0	0
+utc	0	0
+utc	0	0
 SYSTEM	0	0" \
     "SET time_zone = '+00:00';
      SELECT @@time_zone, @@SESSION.time_zone, @@GLOBAL.time_zone, @@warning_count, ROW_COUNT();
@@ -136,7 +136,7 @@ expect_output \
     "2023-11-14 22:13:20	2023-11-14	22:13:20	2023-11-14 22:13:20
 2023-11-15 00:43:20	2023-11-15	00:43:20	2023-11-15 00:43:20
 2023-11-14 16:13:20	2023-11-14	16:13:20	2023-11-14 16:13:20
-UTC	2023-11-14 22:13:20	2023-11-14	22:13:20" \
+utc	2023-11-14 22:13:20	2023-11-14	22:13:20" \
     "SET timestamp = 1700000000;
      SET time_zone = '+00:00';
      SELECT NOW(), CURDATE(), CURTIME(), CURRENT_TIMESTAMP;

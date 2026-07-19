@@ -377,11 +377,11 @@ static int parse_time_zone_text(
         return MYLITE_OK;
     }
     if (sql_mode_token_matches(text, strlen(text), "UTC")) {
-        if (sizeof("UTC") > canonical_size) {
+        if (sizeof("utc") > canonical_size) {
             set_runtime_error(database, "time_zone state is too small");
             return MYLITE_ERROR;
         }
-        memcpy(canonical, "UTC", sizeof("UTC"));
+        memcpy(canonical, "utc", sizeof("utc"));
         *out_offset_minutes = 0;
         return MYLITE_OK;
     }

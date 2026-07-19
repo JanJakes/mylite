@@ -371,7 +371,8 @@ static bool expression_is_supported_row_scalar_system_function(
 static bool expression_contains_supported_row_scalar_system_function(
     const struct mylite_sql_ast_node *expression
 );
-static bool expression_contains_qualified_sys_function(const struct mylite_sql_ast_node *expression
+static bool expression_contains_qualified_sys_function(
+    const struct mylite_sql_ast_node *expression
 );
 static bool expression_is_qualified_sys_function(const struct mylite_sql_ast_node *expression);
 static bool select_statement_optional_clauses_contain_row_scalar_function(
@@ -382,9 +383,6 @@ static bool select_optional_clause_contains_row_scalar_function(
 );
 static bool select_where_clause_contains_row_scalar_context_attempt(
     const struct mylite_sql_ast_node *predicate
-);
-static bool select_order_key_is_supported_row_scalar_expression(
-    const struct mylite_sql_ast_node *order_key
 );
 static int execute_row_scalar_select_statement(
     struct mylite_db *database,
@@ -572,7 +570,8 @@ static int plan_row_scalar_select_exists_filter(
     const struct mylite_sql_ast_node *where_clause,
     struct planned_row_scalar_select *out_plan
 );
-static bool row_scalar_select_where_is_exists_filter(const struct mylite_sql_ast_node *where_clause
+static bool row_scalar_select_where_is_exists_filter(
+    const struct mylite_sql_ast_node *where_clause
 );
 static int plan_row_scalar_select_scalar_filter(
     struct mylite_db *database,
@@ -750,9 +749,11 @@ static int row_scalar_integer_width_enter_frame(
     struct row_scalar_integer_width_stack *stack,
     const struct mylite_sql_ast_node *expression
 );
-static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(
+    struct row_scalar_integer_width_stack *stack
 );
-static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(
+    struct row_scalar_integer_width_stack *stack
 );
 static int row_scalar_integer_width_push_frame(
     struct row_scalar_integer_width_stack *stack,

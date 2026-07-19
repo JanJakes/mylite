@@ -194,7 +194,7 @@ static int plan_grouped_aggregate(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+        rc = mylite_execution_plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
     free(table_columns);
@@ -305,7 +305,8 @@ static int collect_grouped_aggregate_clauses(
     return MYLITE_OK;
 }
 
-static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
+static bool grouped_aggregate_group_clause_has_rollup(
+    const struct mylite_sql_ast_node *group_clause
 ) {
     for (const struct mylite_sql_ast_node *group_key =
              group_clause == NULL ? NULL : group_clause->first_child;

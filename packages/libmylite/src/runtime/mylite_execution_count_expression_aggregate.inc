@@ -183,7 +183,7 @@ static int plan_count_expression_aggregate(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+        rc = mylite_execution_plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
     if (rc != MYLITE_OK) {

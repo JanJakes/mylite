@@ -601,7 +601,8 @@ static int execute_compound_select_statement(
     return rc;
 }
 
-static bool compound_select_statement_has_table_source(const struct mylite_sql_ast_node *statement
+static bool compound_select_statement_has_table_source(
+    const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
     const struct mylite_sql_ast_node *branch = child_at(statement, 0U);
@@ -855,7 +856,8 @@ static int init_compound_row_comparison_columns(
     return MYLITE_OK;
 }
 
-static void deinit_compound_row_comparison_columns(struct compound_row_comparison_columns *columns
+static void deinit_compound_row_comparison_columns(
+    struct compound_row_comparison_columns *columns
 ) {
     if (columns == NULL) {
         return;
@@ -1181,7 +1183,7 @@ static int apply_compound_select_final_limit(
     if (limit_clause == NULL) {
         return MYLITE_OK;
     }
-    rc = plan_select_limit(database, limit_clause, &limit);
+    rc = mylite_execution_plan_select_limit(database, limit_clause, &limit);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1718,8 +1720,10 @@ static int merge_compound_string_collation_columns(
         if (compound_result_column_uses_bytewise_collation(branch_result, column_index)) {
             columns->bytewise_collation_columns[column_index] = true;
             columns->string_collation_columns[column_index] = false;
-        } else if (!columns->bytewise_collation_columns[column_index] &&
-                   compound_result_column_uses_string_collation(branch_result, column_index)) {
+        } else if (
+            !columns->bytewise_collation_columns[column_index] &&
+            compound_result_column_uses_string_collation(branch_result, column_index)
+        ) {
             columns->string_collation_columns[column_index] = true;
         }
     }
@@ -1819,7 +1823,8 @@ static bool compound_select_item_uses_string_collation(
     return compound_expression_uses_string_collation(child_at(select_item, 0U));
 }
 
-static bool compound_expression_uses_string_collation(const struct mylite_sql_ast_node *expression
+static bool compound_expression_uses_string_collation(
+    const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {
@@ -1927,7 +1932,8 @@ static bool compound_select_item_uses_binary_collation(
     return compound_expression_uses_binary_collation(child_at(select_item, 0U));
 }
 
-static bool compound_expression_uses_binary_collation(const struct mylite_sql_ast_node *expression
+static bool compound_expression_uses_binary_collation(
+    const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_any_value_function_expression(expression);
     if (expression == NULL) {

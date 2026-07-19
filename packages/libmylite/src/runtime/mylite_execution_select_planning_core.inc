@@ -122,7 +122,7 @@ static int plan_select(
             rc = merge_select_predicate_with_and(database, &out_plan->predicate, &having_predicate);
         }
         if (rc == MYLITE_OK) {
-            rc = plan_select_order(
+            rc = mylite_execution_plan_select_order(
                 database,
                 clauses.order_clause,
                 &source_context,
@@ -138,7 +138,11 @@ static int plan_select(
             rc = validate_select_distinct_order(database, out_plan);
         }
         if (rc == MYLITE_OK) {
-            rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+            rc = mylite_execution_plan_select_limit(
+                database,
+                clauses.limit_clause,
+                &out_plan->limit
+            );
         }
 
         planned_select_predicate_deinit(&having_predicate);
@@ -237,7 +241,7 @@ static int plan_select(
         out_plan->requires_source_alias = true;
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_order(
+        rc = mylite_execution_plan_select_order(
             database,
             clauses.order_clause,
             &source_context,
@@ -256,7 +260,7 @@ static int plan_select(
         rc = validate_select_distinct_order(database, out_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+        rc = mylite_execution_plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
     mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
@@ -494,7 +498,7 @@ static int plan_joined_select(
         rc = merge_select_predicate_with_and(database, &out_plan->predicate, &having_predicate);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_order(
+        rc = mylite_execution_plan_select_order(
             database,
             clauses.order_clause,
             &source_context,
@@ -507,7 +511,7 @@ static int plan_joined_select(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+        rc = mylite_execution_plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
     if (rc != MYLITE_OK) {
@@ -2493,7 +2497,7 @@ static void planned_select_order_deinit(struct planned_select_order *order) {
     }
 
     for (size_t item_index = 0U; item_index < order->item_count; ++item_index) {
-        planned_select_order_item_deinit(&order->items[item_index]);
+        mylite_execution_planned_select_order_item_deinit(&order->items[item_index]);
     }
     free(order->column);
     free(order->items);
@@ -3026,7 +3030,7 @@ static int plan_row_scalar_select_row_envelope(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
+        rc = mylite_execution_plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
     }
 
     return rc;
@@ -3069,7 +3073,7 @@ static int plan_row_scalar_select_order(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    return plan_select_order(
+    return mylite_execution_plan_select_order(
         database,
         order_clause,
         source_context,
@@ -3103,12 +3107,12 @@ static int plan_row_scalar_select_order_ordinals(
 
         while (item != NULL) {
             if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM ||
-                (!select_order_key_is_row_constant_noop(child_at(item, 0U)) &&
-                 !select_order_key_is_integer_ordinal(child_at(item, 0U)))) {
+                (!mylite_execution_select_order_key_is_row_constant_noop(child_at(item, 0U)) &&
+                 !mylite_execution_select_order_key_is_integer_ordinal(child_at(item, 0U)))) {
                 planned_select_order_deinit(out_order);
                 return MYLITE_OK;
             }
-            if (select_order_key_is_row_constant_noop(child_at(item, 0U))) {
+            if (mylite_execution_select_order_key_is_row_constant_noop(child_at(item, 0U))) {
                 item = item->next_sibling;
                 continue;
             }
@@ -3128,10 +3132,10 @@ static int plan_row_scalar_select_order_ordinals(
             item = item->next_sibling;
         }
     } else {
-        if (select_order_key_is_row_constant_noop(child_at(order_clause, 0U))) {
+        if (mylite_execution_select_order_key_is_row_constant_noop(child_at(order_clause, 0U))) {
             return MYLITE_OK;
         }
-        if (!select_order_key_is_integer_ordinal(child_at(order_clause, 0U))) {
+        if (!mylite_execution_select_order_key_is_integer_ordinal(child_at(order_clause, 0U))) {
             return MYLITE_OK;
         }
         rc = plan_row_scalar_select_order_ordinal_item_and_append(
@@ -3179,8 +3183,8 @@ static int plan_row_scalar_select_order_ordinal_item_and_append(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    apply_select_order_item_direction(item_nodes.direction, &item);
-    rc = append_planned_select_order_item(out_order, item);
+    mylite_execution_apply_select_order_item_direction(item_nodes.direction, &item);
+    rc = mylite_execution_append_planned_select_order_item(out_order, item);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }
@@ -3308,13 +3312,13 @@ static int plan_row_scalar_select_order_alias_item(
         return rc;
     }
 
-    apply_select_order_item_direction(item_nodes.direction, &item);
+    mylite_execution_apply_select_order_item_direction(item_nodes.direction, &item);
     *out_order = (struct planned_select_order){
         .has_order = true,
         .direction = item.direction,
         .qualify_column_reference = false,
     };
-    rc = append_planned_select_order_item(out_order, item);
+    rc = mylite_execution_append_planned_select_order_item(out_order, item);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -3334,7 +3338,7 @@ static int plan_row_scalar_select_tableless_clauses(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
+    rc = mylite_execution_plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -3404,7 +3408,7 @@ static int plan_row_scalar_select_tableless_order_item(
     bool handled = false;
     int rc = MYLITE_OK;
 
-    if (select_order_key_is_integer_ordinal(item_nodes.order_key)) {
+    if (mylite_execution_select_order_key_is_integer_ordinal(item_nodes.order_key)) {
         return plan_row_scalar_select_order_ordinal_item_and_append(
             database,
             item_nodes,
@@ -3412,7 +3416,7 @@ static int plan_row_scalar_select_tableless_order_item(
             &out_plan->order
         );
     }
-    if (select_order_key_is_row_constant_noop(item_nodes.order_key)) {
+    if (mylite_execution_select_order_key_is_row_constant_noop(item_nodes.order_key)) {
         return MYLITE_OK;
     }
 
@@ -3461,8 +3465,8 @@ static int plan_row_scalar_select_tableless_order_alias_item(
         }
         if (text_equals_ascii_case_insensitive(select_item->result_label, order_name)) {
             snprintf(item.alias, sizeof(item.alias), "%s", select_item->result_label);
-            apply_select_order_item_direction(item_nodes.direction, &item);
-            rc = append_planned_select_order_item(out_order, item);
+            mylite_execution_apply_select_order_item_direction(item_nodes.direction, &item);
+            rc = mylite_execution_append_planned_select_order_item(out_order, item);
             if (rc != MYLITE_OK) {
                 set_nomem_error(database);
             }

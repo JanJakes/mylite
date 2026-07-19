@@ -601,11 +601,15 @@ static int information_schema_validate_numeric_projection_expression(
                 "INFORMATION_SCHEMA SELECT numeric expression is invalid"
             );
             rc = MYLITE_ERROR;
-        } else if (unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
-                   mylite_sql_ast_node_literal_kind(unwrapped) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        } else if (
+            unwrapped->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(unwrapped) == MYLITE_SQL_AST_LITERAL_INTEGER
+        ) {
             rc = MYLITE_OK;
-        } else if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
-                   unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        } else if (
+            unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
+            unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
+        ) {
             size_t column_index = 0U;
 
             rc = information_schema_resolve_column_reference(
@@ -615,8 +619,10 @@ static int information_schema_validate_numeric_projection_expression(
                 COLUMN_REFERENCE_FIELD,
                 &column_index
             );
-        } else if (unwrapped->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
-                   mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
+        } else if (
+            unwrapped->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+            mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_DIVIDE
+        ) {
             if (!scalar_arithmetic_node_stack_push(&stack, child_at(unwrapped, 1U)) ||
                 !scalar_arithmetic_node_stack_push(&stack, child_at(unwrapped, 0U))) {
                 set_nomem_error(database);
@@ -774,7 +780,7 @@ static int information_schema_plan_limit(
     const struct mylite_sql_ast_node *limit_clause,
     struct information_schema_query *out_query
 ) {
-    return plan_select_limit(database, limit_clause, &out_query->limit);
+    return mylite_execution_plan_select_limit(database, limit_clause, &out_query->limit);
 }
 
 static int information_schema_resolve_source(

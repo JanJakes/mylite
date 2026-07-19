@@ -87,10 +87,10 @@ static int plan_single_table_delete(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_single_table_dml_order_clause(database, order_clause);
+        rc = mylite_execution_validate_single_table_dml_order_clause(database, order_clause);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_order(
+        rc = mylite_execution_plan_select_order(
             database,
             order_clause,
             NULL,
@@ -103,7 +103,7 @@ static int plan_single_table_delete(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_delete_limit(database, limit_clause, &out_plan->limit);
+        rc = mylite_execution_plan_delete_limit(database, limit_clause, &out_plan->limit);
     }
     if (rc == MYLITE_OK && out_plan->limit.has_limit) {
         rc = mylite_execution_choose_sqlite_rowid_alias(

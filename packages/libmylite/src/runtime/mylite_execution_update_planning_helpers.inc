@@ -1529,7 +1529,7 @@ static int plan_update_scalar_aggregate_subquery_source(
             &aggregate_column
         );
         if (rc == MYLITE_OK) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_plan->assignment_scalar_aggregate.aggregate_column

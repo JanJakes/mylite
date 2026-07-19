@@ -182,7 +182,7 @@ static int plan_exists_subquery(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_delete_limit(database, limit_clause, &out_subquery->limit);
+        rc = mylite_execution_plan_delete_limit(database, limit_clause, &out_subquery->limit);
     }
 
     return rc;

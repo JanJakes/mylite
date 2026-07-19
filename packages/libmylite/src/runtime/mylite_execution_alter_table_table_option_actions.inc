@@ -292,7 +292,7 @@ static int plan_alter_table_order_by_item(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_order_column(
+    rc = mylite_execution_resolve_select_order_column(
         database,
         child_at(item, 0U),
         source_context,

@@ -184,7 +184,7 @@ static int append_grouped_projection_column(
     int rc = reserve_grouped_projections(database, plan, required_count);
 
     if (rc == MYLITE_OK) {
-        rc = copy_planned_column_descriptor(database, column, &column_copy);
+        rc = mylite_execution_copy_planned_column_descriptor(database, column, &column_copy);
     }
     if (rc == MYLITE_OK) {
         rc = copy_grouped_projection_result_label(

@@ -110,7 +110,11 @@ static int resolve_grouped_aggregate_group_column(
         rc = validate_grouped_aggregate_group_column(database, resolved_column);
     }
     if (rc == MYLITE_OK) {
-        rc = copy_planned_column_descriptor(database, resolved_column, &out_key->column);
+        rc = mylite_execution_copy_planned_column_descriptor(
+            database,
+            resolved_column,
+            &out_key->column
+        );
     }
     return rc;
 }
@@ -232,7 +236,11 @@ static int resolve_grouped_select_alias_group_column(
         rc = validate_grouped_aggregate_group_column(database, resolved_column);
     }
     if (rc == MYLITE_OK) {
-        rc = copy_planned_column_descriptor(database, resolved_column, &out_key->column);
+        rc = mylite_execution_copy_planned_column_descriptor(
+            database,
+            resolved_column,
+            &out_key->column
+        );
     }
     if (rc == MYLITE_OK) {
         rc = copy_select_item_alias_text(database, matched_alias, &out_key->alias);

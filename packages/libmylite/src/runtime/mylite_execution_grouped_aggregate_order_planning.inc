@@ -98,10 +98,10 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
     );
 
     if (rc != MYLITE_OK) {
-        planned_select_order_item_deinit(&planned_item);
+        mylite_execution_planned_select_order_item_deinit(&planned_item);
         return rc;
     }
-    apply_select_order_item_direction(item_nodes.direction, &planned_item);
+    mylite_execution_apply_select_order_item_direction(item_nodes.direction, &planned_item);
     if (!uses_aggregate && planned_item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN &&
         session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
         !find_matching_grouped_key(
@@ -122,7 +122,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
                 &dependency_rc
             )) {
             if (dependency_rc != MYLITE_OK) {
-                planned_select_order_item_deinit(&planned_item);
+                mylite_execution_planned_select_order_item_deinit(&planned_item);
                 return dependency_rc;
             }
             set_only_full_group_by_error(
@@ -135,7 +135,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
                 ),
                 planned_item.column
             );
-            planned_select_order_item_deinit(&planned_item);
+            mylite_execution_planned_select_order_item_deinit(&planned_item);
             return MYLITE_ERROR;
         }
     }
@@ -149,7 +149,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
             planned_item.expression
         );
         if (rc != MYLITE_OK) {
-            planned_select_order_item_deinit(&planned_item);
+            mylite_execution_planned_select_order_item_deinit(&planned_item);
             return rc;
         }
     }
@@ -162,7 +162,7 @@ static int plan_grouped_aggregate_order_ast_item_and_append(
         aggregate_index
     );
     if (rc != MYLITE_OK) {
-        planned_select_order_item_deinit(&planned_item);
+        mylite_execution_planned_select_order_item_deinit(&planned_item);
     }
     return rc;
 }
@@ -316,7 +316,7 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        rc = copy_planned_column_descriptor(
+        rc = mylite_execution_copy_planned_column_descriptor(
             database,
             out_plan->projections[matched_index].column,
             &out_item->column
@@ -346,7 +346,7 @@ static int resolve_grouped_order_key(
             );
             return MYLITE_ERROR;
         }
-        rc = copy_planned_column_descriptor(
+        rc = mylite_execution_copy_planned_column_descriptor(
             database,
             out_plan->groups[matched_index].column,
             &out_item->column
@@ -369,7 +369,7 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        rc = copy_planned_column_descriptor(
+        rc = mylite_execution_copy_planned_column_descriptor(
             database,
             out_plan->projections[matched_index].column,
             &out_item->column
@@ -392,7 +392,7 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_unaliased_column) {
-        rc = copy_planned_column_descriptor(
+        rc = mylite_execution_copy_planned_column_descriptor(
             database,
             out_plan->groups[matched_index].column,
             &out_item->column
@@ -441,8 +441,8 @@ static int resolve_grouped_order_key(
 
     if (row_scalar_conversion_kind_from_expression(order_key) !=
             PLANNED_ROW_SCALAR_CONVERSION_NONE ||
-        select_order_key_is_like_predicate(order_key)) {
-        rc = plan_select_order_row_scalar_expression(
+        mylite_execution_select_order_key_is_like_predicate(order_key)) {
+        rc = mylite_execution_plan_select_order_row_scalar_expression(
             database,
             order_key,
             source_context,
@@ -466,7 +466,11 @@ static int resolve_grouped_order_key(
         &order_source_index
     );
     if (rc == MYLITE_OK) {
-        rc = copy_planned_column_descriptor(database, resolved_column, &out_item->column);
+        rc = mylite_execution_copy_planned_column_descriptor(
+            database,
+            resolved_column,
+            &out_item->column
+        );
     }
     if (rc == MYLITE_OK) {
         out_item->column_source_index = order_source_index;
@@ -490,7 +494,8 @@ static int append_planned_grouped_order_item(
     int rc = MYLITE_OK;
 
     if (item_index == 0U && !uses_aggregate && item.kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
-        rc = copy_planned_column_descriptor(database, item.column, &primary_column);
+        rc =
+            mylite_execution_copy_planned_column_descriptor(database, item.column, &primary_column);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -512,7 +517,7 @@ static int append_planned_grouped_order_item(
     }
     plan->order_item_aggregate_indexes = aggregate_indexes;
 
-    rc = append_planned_select_order_item(&plan->order, item);
+    rc = mylite_execution_append_planned_select_order_item(&plan->order, item);
     if (rc != MYLITE_OK) {
         free(primary_column);
         return rc;

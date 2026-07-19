@@ -203,7 +203,7 @@ static int plan_count(
         }
         optional_clause = optional_clause->next_sibling;
     }
-    rc = plan_select_limit(database, limit_clause, &out_plan->limit);
+    rc = mylite_execution_plan_select_limit(database, limit_clause, &out_plan->limit);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1222,7 +1222,7 @@ static int plan_column_aggregate_select(
         }
         optional_clause = optional_clause->next_sibling;
     }
-    rc = plan_select_limit(database, limit_clause, &out_plan->limit);
+    rc = mylite_execution_plan_select_limit(database, limit_clause, &out_plan->limit);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -1435,7 +1435,7 @@ static int plan_column_aggregate_select_item(
         if (rc == MYLITE_OK &&
             (out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN ||
              out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN)) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_item->aggregate_column
@@ -1517,7 +1517,7 @@ static int plan_column_aggregate_select_item(
             &aggregate_column
         );
         if (rc == MYLITE_OK) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_item->aggregate_column
@@ -2128,7 +2128,7 @@ static int plan_column_group_concat_options(
             &value_source_index
         );
         if (rc == MYLITE_OK) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_plan->aggregate_column

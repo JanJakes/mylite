@@ -40,6 +40,8 @@
 #include "mylite_execution_scalar_string_transform.h"
 #include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_execution_select_analysis.h"
+#include "mylite_execution_select_order_plan.h"
+#include "mylite_execution_select_order_support.h"
 #include "mylite_execution_show_filter.h"
 #include "mylite_execution_sql_lowering_support.h"
 #include "mylite_execution_sql_normalization.h"
@@ -3215,6 +3217,173 @@ bool mylite_execution_column_descriptor_is_time(
     return column_descriptor_is_time(column);
 }
 
+bool mylite_execution_select_order_source_context_is_joined(
+    const struct select_source_context *source_context
+) {
+    return select_source_context_is_joined(source_context);
+}
+
+enum mylite_execution_select_order_expression_support mylite_execution_select_order_expression_support(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum planned_row_scalar_conversion_kind conversion_kind = PLANNED_ROW_SCALAR_CONVERSION_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        (!row_scalar_expression_is_context_expression_attempt(expression, false) &&
+         !row_scalar_expression_is_predicate_value_context_attempt(expression) &&
+         expression->kind != MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION &&
+         expression->kind != MYLITE_SQL_AST_COLLATE_EXPRESSION &&
+         (expression->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+          mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_LIKE))) {
+        return MYLITE_EXECUTION_SELECT_ORDER_EXPRESSION_UNSUPPORTED;
+    }
+
+    conversion_kind = row_scalar_conversion_kind_from_expression(expression);
+    if (conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR ||
+        conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_SIGNED ||
+        conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_UNSIGNED ||
+        row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
+        return MYLITE_EXECUTION_SELECT_ORDER_EXPRESSION_JOINED;
+    }
+    return MYLITE_EXECUTION_SELECT_ORDER_EXPRESSION_SINGLE_SOURCE;
+}
+
+int mylite_execution_select_order_plan_field_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_field_expression_with_context(
+        database,
+        order_key,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_ORDER,
+        "SELECT ORDER BY FIELD() supports only descriptor search columns",
+        out_expression
+    );
+}
+
+int mylite_execution_select_order_plan_rand_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_rand_expression(
+        database,
+        order_key,
+        false,
+        NULL,
+        NULL,
+        0U,
+        out_expression
+    );
+}
+
+int mylite_execution_select_order_plan_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_expression(
+        database,
+        order_key,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+}
+
+void mylite_execution_select_order_row_scalar_expression_deinit(
+    struct planned_row_scalar_expression *expression
+) {
+    planned_row_scalar_expression_deinit(expression);
+}
+
+int mylite_execution_select_order_copy_identifier_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    char **out_alias
+) {
+    return copy_select_item_identifier_alias_text(database, column_node, out_alias);
+}
+
+int mylite_execution_select_order_resolve_column_pointer(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor **out_column,
+    size_t *out_source_index
+) {
+    return resolve_descriptor_column_reference_pointer_with_source_index(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_ORDER,
+        "ORDER BY supports only unqualified descriptor columns",
+        table_columns,
+        table_column_count,
+        out_column,
+        out_source_index
+    );
+}
+
+int mylite_execution_select_order_parse_ordinal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    size_t column_count,
+    size_t *out_ordinal
+) {
+    return parse_select_order_ordinal(database, order_key, column_count, out_ordinal);
+}
+
+int mylite_execution_select_order_validate_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+
+    if (column_descriptor_is_set(column)) {
+        set_unsupported_error(database, "ORDER BY does not yet support SET columns");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_string_family(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column) ||
+        column_descriptor_is_bit(column)) {
+        return MYLITE_OK;
+    }
+    return integer_range_for_column(
+        database,
+        column,
+        "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or "
+        "nonbinary string descriptor columns",
+        &range
+    );
+}
+
+int mylite_execution_select_order_convert_limit_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    int64_t *out_value
+) {
+    return convert_limit_integer_literal(database, literal, out_value);
+}
+
 int mylite_execution_ddl_integer_range_for_logical_type(
     struct mylite_db *database,
     const char *logical_type,
@@ -3922,8 +4091,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_select_predicate_value_conversion.inc"
 
 #include "mylite_execution_select_predicate_temporal_literals.inc"
-
-#include "mylite_execution_select_order_planning.inc"
 
 #include "mylite_execution_safe_updates_planning.inc"
 

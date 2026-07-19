@@ -157,6 +157,7 @@ add_library(mylite
   src/runtime/mylite_execution_scalar_string_position.c
   src/runtime/mylite_execution_scalar_string_transform.c
   src/runtime/mylite_execution_select_analysis.c
+  src/runtime/mylite_execution_select_order_plan.c
   src/runtime/mylite_execution_show_filter.c
   src/runtime/mylite_execution_sql_lowering.c
   src/runtime/mylite_execution_sqlite_internal.c

@@ -288,6 +288,15 @@ complete.
   explicit 30-operation internal API and 13 support callbacks. ALTER default
   materialization and physical row-copy execution intentionally remain with
   the execution/conversion owner rather than widening the lowering boundary.
+  SELECT, grouped-query, DML, and metadata ORDER/LIMIT planning now share an
+  independently compiled 821-line planner body. Its internal API makes 14
+  planning, recognition, ownership, and append operations explicit; 11 typed
+  support callbacks preserve scalar planning, name resolution, diagnostics,
+  and conversion ownership in their existing modules. The CI execution object
+  fell from 3,427,248 to 3,422,352 bytes while the new planner object is 13,328
+  bytes. This is a boundary and rebuild-isolation improvement, not a binary-size
+  reduction; the remaining execution object still dominates compile time and
+  requires another higher-yield split before this item can close.
   Planner clusters still need the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row

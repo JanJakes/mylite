@@ -213,7 +213,7 @@ static int plan_grouped_aggregate_expression(
             rc = validate_count_distinct_column_descriptor(database, &aggregate_column);
         }
         if (rc == MYLITE_OK) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_item->aggregate_column
@@ -232,7 +232,7 @@ static int plan_grouped_aggregate_expression(
             &out_item->aggregate_column_source_index
         );
         if (rc == MYLITE_OK) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_item->aggregate_column
@@ -263,7 +263,7 @@ static int plan_grouped_aggregate_expression(
         &out_item->aggregate_column_source_index
     );
     if (rc == MYLITE_OK) {
-        rc = copy_planned_column_descriptor(
+        rc = mylite_execution_copy_planned_column_descriptor(
             database,
             &aggregate_column,
             &out_item->aggregate_column
@@ -418,7 +418,7 @@ static int plan_grouped_group_concat_options(
             &out_item->aggregate_column_source_index
         );
         if (rc == MYLITE_OK) {
-            rc = copy_planned_column_descriptor(
+            rc = mylite_execution_copy_planned_column_descriptor(
                 database,
                 &aggregate_column,
                 &out_item->aggregate_column
@@ -679,7 +679,8 @@ static int plan_group_concat_order_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = copy_planned_column_descriptor(database, order_column, &out_order->column);
+    rc =
+        mylite_execution_copy_planned_column_descriptor(database, order_column, &out_order->column);
     if (rc != MYLITE_OK) {
         return rc;
     }

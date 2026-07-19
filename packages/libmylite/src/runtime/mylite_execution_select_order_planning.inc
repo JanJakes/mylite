@@ -12,7 +12,7 @@ static int validate_single_table_dml_order_clause(
         return MYLITE_ERROR;
     }
 
-    order_key = unwrap_parenthesized_expression(child_at(order_clause, 0U));
+    order_key = mylite_execution_unwrap_parenthesized_expression(child_at(order_clause, 0U));
     if (order_key != NULL && (order_key->kind == MYLITE_SQL_AST_IDENTIFIER ||
                               order_key->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         return MYLITE_OK;
@@ -40,7 +40,8 @@ static int plan_select_order(
         .has_order = false,
         .direction = PLANNED_SELECT_ORDER_DEFAULT,
         .column_source_index = 0U,
-        .qualify_column_reference = select_source_context_is_joined(source_context),
+        .qualify_column_reference =
+            mylite_execution_select_order_source_context_is_joined(source_context),
     };
     if (order_clause == NULL) {
         return MYLITE_OK;
@@ -235,7 +236,8 @@ static int plan_select_order_ast_item(
         return rc;
     }
     if (select_order_key_is_rand_function(item_nodes.order_key)) {
-        if (!allow_rand_order || select_source_context_is_joined(source_context)) {
+        if (!allow_rand_order ||
+            mylite_execution_select_order_source_context_is_joined(source_context)) {
             set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
             return MYLITE_ERROR;
         }
@@ -246,7 +248,7 @@ static int plan_select_order_ast_item(
         return rc;
     }
     if (select_order_key_is_supported_row_scalar_expression(item_nodes.order_key)) {
-        if (select_source_context_is_joined(source_context) &&
+        if (mylite_execution_select_order_source_context_is_joined(source_context) &&
             !select_order_key_is_supported_joined_row_scalar_expression(item_nodes.order_key)) {
             set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
             return MYLITE_ERROR;
@@ -301,23 +303,9 @@ static int plan_select_order_ast_item(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (column_descriptor_is_set(out_item->column)) {
-        set_unsupported_error(database, "ORDER BY does not yet support SET columns");
-        return MYLITE_ERROR;
-    }
-    if (select_order_column_needs_integer_validation(out_item->column)) {
-        struct integer_column_range range = {0};
-
-        rc = integer_range_for_column(
-            database,
-            out_item->column,
-            "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or "
-            "nonbinary string descriptor columns",
-            &range
-        );
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
+    rc = mylite_execution_select_order_validate_column(database, out_item->column);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     apply_select_order_item_direction(item_nodes.direction, out_item);
@@ -339,8 +327,12 @@ static int plan_select_order_ordinal(
         set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
         return MYLITE_ERROR;
     }
-    if (parse_select_order_ordinal(database, order_key, select_plan->column_count, &ordinal) !=
-        MYLITE_OK) {
+    if (mylite_execution_select_order_parse_ordinal(
+            database,
+            order_key,
+            select_plan->column_count,
+            &ordinal
+        ) != MYLITE_OK) {
         return MYLITE_ERROR;
     }
 
@@ -358,16 +350,8 @@ static void apply_select_order_item_direction(
     }
 }
 
-static bool select_order_column_needs_integer_validation(
-    const struct mylite_catalog_column_descriptor *column
-) {
-    return !column_descriptor_is_string_family(column) && !column_descriptor_is_date(column) &&
-           !column_descriptor_is_time(column) && !column_descriptor_is_datetime(column) &&
-           !column_descriptor_is_timestamp(column) && !column_descriptor_is_year(column) &&
-           !column_descriptor_is_bit(column);
-}
-
-static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items
+static bool order_item_list_contains_field_order_key(
+    const struct mylite_sql_ast_node *order_items
 ) {
     const struct mylite_sql_ast_node *item = NULL;
 
@@ -403,7 +387,7 @@ static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_
 }
 
 static bool select_order_key_is_row_constant_noop(const struct mylite_sql_ast_node *order_key) {
-    order_key = unwrap_parenthesized_expression(order_key);
+    order_key = mylite_execution_unwrap_parenthesized_expression(order_key);
     if (order_key == NULL) {
         return false;
     }
@@ -420,13 +404,13 @@ static bool select_order_key_is_row_constant_noop(const struct mylite_sql_ast_no
 }
 
 static bool select_order_key_is_integer_ordinal(const struct mylite_sql_ast_node *order_key) {
-    order_key = unwrap_parenthesized_expression(order_key);
+    order_key = mylite_execution_unwrap_parenthesized_expression(order_key);
     return order_key != NULL && order_key->kind == MYLITE_SQL_AST_LITERAL &&
            mylite_sql_ast_node_literal_kind(order_key) == MYLITE_SQL_AST_LITERAL_INTEGER;
 }
 
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key) {
-    order_key = unwrap_parenthesized_expression(order_key);
+    order_key = mylite_execution_unwrap_parenthesized_expression(order_key);
     if (order_key == NULL) {
         return false;
     }
@@ -440,7 +424,7 @@ static bool select_order_key_is_field_function(const struct mylite_sql_ast_node 
 }
 
 static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key) {
-    order_key = unwrap_parenthesized_expression(order_key);
+    order_key = mylite_execution_unwrap_parenthesized_expression(order_key);
     if (order_key == NULL) {
         return false;
     }
@@ -450,12 +434,6 @@ static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *
         return true;
     }
     return false;
-}
-
-static bool select_order_key_is_searched_case_expression(const struct mylite_sql_ast_node *order_key
-) {
-    order_key = unwrap_parenthesized_expression(order_key);
-    return order_key != NULL && order_key->kind == MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION;
 }
 
 static int plan_select_order_field_expression(
@@ -469,7 +447,7 @@ static int plan_select_order_field_expression(
     struct planned_row_scalar_expression *expression = NULL;
     int rc = MYLITE_OK;
 
-    order_key = unwrap_parenthesized_expression(order_key);
+    order_key = mylite_execution_unwrap_parenthesized_expression(order_key);
     if (order_key == NULL) {
         set_unsupported_error(
             database,
@@ -488,22 +466,19 @@ static int plan_select_order_field_expression(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_field_expression_with_context(
+    rc = mylite_execution_select_order_plan_field_expression(
         database,
         order_key,
-        true,
         source_context,
         table_columns,
         table_column_count,
-        COLUMN_REFERENCE_ORDER,
-        "SELECT ORDER BY FIELD() supports only descriptor search columns",
         expression
     );
     if (rc == MYLITE_OK) {
         rc = validate_select_order_field_expression(database, expression);
     }
     if (rc != MYLITE_OK) {
-        planned_row_scalar_expression_deinit(expression);
+        mylite_execution_select_order_row_scalar_expression_deinit(expression);
         free(expression);
         return rc;
     }
@@ -527,9 +502,9 @@ static int plan_select_order_rand_expression(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_rand_expression(database, order_key, false, NULL, NULL, 0U, expression);
+    rc = mylite_execution_select_order_plan_rand_expression(database, order_key, expression);
     if (rc != MYLITE_OK) {
-        planned_row_scalar_expression_deinit(expression);
+        mylite_execution_select_order_row_scalar_expression_deinit(expression);
         free(expression);
         return rc;
     }
@@ -556,18 +531,16 @@ static int plan_select_order_row_scalar_expression(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_expression(
+    rc = mylite_execution_select_order_plan_row_scalar_expression(
         database,
         order_key,
-        true,
         source_context,
-        NULL,
         table_columns,
         table_column_count,
         expression
     );
     if (rc != MYLITE_OK) {
-        planned_row_scalar_expression_deinit(expression);
+        mylite_execution_select_order_row_scalar_expression_deinit(expression);
         free(expression);
         return rc;
     }
@@ -578,49 +551,25 @@ static int plan_select_order_row_scalar_expression(
 }
 
 static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key) {
-    order_key = unwrap_parenthesized_expression(order_key);
+    order_key = mylite_execution_unwrap_parenthesized_expression(order_key);
     if (order_key == NULL || order_key->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE) {
         return false;
     }
     return mylite_sql_ast_node_operator(order_key) == MYLITE_SQL_AST_OPERATOR_LIKE;
 }
 
-static bool select_order_key_is_collate_expression(const struct mylite_sql_ast_node *order_key) {
-    order_key = unwrap_parenthesized_expression(order_key);
-    return order_key != NULL && order_key->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION;
-}
-
 static bool select_order_key_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *order_key
 ) {
-    order_key = unwrap_parenthesized_expression(order_key);
-    if (order_key == NULL) {
-        return false;
-    }
-    if (row_scalar_expression_is_context_expression_attempt(order_key, false) ||
-        row_scalar_expression_is_predicate_value_context_attempt(order_key) ||
-        select_order_key_is_searched_case_expression(order_key) ||
-        select_order_key_is_like_predicate(order_key) ||
-        select_order_key_is_collate_expression(order_key)) {
-        return true;
-    }
-    return false;
+    return mylite_execution_select_order_expression_support(order_key) !=
+           MYLITE_EXECUTION_SELECT_ORDER_EXPRESSION_UNSUPPORTED;
 }
 
 static bool select_order_key_is_supported_joined_row_scalar_expression(
     const struct mylite_sql_ast_node *order_key
 ) {
-    enum planned_row_scalar_conversion_kind conversion_kind =
-        row_scalar_conversion_kind_from_expression(order_key);
-
-    if (conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR) {
-        return true;
-    }
-    if (conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_SIGNED ||
-        conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_UNSIGNED) {
-        return true;
-    }
-    return row_scalar_expression_contains_integer_arithmetic_attempt(order_key);
+    return mylite_execution_select_order_expression_support(order_key) ==
+           MYLITE_EXECUTION_SELECT_ORDER_EXPRESSION_JOINED;
 }
 
 static int validate_select_order_field_expression(
@@ -657,7 +606,7 @@ static void planned_select_order_item_deinit(struct planned_select_order_item *i
         return;
     }
     if (item->expression != NULL) {
-        planned_row_scalar_expression_deinit(item->expression);
+        mylite_execution_select_order_row_scalar_expression_deinit(item->expression);
         free(item->expression);
     }
     free(item->column);
@@ -740,7 +689,7 @@ static int resolve_order_alias(
         return MYLITE_OK;
     }
 
-    rc = copy_select_item_identifier_alias_text(database, column_node, &order_name);
+    rc = mylite_execution_select_order_copy_identifier_alias(database, column_node, &order_name);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -752,7 +701,7 @@ static int resolve_order_alias(
             continue;
         }
 
-        if (text_equals_ascii_case_insensitive(alias, order_name)) {
+        if (mylite_execution_text_equals_ascii_case_insensitive(alias, order_name)) {
             if (found) {
                 set_ambiguous_order_column_error(database, order_name);
                 free(order_name);
@@ -771,28 +720,6 @@ static int resolve_order_alias(
     return MYLITE_OK;
 }
 
-static int resolve_order_column(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *column_node,
-    const struct select_source_context *source_context,
-    const struct mylite_catalog_column_descriptor *table_columns,
-    size_t table_column_count,
-    struct mylite_catalog_column_descriptor *out_column,
-    size_t *out_source_index
-) {
-    return resolve_descriptor_column_reference_with_source_index(
-        database,
-        column_node,
-        source_context,
-        COLUMN_REFERENCE_ORDER,
-        "ORDER BY supports only unqualified descriptor columns",
-        table_columns,
-        table_column_count,
-        out_column,
-        out_source_index
-    );
-}
-
 static int resolve_order_column_pointer(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
@@ -802,12 +729,10 @@ static int resolve_order_column_pointer(
     const struct mylite_catalog_column_descriptor **out_column,
     size_t *out_source_index
 ) {
-    return resolve_descriptor_column_reference_pointer_with_source_index(
+    return mylite_execution_select_order_resolve_column_pointer(
         database,
         column_node,
         source_context,
-        COLUMN_REFERENCE_ORDER,
-        "ORDER BY supports only unqualified descriptor columns",
         table_columns,
         table_column_count,
         out_column,
@@ -834,15 +759,22 @@ static int plan_select_limit(
         return MYLITE_ERROR;
     }
 
-    rc = convert_limit_integer_literal(database, child_at(limit_clause, 0U), &out_limit->row_count);
+    rc = mylite_execution_select_order_convert_limit_literal(
+        database,
+        child_at(limit_clause, 0U),
+        &out_limit->row_count
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
     out_limit->has_limit = true;
 
     if (child_at(limit_clause, 1U) != NULL) {
-        rc =
-            convert_limit_integer_literal(database, child_at(limit_clause, 1U), &out_limit->offset);
+        rc = mylite_execution_select_order_convert_limit_literal(
+            database,
+            child_at(limit_clause, 1U),
+            &out_limit->offset
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -875,7 +807,11 @@ static int plan_delete_limit(
         return MYLITE_ERROR;
     }
 
-    rc = convert_limit_integer_literal(database, child_at(limit_clause, 0U), &out_limit->row_count);
+    rc = mylite_execution_select_order_convert_limit_literal(
+        database,
+        child_at(limit_clause, 0U),
+        &out_limit->row_count
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }

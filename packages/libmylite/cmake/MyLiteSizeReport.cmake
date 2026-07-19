@@ -1,5 +1,12 @@
-if(NOT DEFINED SIZE_TOOL OR NOT DEFINED INPUT OR NOT DEFINED OUTPUT)
-  message(FATAL_ERROR "SIZE_TOOL, INPUT, and OUTPUT are required")
+if(NOT DEFINED SIZE_TOOL OR NOT DEFINED INPUT OR NOT DEFINED OUTPUT OR NOT DEFINED MAX_BYTES)
+  message(FATAL_ERROR "SIZE_TOOL, INPUT, OUTPUT, and MAX_BYTES are required")
+endif()
+
+file(SIZE "${INPUT}" artifact_bytes)
+if(artifact_bytes GREATER MAX_BYTES)
+  message(FATAL_ERROR
+    "${INPUT} is ${artifact_bytes} bytes, exceeding the ${MAX_BYTES}-byte release budget"
+  )
 endif()
 
 execute_process(
@@ -14,7 +21,10 @@ endif()
 
 get_filename_component(input_name "${INPUT}" NAME)
 string(REPLACE "${INPUT}" "${input_name}" size_output "${size_output}")
-set(report "artifact: ${input_name}\n\n[sections-and-objects]\n${size_output}")
+string(CONCAT report
+  "artifact: ${input_name}\nbytes: ${artifact_bytes}\nmaximum-bytes: ${MAX_BYTES}\n\n"
+  "[sections-and-objects]\n${size_output}"
+)
 if(DEFINED NM_TOOL AND NOT NM_TOOL STREQUAL "")
   execute_process(
     COMMAND "${NM_TOOL}" -S --size-sort --radix=d "${INPUT}"

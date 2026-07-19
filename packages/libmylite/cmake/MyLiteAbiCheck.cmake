@@ -1,8 +1,19 @@
-foreach(required IN ITEMS NM_TOOL LIBRARY MANIFEST)
+foreach(required IN ITEMS NM_TOOL LIBRARY MANIFEST HEADER HEADER_MANIFEST)
   if(NOT DEFINED ${required})
     message(FATAL_ERROR "${required} is required")
   endif()
 endforeach()
+
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E compare_files "${HEADER}" "${HEADER_MANIFEST}"
+  RESULT_VARIABLE header_compare_result
+)
+if(NOT header_compare_result EQUAL 0)
+  message(FATAL_ERROR
+    "libmylite public declarations differ from ${HEADER_MANIFEST}; update the ABI epoch or the "
+    "reviewed header contract"
+  )
+endif()
 
 execute_process(
   COMMAND "${NM_TOOL}" -D --defined-only --format=posix "${LIBRARY}"
@@ -35,4 +46,4 @@ if(NOT actual_text STREQUAL expected_text)
   )
 endif()
 
-message(STATUS "libmylite ABI matches ${MANIFEST}")
+message(STATUS "libmylite ABI matches ${MANIFEST} and ${HEADER_MANIFEST}")

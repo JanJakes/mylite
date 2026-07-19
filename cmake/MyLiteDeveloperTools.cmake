@@ -1,3 +1,29 @@
+function(mylite_add_artifact_size_report report_target artifact_target output_name max_bytes)
+  if(NOT CMAKE_SIZE)
+    find_program(CMAKE_SIZE NAMES llvm-size size)
+  endif()
+  if(NOT CMAKE_SIZE)
+    return()
+  endif()
+  if(NOT TARGET mylite_size_reports)
+    add_custom_target(mylite_size_reports)
+  endif()
+
+  add_custom_target(${report_target}
+    COMMAND "${CMAKE_COMMAND}"
+      "-DSIZE_TOOL=${CMAKE_SIZE}"
+      "-DNM_TOOL=${CMAKE_NM}"
+      "-DINPUT=$<TARGET_FILE:${artifact_target}>"
+      "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${output_name}"
+      "-DMAX_BYTES=${max_bytes}"
+      -P "${PROJECT_SOURCE_DIR}/packages/libmylite/cmake/MyLiteSizeReport.cmake"
+    DEPENDS ${artifact_target}
+    COMMENT "Checking and reporting ${artifact_target} size"
+    VERBATIM
+  )
+  add_dependencies(mylite_size_reports ${report_target})
+endfunction()
+
 function(mylite_add_developer_tool_targets)
   file(GLOB_RECURSE mylite_first_party_c_files CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/packages/*.c"

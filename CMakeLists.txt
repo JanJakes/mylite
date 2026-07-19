@@ -30,6 +30,16 @@ option(MYLITE_ENABLE_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSa
 option(MYLITE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(MYLITE_ENABLE_COVERAGE "Enable LLVM source coverage instrumentation" OFF)
 option(MYLITE_BUILD_FUZZERS "Build Clang libFuzzer qualification targets" OFF)
+set(MYLITE_MAX_STATIC_LIBRARY_SIZE_BYTES "15000000" CACHE STRING
+  "Maximum release libmylite static-library size")
+set(MYLITE_MAX_SHARED_LIBRARY_SIZE_BYTES "11000000" CACHE STRING
+  "Maximum release libmylite shared-library size")
+set(MYLITE_MAX_PHP_CORE_SIZE_BYTES "11000000" CACHE STRING
+  "Maximum release PHP core-extension size")
+set(MYLITE_MAX_PHP_MYSQLI_SIZE_BYTES "524288" CACHE STRING
+  "Maximum release PHP mysqli-extension size")
+set(MYLITE_MAX_PHP_PDO_SIZE_BYTES "131072" CACHE STRING
+  "Maximum release PHP PDO-extension size")
 option(
   MYLITE_ENABLE_TEST_ALLOCATOR_FAILPOINTS
   "Enable thread-local allocator failpoints for qualification tests"

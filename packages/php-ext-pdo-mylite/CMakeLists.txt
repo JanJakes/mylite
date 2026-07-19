@@ -10,6 +10,12 @@ mylite_configure_c_target(mylite_php_pdo_extension)
 if(NOT MSVC)
   target_compile_options(mylite_php_pdo_extension PRIVATE -Wno-unused-parameter)
 endif()
+mylite_add_artifact_size_report(
+  mylite_php_pdo_size_report
+  mylite_php_pdo_extension
+  mylite-php-pdo-size-report.txt
+  "${MYLITE_MAX_PHP_PDO_SIZE_BYTES}"
+)
 install(
   TARGETS mylite_php_pdo_extension
   LIBRARY DESTINATION "${MYLITE_PHP_INSTALL_DIR}"

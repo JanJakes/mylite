@@ -41,7 +41,7 @@ def configure_and_install(build_dir, stage_dir, definitions, source_date_epoch):
     command.extend("-D{}={}".format(name, value) for name, value in definitions.items())
     run(command, environment)
     run(["cmake", "--build", str(build_dir)], environment)
-    run(["cmake", "--build", str(build_dir), "--target", "mylite_size_report"], environment)
+    run(["cmake", "--build", str(build_dir), "--target", "mylite_size_reports"], environment)
     if definitions.get("BUILD_SHARED_LIBS") == "ON":
         run(["cmake", "--build", str(build_dir), "--target", "mylite_abi_check"], environment)
     install_environment = environment.copy()
@@ -165,6 +165,18 @@ def main():
             shared_build / "packages/libmylite/mylite-size-report.txt",
             output_dir / "{}-shared-size-report.txt".format(prefix),
         )
+        for extension, source_path in (
+            ("php-core", Path("packages/php-ext-mylite/mylite-php-core-size-report.txt")),
+            (
+                "php-mysqli",
+                Path("packages/php-ext-mysqli-mylite/mylite-php-mysqli-size-report.txt"),
+            ),
+            ("php-pdo", Path("packages/php-ext-pdo-mylite/mylite-php-pdo-size-report.txt")),
+        ):
+            shutil.copy2(
+                php_build / source_path,
+                output_dir / "{}-{}-size-report.txt".format(prefix, extension),
+            )
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         return fail(str(error))
 

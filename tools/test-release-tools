@@ -48,4 +48,24 @@ fi
 
 "$root/tools/build-release-bundles" --help >/dev/null
 "$root/tools/test-release-bundles" --help >/dev/null
+
+size_tool=$(command -v llvm-size 2>/dev/null || command -v size)
+cmake \
+  -DSIZE_TOOL="$size_tool" \
+  -DINPUT=/bin/true \
+  -DOUTPUT="$temporary_directory/size-report.txt" \
+  -DMAX_BYTES=100000000 \
+  -P "$root/packages/libmylite/cmake/MyLiteSizeReport.cmake" >/dev/null
+grep -q '^bytes: ' "$temporary_directory/size-report.txt"
+grep -q '^maximum-bytes: 100000000$' "$temporary_directory/size-report.txt"
+if cmake \
+  -DSIZE_TOOL="$size_tool" \
+  -DINPUT=/bin/true \
+  -DOUTPUT="$temporary_directory/oversized-report.txt" \
+  -DMAX_BYTES=1 \
+  -P "$root/packages/libmylite/cmake/MyLiteSizeReport.cmake" >/dev/null 2>&1; then
+  echo "test-release-tools: accepted artifact over its size budget" >&2
+  exit 1
+fi
+
 printf '%s\n' 'test-release-tools: passed'

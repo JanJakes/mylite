@@ -422,22 +422,17 @@ install(
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
 )
 
-if(NOT CMAKE_SIZE)
-  find_program(CMAKE_SIZE NAMES llvm-size size)
+if(BUILD_SHARED_LIBS)
+  set(mylite_core_size_limit "${MYLITE_MAX_SHARED_LIBRARY_SIZE_BYTES}")
+else()
+  set(mylite_core_size_limit "${MYLITE_MAX_STATIC_LIBRARY_SIZE_BYTES}")
 endif()
-if(CMAKE_SIZE)
-  add_custom_target(mylite_size_report
-    COMMAND "${CMAKE_COMMAND}"
-      "-DSIZE_TOOL=${CMAKE_SIZE}"
-      "-DNM_TOOL=${CMAKE_NM}"
-      "-DINPUT=$<TARGET_FILE:mylite>"
-      "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/mylite-size-report.txt"
-      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MyLiteSizeReport.cmake"
-    DEPENDS mylite
-    COMMENT "Writing reproducible MyLite object, section, and symbol size report"
-    VERBATIM
-  )
-endif()
+mylite_add_artifact_size_report(
+  mylite_size_report
+  mylite
+  mylite-size-report.txt
+  "${mylite_core_size_limit}"
+)
 
 if(BUILD_SHARED_LIBS AND UNIX AND NOT APPLE AND CMAKE_NM)
   add_custom_target(mylite_abi_check
@@ -445,6 +440,8 @@ if(BUILD_SHARED_LIBS AND UNIX AND NOT APPLE AND CMAKE_NM)
       "-DNM_TOOL=${CMAKE_NM}"
       "-DLIBRARY=$<TARGET_FILE:mylite>"
       "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/abi/libmylite-0.symbols"
+      "-DHEADER=${CMAKE_CURRENT_SOURCE_DIR}/include/mylite/mylite.h"
+      "-DHEADER_MANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/abi/libmylite-0.h"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MyLiteAbiCheck.cmake"
     DEPENDS mylite
     COMMENT "Checking the public libmylite ABI symbol manifest"

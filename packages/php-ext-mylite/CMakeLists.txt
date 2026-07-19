@@ -9,6 +9,12 @@ mylite_configure_c_target(mylite_php_extension)
 if(NOT MSVC)
   target_compile_options(mylite_php_extension PRIVATE -Wno-unused-parameter)
 endif()
+mylite_add_artifact_size_report(
+  mylite_php_core_size_report
+  mylite_php_extension
+  mylite-php-core-size-report.txt
+  "${MYLITE_MAX_PHP_CORE_SIZE_BYTES}"
+)
 install(
   TARGETS mylite_php_extension
   LIBRARY DESTINATION "${MYLITE_PHP_INSTALL_DIR}"

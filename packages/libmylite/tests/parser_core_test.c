@@ -58,8 +58,19 @@ static int test_empty_script(void) {
 }
 
 static int test_prepared_parameters(void) {
+    static const struct {
+        const char *sql;
+        size_t parameter_count;
+    } extended_cases[] = {
+        {"SELECT * FROM t WHERE c REGEXP ? AND d BETWEEN ? AND ?", 3U},
+        {"UPDATE t SET c = c + ?, d = d - ?, e = e * ? WHERE id = ?", 4U},
+        {"SELECT CONCAT(?, CONCAT_WS(',', ?, ?)), LEAST(?, ?), COUNT(*) + ? FROM t", 6U},
+        {"SELECT CONVERT(? USING utf8mb4) FROM t", 1U},
+    };
+
     static const char select_sql[] =
         "SELECT '?', ?, ? /* ? */ FROM t WHERE c = ? ORDER BY c LIMIT ? OFFSET ?";
+    static const char like_sql[] = "SELECT * FROM t WHERE c LIKE ? ESCAPE '\\\\' AND d = ?";
     static const char insert_sql[] = "INSERT INTO t VALUES (?, '?', ?)";
     static const char update_sql[] = "UPDATE t SET c = ? WHERE id = ? LIMIT ?";
     struct mylite_sql_parse_result result;
@@ -106,6 +117,30 @@ static int test_prepared_parameters(void) {
             "prepared SELECT parameter lexical index"
         );
     }
+    mylite_sql_parse_result_deinit(&result);
+
+    count = 0U;
+    status = mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = like_sql,
+            .length = strlen(like_sql),
+            .modes = 0U,
+            .allow_parameters = true,
+        },
+        &result
+    );
+    failures += parser_test_expect_true(
+        status == MYLITE_SQL_PARSE_OK,
+        "prepared LIKE parameter parse status"
+    );
+    collect_parameter_indices(result.root, indices, 8U, &count);
+    failures += parser_test_expect_true(
+        result.parameter_count == 2U,
+        "prepared LIKE reported parameter count"
+    );
+    failures += parser_test_expect_true(count == 2U, "prepared LIKE parameter count");
+    failures += parser_test_expect_true(indices[0] == 0U, "prepared LIKE first parameter");
+    failures += parser_test_expect_true(indices[1] == 1U, "prepared LIKE second parameter");
     mylite_sql_parse_result_deinit(&result);
 
     count = 0U;
@@ -159,6 +194,40 @@ static int test_prepared_parameters(void) {
         ++failures;
     }
     mylite_sql_parse_result_deinit(&result);
+
+    for (size_t case_index = 0U; case_index < sizeof(extended_cases) / sizeof(extended_cases[0]);
+         ++case_index) {
+        count = 0U;
+        status = mylite_sql_parse(
+            (struct mylite_sql_parse_config){
+                .input = extended_cases[case_index].sql,
+                .length = strlen(extended_cases[case_index].sql),
+                .modes = 0U,
+                .allow_parameters = true,
+            },
+            &result
+        );
+        failures += parser_test_expect_true(
+            status == MYLITE_SQL_PARSE_OK,
+            "extended prepared parameter parse status"
+        );
+        collect_parameter_indices(result.root, indices, 8U, &count);
+        failures += parser_test_expect_true(
+            result.parameter_count == extended_cases[case_index].parameter_count,
+            "extended prepared reported parameter count"
+        );
+        failures += parser_test_expect_true(
+            count == extended_cases[case_index].parameter_count,
+            "extended prepared AST parameter count"
+        );
+        for (size_t index = 0U; index < count; ++index) {
+            failures += parser_test_expect_true(
+                indices[index] == index,
+                "extended prepared parameter lexical index"
+            );
+        }
+        mylite_sql_parse_result_deinit(&result);
+    }
 
     failures += mylite_sql_parse(
                     (struct mylite_sql_parse_config){

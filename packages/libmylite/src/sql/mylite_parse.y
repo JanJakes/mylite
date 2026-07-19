@@ -4855,10 +4855,25 @@ update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) INTEGER(C). {
         state, B, T, MYLITE_SQL_AST_OPERATOR_ADD,
         mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
+update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) PARAMETER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD,
+        mylite_sql_parser_make_parameter(state, C));
+}
 update_value(A) ::= arithmetic_update_source_column(B) MINUS(T) INTEGER(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
         mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_value(A) ::= arithmetic_update_source_column(B) MINUS(T) PARAMETER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        mylite_sql_parser_make_parameter(state, C));
+}
+update_value(A) ::= arithmetic_update_source_column(B) STAR(T) PARAMETER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY,
+        mylite_sql_parser_make_parameter(state, C));
 }
 update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) arithmetic_update_source_column(C). {
     A = mylite_sql_parser_make_binary_expression(state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
@@ -5430,6 +5445,9 @@ update_constant_arithmetic_multiplicative(A) ::=
 
 update_constant_arithmetic_factor(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+update_constant_arithmetic_factor(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
 }
 update_constant_arithmetic_factor(A) ::= TRUE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
@@ -7480,10 +7498,20 @@ predicate_atom(A) ::= cast_convert_expression(C) REGEXP(O) STRING(T). {
         state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
 }
+predicate_atom(A) ::= cast_convert_expression(C) REGEXP(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+        mylite_sql_parser_make_parameter(state, T));
+}
 predicate_atom(A) ::= cast_convert_expression(C) RLIKE(O) STRING(T). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+predicate_atom(A) ::= cast_convert_expression(C) RLIKE(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+        mylite_sql_parser_make_parameter(state, T));
 }
 predicate_atom(A) ::= cast_convert_expression(C) REGEXP(O) BINARY STRING(T). {
     A = mylite_sql_parser_make_comparison_predicate(
@@ -7501,11 +7529,25 @@ predicate_atom(A) ::= cast_convert_expression(C) NOT(N) REGEXP(O) STRING(T). {
             state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
             mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
 }
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) REGEXP(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+            mylite_sql_parser_make_parameter(state, T)));
+}
 predicate_atom(A) ::= cast_convert_expression(C) NOT(N) RLIKE(O) STRING(T). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_comparison_predicate(
             state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
             mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+}
+predicate_atom(A) ::= cast_convert_expression(C) NOT(N) RLIKE(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+            mylite_sql_parser_make_parameter(state, T)));
 }
 predicate_atom(A) ::= cast_convert_expression(C) NOT(N) REGEXP(O) BINARY STRING(T). {
     A = mylite_sql_parser_make_not_predicate(
@@ -7959,6 +8001,9 @@ predicate_like_pattern(A) ::= BIT_LITERAL(T). {
 predicate_like_pattern(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
+predicate_like_pattern(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
+}
 predicate_like_pattern(A) ::= predicate_collate_expression(V). {
     A = V;
 }
@@ -7983,10 +8028,20 @@ predicate_atom(A) ::= qualified_identifier(C) REGEXP(O) STRING(T). {
         state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
 }
+predicate_atom(A) ::= qualified_identifier(C) REGEXP(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+        mylite_sql_parser_make_parameter(state, T));
+}
 predicate_atom(A) ::= qualified_identifier(C) RLIKE(O) STRING(T). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING));
+}
+predicate_atom(A) ::= qualified_identifier(C) RLIKE(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+        mylite_sql_parser_make_parameter(state, T));
 }
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) REGEXP(O) STRING(T). {
     A = mylite_sql_parser_make_not_predicate(
@@ -7995,12 +8050,26 @@ predicate_atom(A) ::= qualified_identifier(C) NOT(N) REGEXP(O) STRING(T). {
             state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
             mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
 }
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) REGEXP(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_REGEXP,
+            mylite_sql_parser_make_parameter(state, T)));
+}
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) RLIKE(O) STRING(T). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
         mylite_sql_parser_make_comparison_predicate(
             state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
             mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING)));
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) RLIKE(O) PARAMETER(T). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_RLIKE,
+            mylite_sql_parser_make_parameter(state, T)));
 }
 predicate_atom(A) ::= qualified_identifier(C) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
@@ -8163,6 +8232,9 @@ predicate_in_value(A) ::= predicate_row_scalar_expression(V). {
 
 predicate_range_value(A) ::= predicate_integer_value(V). {
     A = V;
+}
+predicate_range_value(A) ::= PARAMETER(T). {
+    A = mylite_sql_parser_make_parameter(state, T);
 }
 predicate_range_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);

@@ -162,6 +162,12 @@ static bool mylite_mysqli_is_local_path(const char *value, size_t length);
 static void mylite_mysqli_clear_error(mylite_mysqli_link *link);
 static void mylite_mysqli_clear_stmt_error(mylite_mysqli_stmt *stmt);
 static int mylite_mysqli_error_from_status(int status, const char **out_sqlstate);
+static void mylite_mysqli_set_connect_error(
+    mylite_mysqli_link *link,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+);
 static void mylite_mysqli_set_global_connect_error(int error_code, const char *message);
 
 zend_object *mylite_mysqli_link_create(zend_class_entry *class_entry) {
@@ -321,10 +327,24 @@ bool mylite_mysqli_connect_link(
     bool port_is_null,
     zend_long flags
 ) {
+    static const zend_long default_port = 3306;
     struct mylite_open_diagnostic diagnostic;
     bool memory = false;
     bool use_database = false;
-    zend_string *path = mylite_mysqli_resolve_path(
+    zend_string *path = NULL;
+    int status = MYLITE_OK;
+
+    mylite_mysqli_clear_error(link);
+    if ((!port_is_null && port != 0 && port != default_port) || flags != 0) {
+        mylite_mysqli_set_connect_error(
+            link,
+            MYLITE_MYSQLI_ERROR_UNSUPPORTED,
+            "42000",
+            "non-default network ports and client flags are not supported by the embedded driver"
+        );
+        return false;
+    }
+    path = mylite_mysqli_resolve_path(
         host,
         host_length,
         database,
@@ -334,24 +354,8 @@ bool mylite_mysqli_connect_link(
         &memory,
         &use_database
     );
-    int status = MYLITE_OK;
-
-    mylite_mysqli_clear_error(link);
-    if ((!port_is_null && port != 0) || flags != 0) {
-        mylite_mysqli_set_error(
-            link,
-            MYLITE_MYSQLI_ERROR_UNSUPPORTED,
-            "42000",
-            "network ports and client flags are not supported by the embedded driver"
-        );
-        mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
-        mylite_mysqli_report_link_error(link);
-        return false;
-    }
     if (path == NULL) {
-        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
-        mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
-        mylite_mysqli_report_link_error(link);
+        mylite_mysqli_set_connect_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
         return false;
     }
 
@@ -371,15 +375,12 @@ bool mylite_mysqli_connect_link(
                     : mylite_open_with_diagnostic(ZSTR_VAL(path), &link->database, &diagnostic);
     zend_string_release(path);
     if (status != MYLITE_OK) {
-        mylite_mysqli_set_error(
+        mylite_mysqli_set_connect_error(
             link,
             MYLITE_MYSQLI_ERROR_CONNECTION,
             diagnostic.sqlstate,
             diagnostic.message
         );
-        mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
-        mylite_mysqli_report_link_error(link);
-        mylite_mysqli_update_link_properties(link);
         return false;
     }
 
@@ -404,6 +405,18 @@ bool mylite_mysqli_connect_link(
 
     mylite_mysqli_update_link_properties(link);
     return true;
+}
+
+static void mylite_mysqli_set_connect_error(
+    mylite_mysqli_link *link,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+) {
+    mylite_mysqli_set_error(link, error_code, sqlstate, message);
+    mylite_mysqli_set_global_connect_error(link->error_code, ZSTR_VAL(link->error));
+    mylite_mysqli_update_link_status_properties(link);
+    mylite_mysqli_report_link_error(link);
 }
 
 bool mylite_mysqli_close_link(mylite_mysqli_link *link) {
@@ -676,6 +689,7 @@ bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params)
     }
     stmt->affected_rows = link->affected_rows;
     stmt->insert_id = link->insert_id;
+    mylite_mysqli_update_link_status_properties(link);
     mylite_mysqli_clear_stmt_error(stmt);
     mylite_mysqli_update_stmt_properties(stmt);
     return true;
@@ -1719,6 +1733,14 @@ static bool mylite_mysqli_buffer_cursor_result(
     if (column_count == 0U) {
         link->affected_rows = (zend_long)mylite_stmt_affected_rows(native_stmt);
         link->insert_id = (zend_long)mylite_stmt_insert_id(native_stmt);
+        if (!mylite_mysqli_set_link_info(link, mylite_stmt_info(native_stmt))) {
+            mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
+            mylite_mysqli_report_link_error(link);
+            if (finalize_statement) {
+                (void)mylite_stmt_finalize(native_stmt);
+            }
+            return false;
+        }
         if (finalize_statement) {
             status = mylite_stmt_finalize(native_stmt);
             if (status != MYLITE_OK) {
@@ -2179,6 +2201,15 @@ static bool mylite_mysqli_bind_native_value(
 
     ZVAL_DEREF(value);
     if (long_data != NULL) {
+        if (ZSTR_LEN(long_data) > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+            mylite_mysqli_set_error(
+                link,
+                MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
+                "08S01",
+                "Got a packet bigger than 'max_allowed_packet' bytes"
+            );
+            return false;
+        }
         status =
             mylite_stmt_bind_blob(native_stmt, index, ZSTR_VAL(long_data), ZSTR_LEN(long_data));
     } else if (Z_TYPE_P(value) == IS_NULL) {
@@ -2191,6 +2222,16 @@ static bool mylite_mysqli_bind_native_value(
         zend_string *text = zval_get_string(value);
 
         if (UNEXPECTED(EG(exception) != NULL)) {
+            return false;
+        }
+        if (ZSTR_LEN(text) > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+            zend_string_release(text);
+            mylite_mysqli_set_error(
+                link,
+                MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
+                "08S01",
+                "Got a packet bigger than 'max_allowed_packet' bytes"
+            );
             return false;
         }
         status = type == 'b'
@@ -2221,6 +2262,16 @@ static bool mylite_mysqli_bind_native_value(
             zend_string *text = zval_get_string(value);
 
             if (UNEXPECTED(EG(exception) != NULL)) {
+                return false;
+            }
+            if (ZSTR_LEN(text) > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+                zend_string_release(text);
+                mylite_mysqli_set_error(
+                    link,
+                    MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
+                    "08S01",
+                    "Got a packet bigger than 'max_allowed_packet' bytes"
+                );
                 return false;
             }
             status = mylite_stmt_bind_text(native_stmt, index, ZSTR_VAL(text), ZSTR_LEN(text));

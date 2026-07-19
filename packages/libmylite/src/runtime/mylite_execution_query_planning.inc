@@ -3799,7 +3799,7 @@ static int plan_row_scalar_integer_arithmetic_frame(
             stack
         );
     }
-    if (current->kind == MYLITE_SQL_AST_LITERAL ||
+    if (current->kind == MYLITE_SQL_AST_LITERAL || current->kind == MYLITE_SQL_AST_PARAMETER ||
         current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_arithmetic_literal(database, current, frame->out_expression);
     }
@@ -4075,6 +4075,9 @@ static int plan_row_scalar_integer_arithmetic_literal(
     if (unwrapped == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_PARAMETER) {
+        return plan_row_scalar_literal_value(database, unwrapped, out_expression);
     }
     if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         const struct mylite_sql_ast_node *child =

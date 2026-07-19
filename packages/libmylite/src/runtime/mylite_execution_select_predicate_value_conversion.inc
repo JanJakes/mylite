@@ -377,6 +377,14 @@ static int convert_predicate_value(
     struct planned_value *out_value
 ) {
     if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARAMETER) {
+        if (column_descriptor_is_decimal(column)) {
+            return convert_predicate_decimal_parameter_value(
+                database,
+                value_node,
+                column,
+                out_value
+            );
+        }
         return copy_active_stmt_parameter_value(database, value_node, out_value);
     }
     if (column_descriptor_is_string_family(column)) {
@@ -416,6 +424,34 @@ static int convert_predicate_value(
         return convert_predicate_timestamp_literal(database, value_node, column, out_value);
     }
     return convert_predicate_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_predicate_decimal_parameter_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = copy_active_stmt_parameter_cell(database, value_node, &cell);
+
+    if (rc == MYLITE_OK && cell.value == NULL) {
+        *out_value = (struct planned_value){.is_null = true};
+    } else if (rc == MYLITE_OK) {
+        rc = convert_dml_scalar_cell_for_column(
+            database,
+            &cell,
+            column,
+            column->name,
+            1U,
+            false,
+            false,
+            false,
+            out_value
+        );
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
 }
 
 static int convert_predicate_value_with_date_comparison_mode(
@@ -818,31 +854,59 @@ static int convert_predicate_regexp_pattern_literal(
     struct mylite_regexp_program *program = NULL;
     char *text = NULL;
     size_t text_length = 0U;
+    bool external_parameter = false;
     int rc = MYLITE_OK;
 
-    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARAMETER) {
+        if (database->active_bound_statement != NULL) {
+            database->active_bound_statement->parameter_plan_reusable = false;
+        }
+        rc = copy_active_stmt_parameter_value(database, value_node, out_value);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        external_parameter = true;
+        if (out_value->external_binding != NULL &&
+            out_value->external_binding->type == MYLITE_STMT_BINDING_UNBOUND) {
+            return MYLITE_OK;
+        }
+        if (out_value->is_null) {
+            return MYLITE_OK;
+        }
+        if (!out_value->is_text) {
+            planned_value_deinit(out_value);
+            set_unsupported_error(database, "WHERE REGEXP patterns must be strings");
+            return MYLITE_ERROR;
+        }
+        text = out_value->text;
+        text_length = out_value->text_length;
+    } else if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+               mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal(
+            database,
+            value_node,
+            "WHERE REGEXP predicates support only string pattern literals",
+            "WHERE REGEXP pattern literals do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    } else {
         set_unsupported_error(
             database,
-            "WHERE REGEXP predicates support only string pattern literals"
+            "WHERE REGEXP predicates support only string pattern literals and parameters"
         );
         return MYLITE_ERROR;
     }
-
-    rc = decode_sql_string_literal(
-        database,
-        value_node,
-        "WHERE REGEXP predicates support only string pattern literals",
-        "WHERE REGEXP pattern literals do not support NUL bytes",
-        &text,
-        &text_length
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     if (!text_value_is_supported_string_key(text, text_length)) {
-        free(text);
-        set_unsupported_error(database, "WHERE REGEXP pattern literals support only ASCII text");
+        if (external_parameter) {
+            planned_value_deinit(out_value);
+        } else {
+            free(text);
+        }
+        set_unsupported_error(database, "WHERE REGEXP patterns support only ASCII text");
         return MYLITE_ERROR;
     }
 
@@ -851,7 +915,11 @@ static int convert_predicate_regexp_pattern_literal(
                        : mylite_regexp_compile_ascii_ci(text, text_length, &program);
     mylite_regexp_program_free(program);
     if (status != MYLITE_REGEXP_COMPILE_OK) {
-        free(text);
+        if (external_parameter) {
+            planned_value_deinit(out_value);
+        } else {
+            free(text);
+        }
         if (status == MYLITE_REGEXP_COMPILE_NOMEM) {
             set_nomem_error(database);
             return MYLITE_NOMEM;
@@ -877,5 +945,8 @@ static int convert_predicate_regexp_pattern_literal(
         return MYLITE_ERROR;
     }
 
+    if (external_parameter) {
+        return MYLITE_OK;
+    }
     return assign_text_value(database, text, text_length, out_value);
 }

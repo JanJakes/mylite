@@ -895,7 +895,8 @@ static int plan_row_scalar_integer_like_argument(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_PARAMETER) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
     return plan_row_scalar_integer_value(database, expression, out_expression);
@@ -1807,7 +1808,8 @@ static int plan_row_scalar_conversion_argument(
         return MYLITE_OK;
     }
 
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_PARAMETER) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {

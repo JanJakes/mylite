@@ -104,7 +104,7 @@ static bool text_value_is_valid_string_key(const char *text, size_t text_length)
     size_t character_count = 0U;
 
     if (text == NULL) {
-        return false;
+        return text_length == 0U;
     }
     return validate_utf8_text(text, text_length, &character_count) == MYLITE_OK;
 }

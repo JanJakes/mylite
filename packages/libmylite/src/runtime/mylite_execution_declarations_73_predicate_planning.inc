@@ -1473,6 +1473,12 @@ static int convert_predicate_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+static int convert_predicate_decimal_parameter_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
 static int convert_predicate_value_with_date_comparison_mode(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

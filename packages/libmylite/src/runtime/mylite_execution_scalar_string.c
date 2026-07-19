@@ -394,6 +394,8 @@ static int string_length_session_scalar_argument_value(
     }
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_PARAMETER:
+        return mylite_execution_active_stmt_parameter_cell(database, expression, out_cell);
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
         if (database->session.has_selected_schema) {
@@ -644,6 +646,9 @@ static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_as
     }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_PARAMETER) {
         return true;
     }
     if (mylite_execution_is_session_scalar_expression(expression)) {

@@ -187,6 +187,7 @@ MYLITE_API int mylite_stmt_clear_bindings(mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_reset(mylite_stmt *stmt);
 MYLITE_API int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt);
 MYLITE_API uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt);
+MYLITE_API const char *mylite_stmt_info(const mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_step(mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_finalize(mylite_stmt *stmt);
 MYLITE_API size_t mylite_stmt_column_count(const mylite_stmt *stmt);

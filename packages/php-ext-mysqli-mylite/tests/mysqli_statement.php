@@ -19,6 +19,17 @@ $id = 2;
 $value = 200;
 expect_true($insert->execute(), 'execute second insert');
 
+expect_true(
+    $mysqli->query('CREATE TABLE generated_items (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(20))'),
+    'create generated table'
+);
+$generatedInsert = $mysqli->prepare('INSERT INTO generated_items (name) VALUES (?)');
+expect_true($generatedInsert->execute(['first']), 'execute generated insert');
+expect_same(1, $mysqli->insert_id, 'prepared insert link property insert id');
+expect_same(1, mysqli_insert_id($mysqli), 'prepared insert link function insert id');
+expect_same(1, $generatedInsert->insert_id, 'prepared insert statement property insert id');
+expect_same(1, mysqli_stmt_insert_id($generatedInsert), 'prepared insert statement function insert id');
+
 $select = mysqli_prepare($mysqli, 'SELECT id, value FROM items WHERE id >= ? ORDER BY id');
 if (!$select instanceof mysqli_stmt) {
     throw new RuntimeException('select prepare');
@@ -46,6 +57,19 @@ expect_same(
 
 $result = $mysqli->execute_query('SELECT value FROM items WHERE id = ?', [2]);
 expect_same(['value' => '200'], $result->fetch_assoc(), 'execute_query result');
+
+$update = $mysqli->prepare('UPDATE items SET value = ? WHERE id >= ?');
+$updatedValue = 100;
+$minimumId = 1;
+expect_true($update->bind_param('ii', $updatedValue, $minimumId), 'bind prepared update');
+expect_true($update->execute(), 'execute prepared update');
+expect_same(1, $update->affected_rows, 'prepared update changed rows');
+expect_same(1, $mysqli->affected_rows, 'prepared update link changed rows');
+expect_same(
+    'Rows matched: 2  Changed: 1  Warnings: 0',
+    $mysqli->info,
+    'prepared update matched-row info'
+);
 
 expect_true($mysqli->query('SET SESSION sql_mode = \'NO_BACKSLASH_ESCAPES\''), 'set SQL mode');
 $hostile = "Grace\\'); DROP TABLE items; --";
@@ -104,6 +128,13 @@ expect_false(
     $mysqli->execute_query('SELECT ? AS a_value, ? AS b_value', [1]),
     'too few execute_query params'
 );
+
+$oversized = $mysqli->prepare('SELECT ? AS value');
+$oversizedPayload = str_repeat('x', 64 * 1024 * 1024 + 1);
+expect_false($oversized->execute([$oversizedPayload]), 'reject oversized prepared payload');
+expect_same(1153, $oversized->errno, 'oversized prepared payload statement errno');
+expect_same(1153, $mysqli->errno, 'oversized prepared payload link errno');
+unset($oversizedPayload);
 
 $reset = $mysqli->prepare('SELECT ? AS value');
 expect_true($reset->execute([1]), 'execute reset statement');

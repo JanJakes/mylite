@@ -153,6 +153,14 @@ expression is a nullable connection-collated `VAR_STRING` with a 73-character
 maximum, and the grouped byte total is a nullable binary `NEWDECIMAL` with
 display length 45 and scale zero.
 
+Prepared statements admit parameter markers wherever the supported metadata
+predicate forms admit a scalar value, including comparison, `BETWEEN`, `IN`,
+and `LIKE` patterns. Parameters are resolved through the native typed binding
+API at execution; text remains data under every SQL mode, `NULL` preserves
+three-valued predicate semantics, and prepare-time source/column validation is
+performed by the metadata planner rather than ordinary user-table planning.
+`LIKE ... ESCAPE` retains a literal escape character in this baseline.
+
 ## Deliberately excluded surface
 
 This phase does not implement:
@@ -162,9 +170,9 @@ This phase does not implement:
 - `mysql`, `performance_schema`, or `sys` schema tables;
 - joins, subqueries, CTEs, unions, windows, grouping other than `COUNT(*)`,
   aggregate functions other than `COUNT(*)`, expression predicates, `LIKE`,
-  `REGEXP`, `BETWEEN`, parameters, prepared-statement metadata, privileges,
-  roles, or metadata locks, except for the explicitly listed projection,
-  predicate, and compatibility query bridge forms;
+  `REGEXP`, `BETWEEN`, prepared-statement metadata, privileges, roles, or
+  metadata locks, except for the explicitly listed projection, predicate,
+  prepared-value, and compatibility query bridge forms;
 - exact volatile timestamp/statistics fidelity;
 - `INFORMATION_SCHEMA` tables beyond `SCHEMATA`, `TABLES`, and `COLUMNS`.
 
@@ -174,9 +182,10 @@ Unsupported `INFORMATION_SCHEMA` tables fail with MySQL-compatible
 ## Grammar
 
 The existing `table_name`, `select_item_list`, `where_clause_opt`,
-`order_clause_opt`, and `limit_clause_opt` grammar is reused. This phase only
-widens predicate values enough to admit metadata string comparisons and current
-database functions.
+`order_clause_opt`, and `limit_clause_opt` grammar is reused. Metadata predicate
+values admit string/integer literals, current-database functions, and native
+prepared parameters. The specialized `LIKE` pattern grammar admits a parameter
+node only when prepared parsing enables parameter markers.
 
 Independently authored Lemon-syntax snippets:
 

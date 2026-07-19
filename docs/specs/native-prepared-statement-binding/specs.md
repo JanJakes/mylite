@@ -170,8 +170,9 @@ literal(A) ::= prepared_literal(B). {
 ```
 
 Specialized expression nonterminals that admit MySQL parameter values also
-accept `prepared_literal`. Identifier, option-name, keyword, operator, and DDL
-definition-name nonterminals do not.
+accept `prepared_literal`; this includes the right operand of `LIKE`, including
+forms with a literal `ESCAPE` character. Identifier, option-name, keyword,
+operator, and DDL definition-name nonterminals do not.
 
 Each parameter AST node stores its zero-based slot index and absolute source
 span. Parameter indexes follow lexical order across nested expressions,
@@ -268,6 +269,8 @@ SQLite fork. Schema-generation invalidation remains MyLite-owned.
 - NULL, signed/unsigned integer, float, text, binary/NUL, by-reference updates,
   execute arrays, repeated execution, DML status, SELECT metadata, errors, and
   destruction order;
+- connection and statement insert IDs after native prepared DML, including
+  framework code that reads the mysqli connection property;
 - proof that values containing SQL syntax cannot change row count, schema, or
   subsequent diagnostics.
 

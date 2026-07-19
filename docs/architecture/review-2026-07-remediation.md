@@ -113,10 +113,12 @@ complete.
 - [x] Add autocommit transition, DDL, savepoint, error, close, and injected
   rollback/commit failure coverage. mysqli transaction start, chain, no-chain,
   and no-release flags now lower to supported MyLite SQL; conflicting flags,
-  release, names, network ports, client flags, asynchronous modes, connection
-  options, TLS/debug controls, and statement attributes return explicit
-  unsupported diagnostics instead of false success. Both store-result wrappers
-  validate their advertised mode, and custom-object fetching invokes
+  release, names, non-default network ports, client flags, asynchronous modes,
+  connection options, TLS/debug controls, and statement attributes return
+  explicit unsupported diagnostics instead of false success. The conventional
+  default port `3306` is accepted as an ignored argument because frameworks may
+  pass it unconditionally when opening the embedded driver. Both store-result
+  wrappers validate their advertised mode, and custom-object fetching invokes
   constructors with populated row properties and positional or named
   arguments. PDO rejects scroll cursors, non-next fetch orientations, offsets,
   and named insert-ID sequences. The complete eight-test PHP adapter matrix

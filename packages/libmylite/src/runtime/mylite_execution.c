@@ -528,6 +528,10 @@ size_t mylite_stmt_parameter_count(const mylite_stmt *stmt) {
     return stmt == NULL ? 0U : stmt->parameter_count;
 }
 
+const char *mylite_stmt_info(const mylite_stmt *stmt) {
+    return stmt == NULL ? NULL : mylite_result_info(stmt->completed_result);
+}
+
 const char *mylite_execution_bound_statement_character_set_client(const mylite_stmt *stmt) {
     return stmt == NULL ? NULL : stmt->character_set_client;
 }
@@ -1609,20 +1613,9 @@ static int validate_prepared_statement_objects(mylite_stmt *stmt) {
     database->cursor_plan_attempt_active = true;
     database->cursor_plan_attempt_unsupported = false;
     switch (stmt->statement->kind) {
-    case MYLITE_SQL_AST_SELECT_STATEMENT: {
-        const char *argument_count_error_function =
-            select_statement_argument_count_error_function(stmt->statement);
-        struct planned_select plan = {0};
-
-        if (argument_count_error_function != NULL) {
-            set_native_function_parameter_count_error(database, argument_count_error_function);
-            rc = MYLITE_ERROR;
-        } else {
-            rc = plan_select(database, stmt->statement, true, &plan);
-        }
-        planned_select_deinit(&plan);
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+        rc = validate_prepared_select_statement_objects(stmt);
         break;
-    }
     case MYLITE_SQL_AST_INSERT_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT: {
         struct planned_insert plan = {0};
@@ -1682,6 +1675,47 @@ static int validate_prepared_statement_objects(mylite_stmt *stmt) {
             rc = MYLITE_OK;
         }
     }
+    return rc;
+}
+
+static int validate_prepared_select_statement_objects(mylite_stmt *stmt) {
+    struct mylite_db *database = stmt->database;
+    const char *argument_count_error_function =
+        select_statement_argument_count_error_function(stmt->statement);
+    struct information_schema_join_compat_plan join_plan = {0};
+    struct information_schema_query information_schema_query = {0};
+    struct planned_select plan = {0};
+    bool targets_information_schema = false;
+    int rc = MYLITE_OK;
+
+    if (argument_count_error_function != NULL) {
+        set_native_function_parameter_count_error(database, argument_count_error_function);
+        return MYLITE_ERROR;
+    }
+    rc = select_statement_targets_information_schema(
+        database,
+        stmt->statement,
+        &targets_information_schema
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!targets_information_schema) {
+        rc = plan_select(database, stmt->statement, true, &plan);
+        planned_select_deinit(&plan);
+        return rc;
+    }
+
+    rc = mylite_execution_information_schema_join_plan_analyze(
+        database,
+        stmt->statement,
+        &join_plan
+    );
+    if (rc == MYLITE_OK && join_plan.kind == INFORMATION_SCHEMA_JOIN_COMPAT_NONE) {
+        rc = resolve_information_schema_query(database, stmt->statement, &information_schema_query);
+    }
+    mylite_execution_information_schema_join_plan_deinit(&join_plan);
+    information_schema_query_deinit(&information_schema_query);
     return rc;
 }
 
@@ -3062,6 +3096,14 @@ bool mylite_execution_column_descriptor_is_time(
     return column_descriptor_is_time(column);
 }
 
+int mylite_execution_active_stmt_parameter_cell(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *parameter,
+    struct session_scalar_cell *out_cell
+) {
+    return copy_active_stmt_parameter_cell(database, parameter, out_cell);
+}
+
 int mylite_execution_information_schema_copy_select_item_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *alias,
@@ -3093,6 +3135,44 @@ int mylite_execution_information_schema_copy_predicate_value(
     enum mylite_execution_information_schema_predicate_value_kind kind,
     struct information_schema_predicate_value *out_value
 ) {
+    if (value != NULL && value->kind == MYLITE_SQL_AST_PARAMETER) {
+        struct session_scalar_cell cell = {0};
+        size_t value_size = 0U;
+        int rc = copy_active_stmt_parameter_cell(database, value, &cell);
+
+        *out_value = (struct information_schema_predicate_value){0};
+        if (rc != MYLITE_OK || cell.value == NULL) {
+            out_value->is_null = rc == MYLITE_OK;
+            return rc;
+        }
+        value_size = cell.has_value_size ? cell.value_size : strlen(cell.value);
+        if (memchr(cell.value, '\0', value_size) != NULL) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA predicate parameters do not support NUL bytes"
+            );
+            return MYLITE_ERROR;
+        }
+        out_value->text = malloc(value_size + 1U);
+        if (out_value->text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(out_value->text, cell.value, value_size);
+        out_value->text[value_size] = '\0';
+        out_value->is_numeric = !cell.has_value_size;
+        if (kind == MYLITE_EXECUTION_INFORMATION_SCHEMA_PREDICATE_LIKE_PATTERN &&
+            !text_value_is_supported_string_key(out_value->text, value_size)) {
+            free(out_value->text);
+            *out_value = (struct information_schema_predicate_value){0};
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA WHERE LIKE pattern parameters support only ASCII text"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
     if (kind == MYLITE_EXECUTION_INFORMATION_SCHEMA_PREDICATE_LITERAL) {
         return information_schema_predicate_literal_value_text(database, value, out_value);
     }

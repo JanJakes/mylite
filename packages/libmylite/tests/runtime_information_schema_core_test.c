@@ -53,6 +53,7 @@ static int test_information_schema_core_queries(void);
 static int test_information_schema_wordpress_bridge_queries(void);
 static int test_information_schema_doctrine_bridge_queries(void);
 static int seed_database(mylite_db *database);
+static int expect_drupal_prepared_table_exists_query(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_query_columns(
@@ -1120,6 +1121,7 @@ static int test_information_schema_core_queries(void) {
             .context = "tables existence predicate hit",
         }
     );
+    failures += expect_drupal_prepared_table_exists_query(database);
     failures += expect_query(
         database,
         (struct expected_query){
@@ -1268,6 +1270,121 @@ static int test_information_schema_core_queries(void) {
 
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int expect_drupal_prepared_table_exists_query(mylite_db *database) {
+    static const char sql[] =
+        "SELECT 1 FROM information_schema.tables WHERE (\"table_schema\" = ?) "
+        "AND (\"table_name\" = ?) AND (\"table_type\" = ?)";
+    static const char like_sql[] =
+        "SELECT table_name AS table_name FROM information_schema.tables "
+        "WHERE (\"table_schema\" = ?) AND (\"table_name\" LIKE ? ESCAPE '\\\\') "
+        "AND (\"table_type\" = ?)";
+    mylite_stmt *stmt = NULL;
+    int failures = expect_statement_ok(database, "SET sql_mode = 'ANSI,TRADITIONAL'", -1);
+
+    failures += expect_int(
+        mylite_prepare(database, sql, strlen(sql), &stmt),
+        MYLITE_OK,
+        "prepare Drupal information schema table existence query"
+    );
+    if (stmt != NULL) {
+        failures += expect_size(
+            mylite_stmt_parameter_count(stmt),
+            3U,
+            "Drupal information schema parameter count"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_text(stmt, 0U, "app", strlen("app")),
+            MYLITE_OK,
+            "bind Drupal information schema name"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_text(stmt, 1U, "t", strlen("t")),
+            MYLITE_OK,
+            "bind Drupal information schema table"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_text(stmt, 2U, "BASE TABLE", strlen("BASE TABLE")),
+            MYLITE_OK,
+            "bind Drupal information schema table type"
+        );
+        failures += expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_ROW,
+            "step Drupal information schema table existence row"
+        );
+        failures += expect_size(
+            mylite_stmt_column_count(stmt),
+            1U,
+            "Drupal information schema column count"
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_value_text(stmt, 0U),
+            "1",
+            "Drupal information schema table existence value"
+        );
+        failures += expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "finish Drupal information schema table existence query"
+        );
+        failures += expect_int(
+            mylite_stmt_finalize(stmt),
+            MYLITE_OK,
+            "finalize Drupal information schema table existence query"
+        );
+    }
+    stmt = NULL;
+    failures += expect_int(
+        mylite_prepare(database, like_sql, strlen(like_sql), &stmt),
+        MYLITE_OK,
+        "prepare Drupal information schema table pattern query"
+    );
+    if (stmt != NULL) {
+        failures += expect_size(
+            mylite_stmt_parameter_count(stmt),
+            3U,
+            "Drupal information schema pattern parameter count"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_text(stmt, 0U, "app", strlen("app")),
+            MYLITE_OK,
+            "bind Drupal information schema pattern name"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_text(stmt, 1U, "t%", strlen("t%")),
+            MYLITE_OK,
+            "bind Drupal information schema table pattern"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_text(stmt, 2U, "BASE TABLE", strlen("BASE TABLE")),
+            MYLITE_OK,
+            "bind Drupal information schema pattern table type"
+        );
+        failures += expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_ROW,
+            "step Drupal information schema table pattern row"
+        );
+        failures += expect_text_or_null(
+            mylite_stmt_value_text(stmt, 0U),
+            "t",
+            "Drupal information schema table pattern value"
+        );
+        failures += expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "finish Drupal information schema table pattern query"
+        );
+        failures += expect_int(
+            mylite_stmt_finalize(stmt),
+            MYLITE_OK,
+            "finalize Drupal information schema table pattern query"
+        );
+    }
+    failures += expect_statement_ok(database, "SET sql_mode = DEFAULT", -1);
     return failures;
 }
 

@@ -35,6 +35,17 @@ struct expected_query_scalar_text {
     const char *context;
 };
 
+enum native_prepared_binding_kind {
+    NATIVE_PREPARED_BINDING_INT64 = 0,
+    NATIVE_PREPARED_BINDING_TEXT,
+};
+
+struct native_prepared_binding {
+    enum native_prepared_binding_kind kind;
+    int64_t integer;
+    const char *text;
+};
+
 static int test_cursor_select_streams_rows_and_metadata(void);
 static int test_cursor_keeps_borrowed_metadata_across_invalidation(void);
 static int test_key_metadata_cache_uses_lru_replacement(void);
@@ -42,6 +53,15 @@ static int test_metadata_caches_enforce_byte_budgets(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_reset_and_value_nullability(void);
 static int test_native_prepared_scalar_bindings(void);
+static int expect_native_prepared_row(
+    mylite_db *database,
+    const char *sql,
+    const struct native_prepared_binding *bindings,
+    size_t binding_count,
+    const char *const *expected_values,
+    size_t expected_value_count,
+    const char *context
+);
 static int test_native_prepared_owns_resolution_context(void);
 static int test_native_prepared_owns_sql_text(void);
 static int test_native_prepared_dml_bindings(void);
@@ -1119,6 +1139,30 @@ static int test_native_prepared_scalar_bindings(void) {
     char path[test_path_capacity];
     static const unsigned char blob[] = {'a', 0U, 'b', '\'', '-', '-'};
     static const char injection_text[] = "x' OR 1=1 /*";
+    static const struct native_prepared_binding concat_bindings[] = {
+        {.kind = NATIVE_PREPARED_BINDING_TEXT, .text = "a"},
+        {.kind = NATIVE_PREPARED_BINDING_TEXT, .text = "b"},
+        {.kind = NATIVE_PREPARED_BINDING_TEXT, .text = "c"},
+    };
+    static const struct native_prepared_binding concat_ws_bindings[] = {
+        {.kind = NATIVE_PREPARED_BINDING_TEXT, .text = "left"},
+        {.kind = NATIVE_PREPARED_BINDING_TEXT, .text = "right"},
+    };
+    static const struct native_prepared_binding convert_bindings[] = {
+        {.kind = NATIVE_PREPARED_BINDING_TEXT, .text = "converted"},
+    };
+    static const struct native_prepared_binding least_bindings[] = {
+        {.kind = NATIVE_PREPARED_BINDING_INT64, .integer = 9},
+        {.kind = NATIVE_PREPARED_BINDING_INT64, .integer = 4},
+    };
+    static const struct native_prepared_binding count_bindings[] = {
+        {.kind = NATIVE_PREPARED_BINDING_INT64, .integer = 3},
+    };
+    static const char *const concat_expected[] = {"abc"};
+    static const char *const concat_ws_expected[] = {"left, right"};
+    static const char *const convert_expected[] = {"converted"};
+    static const char *const least_expected[] = {"4"};
+    static const char *const count_expected[] = {"5"};
     mylite_db *database = NULL;
     mylite_db *other_database = NULL;
     mylite_stmt *stmt = NULL;
@@ -1229,6 +1273,53 @@ static int test_native_prepared_scalar_bindings(void) {
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native binding");
     stmt = NULL;
 
+    failures += execute_ok(
+        database,
+        "CREATE TABLE config (collection VARCHAR(255), name VARCHAR(255), data BLOB, "
+        "PRIMARY KEY (collection, name))"
+    );
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "INSERT INTO config (collection, name, data) VALUES (?, ?, ?)",
+            strlen("INSERT INTO config (collection, name, data) VALUES (?, ?, ?)"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native empty string key insert"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, NULL, 0U),
+        MYLITE_OK,
+        "bind native empty string key"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "core.extension", strlen("core.extension")),
+        MYLITE_OK,
+        "bind native string key name"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 2U, "serialized", strlen("serialized")),
+        MYLITE_OK,
+        "bind native string key payload"
+    );
+    failures +=
+        expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native empty string key insert");
+    failures += expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize native empty string key insert"
+    );
+    stmt = NULL;
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT COUNT(*) FROM config WHERE collection = ''",
+            .expected = "1",
+            .context = "native empty string key inserted row",
+        }
+    );
+
     failures += expect_int(
         mylite_prepare(
             database,
@@ -1334,6 +1425,102 @@ static int test_native_prepared_scalar_bindings(void) {
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native table query");
     stmt = NULL;
 
+    failures += expect_native_prepared_row(
+        database,
+        "SELECT CONCAT(?, CONCAT(?, ?))",
+        concat_bindings,
+        sizeof(concat_bindings) / sizeof(concat_bindings[0]),
+        concat_expected,
+        sizeof(concat_expected) / sizeof(concat_expected[0]),
+        "native nested CONCAT parameters"
+    );
+    failures += expect_native_prepared_row(
+        database,
+        "SELECT CONCAT_WS(', ', ?, NULL, ?)",
+        concat_ws_bindings,
+        sizeof(concat_ws_bindings) / sizeof(concat_ws_bindings[0]),
+        concat_ws_expected,
+        sizeof(concat_ws_expected) / sizeof(concat_ws_expected[0]),
+        "native CONCAT_WS parameters"
+    );
+    failures += expect_native_prepared_row(
+        database,
+        "SELECT CONVERT(? USING utf8mb4) FROM items LIMIT 1",
+        convert_bindings,
+        sizeof(convert_bindings) / sizeof(convert_bindings[0]),
+        convert_expected,
+        sizeof(convert_expected) / sizeof(convert_expected[0]),
+        "native table-backed CONVERT parameter"
+    );
+    failures += expect_native_prepared_row(
+        database,
+        "SELECT LEAST(?, ?)",
+        least_bindings,
+        sizeof(least_bindings) / sizeof(least_bindings[0]),
+        least_expected,
+        sizeof(least_expected) / sizeof(least_expected[0]),
+        "native LEAST parameters"
+    );
+    failures += expect_native_prepared_row(
+        database,
+        "SELECT COUNT(*) + ? FROM items",
+        count_bindings,
+        sizeof(count_bindings) / sizeof(count_bindings[0]),
+        count_expected,
+        sizeof(count_expected) / sizeof(count_expected[0]),
+        "native COUNT arithmetic parameter"
+    );
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT COUNT(*) FROM items WHERE name REGEXP ? AND id BETWEEN ? AND ?",
+            strlen("SELECT COUNT(*) FROM items WHERE name REGEXP ? AND id BETWEEN ? AND ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native REGEXP and BETWEEN parameters"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "a$", 2U),
+        MYLITE_OK,
+        "bind native REGEXP parameter"
+    );
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 1U, 1), MYLITE_OK, "bind native BETWEEN lower");
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 2U, 2), MYLITE_OK, "bind native BETWEEN upper");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native predicate parameter row");
+    failures += expect_cursor_text(stmt, 0U, "2", "native REGEXP and BETWEEN value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "native predicate parameter done");
+    failures += expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize native REGEXP and BETWEEN query"
+    );
+    stmt = NULL;
+
+    failures += execute_ok(database, "CREATE TABLE decimal_items (value DECIMAL(10, 2))");
+    failures += execute_ok(database, "INSERT INTO decimal_items VALUES (1), (1.00)");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT COUNT(*) FROM decimal_items WHERE value <> ?",
+            strlen("SELECT COUNT(*) FROM decimal_items WHERE value <> ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native decimal predicate"
+    );
+    failures +=
+        expect_int(mylite_stmt_bind_int64(stmt, 0U, 1), MYLITE_OK, "bind native decimal predicate");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "native decimal predicate row");
+    failures += expect_cursor_text(stmt, 0U, "0", "native decimal predicate canonical value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "native decimal predicate done");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native decimal predicate");
+    stmt = NULL;
+
     failures += expect_int(
         mylite_prepare(
             database,
@@ -1397,6 +1584,52 @@ static int test_native_prepared_scalar_bindings(void) {
 
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int expect_native_prepared_row(
+    mylite_db *database,
+    const char *sql,
+    const struct native_prepared_binding *bindings,
+    size_t binding_count,
+    const char *const *expected_values,
+    size_t expected_value_count,
+    const char *context
+) {
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+    int rc = mylite_prepare(database, sql, strlen(sql), &stmt);
+
+    if (rc != MYLITE_OK) {
+        fprintf(stderr, "%s prepare: %s\n", context, mylite_errmsg(database));
+        return 1;
+    }
+    failures += expect_size(mylite_stmt_parameter_count(stmt), binding_count, context);
+    for (size_t index = 0U; index < binding_count; ++index) {
+        if (bindings[index].kind == NATIVE_PREPARED_BINDING_TEXT) {
+            rc = mylite_stmt_bind_text(
+                stmt,
+                index,
+                bindings[index].text,
+                strlen(bindings[index].text)
+            );
+        } else {
+            rc = mylite_stmt_bind_int64(stmt, index, bindings[index].integer);
+        }
+        failures += expect_int(rc, MYLITE_OK, context);
+    }
+    rc = mylite_stmt_step(stmt);
+    if (rc != MYLITE_ROW) {
+        fprintf(stderr, "%s step: %s\n", context, mylite_errmsg(database));
+        ++failures;
+    } else {
+        failures += expect_size(mylite_stmt_column_count(stmt), expected_value_count, context);
+        for (size_t index = 0U; index < expected_value_count; ++index) {
+            failures += expect_cursor_text(stmt, index, expected_values[index], context);
+        }
+        failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, context);
+    }
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, context);
     return failures;
 }
 
@@ -1604,7 +1837,7 @@ static int test_native_prepared_dml_bindings(void) {
     failures += execute_ok(
         database,
         "CREATE TABLE items (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
-        "name VARCHAR(64) NOT NULL, payload VARBINARY(64))"
+        "name VARCHAR(64) NOT NULL, payload VARBINARY(64), score INT NOT NULL DEFAULT 0)"
     );
 
     failures += expect_int(
@@ -1726,8 +1959,48 @@ static int test_native_prepared_dml_bindings(void) {
     failures += expect_int(mylite_stmt_bind_int64(stmt, 1U, 2), MYLITE_OK, "bind native UPDATE id");
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native UPDATE");
     failures += expect_true(mylite_stmt_affected_rows(stmt) == 1, "native UPDATE affected rows");
+    failures += expect_text(
+        mylite_stmt_info(stmt),
+        "Rows matched: 1  Changed: 1  Warnings: 0",
+        "native UPDATE info"
+    );
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native UPDATE");
     stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "UPDATE items SET score = score + ? WHERE id = ?",
+            strlen("UPDATE items SET score = score + ? WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native UPDATE arithmetic parameters"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 10),
+        MYLITE_OK,
+        "bind native UPDATE arithmetic delta"
+    );
+    failures += expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, 2),
+        MYLITE_OK,
+        "bind native UPDATE arithmetic predicate"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute native UPDATE arithmetic");
+    failures +=
+        expect_true(mylite_stmt_affected_rows(stmt) == 1, "native UPDATE arithmetic affected rows");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize native UPDATE arithmetic");
+    stmt = NULL;
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT score FROM items WHERE id = 2",
+            .expected = "10",
+            .context = "native UPDATE arithmetic stored value",
+        }
+    );
 
     failures += expect_int(
         mylite_prepare(

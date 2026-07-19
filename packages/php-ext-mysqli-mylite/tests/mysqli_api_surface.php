@@ -41,12 +41,26 @@ expect_same(80409, $mysqli->server_version, 'mysqli server_version property');
 expect_same('8.4.9', mysqli_get_server_info($mysqli), 'mysqli_get_server_info');
 expect_same(80409, mysqli_get_server_version($mysqli), 'mysqli_get_server_version');
 
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+try {
+    $defaultPortLink = new mysqli(':memory:', '', '', '', 3306);
+} catch (mysqli_sql_exception $exception) {
+    throw new RuntimeException(
+        'default network port is an embedded no-op: ' . $exception->getMessage(),
+        0,
+        $exception
+    );
+} finally {
+    mysqli_report(MYSQLI_REPORT_OFF);
+}
+expect_same(0, $defaultPortLink->connect_errno, 'default network port is an embedded no-op');
 $portLink = mysqli_init();
 expect_false(
-    mysqli_real_connect($portLink, 'localhost', '', '', null, 3306),
-    'network port must be rejected'
+    mysqli_real_connect($portLink, 'localhost', '', '', null, 3307),
+    'non-default network port must be rejected'
 );
-expect_same(1235, mysqli_connect_errno(), 'network port connect errno');
+expect_same(1235, mysqli_connect_errno(), 'non-default network port connect errno');
+expect_same(1235, $portLink->connect_errno, 'non-default network port object errno');
 $flagLink = mysqli_init();
 expect_false(
     $flagLink->real_connect('localhost', '', '', null, 0, null, MYSQLI_CLIENT_FOUND_ROWS),

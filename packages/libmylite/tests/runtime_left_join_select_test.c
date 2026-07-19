@@ -437,6 +437,7 @@ static int test_left_join_derived_grouped_source(void) {
     static const char *const descriptor_derived_rows[] = {"George"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "derived") != 0) {
@@ -599,6 +600,58 @@ static int test_left_join_derived_grouped_source(void) {
         "DEALLOCATE PREPARE drupal_derived",
         (struct expected_statement){0, 0U}
     );
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT \"pq\".\"double_age\" AS \"double_age\", \"pq\".\"name\" AS \"name\" "
+            "FROM \"tasks\" \"tt\" INNER JOIN "
+            "(SELECT \"p\".\"name\" AS \"name\", \"p\".\"id\" AS \"id\", "
+            "\"age\"*3 AS \"double_age\" FROM \"people\" \"p\" WHERE \"age\" = ?) "
+            "\"pq\" ON \"pq\".\"id\" = \"tt\".\"pid\"",
+            strlen("SELECT \"pq\".\"double_age\" AS \"double_age\", "
+                   "\"pq\".\"name\" AS \"name\" FROM \"tasks\" \"tt\" INNER JOIN "
+                   "(SELECT \"p\".\"name\" AS \"name\", \"p\".\"id\" AS \"id\", "
+                   "\"age\"*3 AS \"double_age\" FROM \"people\" \"p\" WHERE \"age\" = ?) "
+                   "\"pq\" ON \"pq\".\"id\" = \"tt\".\"pid\""),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare native Drupal joined derived query"
+    );
+    if (stmt != NULL) {
+        failures += expect_size(
+            mylite_stmt_parameter_count(stmt),
+            1U,
+            "native Drupal joined derived parameter count"
+        );
+        failures += expect_int(
+            mylite_stmt_bind_int64(stmt, 0U, 27),
+            MYLITE_OK,
+            "bind native Drupal joined derived age"
+        );
+        failures +=
+            expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step native Drupal joined derived row");
+        failures += expect_text(
+            mylite_stmt_value_text(stmt, 0U),
+            "81",
+            "native Drupal joined derived age value"
+        );
+        failures += expect_text(
+            mylite_stmt_value_text(stmt, 1U),
+            "George",
+            "native Drupal joined derived name value"
+        );
+        failures += expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "finish native Drupal joined derived query"
+        );
+        failures += expect_int(
+            mylite_stmt_finalize(stmt),
+            MYLITE_OK,
+            "finalize native Drupal joined derived query"
+        );
+    }
 
     mylite_close(database);
     remove_related_files(path);

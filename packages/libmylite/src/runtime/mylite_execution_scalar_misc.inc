@@ -3392,6 +3392,37 @@ static int evaluate_greatest_least_scalar_argument(
         );
         return MYLITE_ERROR;
     }
+    if (expression->kind == MYLITE_SQL_AST_PARAMETER) {
+        struct planned_value value = {0};
+        int rc = copy_active_stmt_parameter_value(database, expression, &value);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (value.is_null) {
+            out_argument->is_null = true;
+        } else if (value.is_text || value.is_blob) {
+            if (!field_ascii_text_is_supported(value.text, value.text_length)) {
+                planned_value_deinit(&value);
+                set_unsupported_error(
+                    database,
+                    "GREATEST() and LEAST() parameter strings support only ASCII values"
+                );
+                return MYLITE_ERROR;
+            }
+            out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+            out_argument->text = value.text;
+            out_argument->text_length = value.text_length;
+            value.text = NULL;
+        } else {
+            out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+            out_argument->integer = value.integer;
+            out_argument->numeric_real = value.is_real ? value.real : (double)value.integer;
+            out_argument->has_numeric_real = value.is_real;
+        }
+        planned_value_deinit(&value);
+        return MYLITE_OK;
+    }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         const struct mylite_sql_ast_node *literal =
             unwrap_parenthesized_expression(child_at(expression, 0U));

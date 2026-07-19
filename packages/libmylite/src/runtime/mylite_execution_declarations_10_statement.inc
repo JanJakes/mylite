@@ -28,6 +28,7 @@ static bool prepared_statement_requires_object_validation(
     const struct mylite_sql_ast_node *statement
 );
 static int validate_prepared_statement_objects(mylite_stmt *stmt);
+static int validate_prepared_select_statement_objects(mylite_stmt *stmt);
 static int execute_prepared_materialized_statement(mylite_stmt *stmt);
 static void release_stmt_bindings(mylite_stmt *stmt);
 static int prepare_cursor_select_statement(

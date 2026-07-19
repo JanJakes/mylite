@@ -44,13 +44,6 @@ struct savepoint_control_sql_request {
     const char *sqlite_name;
 };
 
-struct sqlite_result_row_storage {
-    struct mylite_result_cell *values;
-    char *texts;
-    size_t column_capacity;
-    size_t text_capacity;
-};
-
 struct user_savepoint_values {
     const char *name;
     const char *sqlite_name;
@@ -2701,7 +2694,7 @@ struct mylite_stmt {
     const struct mylite_sql_ast_node *statement;
     struct mylite_analyzed_select_plan analyzed_select;
     struct result_column_metadata_context metadata_context;
-    struct sqlite_result_row_storage row_storage;
+    struct mylite_execution_result_row_storage row_storage;
     struct mylite_statement_transaction read_transaction;
     sqlite3_stmt *sqlite_statement;
     mylite_result *metadata_result;

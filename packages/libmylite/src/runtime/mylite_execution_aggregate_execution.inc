@@ -2650,7 +2650,7 @@ static int append_column_aggregate_sqlite_cell(
         return rc;
     }
     if (item->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
-        rc = append_selected_sqlite_row_value_with_descriptor(
+        rc = mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
@@ -2665,7 +2665,7 @@ static int append_column_aggregate_sqlite_cell(
         return rc;
     }
     if (item->function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
-        rc = append_selected_sqlite_row_value_with_descriptor(
+        rc = mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
@@ -2680,7 +2680,7 @@ static int append_column_aggregate_sqlite_cell(
         return rc;
     }
 
-    rc = append_selected_sqlite_row_value_with_descriptor(
+    rc = mylite_execution_read_sqlite_result_cell(
         database,
         statement,
         (size_t)*sqlite_column_index,
@@ -2973,7 +2973,7 @@ static int append_grouped_aggregate_projection_cell(
     }
     if (plan->projections[projection_index].is_grouping_marker ||
         plan->projections[projection_index].uses_row_scalar_expression) {
-        return append_selected_sqlite_row_value_with_descriptor(
+        return mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             projection_index,
@@ -2983,7 +2983,7 @@ static int append_grouped_aggregate_projection_cell(
             out_cell
         );
     }
-    return append_selected_sqlite_row_value_with_descriptor(
+    return mylite_execution_read_sqlite_result_cell(
         database,
         statement,
         projection_index,
@@ -3020,7 +3020,7 @@ static int append_grouped_aggregate_sqlite_cell(
         return rc;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
-        rc = append_selected_sqlite_row_value_with_descriptor(
+        rc = mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
@@ -3035,7 +3035,7 @@ static int append_grouped_aggregate_sqlite_cell(
         return rc;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
-        rc = append_selected_sqlite_row_value_with_descriptor(
+        rc = mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
@@ -3050,7 +3050,7 @@ static int append_grouped_aggregate_sqlite_cell(
     if ((item->function == PLANNED_GROUPED_AGGREGATE_MIN ||
          item->function == PLANNED_GROUPED_AGGREGATE_MAX) &&
         column_descriptor_is_string_family(item->aggregate_column)) {
-        rc = append_selected_sqlite_row_value_with_descriptor(
+        rc = mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,
@@ -3114,7 +3114,7 @@ static int append_grouped_aggregate_sqlite_cell(
         return MYLITE_OK;
     }
     if (grouped_aggregate_function_is_statistical(item->function)) {
-        rc = append_selected_sqlite_row_value_with_descriptor(
+        rc = mylite_execution_read_sqlite_result_cell(
             database,
             statement,
             (size_t)*sqlite_column_index,

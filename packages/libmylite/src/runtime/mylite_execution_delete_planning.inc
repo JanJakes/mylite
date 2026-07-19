@@ -106,7 +106,7 @@ static int plan_single_table_delete(
         rc = plan_delete_limit(database, limit_clause, &out_plan->limit);
     }
     if (rc == MYLITE_OK && out_plan->limit.has_limit) {
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             table_columns,
             table_column_count,
@@ -284,7 +284,7 @@ static int plan_joined_delete(
         out_plan->target_source_index = out_plan->target_source_indexes[0];
         out_plan->target = target_source->source;
         out_plan->table = target_source->table;
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             target_source->columns,
             target_source->column_count,

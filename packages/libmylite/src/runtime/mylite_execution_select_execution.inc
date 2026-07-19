@@ -7,7 +7,7 @@ static int execute_select_from_plan(
     mylite_result *result = NULL;
     char *sql = NULL;
     struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
-    struct sqlite_result_row_storage row_storage = {0};
+    struct mylite_execution_result_row_storage row_storage = {0};
     int sqlite_rc = SQLITE_OK;
     bool statement_is_cached = false;
     int rc = mylite_result_create(&result);
@@ -43,7 +43,7 @@ static int execute_select_from_plan(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
             break;
         }
-        rc = append_selected_sqlite_row(
+        rc = mylite_execution_append_sqlite_result_row(
             database,
             statement,
             result,
@@ -57,7 +57,7 @@ static int execute_select_from_plan(
     } else {
         rc = finalize_sqlite_statement(statement, rc);
     }
-    sqlite_result_row_storage_deinit(&row_storage);
+    mylite_execution_result_row_storage_deinit(&row_storage);
     free(sql);
     result_column_metadata_context_deinit(&metadata_context);
     if (rc != MYLITE_OK) {
@@ -465,7 +465,7 @@ static int execute_row_scalar_select_from_plan(
 ) {
     sqlite3_stmt *statement = NULL;
     struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
-    struct sqlite_result_row_storage row_storage = {0};
+    struct mylite_execution_result_row_storage row_storage = {0};
     mylite_result *result = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
@@ -504,10 +504,17 @@ static int execute_row_scalar_select_from_plan(
             rc = row_scalar_select_step_error(database, statement, sqlite_rc);
             break;
         }
-        rc = append_selected_sqlite_row(database, statement, result, NULL, 0U, &row_storage);
+        rc = mylite_execution_append_sqlite_result_row(
+            database,
+            statement,
+            result,
+            NULL,
+            0U,
+            &row_storage
+        );
     }
     rc = finish_cached_sqlite_statement(database, statement, rc);
-    sqlite_result_row_storage_deinit(&row_storage);
+    mylite_execution_result_row_storage_deinit(&row_storage);
     free(sql);
     result_column_metadata_context_deinit(&metadata_context);
     if (rc != MYLITE_OK) {

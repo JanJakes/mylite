@@ -898,7 +898,7 @@ static int validate_drop_column_unique_key_updates(
             continue;
         }
         if (plan->rowid_alias == NULL) {
-            rc = choose_sqlite_rowid_alias(
+            rc = mylite_execution_choose_sqlite_rowid_alias(
                 database,
                 columns,
                 column_count,

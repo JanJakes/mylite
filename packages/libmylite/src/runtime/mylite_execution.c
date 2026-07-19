@@ -23,6 +23,7 @@
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_plan_types.h"
+#include "mylite_execution_result_rows.h"
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_scalar_charset_collation.h"
 #include "mylite_execution_scalar_numeric.h"
@@ -1049,7 +1050,7 @@ int mylite_stmt_step(mylite_stmt *stmt) {
 
     sqlite_rc = sqlite3_step(stmt->sqlite_statement);
     if (sqlite_rc == SQLITE_ROW) {
-        rc = read_selected_sqlite_row(
+        rc = mylite_execution_read_sqlite_result_row(
             stmt->database,
             stmt->sqlite_statement,
             mylite_result_column_count(stmt->metadata_result),
@@ -2106,7 +2107,7 @@ static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc) {
 
 static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
     (void)finish_cursor_sqlite_statement(stmt, rc);
-    sqlite_result_row_storage_deinit(&stmt->row_storage);
+    mylite_execution_result_row_storage_deinit(&stmt->row_storage);
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
     mylite_result_free(stmt->completed_result);
@@ -2261,7 +2262,7 @@ static void release_cursor_statement_resources(mylite_stmt *stmt) {
     }
     (void)rollback_statement_transaction(stmt->database, &stmt->read_transaction, MYLITE_OK);
     deinit_analyzed_select_plan(&stmt->analyzed_select);
-    sqlite_result_row_storage_deinit(&stmt->row_storage);
+    mylite_execution_result_row_storage_deinit(&stmt->row_storage);
     result_column_metadata_context_deinit(&stmt->metadata_context);
     mylite_result_free(stmt->metadata_result);
     stmt->metadata_result = NULL;
@@ -3000,6 +3001,35 @@ void mylite_execution_set_parse_error(struct mylite_db *database) {
 
 void mylite_execution_set_unsupported_error(struct mylite_db *database, const char *message) {
     set_unsupported_error(database, message);
+}
+
+int mylite_execution_format_approximate_result_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    double value,
+    char *buffer,
+    size_t buffer_size
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    int rc = MYLITE_OK;
+
+    if (column != NULL && column_descriptor_is_approximate(column)) {
+        rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_approximate_value_text(
+            database,
+            value,
+            &info,
+            "approximate result",
+            buffer,
+            buffer_size
+        );
+    }
+    return rc;
 }
 
 void mylite_execution_set_native_function_parameter_count_error(
@@ -3838,5 +3868,3 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_row_scalar_encoding_uuid_char_parameter_binding.inc"
 
 #include "mylite_execution_predicate_dml_parameter_binding.inc"
-
-#include "mylite_execution_sqlite_result_extraction.inc"

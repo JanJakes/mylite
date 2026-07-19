@@ -680,7 +680,7 @@ rebuild_column:
         out_plan->original_column.is_auto_increment != out_plan->column.is_auto_increment) {
         out_plan->reports_rebuild_row_count = true;
     }
-    rc = choose_sqlite_rowid_alias(
+    rc = mylite_execution_choose_sqlite_rowid_alias(
         database,
         columns,
         out_plan->column_count,

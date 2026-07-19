@@ -749,7 +749,7 @@ static int apply_inline_primary_key_in_mutation(
 
     plan.target = *target;
     plan.table = *table;
-    rc = choose_sqlite_rowid_alias(
+    rc = mylite_execution_choose_sqlite_rowid_alias(
         database,
         columns,
         column_count,
@@ -811,7 +811,7 @@ static int apply_inline_unique_key_in_mutation(
     plan.is_unique = true;
     plan.is_visible = true;
     snprintf(plan.index_name, sizeof(plan.index_name), "%s", column->name);
-    rc = choose_sqlite_rowid_alias(
+    rc = mylite_execution_choose_sqlite_rowid_alias(
         database,
         columns,
         column_count,
@@ -1167,7 +1167,7 @@ static int plan_alter_table_add_primary_key(
             validate_hash_index_key_part_order(database, out_plan->uses_hash_index_type, part_list);
     }
     if (rc == MYLITE_OK) {
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             columns,
             column_count,

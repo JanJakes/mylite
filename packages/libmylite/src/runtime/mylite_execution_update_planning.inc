@@ -132,7 +132,7 @@ static int plan_single_table_update(
         rc = plan_update_limit(database, clauses.limit_clause, &out_plan->limit);
     }
     if (rc == MYLITE_OK && out_plan->limit.has_limit && out_plan->limit.row_count > 0) {
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             table_columns,
             table_column_count,
@@ -961,7 +961,7 @@ static int finish_joined_update_target_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             out_plan->columns,
             out_plan->column_count,

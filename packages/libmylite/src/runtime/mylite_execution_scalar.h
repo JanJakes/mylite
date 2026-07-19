@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 struct mylite_db;
+struct mylite_catalog_column_descriptor;
 struct mylite_json_normalize_result;
 struct mylite_sql_ast_node;
 struct mylite_sql_source_span;
@@ -757,6 +758,13 @@ const char *mylite_execution_national_character_set_name(void);
 const char *mylite_execution_national_collation_name(void);
 void mylite_execution_set_parse_error(struct mylite_db *database);
 void mylite_execution_set_unsupported_error(struct mylite_db *database, const char *message);
+int mylite_execution_format_approximate_result_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    double value,
+    char *buffer,
+    size_t buffer_size
+);
 void mylite_execution_set_native_function_parameter_count_error(
     struct mylite_db *database,
     const char *function_name

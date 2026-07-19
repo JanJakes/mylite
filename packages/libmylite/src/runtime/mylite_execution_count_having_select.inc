@@ -399,7 +399,7 @@ static int execute_count_having_select_from_plan(
 ) {
     sqlite3_stmt *statement = NULL;
     struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
-    struct sqlite_result_row_storage row_storage = {0};
+    struct mylite_execution_result_row_storage row_storage = {0};
     mylite_result *result = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
@@ -444,7 +444,7 @@ static int execute_count_having_select_from_plan(
             break;
         }
         if (plan->projection_kind == PLANNED_COUNT_HAVING_SELECT_DESCRIPTOR) {
-            rc = append_selected_sqlite_row(
+            rc = mylite_execution_append_sqlite_result_row(
                 database,
                 statement,
                 result,
@@ -453,11 +453,18 @@ static int execute_count_having_select_from_plan(
                 &row_storage
             );
         } else {
-            rc = append_selected_sqlite_row(database, statement, result, NULL, 0U, &row_storage);
+            rc = mylite_execution_append_sqlite_result_row(
+                database,
+                statement,
+                result,
+                NULL,
+                0U,
+                &row_storage
+            );
         }
     }
     rc = finalize_sqlite_statement(statement, rc);
-    sqlite_result_row_storage_deinit(&row_storage);
+    mylite_execution_result_row_storage_deinit(&row_storage);
     free(sql);
     result_column_metadata_context_deinit(&metadata_context);
     if (rc != MYLITE_OK) {

@@ -112,7 +112,7 @@ static int plan_alter_table_add_index(
         );
     }
     if (rc == MYLITE_OK && out_plan->is_unique) {
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             columns,
             column_count,
@@ -289,7 +289,7 @@ static int plan_create_index(
         );
     }
     if (rc == MYLITE_OK && out_plan->is_unique) {
-        rc = choose_sqlite_rowid_alias(
+        rc = mylite_execution_choose_sqlite_rowid_alias(
             database,
             columns,
             column_count,

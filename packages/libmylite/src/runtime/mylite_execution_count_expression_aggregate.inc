@@ -822,10 +822,17 @@ static int append_count_expression_aggregate_row(
     if (sqlite_rc != SQLITE_ROW) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
-    struct sqlite_result_row_storage row_storage = {0};
-    int rc = append_selected_sqlite_row(database, statement, result, NULL, 0U, &row_storage);
+    struct mylite_execution_result_row_storage row_storage = {0};
+    int rc = mylite_execution_append_sqlite_result_row(
+        database,
+        statement,
+        result,
+        NULL,
+        0U,
+        &row_storage
+    );
 
-    sqlite_result_row_storage_deinit(&row_storage);
+    mylite_execution_result_row_storage_deinit(&row_storage);
 
     if (rc != MYLITE_OK) {
         return rc;

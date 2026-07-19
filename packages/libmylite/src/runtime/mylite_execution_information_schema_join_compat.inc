@@ -252,7 +252,7 @@ static int execute_information_schema_join_compat_select_if_needed(
     bool *out_handled
 ) {
     struct information_schema_join_compat_plan plan = {0};
-    int rc = information_schema_join_compat_plan_select(database, statement, &plan);
+    int rc = mylite_execution_information_schema_join_plan_analyze(database, statement, &plan);
 
     (void)context;
     if (out_handled == NULL) {
@@ -260,7 +260,7 @@ static int execute_information_schema_join_compat_select_if_needed(
     }
     *out_handled = false;
     if (rc != MYLITE_OK) {
-        information_schema_join_compat_plan_deinit(&plan);
+        mylite_execution_information_schema_join_plan_deinit(&plan);
         return rc;
     }
     *out_handled = plan.kind != INFORMATION_SCHEMA_JOIN_COMPAT_NONE;
@@ -314,7 +314,7 @@ static int execute_information_schema_join_compat_select_if_needed(
     case INFORMATION_SCHEMA_JOIN_COMPAT_NONE:
         break;
     }
-    information_schema_join_compat_plan_deinit(&plan);
+    mylite_execution_information_schema_join_plan_deinit(&plan);
     return rc;
 }
 
@@ -329,10 +329,10 @@ static int information_schema_join_compat_select_statement_is_supported(
     if (out_matches == NULL) {
         return MYLITE_MISUSE;
     }
-    rc = information_schema_join_compat_plan_select(database, statement, &plan);
+    rc = mylite_execution_information_schema_join_plan_analyze(database, statement, &plan);
     *out_matches =
         rc == MYLITE_OK && plan.kind == INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS_UNION;
-    information_schema_join_compat_plan_deinit(&plan);
+    mylite_execution_information_schema_join_plan_deinit(&plan);
     return rc;
 }
 

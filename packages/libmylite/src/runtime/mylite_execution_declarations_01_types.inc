@@ -3561,12 +3561,6 @@ struct grouped_projection_result_label_source {
     const struct mylite_catalog_column_descriptor *column;
 };
 
-struct information_schema_join_compat_table_source {
-    const char *schema_name;
-    const char *table_name;
-    const char *alias;
-};
-
 struct row_scalar_exists_select_item_source {
     const struct mylite_sql_ast_node *predicate;
     const struct mylite_sql_ast_node *expression;

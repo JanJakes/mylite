@@ -34,7 +34,6 @@ enum {
     table_name_part_capacity = 3,
     integer_text_capacity = mylite_execution_scalar_integer_text_capacity,
     information_schema_projection_stack_capacity = 8,
-    information_schema_join_predicate_stack_capacity = 8,
     information_schema_row_index_stack_capacity = 64,
     information_schema_grouped_bytes_display_length = 45,
     mysql_group_concat_blob_type_threshold = 512,

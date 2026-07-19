@@ -1,19 +1,3 @@
-enum information_schema_join_compat_kind {
-    INFORMATION_SCHEMA_JOIN_COMPAT_NONE = 0,
-    INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS,
-    INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS_UNION,
-    INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_TABLES,
-    INFORMATION_SCHEMA_JOIN_COMPAT_TABLES_GROUPED_SIZE,
-    INFORMATION_SCHEMA_JOIN_COMPAT_DYNAMIC_COLUMNS,
-    INFORMATION_SCHEMA_JOIN_COMPAT_SCHEMATA_TABLES,
-};
-
-struct information_schema_join_compat_plan {
-    enum information_schema_join_compat_kind kind;
-    char *schema_name;
-    char *table_name;
-};
-
 struct information_schema_join_compat_column_reference {
     const char *qualifier;
     const char *name;
@@ -36,14 +20,12 @@ struct information_schema_join_compat_literal_filter {
     char **out_value;
 };
 
-static int information_schema_join_compat_plan_select(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    struct information_schema_join_compat_plan *out_plan
-);
-static void information_schema_join_compat_plan_deinit(
-    struct information_schema_join_compat_plan *plan
-);
+struct information_schema_join_compat_table_source {
+    const char *schema_name;
+    const char *table_name;
+    const char *alias;
+};
+
 static int information_schema_join_compat_plan_columns_statistics_union(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -141,6 +123,12 @@ static bool information_schema_join_compat_alias_matches(
     const char *expected
 );
 static bool information_schema_join_compat_ascii_equal(char left, char right);
+static const struct mylite_sql_ast_node *information_schema_join_compat_from_table_alias_node(
+    const struct mylite_sql_ast_node *from_table
+);
+static const struct mylite_sql_ast_node *information_schema_join_compat_from_table_index_hints_node(
+    const struct mylite_sql_ast_node *from_table
+);
 static bool information_schema_join_compat_literal_matches(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -155,7 +143,7 @@ static bool information_schema_join_compat_concat_projection_matches(
     const char *source
 );
 
-static int information_schema_join_compat_plan_select(
+int mylite_execution_information_schema_join_plan_analyze(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct information_schema_join_compat_plan *out_plan
@@ -211,7 +199,7 @@ static int information_schema_join_compat_plan_select(
     return rc;
 }
 
-static void information_schema_join_compat_plan_deinit(
+void mylite_execution_information_schema_join_plan_deinit(
     struct information_schema_join_compat_plan *plan
 ) {
     if (plan == NULL) {
@@ -343,8 +331,8 @@ static int information_schema_join_compat_plan_columns_statistics_union(
         &filters_match
     );
     if (rc != MYLITE_OK || !filters_match ||
-        !text_equals_ascii_case_insensitive(columns_schema, indexes_schema) ||
-        !text_equals_ascii_case_insensitive(columns_table, indexes_table)) {
+        !mylite_execution_text_equals_ascii_case_insensitive(columns_schema, indexes_schema) ||
+        !mylite_execution_text_equals_ascii_case_insensitive(columns_table, indexes_table)) {
         goto cleanup;
     }
     union_terms = child_at(compound, 1U);
@@ -472,7 +460,7 @@ static int information_schema_join_compat_plan_columns_statistics(
         out_plan->kind = INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS;
         *out_matches = true;
     } else if (rc == MYLITE_OK) {
-        information_schema_join_compat_plan_deinit(out_plan);
+        mylite_execution_information_schema_join_plan_deinit(out_plan);
     }
     return rc;
 }
@@ -568,12 +556,12 @@ static int information_schema_join_compat_plan_columns_tables(
         &filters_match
     );
     if (rc == MYLITE_OK && filters_match &&
-        text_equals_ascii_case_insensitive(out_plan->schema_name, table_schema) &&
-        text_equals_ascii_case_insensitive(table_type, "BASE TABLE")) {
+        mylite_execution_text_equals_ascii_case_insensitive(out_plan->schema_name, table_schema) &&
+        mylite_execution_text_equals_ascii_case_insensitive(table_type, "BASE TABLE")) {
         out_plan->kind = INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_TABLES;
         *out_matches = true;
     } else if (rc == MYLITE_OK) {
-        information_schema_join_compat_plan_deinit(out_plan);
+        mylite_execution_information_schema_join_plan_deinit(out_plan);
     }
     free(table_type);
     free(table_schema);
@@ -697,8 +685,8 @@ static bool information_schema_join_compat_source_table_matches(
         expected->table_name == NULL) {
         return false;
     }
-    source_alias = from_table_alias_node(source);
-    if (from_table_index_hint_list_node(source) != NULL) {
+    source_alias = information_schema_join_compat_from_table_alias_node(source);
+    if (information_schema_join_compat_from_table_index_hints_node(source) != NULL) {
         return false;
     }
     if ((expected->alias == NULL && source_alias != NULL) ||
@@ -874,7 +862,7 @@ static int information_schema_join_compat_copy_literal_filters(
         }
         size_t value_length = 0U;
 
-        rc = decode_sql_string_literal(
+        rc = mylite_execution_decode_sql_string_literal(
             database,
             literal,
             "INFORMATION_SCHEMA compatibility filters require string literals",
@@ -1099,6 +1087,42 @@ static bool information_schema_join_compat_ascii_equal(char left, char right) {
     return left == right;
 }
 
+static const struct mylite_sql_ast_node *information_schema_join_compat_from_table_alias_node(
+    const struct mylite_sql_ast_node *from_table
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (from_table == NULL || from_table->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return NULL;
+    }
+    child = child_at(from_table, 1U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+    return NULL;
+}
+
+static const struct mylite_sql_ast_node *information_schema_join_compat_from_table_index_hints_node(
+    const struct mylite_sql_ast_node *from_table
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (from_table == NULL || from_table->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return NULL;
+    }
+    child = child_at(from_table, 1U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_INDEX_HINT_LIST) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+    return NULL;
+}
+
 static bool information_schema_join_compat_literal_matches(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -1289,7 +1313,8 @@ static int information_schema_join_compat_plan_dynamic_columns(
         1U,
         &filters_match
     );
-    if (rc == MYLITE_OK && filters_match && text_equals_ascii_case_insensitive(table_name, "t")) {
+    if (rc == MYLITE_OK && filters_match &&
+        mylite_execution_text_equals_ascii_case_insensitive(table_name, "t")) {
         *out_matches = true;
     }
     free(table_name);

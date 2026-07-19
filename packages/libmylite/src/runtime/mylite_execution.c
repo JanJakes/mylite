@@ -24,6 +24,7 @@
 #include "mylite_execution_ddl_sql_lowering_support.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
+#include "mylite_execution_information_schema_join_plan.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_metadata_setup_metrics.h"
 #include "mylite_execution_parameter_binding.h"
@@ -3537,7 +3538,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_select_into_user_variables.inc"
 
 // clang-format off
-#include "mylite_execution_information_schema_join_plan.inc"
 #include "mylite_execution_information_schema_join_compat.inc"
 // clang-format on
 

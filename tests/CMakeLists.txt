@@ -5,6 +5,14 @@ elseif(MYLITE_ENABLE_TSAN)
   set(mylite_install_consumer_sanitizer_link_option "-fsanitize=thread")
 endif()
 
+set(mylite_install_consumer_zlib_pkgconfig_dir "")
+if(WIN32 AND ZLIB_LIBRARY_RELEASE)
+  cmake_path(GET ZLIB_LIBRARY_RELEASE PARENT_PATH mylite_zlib_library_dir)
+  set(mylite_install_consumer_zlib_pkgconfig_dir
+    "${mylite_zlib_library_dir}/pkgconfig"
+  )
+endif()
+
 add_test(
   NAME mylite.install.consumer
   COMMAND "${CMAKE_COMMAND}"
@@ -18,6 +26,7 @@ add_test(
     "-DMYLITE_SANITIZER_LINK_OPTION=${mylite_install_consumer_sanitizer_link_option}"
     "-DMYLITE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
     "-DMYLITE_VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
+    "-DMYLITE_ZLIB_PKGCONFIG_DIR=${mylite_install_consumer_zlib_pkgconfig_dir}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/install-consumer/run.cmake"
 )
 set_tests_properties(

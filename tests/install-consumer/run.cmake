@@ -99,7 +99,13 @@ if(NOT pkg_config_executable)
   find_program(pkg_config_executable NAMES pkg-config)
 endif()
 if(pkg_config_executable)
-  set(ENV{PKG_CONFIG_PATH} "${install_prefix}/${MYLITE_INSTALL_LIBDIR}/pkgconfig")
+  set(pkgconfig_paths "${install_prefix}/${MYLITE_INSTALL_LIBDIR}/pkgconfig")
+  if(DEFINED MYLITE_ZLIB_PKGCONFIG_DIR
+     AND NOT MYLITE_ZLIB_PKGCONFIG_DIR STREQUAL "")
+    list(APPEND pkgconfig_paths "${MYLITE_ZLIB_PKGCONFIG_DIR}")
+  endif()
+  cmake_path(CONVERT "${pkgconfig_paths}" TO_NATIVE_PATH_LIST pkgconfig_search_path)
+  set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
   execute_process(
     COMMAND "${pkg_config_executable}" --cflags --libs --static mylite
     RESULT_VARIABLE pkgconfig_query_result
@@ -107,6 +113,28 @@ if(pkg_config_executable)
     ERROR_VARIABLE pkgconfig_error
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )
+  if(WIN32 AND NOT pkgconfig_query_result EQUAL 0)
+    set(pkgconfig_posix_paths)
+    foreach(pkgconfig_path IN LISTS pkgconfig_paths)
+      if(pkgconfig_path MATCHES "^([A-Za-z]):/(.*)$")
+        string(TOLOWER "${CMAKE_MATCH_1}" pkgconfig_drive)
+        list(APPEND pkgconfig_posix_paths
+          "/${pkgconfig_drive}/${CMAKE_MATCH_2}"
+        )
+      else()
+        list(APPEND pkgconfig_posix_paths "${pkgconfig_path}")
+      endif()
+    endforeach()
+    list(JOIN pkgconfig_posix_paths ":" pkgconfig_search_path)
+    set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
+    execute_process(
+      COMMAND "${pkg_config_executable}" --cflags --libs --static mylite
+      RESULT_VARIABLE pkgconfig_query_result
+      OUTPUT_VARIABLE pkgconfig_arguments
+      ERROR_VARIABLE pkgconfig_error
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  endif()
   if(NOT pkgconfig_query_result EQUAL 0)
     message(FATAL_ERROR "Installed pkg-config metadata failed: ${pkgconfig_error}")
   endif()

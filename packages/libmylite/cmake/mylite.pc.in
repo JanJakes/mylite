@@ -8,4 +8,5 @@ Description: @PROJECT_DESCRIPTION@
 Version: @PROJECT_VERSION@
 Libs: -L${libdir} -lmylite
 Libs.private: @MYLITE_PKGCONFIG_PRIVATE_LIBS@
+Requires.private: @MYLITE_PKGCONFIG_PRIVATE_REQUIRES@
 Cflags: -I${includedir}

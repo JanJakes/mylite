@@ -13,7 +13,7 @@ static int append_information_schema_row(
         return MYLITE_OK;
     }
     if (rows->predicate != NULL && rows->predicate->instruction_count != 0U) {
-        rc = information_schema_predicate_matches(
+        rc = mylite_execution_information_schema_predicate_matches(
             database,
             rows->query,
             rows->predicate,

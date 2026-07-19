@@ -28,6 +28,9 @@
 #include "mylite_execution_information_schema_join_plan.h"
 #include "mylite_execution_information_schema_plan.h"
 #include "mylite_execution_information_schema_plan_support.h"
+#include "mylite_execution_information_schema_predicate.h"
+#include "mylite_execution_information_schema_predicate_support.h"
+#include "mylite_execution_information_schema_values.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_metadata_setup_metrics.h"
 #include "mylite_execution_parameter_binding.h"
@@ -3264,6 +3267,25 @@ int mylite_execution_information_schema_predicate_escape_character(
     return like_escape_character_from_predicate(database, predicate, out_escape_character);
 }
 
+int mylite_execution_information_schema_auto_increment_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    struct table_status_values status = {.auto_increment = NULL};
+
+    return table_status_auto_increment_predicate_value(
+        database,
+        table,
+        &status,
+        buffer,
+        buffer_size,
+        out_value
+    );
+}
+
 bool mylite_execution_select_order_source_context_is_joined(
     const struct select_source_context *source_context
 ) {
@@ -3839,13 +3861,7 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_information_schema_result_rows.inc"
 
-#include "mylite_execution_information_schema_predicate_evaluation.inc"
-
-#include "mylite_execution_information_schema_predicate_comparison.inc"
-
 #include "mylite_execution_information_schema_predicate_values.inc"
-
-#include "mylite_execution_information_schema_compare_format_helpers.inc"
 
 #include "mylite_execution_information_schema_descriptor_metadata.inc"
 

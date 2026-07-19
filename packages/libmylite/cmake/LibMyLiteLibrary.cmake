@@ -158,6 +158,8 @@ add_library(mylite
   src/runtime/mylite_execution_scalar_string_transform.c
   src/runtime/mylite_execution_select_analysis.c
   src/runtime/mylite_execution_information_schema_plan.c
+  src/runtime/mylite_execution_information_schema_predicate.c
+  src/runtime/mylite_execution_information_schema_values.c
   src/runtime/mylite_execution_select_order_plan.c
   src/runtime/mylite_execution_show_filter.c
   src/runtime/mylite_execution_sql_lowering.c

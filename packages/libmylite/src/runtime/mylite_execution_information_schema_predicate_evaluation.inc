@@ -1,5 +1,5 @@
 
-static int information_schema_predicate_matches(
+int mylite_execution_information_schema_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct information_schema_predicate_plan *predicate,
@@ -201,7 +201,6 @@ static int information_schema_predicate_row_value(
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor table = {0};
-    struct table_status_values status = {0};
     bool found = false;
     int rc = MYLITE_OK;
 
@@ -252,11 +251,9 @@ static int information_schema_predicate_row_value(
         return MYLITE_OK;
     }
 
-    status.auto_increment = row[column_index];
-    return table_status_auto_increment_predicate_value(
+    return mylite_execution_information_schema_auto_increment_predicate_value(
         database,
         &table,
-        &status,
         buffer,
         buffer_size,
         out_value

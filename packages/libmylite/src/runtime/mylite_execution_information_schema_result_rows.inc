@@ -1511,7 +1511,7 @@ static int information_schema_matching_row_indexes(
         bool matches = true;
 
         if (query->predicate.instruction_count != 0U && !rows->predicate_applied) {
-            rc = information_schema_predicate_matches(
+            rc = mylite_execution_information_schema_predicate_matches(
                 database,
                 query,
                 &query->predicate,

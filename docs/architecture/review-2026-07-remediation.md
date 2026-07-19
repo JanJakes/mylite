@@ -321,7 +321,19 @@ complete.
   3,403,072 bytes while the planner object grew from 17,720 to 29,088 bytes;
   this trades 8,480 bytes out of the dominant object for a net 2,888-byte
   explicit-interface increase across the pair. Planner clusters still need the
-  same treatment.
+  same treatment. INFORMATION_SCHEMA predicate execution and shared
+  metadata-value semantics now form two more independent modules. The executor
+  consumes only the owned postfix predicate plan, row values, and one explicit
+  lazy AUTO_INCREMENT callback; comparison, three-valued truth evaluation, and
+  stack ownership no longer rely on mega-unit include order. Shared
+  numeric/text/collation comparison and formatting operations now have a typed
+  internal API used by predicates, SHOW filters, joins, constraints, and result
+  ordering. In the CI Release build, `mylite_execution.c.o` fell from 3,403,072
+  to 3,389,408 bytes. The new predicate and value objects total 14,096 bytes;
+  their combined loaded code plus the remaining execution object is 4,150
+  bytes smaller, while the static archive changed by only 1,210 bytes. The
+  focused Debug and ASan+UBSan predicate/constraint/SHOW suites pass, including
+  the 512-value and 512-conjunction scaling cases.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

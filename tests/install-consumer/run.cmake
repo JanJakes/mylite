@@ -103,7 +103,8 @@ if(pkg_config_executable)
     "${test_root}"
     "${install_prefix}/${MYLITE_INSTALL_LIBDIR}/pkgconfig"
   )
-  set(pkgconfig_paths "${pkgconfig_install_path}")
+  set(pkgconfig_module "${pkgconfig_install_path}/mylite.pc")
+  set(pkgconfig_search_path "system default")
   if(DEFINED MYLITE_ZLIB_PKGCONFIG_DIR
      AND NOT MYLITE_ZLIB_PKGCONFIG_DIR STREQUAL "")
     set(zlib_pkgconfig_source "${MYLITE_ZLIB_PKGCONFIG_DIR}/zlib.pc")
@@ -129,34 +130,23 @@ if(pkg_config_executable)
       "${test_root}"
       "${pkgconfig_dependency_path}"
     )
-    list(APPEND pkgconfig_paths "${pkgconfig_dependency_path}")
+    set(pkgconfig_search_path "${pkgconfig_dependency_path}")
+    set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
+    set(ENV{PKG_CONFIG_LIBDIR} "${pkgconfig_search_path}")
   endif()
-  cmake_path(CONVERT "${pkgconfig_paths}" TO_NATIVE_PATH_LIST pkgconfig_search_path)
-  set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
   execute_process(
-    COMMAND "${pkg_config_executable}" --cflags --libs --static mylite
+    COMMAND "${pkg_config_executable}"
+      --cflags --libs --static "${pkgconfig_module}"
     RESULT_VARIABLE pkgconfig_query_result
     OUTPUT_VARIABLE pkgconfig_arguments
     ERROR_VARIABLE pkgconfig_error
     OUTPUT_STRIP_TRAILING_WHITESPACE
     WORKING_DIRECTORY "${test_root}"
   )
-  if(WIN32 AND NOT pkgconfig_query_result EQUAL 0)
-    list(JOIN pkgconfig_paths ":" pkgconfig_search_path)
-    set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
-    execute_process(
-      COMMAND "${pkg_config_executable}" --cflags --libs --static mylite
-      RESULT_VARIABLE pkgconfig_query_result
-      OUTPUT_VARIABLE pkgconfig_arguments
-      ERROR_VARIABLE pkgconfig_error
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      WORKING_DIRECTORY "${test_root}"
-    )
-  endif()
   if(NOT pkgconfig_query_result EQUAL 0)
     message(FATAL_ERROR
-      "Installed pkg-config metadata failed in ${pkgconfig_search_path}: "
-      "${pkgconfig_error}"
+      "Installed pkg-config metadata ${pkgconfig_module} failed with "
+      "dependency path ${pkgconfig_search_path}: ${pkgconfig_error}"
     )
   endif()
   separate_arguments(pkgconfig_arguments NATIVE_COMMAND "${pkgconfig_arguments}")

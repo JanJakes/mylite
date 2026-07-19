@@ -1096,6 +1096,7 @@
   )
   target_link_libraries(mylite_runtime_wordpress_dbdelta_introspection_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
   )
   target_include_directories(mylite_runtime_wordpress_dbdelta_introspection_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -2260,6 +2261,7 @@
   )
   target_link_libraries(mylite_runtime_transaction_lifecycle_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
     Threads::Threads
   )
   target_include_directories(mylite_runtime_transaction_lifecycle_test PRIVATE
@@ -2628,6 +2630,7 @@
   )
   target_link_libraries(mylite_runtime_auto_increment_lifecycle_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
   )
   target_include_directories(mylite_runtime_auto_increment_lifecycle_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

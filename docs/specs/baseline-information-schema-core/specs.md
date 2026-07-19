@@ -133,8 +133,10 @@ Compatibility query bridges:
 - MyLite admits the WordPress-shaped grouped table-size metadata query over
   `INFORMATION_SCHEMA.TABLES` that projects `TABLE_NAME`, `TABLE_ROWS`, and
   `SUM(DATA_LENGTH + INDEX_LENGTH)` for a literal `TABLE_SCHEMA` and literal
-  table-name set. This is a compatibility bridge for descriptor-backed metadata
-  rows, not general expression aggregate support.
+  table-name set. The production WordPress form has no `ORDER BY`; an optional
+  ascending `ORDER BY TABLE_NAME` is also admitted for deterministic callers.
+  This is a compatibility bridge for descriptor-backed metadata rows, not
+  general expression aggregate support.
 
 Bridge admission is based on the parsed statement structure, including source
 tables, aliases, projections, predicates, join keys, grouping, ordering, union
@@ -396,7 +398,8 @@ Fast C tests must cover:
   `NOT`, `IS NULL`, `IS NOT NULL`;
 - `COUNT(*)`;
 - the WordPress-shaped grouped `TABLES` metadata projection with
-  `SUM(DATA_LENGTH + INDEX_LENGTH)`;
+  `SUM(DATA_LENGTH + INDEX_LENGTH)`, both without ordering and with ascending
+  `ORDER BY TABLE_NAME`;
 - result descriptors for source columns, bridge aliases, the CTE `CONCAT`
   expression, the grouped byte total, and the dynamic user-table `id` source;
 - `ORDER BY` default, `ASC`, `DESC`, and `LIMIT`;

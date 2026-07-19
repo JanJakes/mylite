@@ -621,7 +621,11 @@ static int information_schema_join_compat_plan_tables_grouped_size(
             }
         ) &&
         information_schema_join_compat_group_matches(statement, NULL, "TABLE_NAME") &&
-        information_schema_join_compat_order_matches(statement, order, 1U) &&
+        (!information_schema_join_compat_has_direct_child_kind(
+             statement,
+             MYLITE_SQL_AST_ORDER_BY_CLAUSE
+         ) ||
+         information_schema_join_compat_order_matches(statement, order, 1U)) &&
         !information_schema_join_compat_has_direct_child_kind(
             statement,
             MYLITE_SQL_AST_HAVING_CLAUSE

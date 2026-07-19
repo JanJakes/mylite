@@ -205,6 +205,15 @@ expect_output \
 "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${DATABASE}' "\
 "AND TABLE_NAME IN ('t', 'other') GROUP BY TABLE_NAME ORDER BY TABLE_NAME;"
 
+expect_output \
+    "WordPress tables grouped size metadata projection without ordering" \
+    "$table_grouped_size_expected" \
+    "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'ONLY_FULL_GROUP_BY', ''); "\
+"SELECT TABLE_NAME AS 'table', TABLE_ROWS AS 'rows', "\
+"SUM(data_length + index_length) AS 'bytes' "\
+"FROM information_schema.TABLES WHERE TABLE_SCHEMA = '${DATABASE}' "\
+"AND TABLE_NAME IN ('t', 'other') GROUP BY TABLE_NAME;"
+
 expect_error \
     "unknown information schema table" \
     1109 \

@@ -385,6 +385,10 @@ static int append_update_assignment_adjustment_warning(
     bool is_constant_arithmetic = false;
     int rc = MYLITE_OK;
 
+    if (plan != NULL && !planned_update_has_multiple_assignments(plan) &&
+        plan->assignment_value_is_scalar_subquery) {
+        return append_update_scalar_subquery_adjustment_warning(database, plan);
+    }
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL || column == NULL) {
         return MYLITE_OK;

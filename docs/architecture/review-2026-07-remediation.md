@@ -252,6 +252,12 @@ complete.
   AST-independent after analysis and lowering: they release the parse tree,
   execute warm plan hits without reparsing, and reparse once from owned SQL
   under the prepare-time lexer mode after type, schema, or session invalidation.
+  Deferred UPDATE and `ON DUPLICATE KEY UPDATE` expressions now snapshot only
+  the syntax subtrees still required for matched-row or duplicate-only
+  conversion. Snapshots own compact subtree-local source bytes, clone
+  iteratively, and are released with their plans, so these executors no longer
+  borrow the statement parser tree. Typed scalar-subquery and row-scalar plans
+  retain no redundant syntax snapshot.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization. SQLite result
   extraction/row storage and analyzed-value ownership are now separate

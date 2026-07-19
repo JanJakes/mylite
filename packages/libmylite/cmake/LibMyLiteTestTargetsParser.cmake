@@ -469,6 +469,7 @@
     tests/parser_select_into_user_variables_test.c
   )
   mylite_add_parser_test(mylite_parser_dml_control_test tests/parser_dml_control_test.c)
+  mylite_add_parser_test(mylite_parser_ast_snapshot_test tests/parser_ast_snapshot_test.c)
   mylite_add_parser_test(
     mylite_parser_admin_stored_program_placeholders_test
     tests/parser_admin_stored_program_placeholders_test.c

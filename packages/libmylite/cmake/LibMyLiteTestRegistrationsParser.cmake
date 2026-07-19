@@ -256,6 +256,7 @@
     COMMAND mylite_parser_select_into_user_variables_test
   )
   add_test(NAME libmylite.parser.dml_control COMMAND mylite_parser_dml_control_test)
+  add_test(NAME libmylite.parser.ast_snapshot COMMAND mylite_parser_ast_snapshot_test)
   add_test(
     NAME libmylite.parser.admin_stored_program_placeholders
     COMMAND mylite_parser_admin_stored_program_placeholders_test

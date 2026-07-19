@@ -1146,6 +1146,51 @@ static int plan_update_assignment_warnings(
     );
 }
 
+static int snapshot_update_assignment_values(
+    struct mylite_db *database,
+    struct planned_update *plan
+) {
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            struct planned_update_assignment *assignment = &plan->assignments[index];
+
+            if (planned_update_assignment_is_noop(assignment) ||
+                assignment->value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+                assignment->value_node = NULL;
+                continue;
+            }
+            if (!mylite_sql_ast_snapshot_clone_subtree(
+                    &assignment->value_syntax,
+                    assignment->value_node
+                )) {
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            assignment->value_node = mylite_sql_ast_snapshot_root(&assignment->value_syntax);
+        }
+        return MYLITE_OK;
+    }
+    if (plan->generated_default_noop ||
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL ||
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR ||
+        plan->assignment_value_is_scalar_subquery) {
+        plan->assignment_value_node = NULL;
+        return MYLITE_OK;
+    }
+    if (!mylite_sql_ast_snapshot_clone_subtree(
+            &plan->assignment_value_syntax,
+            plan->assignment_value_node
+        )) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->assignment_value_node = mylite_sql_ast_snapshot_root(&plan->assignment_value_syntax);
+    return MYLITE_OK;
+}
+
 static int validate_update_default_function_sources(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -1566,17 +1611,21 @@ static int convert_update_value(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    value_node = unwrap_parenthesized_expression(plan->assignment_value_node);
     column = &plan->assignment_column;
-    if (value_node == NULL || column == NULL || out_value == NULL) {
+    if (out_value == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    if (value_node->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+    if (plan->assignment_value_is_scalar_subquery) {
         planned_value_deinit(out_value);
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return materialize_update_scalar_subquery_value(database, plan, out_value);
+    }
+    value_node = unwrap_parenthesized_expression(plan->assignment_value_node);
+    if (value_node == NULL || column == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
         struct select_source_context source_context = {.source = &plan->target};

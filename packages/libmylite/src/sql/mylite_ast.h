@@ -1167,6 +1167,12 @@ struct mylite_sql_ast {
     struct mylite_sql_ast_node_chunk *first_chunk;
 };
 
+struct mylite_sql_ast_snapshot {
+    char *source;
+    struct mylite_sql_ast_node *nodes;
+    size_t node_count;
+};
+
 void mylite_sql_ast_init(struct mylite_sql_ast *ast);
 void mylite_sql_ast_deinit(struct mylite_sql_ast *ast);
 bool mylite_sql_ast_rebase_source_length(
@@ -1179,6 +1185,16 @@ bool mylite_sql_ast_spans_are_within_source(
     const struct mylite_sql_ast *ast,
     const char *source,
     size_t source_length
+);
+void mylite_sql_ast_snapshot_init(struct mylite_sql_ast_snapshot *snapshot);
+/* The clone owns snapshot-local source bytes and nodes until deinit. */
+bool mylite_sql_ast_snapshot_clone_subtree(
+    struct mylite_sql_ast_snapshot *snapshot,
+    const struct mylite_sql_ast_node *root
+);
+void mylite_sql_ast_snapshot_deinit(struct mylite_sql_ast_snapshot *snapshot);
+const struct mylite_sql_ast_node *mylite_sql_ast_snapshot_root(
+    const struct mylite_sql_ast_snapshot *snapshot
 );
 
 struct mylite_sql_ast_node *mylite_sql_ast_new_node(

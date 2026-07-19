@@ -1021,6 +1021,7 @@ enum planned_insert_duplicate_update_value_kind {
 
 struct planned_insert_duplicate_update_assignment {
     size_t assignment_column_index;
+    struct mylite_sql_ast_snapshot assignment_value_syntax;
     const struct mylite_sql_ast_node *assignment_value_node;
     enum planned_insert_duplicate_update_value_kind value_kind;
     size_t values_column_index;
@@ -2505,6 +2506,7 @@ struct planned_delete {
 
 struct planned_update_assignment {
     struct mylite_catalog_column_descriptor column;
+    struct mylite_sql_ast_snapshot value_syntax;
     const struct mylite_sql_ast_node *value_node;
     enum planned_update_assignment_value_kind value_kind;
     struct planned_row_scalar_expression row_scalar_expression;
@@ -2521,6 +2523,7 @@ struct planned_update {
     size_t assignment_count;
     struct loaded_index_info *indexes;
     size_t index_count;
+    struct mylite_sql_ast_snapshot assignment_value_syntax;
     const struct mylite_sql_ast_node *assignment_value_node;
     uint64_t arithmetic_delta_magnitude;
     int64_t arithmetic_delta;

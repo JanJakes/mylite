@@ -535,7 +535,6 @@ static int plan_insert_duplicate_assignment(
         const struct mylite_sql_ast_node *unwrapped_value = unwrap_parenthesized_expression(value);
 
         if (unwrapped_value != NULL && unwrapped_value->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
-            duplicate_assignment->assignment_value_node = value;
             duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
             duplicate_assignment->generated_default_noop = true;
             return MYLITE_OK;
@@ -576,7 +575,6 @@ static int plan_insert_duplicate_assignment_value(
             &planned_arithmetic
         );
         if (rc == MYLITE_OK && !planned_arithmetic) {
-            duplicate_assignment->assignment_value_node = value;
             duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
         }
         if (rc == MYLITE_OK && !planned_arithmetic) {
@@ -590,13 +588,12 @@ static int plan_insert_duplicate_assignment_value(
                 &planned_row_scalar
             );
             if (rc == MYLITE_OK && planned_row_scalar) {
-                duplicate_assignment->assignment_value_node = value;
                 duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR;
             }
         }
     }
 
-    default_value = unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
+    default_value = unwrap_parenthesized_expression(value);
     if (rc == MYLITE_OK && default_value != NULL &&
         default_value->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
         struct select_source_context source_context = {.source = &plan->target};
@@ -609,8 +606,36 @@ static int plan_insert_duplicate_assignment_value(
             plan->column_count
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = snapshot_insert_duplicate_assignment_value(database, value, duplicate_assignment);
+    }
 
     return rc;
+}
+
+static int snapshot_insert_duplicate_assignment_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment
+) {
+    if (duplicate_assignment == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (duplicate_assignment->value_kind != PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL ||
+        duplicate_assignment->generated_default_noop) {
+        duplicate_assignment->assignment_value_node = NULL;
+        return MYLITE_OK;
+    }
+    if (!mylite_sql_ast_snapshot_clone_subtree(
+            &duplicate_assignment->assignment_value_syntax,
+            value
+        )) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    duplicate_assignment->assignment_value_node =
+        mylite_sql_ast_snapshot_root(&duplicate_assignment->assignment_value_syntax);
+    return MYLITE_OK;
 }
 
 static int plan_insert_duplicate_values_reference(
@@ -639,7 +664,6 @@ static int plan_insert_duplicate_values_reference(
         return MYLITE_ERROR;
     }
 
-    duplicate_assignment->assignment_value_node = value_node;
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE;
     duplicate_assignment->values_reference_count = 1U;
     return rc;
@@ -758,7 +782,6 @@ static int plan_insert_duplicate_same_column_arithmetic(
         return rc;
     }
 
-    duplicate_assignment->assignment_value_node = value_node;
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC;
     duplicate_assignment->arithmetic_operator = operator_kind;
     duplicate_assignment->arithmetic_delta_is_valid =
@@ -1370,6 +1393,9 @@ static void planned_insert_deinit(struct planned_insert *plan) {
     }
     free(plan->rows);
     for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        mylite_sql_ast_snapshot_deinit(
+            &plan->duplicate_update.assignments[index].assignment_value_syntax
+        );
         planned_row_scalar_expression_deinit(
             plan->duplicate_update.assignments[index].row_scalar_expression
         );

@@ -13,6 +13,9 @@ static int plan_update(
     if (rc == MYLITE_OK) {
         rc = plan_update_assignment_warnings(database, out_plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = snapshot_update_assignment_values(database, out_plan);
+    }
     if (rc != MYLITE_OK) {
         planned_update_deinit(out_plan);
     }
@@ -1045,10 +1048,12 @@ static void planned_update_deinit(struct planned_update *plan) {
     planned_row_scalar_expression_deinit(&plan->assignment_scalar_aggregate_rhs);
     planned_row_scalar_expression_deinit(&plan->assignment_row_scalar_expression);
     planned_scalar_warnings_deinit(&plan->assignment_warnings);
+    mylite_sql_ast_snapshot_deinit(&plan->assignment_value_syntax);
     planned_value_deinit(&plan->assignment_value);
     planned_value_deinit(&plan->auto_update_value);
     if (plan->assignments != NULL) {
         for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            mylite_sql_ast_snapshot_deinit(&plan->assignments[index].value_syntax);
             planned_row_scalar_expression_deinit(&plan->assignments[index].row_scalar_expression);
             planned_value_deinit(&plan->assignments[index].value);
             planned_scalar_warnings_deinit(&plan->assignments[index].warnings);

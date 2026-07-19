@@ -5,10 +5,20 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 enum {
     ast_nodes_per_chunk = 64,
     ast_cached_chunk_limit = 32,
+    ast_snapshot_initial_stack_capacity = 16,
+};
+
+struct ast_snapshot_source_bounds {
+    const char *source;
+    const char *snapshot_source;
+    size_t source_length;
+    size_t snapshot_source_offset;
+    size_t snapshot_source_length;
 };
 
 struct mylite_sql_ast_node_chunk {
@@ -24,6 +34,23 @@ static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void);
 static void ast_release_chunk(struct mylite_sql_ast_node_chunk *chunk);
 static void ast_cache_lock(void);
 static void ast_cache_unlock(void);
+static bool ast_snapshot_count_nodes(
+    const struct mylite_sql_ast_node *root,
+    size_t *out_node_count
+);
+static bool ast_snapshot_clone_nodes(
+    struct mylite_sql_ast_snapshot *snapshot,
+    const struct mylite_sql_ast_node *root,
+    const struct ast_snapshot_source_bounds *bounds
+);
+static bool ast_snapshot_rebase_node(
+    struct mylite_sql_ast_node *node,
+    const struct ast_snapshot_source_bounds *bounds
+);
+static bool ast_snapshot_rebase_span(
+    struct mylite_sql_source_span *span,
+    const struct ast_snapshot_source_bounds *bounds
+);
 
 static struct mylite_sql_ast_node_chunk *cached_ast_chunks;
 static struct mylite_sql_ast_node_chunk ast_chunk_pool[ast_cached_chunk_limit];
@@ -105,6 +132,261 @@ bool mylite_sql_ast_spans_are_within_source(
         }
     }
 
+    return true;
+}
+
+void mylite_sql_ast_snapshot_init(struct mylite_sql_ast_snapshot *snapshot) {
+    if (snapshot == NULL) {
+        return;
+    }
+
+    *snapshot = (struct mylite_sql_ast_snapshot){0};
+}
+
+bool mylite_sql_ast_snapshot_clone_subtree(
+    struct mylite_sql_ast_snapshot *snapshot,
+    const struct mylite_sql_ast_node *root
+) {
+    struct ast_snapshot_source_bounds bounds = {0};
+    bool cloned = false;
+
+    if (snapshot == NULL || root == NULL || snapshot->source != NULL || snapshot->nodes != NULL ||
+        snapshot->node_count != 0U || !mylite_sql_source_span_is_valid(root->span)) {
+        return false;
+    }
+    bounds.source_length = root->span.source_length;
+    bounds.snapshot_source_length = root->span.length;
+    bounds.snapshot_source_offset = root->span.offset;
+    if (root->span.text != NULL) {
+        bounds.source = root->span.text - root->span.offset;
+    }
+    if (bounds.snapshot_source_length == SIZE_MAX ||
+        !ast_snapshot_count_nodes(root, &snapshot->node_count)) {
+        goto done;
+    }
+
+    snapshot->source = (char *)malloc(bounds.snapshot_source_length + 1U);
+    snapshot->nodes =
+        (struct mylite_sql_ast_node *)calloc(snapshot->node_count, sizeof(*snapshot->nodes));
+    if (snapshot->source == NULL || snapshot->nodes == NULL) {
+        goto done;
+    }
+    if (bounds.snapshot_source_length != 0U) {
+        if (root->span.text == NULL) {
+            goto done;
+        }
+        memcpy(snapshot->source, root->span.text, bounds.snapshot_source_length);
+    }
+    snapshot->source[bounds.snapshot_source_length] = '\0';
+    bounds.snapshot_source = snapshot->source;
+    cloned = ast_snapshot_clone_nodes(snapshot, root, &bounds);
+
+done:
+    if (!cloned) {
+        mylite_sql_ast_snapshot_deinit(snapshot);
+    }
+    return cloned;
+}
+
+void mylite_sql_ast_snapshot_deinit(struct mylite_sql_ast_snapshot *snapshot) {
+    if (snapshot == NULL) {
+        return;
+    }
+
+    free(snapshot->source);
+    free(snapshot->nodes);
+    *snapshot = (struct mylite_sql_ast_snapshot){0};
+}
+
+const struct mylite_sql_ast_node *mylite_sql_ast_snapshot_root(
+    const struct mylite_sql_ast_snapshot *snapshot
+) {
+    if (snapshot == NULL || snapshot->node_count == 0U || snapshot->nodes == NULL) {
+        return NULL;
+    }
+    return &snapshot->nodes[0];
+}
+
+static bool ast_snapshot_count_nodes(
+    const struct mylite_sql_ast_node *root,
+    size_t *out_node_count
+) {
+    const struct mylite_sql_ast_node **stack = NULL;
+    size_t stack_count = 0U;
+    size_t stack_capacity = ast_snapshot_initial_stack_capacity;
+    size_t node_count = 0U;
+    bool counted = false;
+
+    if (root == NULL || out_node_count == NULL) {
+        return false;
+    }
+    stack = (const struct mylite_sql_ast_node **)malloc(stack_capacity * sizeof(*stack));
+    if (stack == NULL) {
+        return false;
+    }
+    stack[stack_count++] = root;
+    while (stack_count != 0U) {
+        const struct mylite_sql_ast_node *node = stack[--stack_count];
+
+        if (node_count == SIZE_MAX) {
+            goto done;
+        }
+        ++node_count;
+        for (const struct mylite_sql_ast_node *child = node->first_child; child != NULL;
+             child = child->next_sibling) {
+            if (stack_count == stack_capacity) {
+                const struct mylite_sql_ast_node **grown_stack = NULL;
+
+                if (stack_capacity > SIZE_MAX / 2U ||
+                    stack_capacity * 2U > SIZE_MAX / sizeof(*stack)) {
+                    goto done;
+                }
+                stack_capacity *= 2U;
+                grown_stack = (const struct mylite_sql_ast_node **)
+                    realloc((void *)stack, stack_capacity * sizeof(*stack));
+                if (grown_stack == NULL) {
+                    goto done;
+                }
+                stack = grown_stack;
+            }
+            stack[stack_count++] = child;
+        }
+    }
+    *out_node_count = node_count;
+    counted = node_count != 0U;
+
+done:
+    free((void *)stack);
+    return counted;
+}
+
+static bool ast_snapshot_clone_nodes(
+    struct mylite_sql_ast_snapshot *snapshot,
+    const struct mylite_sql_ast_node *root,
+    const struct ast_snapshot_source_bounds *bounds
+) {
+    const struct mylite_sql_ast_node **source_nodes = NULL;
+    size_t next_node = 1U;
+    bool cloned = false;
+
+    if (snapshot == NULL || root == NULL || bounds == NULL || snapshot->nodes == NULL ||
+        snapshot->node_count == 0U || snapshot->node_count > SIZE_MAX / sizeof(*source_nodes)) {
+        return false;
+    }
+    source_nodes =
+        (const struct mylite_sql_ast_node **)calloc(snapshot->node_count, sizeof(*source_nodes));
+    if (source_nodes == NULL) {
+        return false;
+    }
+
+    source_nodes[0] = root;
+    for (size_t node_index = 0U; node_index < snapshot->node_count; ++node_index) {
+        const struct mylite_sql_ast_node *source_node = source_nodes[node_index];
+        struct mylite_sql_ast_node *snapshot_node = &snapshot->nodes[node_index];
+        struct mylite_sql_ast_node *snapshot_sibling = snapshot_node->next_sibling;
+
+        if (source_node == NULL) {
+            goto done;
+        }
+        *snapshot_node = *source_node;
+        snapshot_node->first_child = NULL;
+        snapshot_node->last_child = NULL;
+        snapshot_node->next_sibling = snapshot_sibling;
+        if (!ast_snapshot_rebase_node(snapshot_node, bounds)) {
+            goto done;
+        }
+        for (const struct mylite_sql_ast_node *child = source_node->first_child; child != NULL;
+             child = child->next_sibling) {
+            struct mylite_sql_ast_node *snapshot_child = NULL;
+
+            if (next_node >= snapshot->node_count) {
+                goto done;
+            }
+            source_nodes[next_node] = child;
+            snapshot_child = &snapshot->nodes[next_node];
+            if (snapshot_node->last_child == NULL) {
+                snapshot_node->first_child = snapshot_child;
+            } else {
+                snapshot_node->last_child->next_sibling = snapshot_child;
+            }
+            snapshot_node->last_child = snapshot_child;
+            ++next_node;
+        }
+    }
+    cloned = next_node == snapshot->node_count;
+
+done:
+    free((void *)source_nodes);
+    return cloned;
+}
+
+static bool ast_snapshot_rebase_node(
+    struct mylite_sql_ast_node *node,
+    const struct ast_snapshot_source_bounds *bounds
+) {
+    if (!ast_snapshot_rebase_span(&node->span, bounds)) {
+        return false;
+    }
+
+    switch (node->kind) {
+    case MYLITE_SQL_AST_INTEGER_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.integer_type.display_width_span, bounds);
+    case MYLITE_SQL_AST_VARCHAR_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.varchar_type.length_span, bounds);
+    case MYLITE_SQL_AST_CHAR_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.char_type.length_span, bounds);
+    case MYLITE_SQL_AST_TEXT_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.text_type.length_span, bounds);
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.binary_string_type.length_span, bounds);
+    case MYLITE_SQL_AST_BIT_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.bit_type.length_span, bounds);
+    case MYLITE_SQL_AST_YEAR_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.year_type.width_span, bounds);
+    case MYLITE_SQL_AST_DECIMAL_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.decimal_type.precision_span, bounds) &&
+               ast_snapshot_rebase_span(&node->payload.decimal_type.scale_span, bounds);
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE:
+        return ast_snapshot_rebase_span(&node->payload.approximate_type.precision_span, bounds) &&
+               ast_snapshot_rebase_span(&node->payload.approximate_type.scale_span, bounds);
+    case MYLITE_SQL_AST_DATE_TYPE:
+    case MYLITE_SQL_AST_DATETIME_TYPE:
+    case MYLITE_SQL_AST_TIMESTAMP_TYPE:
+    case MYLITE_SQL_AST_TIME_TYPE:
+        return ast_snapshot_rebase_span(
+            &node->payload.temporal_fractional_precision.precision_span,
+            bounds
+        );
+    default:
+        return true;
+    }
+}
+
+static bool ast_snapshot_rebase_span(
+    struct mylite_sql_source_span *span,
+    const struct ast_snapshot_source_bounds *bounds
+) {
+    size_t relative_offset = 0U;
+
+    if (span == NULL || bounds == NULL || !mylite_sql_source_span_is_valid(*span)) {
+        return false;
+    }
+    if (span->text == NULL) {
+        return true;
+    }
+    if (span->source_length != bounds->source_length || bounds->source == NULL ||
+        bounds->snapshot_source == NULL || span->text != bounds->source + span->offset ||
+        span->offset < bounds->snapshot_source_offset) {
+        return false;
+    }
+    relative_offset = span->offset - bounds->snapshot_source_offset;
+    if (relative_offset > bounds->snapshot_source_length ||
+        span->length > bounds->snapshot_source_length - relative_offset) {
+        return false;
+    }
+    span->text = bounds->snapshot_source + relative_offset;
+    span->offset = relative_offset;
+    span->source_length = bounds->snapshot_source_length;
     return true;
 }
 

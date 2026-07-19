@@ -99,6 +99,11 @@ static int plan_insert_duplicate_assignment_value(
     struct planned_insert *plan,
     struct planned_insert_duplicate_update_assignment *duplicate_assignment
 );
+static int snapshot_insert_duplicate_assignment_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment
+);
 static int plan_insert_duplicate_values_reference(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

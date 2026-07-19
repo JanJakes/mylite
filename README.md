@@ -1,6 +1,6 @@
 # MyLite
 
-**MySQL in a single file.**
+**MySQL in one durable database file.**
 
 > [!NOTE]
 > **Status:** Early development. See: [COMPATIBILITY.md](COMPATIBILITY.md)
@@ -24,7 +24,9 @@ At a glance:
 MyLite should power MySQL-oriented applications without modifications. Here's a list of the main goals:
 
 - **MySQL drop-in:** Work as an effortless drop-in replacement for MySQL.
-- **Single file:** Keep the database portable as a single `.mylite` file.
+- **Single file:** Keep the durable database portable as one `.mylite` file after
+  clean transaction completion. An active write or crash recovery can temporarily
+  require SQLite's adjacent rollback journal.
 - **Uncompromising compatibility:** Implement the MySQL API surface that real applications depend on.
 - **Correctness:** Mirror MySQL semantics for expressions, statements, operations, types, values, errors, etc.
 - **Extensive test suite:** Create and maintain a large test suite.

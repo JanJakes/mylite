@@ -28,8 +28,8 @@ extension internals into private source modules:
 - `mysqli_registration.c`: arginfo, function tables, constants, and class
   registration.
 - `mysqli_api.c`: procedural mysqli functions and object methods.
-- `mysqli_support.c`: object lifecycle, connection execution, result buffering,
-  parameter interpolation, path resolution, errors, and property updates.
+- `mysqli_support.c`: object lifecycle, connection execution, native statement
+  binding, result buffering, path resolution, errors, and property updates.
 - `mysqli_extension.h`: private shared declarations for those translation
   units; it is not an installed public header.
 

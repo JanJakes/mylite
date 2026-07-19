@@ -533,10 +533,10 @@ complete.
 ## Phase 6: Release qualification
 
 - [x] Add assertion-enabled Debug jobs and representative Release jobs. The
-  684-test Debug suite passes locally and CI retains the four-platform Release
+  688-test Debug suite passes locally and CI retains the four-platform Release
   matrix alongside a dedicated Clang Debug job.
 - [x] Add reproducible ASan+UBSan presets and run the complete core suite. The
-  complete 686-test suite passes with ASan, UBSan, strict abort-on-error, and
+  complete 688-test suite passes with ASan, UBSan, strict abort-on-error, and
   leak detection. The full sweep exposed and fixed retained heap-backed AST
   cache chunks plus lost ownership of allocated IF/CASE scalar results; the
   installed pkg-config consumer also propagates sanitizer runtime linkage.
@@ -571,15 +571,15 @@ complete.
   evidence manifest now covers all 700 unique green rows, verifies named
   function coverage, and rejects missing specs, unregistered native tests,
   absent CI jobs, or incomplete MySQL manifests.
-- [x] Run changed MySQL fixtures on pull requests and all 793 scripts in
+- [x] Run changed MySQL fixtures on pull requests and all 794 scripts in
   sharded nightly/release tiers. Pull requests select directly changed probes
   plus fixtures mapped from changed specs and native tests. A reusable
   scheduled/manual workflow runs the complete sorted corpus in eight isolated
   MySQL 8.4.9 shards and is callable by the release workflow.
 - [x] Add coverage reports with ratcheted module thresholds. The complete
-  686-test Clang run records process-isolated profiles and reports runtime at
-  80.19/97.81/67.49%, SQL at 81.05/97.75/61.56%, and storage at
-  81.04/91.55/67.46% for lines/functions/branches. CI enforces nearby nonzero
+  688-test Clang run records process-isolated profiles and reports runtime at
+  80.21/97.83/67.48%, SQL at 80.98/97.79/61.40%, and storage at
+  82.29/94.37/67.46% for lines/functions/branches. CI enforces nearby nonzero
   module ratchets and retains the HTML, JSON, text, and CTest evidence.
 - [x] Add paired-runner benchmark history and statistically tolerant regression
   checks. Pull requests and weekly runs build base and head on one runner, pin
@@ -597,12 +597,34 @@ complete.
 
 ## Final closure audit
 
-- [ ] Every checkbox above has direct code/test/documentation evidence.
-- [ ] All focused reproducers fail on the audited base commit and pass on the
+Local qualification of the remediated tree produced the following closure
+evidence:
+
+- Native Debug, Release, and strict ASan+UBSan configurations each pass all
+  688 tests; the eight PHP adapter suites pass in normal and sanitized builds.
+- The two deterministic TSan tests, two allocator/VFS fault-injection tests,
+  six ASan+UBSan fuzz targets, crash/recovery tests, and N-1 catalog migration
+  verifier pass.
+- The coverage ratchets pass for runtime, SQL, and storage. Full clang-tidy
+  checks all 899 first-party compile entries without a warning, and format,
+  compatibility, shell, and release-tool validation is clean.
+- The evidence validator maps all 700 green claims and 794 MySQL 8.4.9
+  fixtures. The complete MySQL expectation corpus passes against the pinned
+  runtime.
+- WordPress passes 29,248 tests and 3,440,328 assertions; Drupal passes 559
+  tests and 2,340 assertions; Laravel, Doctrine DBAL/ORM, and MediaWiki pass
+  their complete pinned baselines.
+- Static and shared consumers, pkg-config/CMake installs, the 72-symbol shared
+  ABI manifest, and the 11-scenario paired performance gate pass. The qualified
+  shared library is 8,858,312 bytes against an 11,000,000-byte budget, with
+  8,676,241 bytes of loaded sections.
+
+- [x] Every checkbox above has direct code/test/documentation evidence.
+- [x] All focused reproducers fail on the audited base commit and pass on the
   remediated tree.
-- [ ] Debug, Release, sanitizer, concurrency, crash, MySQL, PHP, application,
+- [x] Debug, Release, sanitizer, concurrency, crash, MySQL, PHP, application,
   installation, ABI, size, and performance tiers pass.
-- [ ] An independent code review finds no remaining assessment item or
+- [x] An independent code review finds no remaining assessment item or
   regression hidden by fallback behavior.
-- [ ] The whole-project assessment is updated with the final evidence and no
+- [x] The whole-project assessment is updated with the final evidence and no
   technical stop-ship finding remains.

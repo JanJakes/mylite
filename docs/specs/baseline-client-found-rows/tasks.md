@@ -14,4 +14,4 @@
 - [x] Cover native, PHP, unsupported-flag, and application behavior.
 - [x] Update compatibility and PHP extension documentation.
 - [x] Run focused native/PHP tests and the MediaWiki application baseline.
-- [ ] Run the complete release qualification after integration.
+- [x] Run the complete release qualification after integration.

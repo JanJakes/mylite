@@ -10,9 +10,10 @@
 - [x] Migrate the mysqli replacement.
 - [x] Migrate the PDO driver.
 - [x] Migrate SQL-level `PREPARE`/`EXECUTE` to retained native statements.
-- [ ] Add core, PHP, sanitizer, and performance coverage. Core and PHP
-  behavioral coverage, retained-execution parse counters, and prepared
-  SELECT/UPDATE benchmarks are complete; sanitizer qualification remains.
+- [x] Add core, PHP, sanitizer, and performance coverage. Core and PHP
+  behavioral coverage, retained-execution parse counters, prepared
+  SELECT/UPDATE benchmarks, the complete ASan+UBSan suite, and the paired
+  performance gate all pass.
 - [x] Update public API and compatibility documentation.
-- [ ] Run complete core, PHP, application, and MySQL verification.
-- [ ] Review ABI, ownership, diagnostics, performance, and binary size.
+- [x] Run complete core, PHP, application, and MySQL verification.
+- [x] Review ABI, ownership, diagnostics, performance, and binary size.

@@ -11,8 +11,8 @@ endforeach()
 
 set(test_build "${MYLITE_BUILD_DIR}/pkgconfig-multiarch-test")
 file(REMOVE_RECURSE "${test_build}")
-execute_process(
-  COMMAND "${CMAKE_COMMAND}"
+set(fixture_configure_command
+  "${CMAKE_COMMAND}"
     -S "${MYLITE_SOURCE_DIR}"
     -B "${test_build}"
     -G "${MYLITE_GENERATOR}"
@@ -21,6 +21,20 @@ execute_process(
     -DCMAKE_INSTALL_LIBDIR=lib/x86_64-linux-gnu
     -DBUILD_TESTING=OFF
     -DMYLITE_BUILD_TOOLS=OFF
+)
+if(DEFINED MYLITE_TOOLCHAIN_FILE AND NOT MYLITE_TOOLCHAIN_FILE STREQUAL "")
+  list(APPEND fixture_configure_command
+    "-DCMAKE_TOOLCHAIN_FILE=${MYLITE_TOOLCHAIN_FILE}"
+  )
+endif()
+if(DEFINED MYLITE_VCPKG_TARGET_TRIPLET
+   AND NOT MYLITE_VCPKG_TARGET_TRIPLET STREQUAL "")
+  list(APPEND fixture_configure_command
+    "-DVCPKG_TARGET_TRIPLET=${MYLITE_VCPKG_TARGET_TRIPLET}"
+  )
+endif()
+execute_process(
+  COMMAND ${fixture_configure_command}
   RESULT_VARIABLE configure_result
 )
 if(NOT configure_result EQUAL 0)

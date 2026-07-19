@@ -43,12 +43,27 @@ if(NOT install_result EQUAL 0)
   message(FATAL_ERROR "MyLite installation failed")
 endif()
 
-execute_process(
-  COMMAND "${CMAKE_COMMAND}"
+set(consumer_configure_command
+  "${CMAKE_COMMAND}"
     -S "${MYLITE_SOURCE_DIR}/tests/install-consumer"
     -B "${cmake_consumer_build}"
     -G "${MYLITE_GENERATOR}"
+    "-DCMAKE_C_COMPILER=${MYLITE_C_COMPILER}"
     "-DCMAKE_PREFIX_PATH=${install_prefix}"
+)
+if(DEFINED MYLITE_TOOLCHAIN_FILE AND NOT MYLITE_TOOLCHAIN_FILE STREQUAL "")
+  list(APPEND consumer_configure_command
+    "-DCMAKE_TOOLCHAIN_FILE=${MYLITE_TOOLCHAIN_FILE}"
+  )
+endif()
+if(DEFINED MYLITE_VCPKG_TARGET_TRIPLET
+   AND NOT MYLITE_VCPKG_TARGET_TRIPLET STREQUAL "")
+  list(APPEND consumer_configure_command
+    "-DVCPKG_TARGET_TRIPLET=${MYLITE_VCPKG_TARGET_TRIPLET}"
+  )
+endif()
+execute_process(
+  COMMAND ${consumer_configure_command}
   RESULT_VARIABLE configure_result
 )
 if(NOT configure_result EQUAL 0)

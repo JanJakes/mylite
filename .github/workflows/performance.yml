@@ -2,10 +2,20 @@ name: Performance qualification
 
 on:
   workflow_call:
+    inputs:
+      baseline_revision:
+        description: Release tag or commit used as the paired baseline
+        required: false
+        type: string
   pull_request:
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:
+    inputs:
+      baseline_revision:
+        description: Release tag or commit used as the paired baseline
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -35,9 +45,14 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          REQUESTED_BASELINE: ${{ inputs.baseline_revision }}
         run: |
-          if [ "$EVENT_NAME" = pull_request ]; then
+          if [ -n "$REQUESTED_BASELINE" ]; then
+            baseline=$(git rev-parse "$REQUESTED_BASELINE^{commit}")
+          elif [ "$EVENT_NAME" = pull_request ]; then
             baseline=$PULL_REQUEST_BASE
+          elif baseline_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null); then
+            baseline=$(git rev-parse "$baseline_tag^{commit}")
           else
             baseline=$(git rev-parse HEAD^)
           fi

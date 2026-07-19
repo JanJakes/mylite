@@ -2,17 +2,6 @@ static bool statement_result_is_select(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 );
-static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement);
-static int finish_successful_result(
-    struct mylite_db *database,
-    mylite_result *result,
-    mylite_result **out_result
-);
-static int finish_successful_result_with_warning_count(
-    mylite_result *result,
-    size_t warning_count,
-    mylite_result **out_result
-);
 
 static int plan_create_table(
     struct mylite_db *database,

@@ -1,4 +1,4 @@
-static int64_t row_count_for_completed_statement(
+int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 ) {
@@ -6,7 +6,7 @@ static int64_t row_count_for_completed_statement(
         return 0;
     }
     if (statement != NULL && statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT &&
-        select_statement_into_list(statement) != NULL) {
+        child_with_kind(statement, MYLITE_SQL_AST_SELECT_INTO_LIST) != NULL) {
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     }
     if (result != NULL && mylite_result_column_count(result) != 0U) {
@@ -811,7 +811,7 @@ static int64_t row_count_for_completed_statement(
     return 0;
 }
 
-static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement) {
+bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement) {
     if (statement == NULL) {
         return false;
     }
@@ -830,7 +830,7 @@ static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast
     return false;
 }
 
-static int finish_successful_result(
+int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,
     mylite_result **out_result
@@ -844,7 +844,7 @@ static int finish_successful_result(
     return MYLITE_OK;
 }
 
-static int finish_successful_result_with_warning_count(
+int finish_successful_result_with_warning_count(
     mylite_result *result,
     size_t warning_count,
     mylite_result **out_result

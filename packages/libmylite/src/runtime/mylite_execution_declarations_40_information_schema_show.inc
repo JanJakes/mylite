@@ -2546,10 +2546,6 @@ static int format_table_maintenance_display_name(
     struct table_maintenance_target *target
 );
 static const char *table_maintenance_operation_text(enum table_maintenance_operation operation);
-static int64_t row_count_for_completed_statement(
-    const struct mylite_sql_ast_node *statement,
-    const mylite_result *result
-);
 static int finish_parse_failure(
     struct mylite_db *database,
     const struct mylite_sql_parse_result *parse_result,

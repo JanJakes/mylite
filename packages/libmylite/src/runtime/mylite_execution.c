@@ -18,6 +18,7 @@
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_ast_internal.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_execution_completion.h"
 #include "mylite_execution_connection_lifecycle.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
@@ -3598,8 +3599,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_show_columns_indexes.inc"
 
 #include "mylite_execution_show_create.inc"
-
-#include "mylite_execution_result_completion.inc"
 
 #include "mylite_execution_create_table_planning_core.inc"
 

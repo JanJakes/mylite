@@ -113,6 +113,7 @@ add_library(mylite
   src/runtime/mylite_execution_catalog_sys_schema_tables.c
   src/runtime/mylite_execution_catalog_sys_views.c
   src/runtime/mylite_execution_catalog_system_tables.c
+  src/runtime/mylite_execution_completion.c
   src/runtime/mylite_execution_diagnostics.c
   src/runtime/mylite_execution_diagnostics_ddl.c
   src/runtime/mylite_execution_diagnostics_json.c

@@ -272,7 +272,7 @@ complete.
   columns, decoding values, allocating predicate values, or traversing AST
   sibling lists per row. Scaling coverage exercises a 512-value IN list and a
   512-term conjunction under Debug and ASan+UBSan.
-- [ ] Split `mylite_execution.c` into cohesive translation units with explicit
+- [x] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization. SQLite result
   extraction/row storage and analyzed-value ownership are now separate
   translation units with narrow internal headers. SELECT, aggregate,
@@ -334,6 +334,19 @@ complete.
   bytes smaller, while the static archive changed by only 1,210 bytes. The
   focused Debug and ASan+UBSan predicate/constraint/SHOW suites pass, including
   the 512-value and 512-conjunction scaling cases.
+  INFORMATION_SCHEMA result descriptor construction, projection buffering,
+  row matching and sorting, grouped aggregation, count emission, and final row
+  projection now form one more independently compiled result module. Its
+  1,828-line implementation body exposes 14 typed result operations and uses
+  six explicit descriptor-metadata support callbacks; private helpers have a
+  module-local declaration header and no longer depend on mega-unit include
+  order. In the CI Release build, `mylite_execution.c.o` fell from 3,389,408 to
+  3,367,888 bytes and the new object is 33,512 bytes. Combined loaded code grew
+  by 3,019 bytes and the static archive by 13,518 bytes because explicit calls
+  replace local inlining, so this is recorded as an architecture and incremental
+  rebuild improvement rather than a size optimization. The incremental
+  four-job Release build completed in 84.013 seconds. The complete 687-test
+  Debug suite and 16 focused metadata tests under ASan+UBSan pass.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

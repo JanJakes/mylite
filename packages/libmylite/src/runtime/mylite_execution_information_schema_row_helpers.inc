@@ -9,7 +9,7 @@ static int append_information_schema_row(
     int rc = MYLITE_OK;
 
     if (rows->exclude_connection_control_failed_login_attempts &&
-        information_schema_row_is_connection_control_failed_login_attempts(values)) {
+        mylite_execution_information_schema_row_is_failed_login_attempt(values)) {
         return MYLITE_OK;
     }
     if (rows->predicate != NULL && rows->predicate->instruction_count != 0U) {
@@ -43,7 +43,7 @@ static int append_information_schema_row(
         return MYLITE_DONE;
     }
     if (rows->stream_result != NULL) {
-        rc = information_schema_append_projected_result_row(
+        rc = mylite_execution_information_schema_append_projected_result_row(
             database,
             rows->query,
             values,

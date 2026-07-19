@@ -287,7 +287,8 @@ static void information_schema_apply_connection_text_metadata(
         .text = column_definition->character_maximum_length,
         .length = strlen(column_definition->character_maximum_length),
     };
-    if (parse_unsigned_integer_literal(&length_span, &character_count) != MYLITE_OK) {
+    if (mylite_execution_parse_unsigned_integer_literal(&length_span, &character_count) !=
+        MYLITE_OK) {
         return;
     }
     max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
@@ -305,7 +306,8 @@ static void information_schema_apply_connection_text_metadata(
         };
         source_max_bytes_per_character =
             character_set_max_bytes_per_character(column_definition->character_set_name);
-        if (parse_unsigned_integer_literal(&octet_length_span, &octet_length) == MYLITE_OK &&
+        if (mylite_execution_parse_unsigned_integer_literal(&octet_length_span, &octet_length) ==
+                MYLITE_OK &&
             source_max_bytes_per_character != 0U &&
             octet_length <= UINT64_MAX / source_max_bytes_per_character &&
             octet_length * source_max_bytes_per_character <= UINT64_MAX / max_bytes_per_character) {
@@ -338,7 +340,7 @@ static void information_schema_apply_temporal_precision_metadata(
         .text = column_definition->datetime_precision,
         .length = strlen(column_definition->datetime_precision),
     };
-    if (parse_unsigned_integer_literal(&precision_span, &precision) != MYLITE_OK ||
+    if (mylite_execution_parse_unsigned_integer_literal(&precision_span, &precision) != MYLITE_OK ||
         precision > UINT16_MAX) {
         return;
     }

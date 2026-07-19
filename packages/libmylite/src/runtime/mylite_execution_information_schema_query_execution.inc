@@ -251,10 +251,14 @@ static int execute_information_schema_query(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_columns(database, result, query);
+        rc = mylite_execution_information_schema_append_result_columns(database, result, query);
     }
     if (rc == MYLITE_OK && stream_during_enumeration && !skip_row_enumeration) {
-        rc = information_schema_result_projection_buffers_init(database, query, &stream_buffers);
+        rc = mylite_execution_information_schema_result_projection_buffers_init(
+            database,
+            query,
+            &stream_buffers
+        );
     }
     if (rc == MYLITE_OK && !skip_row_enumeration) {
         rc = build_information_schema_rows_with_filter(
@@ -269,10 +273,15 @@ static int execute_information_schema_query(
         );
     }
     if (rc == MYLITE_OK && query->is_count_star) {
-        rc =
-            information_schema_append_count_result(database, query, &rows, result, &read_row_count);
+        rc = mylite_execution_information_schema_append_count_result(
+            database,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
     } else if (rc == MYLITE_OK && query->has_group) {
-        rc = information_schema_append_grouped_statistics_result_rows(
+        rc = mylite_execution_information_schema_append_grouped_statistics_result_rows(
             database,
             query,
             &rows,
@@ -282,7 +291,13 @@ static int execute_information_schema_query(
     } else if (rc == MYLITE_OK && stream_during_enumeration) {
         read_row_count = rows.row_count;
     } else if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_rows(database, query, &rows, result, &read_row_count);
+        rc = mylite_execution_information_schema_append_result_rows(
+            database,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
     }
     if (rc == MYLITE_OK && query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_PROCESSLIST &&
         read_row_count > 0U) {
@@ -292,7 +307,7 @@ static int execute_information_schema_query(
         !(query->limit.has_limit && query->limit.row_count == 0)) {
         rc = append_information_schema_profiling_warning(database);
     }
-    information_schema_result_projection_buffers_deinit(&stream_buffers);
+    mylite_execution_information_schema_result_projection_buffers_deinit(&stream_buffers);
     information_schema_row_set_deinit(&rows);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -500,7 +515,7 @@ static int information_schema_append_fast_table_existence_result(
         set_nomem_error(database);
         return rc;
     }
-    rc = information_schema_append_result_columns(database, result, query);
+    rc = mylite_execution_information_schema_append_result_columns(database, result, query);
     if (rc == MYLITE_OK) {
         if (query->is_count_star) {
             rc = information_schema_append_fast_table_existence_count_row(
@@ -563,7 +578,7 @@ static int information_schema_append_fast_table_existence_literal_row(
 ) {
     char value_text[integer_text_capacity];
     const char *values[1] = {NULL};
-    int rc = information_schema_integer_literal_projection_value(
+    int rc = mylite_execution_information_schema_integer_literal_projection_value(
         database,
         &query->projection_expressions[0],
         value_text,
@@ -663,7 +678,7 @@ static int information_schema_row_set_init(
         return MYLITE_OK;
     }
     if (definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
-        rc = information_schema_includes_connection_control_failed_login_attempts(
+        rc = mylite_execution_information_schema_includes_connection_control_failed_login_attempts(
             database,
             query,
             &includes_connection_control_failed_login_attempts

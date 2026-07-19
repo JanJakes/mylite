@@ -30,6 +30,8 @@
 #include "mylite_execution_information_schema_plan_support.h"
 #include "mylite_execution_information_schema_predicate.h"
 #include "mylite_execution_information_schema_predicate_support.h"
+#include "mylite_execution_information_schema_result.h"
+#include "mylite_execution_information_schema_result_support.h"
 #include "mylite_execution_information_schema_values.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_metadata_setup_metrics.h"
@@ -3286,6 +3288,48 @@ int mylite_execution_information_schema_auto_increment_predicate_value(
     );
 }
 
+struct mylite_result_column_descriptor mylite_execution_information_schema_unknown_result_column_descriptor(
+    const char *label
+) {
+    return unknown_result_column_descriptor(label);
+}
+
+int mylite_execution_information_schema_populate_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
+
+    return populate_select_result_column_descriptor(
+        database,
+        NULL,
+        column,
+        &metadata_context,
+        descriptor
+    );
+}
+
+uint64_t mylite_execution_information_schema_character_set_max_bytes_per_character(
+    const char *character_set_name
+) {
+    return character_set_max_bytes_per_character(character_set_name);
+}
+
+uint64_t mylite_execution_information_schema_result_collation_max_bytes_per_character(
+    const char *collation_name
+) {
+    return result_metadata_collation_max_bytes_per_character(collation_name);
+}
+
+uint64_t mylite_execution_information_schema_result_display_length_cap(uint64_t display_length) {
+    return result_metadata_display_length_cap(display_length);
+}
+
+uint32_t mylite_execution_information_schema_result_collation_id(const char *collation_name) {
+    return result_metadata_collation_id(collation_name);
+}
+
 bool mylite_execution_select_order_source_context_is_joined(
     const struct select_source_context *source_context
 ) {
@@ -3858,8 +3902,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_information_schema_key_constraint_rows.inc"
 
 #include "mylite_execution_information_schema_statistics_rows.inc"
-
-#include "mylite_execution_information_schema_result_rows.inc"
 
 #include "mylite_execution_information_schema_predicate_values.inc"
 

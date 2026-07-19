@@ -863,7 +863,12 @@ static int information_schema_join_compat_append_source_column(
         memcpy(query.alias, column->source_alias, alias_length + 1U);
         query.has_alias = true;
     }
-    rc = information_schema_make_source_column_descriptor(database, &query, 0U, &descriptor);
+    rc = mylite_execution_information_schema_make_source_column_descriptor(
+        database,
+        &query,
+        0U,
+        &descriptor
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_column_descriptor(result, &descriptor);
     }
@@ -1327,10 +1332,11 @@ static int information_schema_join_compat_append_tables_grouped_size_rows(
     mylite_result *result
 ) {
     struct information_schema_row_index_set indexes = {0};
-    int rc = information_schema_matching_row_indexes(database, query, rows, &indexes);
+    int rc =
+        mylite_execution_information_schema_matching_row_indexes(database, query, rows, &indexes);
 
     if (rc == MYLITE_OK) {
-        rc = information_schema_sort_tables_default_row_indexes(
+        rc = mylite_execution_information_schema_sort_tables_default_row_indexes(
             database,
             rows,
             indexes.items,
@@ -1344,7 +1350,7 @@ static int information_schema_join_compat_append_tables_grouped_size_rows(
             result
         );
     }
-    information_schema_row_index_set_deinit(&indexes);
+    mylite_execution_information_schema_row_index_set_deinit(&indexes);
     return rc;
 }
 

@@ -23,10 +23,14 @@ static int execute_mysql_system_table_query(
         set_nomem_error(database);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_columns(database, result, query);
+        rc = mylite_execution_information_schema_append_result_columns(database, result, query);
     }
     if (rc == MYLITE_OK && stream_during_enumeration && !skip_row_enumeration) {
-        rc = information_schema_result_projection_buffers_init(database, query, &stream_buffers);
+        rc = mylite_execution_information_schema_result_projection_buffers_init(
+            database,
+            query,
+            &stream_buffers
+        );
     }
     if (rc == MYLITE_OK && !skip_row_enumeration) {
         rc = build_mysql_system_table_rows(
@@ -40,14 +44,25 @@ static int execute_mysql_system_table_query(
         );
     }
     if (rc == MYLITE_OK && query->is_count_star) {
-        rc =
-            information_schema_append_count_result(database, query, &rows, result, &read_row_count);
+        rc = mylite_execution_information_schema_append_count_result(
+            database,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
     } else if (rc == MYLITE_OK && stream_during_enumeration) {
         read_row_count = rows.row_count;
     } else if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_rows(database, query, &rows, result, &read_row_count);
+        rc = mylite_execution_information_schema_append_result_rows(
+            database,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
     }
-    information_schema_result_projection_buffers_deinit(&stream_buffers);
+    mylite_execution_information_schema_result_projection_buffers_deinit(&stream_buffers);
     information_schema_row_set_deinit(&rows);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);

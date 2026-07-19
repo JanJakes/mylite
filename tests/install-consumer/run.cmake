@@ -89,6 +89,29 @@ if(NOT consumer_result EQUAL 0)
   message(FATAL_ERROR "Installed-package consumer execution failed")
 endif()
 
+set(installed_pkgconfig_file
+  "${install_prefix}/${MYLITE_INSTALL_LIBDIR}/pkgconfig/mylite.pc"
+)
+if(WIN32)
+  file(READ "${installed_pkgconfig_file}" installed_pkgconfig_contents)
+  foreach(required_metadata IN ITEMS
+      "Libs.private: -lmylite_sqlite -lbcrypt"
+      "Requires.private: zlib"
+  )
+    string(FIND
+      "${installed_pkgconfig_contents}"
+      "${required_metadata}"
+      required_metadata_position
+    )
+    if(required_metadata_position EQUAL -1)
+      message(FATAL_ERROR
+        "Installed pkg-config metadata is missing ${required_metadata}"
+      )
+    endif()
+  endforeach()
+  return()
+endif()
+
 find_program(
   pkg_config_executable
   NAMES pkg-config

@@ -156,5 +156,10 @@ expect_empty_engine_logs_result "show engine logs" "SHOW ENGINE InnoDB LOGS;"
 status=$(run_mysql "SHOW ENGINE InnoDB LOGS; SELECT ROW_COUNT(), @@warning_count, @@error_count;" | tail -n 1)
 expect_value "show engine logs diagnostics" "-1	0	0" "$status"
 
-mutex_output=$(run_mysql_with_headers "SHOW ENGINE InnoDB MUTEX;")
-expect_value "show engine mutex headers" "Type	Name	Status" "$(printf '%s\n' "$mutex_output" | sed -n '1p')"
+mutex_output=$(run_mysql_verbose "SHOW ENGINE InnoDB MUTEX;")
+case "$mutex_output" in
+    *"Field   1:  \`Type\`"*\
+*"Field   2:  \`Name\`"*\
+*"Field   3:  \`Status\`"*) ;;
+    *) fail "show engine mutex: expected Type/Name/Status metadata, got [$mutex_output]" ;;
+esac

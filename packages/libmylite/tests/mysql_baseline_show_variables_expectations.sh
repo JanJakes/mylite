@@ -74,6 +74,22 @@ expect_value() {
     fi
 }
 
+ensure_plugin_active() {
+    plugin_name=$1
+    plugin_library=$2
+
+    plugin_status=$(run_mysql \
+        "SELECT COALESCE(MAX(PLUGIN_STATUS), '') FROM INFORMATION_SCHEMA.PLUGINS "\
+"WHERE PLUGIN_NAME = '${plugin_name}';")
+    case "$plugin_status" in
+        ACTIVE) return 0 ;;
+        "") ;;
+        *) fail "${plugin_name} plugin status is ${plugin_status}" ;;
+    esac
+
+    run_mysql "INSTALL PLUGIN ${plugin_name} SONAME '${plugin_library}';" >/dev/null
+}
+
 normalize_tsv() {
     sed "s/${TAB}/|/g"
 }
@@ -83,6 +99,8 @@ case "$version" in
     8.4.9*) ;;
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
+
+ensure_plugin_active "CONNECTION_CONTROL" "connection_control.so"
 
 run_mysql \
     "SET GLOBAL host_cache_size = 0;

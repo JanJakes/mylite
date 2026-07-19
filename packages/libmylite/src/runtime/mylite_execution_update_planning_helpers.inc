@@ -3241,6 +3241,13 @@ static int integer_range_for_column(
     const char *unsupported_message,
     struct integer_column_range *out_range
 ) {
+    if (column == NULL) {
+        if (database != NULL) {
+            set_unsupported_error(database, unsupported_message);
+        }
+        return MYLITE_ERROR;
+    }
+
     return integer_range_for_logical_type(
         database,
         (struct integer_logical_type_range_request){
@@ -3270,6 +3277,13 @@ static int integer_range_for_logical_type(
     const uint64_t tinyint_unsigned_max = 255ULL;
     const uint64_t bigint_signed_positive_max = 9223372036854775807ULL;
     const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+
+    if (request.logical_type == NULL) {
+        if (database != NULL) {
+            set_unsupported_error(database, request.unsupported_message);
+        }
+        return MYLITE_ERROR;
+    }
 
     if (strcmp(request.logical_type, "TINYINT") == 0) {
         *out_range = (struct integer_column_range){

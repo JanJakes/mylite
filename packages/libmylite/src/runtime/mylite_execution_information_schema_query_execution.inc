@@ -199,7 +199,7 @@ static void information_schema_query_deinit(struct information_schema_query *que
     }
     free(query->count_name);
     mylite_execution_information_schema_predicate_plan_deinit(&query->predicate);
-    free(query->projection_names);
+    free((void *)query->projection_names);
     free(query->projection_indexes);
     free(query->projection_kinds);
     free(query->projection_expressions);

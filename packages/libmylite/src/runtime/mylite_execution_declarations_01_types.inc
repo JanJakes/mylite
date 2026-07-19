@@ -3126,6 +3126,11 @@ struct mysql_system_table_catalog_context {
     const struct mylite_catalog_schema_descriptor *schema;
 };
 
+struct append_performance_schema_setup_metric_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
+};
+
 struct sys_schema_auto_increment_columns_context {
     struct mylite_db *database;
     struct information_schema_row_set *rows;

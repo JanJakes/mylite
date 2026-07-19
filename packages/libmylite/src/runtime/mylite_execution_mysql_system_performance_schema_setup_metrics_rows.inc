@@ -1,10 +1,10 @@
-static int append_performance_schema_setup_metric_rows(
-    struct mylite_db *database,
-    struct information_schema_row_set *rows
+int mylite_execution_for_each_performance_schema_setup_metric(
+    mylite_execution_metadata_row_callback callback,
+    void *context
 ) {
-    enum { performance_schema_setup_metric_column_count = 6 };
-
-    static const char *const metric_rows[][performance_schema_setup_metric_column_count] = {
+    // NOLINTBEGIN(bugprone-suspicious-missing-comma): Descriptions use adjacent literals.
+    static const char *const
+        metric_rows[][MYLITE_EXECUTION_PERFORMANCE_SCHEMA_SETUP_METRIC_COLUMN_COUNT] = {
         {"dblwr_pages_written",
          "mysql.inno",
          "ASYNC COUNTER",
@@ -2640,16 +2640,16 @@ static int append_performance_schema_setup_metric_rows(
          "",
          "The number of ping statements received (Mysqlx_stmt_ping)"},
     };
+    // NOLINTEND(bugprone-suspicious-missing-comma)
     int rc = MYLITE_OK;
 
-    if (rows->definition->column_count != performance_schema_setup_metric_column_count) {
-        set_runtime_error(database, "invalid performance_schema setup_metrics columns");
+    if (callback == NULL) {
         return MYLITE_ERROR;
     }
 
     for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(metric_rows) / sizeof(metric_rows[0]);
          ++index) {
-        rc = append_information_schema_row(database, rows, metric_rows[index]);
+        rc = callback(context, metric_rows[index]);
     }
     return rc;
 }

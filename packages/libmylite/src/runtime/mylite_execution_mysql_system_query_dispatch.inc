@@ -1283,6 +1283,33 @@ static int append_performance_schema_setup_meter_rows(
     return rc;
 }
 
+static int append_performance_schema_setup_metric_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct append_performance_schema_setup_metric_context context = {
+        .database = database,
+        .rows = rows,
+    };
+
+    if (rows->definition->column_count !=
+        MYLITE_EXECUTION_PERFORMANCE_SCHEMA_SETUP_METRIC_COLUMN_COUNT) {
+        set_runtime_error(database, "invalid performance_schema setup_metrics columns");
+        return MYLITE_ERROR;
+    }
+
+    return mylite_execution_for_each_performance_schema_setup_metric(
+        append_performance_schema_setup_metric_row,
+        &context
+    );
+}
+
+static int append_performance_schema_setup_metric_row(void *context, const char *const *values) {
+    struct append_performance_schema_setup_metric_context *append_context = context;
+
+    return append_information_schema_row(append_context->database, append_context->rows, values);
+}
+
 static int append_performance_schema_setup_object_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

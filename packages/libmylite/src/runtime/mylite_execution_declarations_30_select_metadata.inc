@@ -592,6 +592,7 @@ static int append_performance_schema_setup_metric_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_performance_schema_setup_metric_row(void *context, const char *const *values);
 static int append_performance_schema_setup_object_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

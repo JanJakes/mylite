@@ -23,6 +23,7 @@
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
+#include "mylite_execution_metadata_setup_metrics.h"
 #include "mylite_execution_parameter_binding.h"
 #include "mylite_execution_plan_types.h"
 #include "mylite_execution_result_rows.h"
@@ -3518,8 +3519,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 // clang-format on
 
 #include "mylite_execution_mysql_system_query_dispatch.inc"
-
-#include "mylite_execution_mysql_system_performance_schema_setup_metrics_rows.inc"
 
 #include "mylite_execution_mysql_system_sys_auto_increment_rows.inc"
 

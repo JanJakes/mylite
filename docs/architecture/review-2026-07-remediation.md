@@ -263,9 +263,12 @@ complete.
   completion module as well. Typed row-scalar SQL lowering now forms another
   independently compiled module: three fragments totaling 7,654 lines expose
   one primary expression-lowering operation plus two compatibility helpers,
-  with a single explicit bridge for descriptor value formatting. Subsequent
-  planner, general SQL-lowering, and metadata clusters still need the same
-  treatment.
+  with a single explicit bridge for descriptor value formatting. The 2,600-line
+  Performance Schema setup-metrics dataset is now an independently compiled,
+  callback-driven provider with no database, diagnostics, or result-row
+  dependency; the query dispatcher owns validation and row adaptation.
+  Subsequent planner, general SQL-lowering, and metadata clusters still need
+  the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

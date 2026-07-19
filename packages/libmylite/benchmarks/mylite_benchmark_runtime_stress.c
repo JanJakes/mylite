@@ -32,9 +32,11 @@ enum {
     generated_sql_base_capacity = 128,
     generated_sql_item_capacity = 32,
     catalog_ddl_sql_capacity = 256,
+    metadata_ddl_sql_capacity = 512,
     nanoseconds_per_second = 1000000000ULL,
     cache_table_count = 66,
     cache_warm_table_count = 64,
+    processlist_worker_count = 8,
 };
 
 enum runtime_stress_kind {
@@ -46,8 +48,10 @@ enum runtime_stress_kind {
     runtime_stress_wide_order,
     runtime_stress_wide_projection,
     runtime_stress_cache_saturation,
+    runtime_stress_metadata_columns,
     runtime_stress_catalog_ddl_generations,
     runtime_stress_concurrent_read_write,
+    runtime_stress_processlist_concurrent,
 };
 
 struct runtime_stress_scenario {
@@ -64,6 +68,21 @@ struct runtime_stress_worker {
     atomic_bool *start;
     size_t ok_count;
     size_t error_count;
+};
+
+struct runtime_processlist_context {
+    mylite_db *observer;
+    mylite_db *databases[processlist_worker_count];
+    struct runtime_stress_worker workers[processlist_worker_count];
+    atomic_bool start;
+    size_t worker_count;
+    size_t thread_count;
+#if defined(_WIN32)
+    HANDLE threads[processlist_worker_count];
+#else
+    pthread_t threads[processlist_worker_count];
+    bool thread_started[processlist_worker_count];
+#endif
 };
 
 static int run_cold_open_scenario(
@@ -114,6 +133,12 @@ static int run_cache_saturation_scenario(
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
+static int run_metadata_columns_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
 static int run_catalog_ddl_generations_scenario(
     const struct runtime_stress_scenario *scenario,
     size_t iterations,
@@ -130,6 +155,26 @@ static int run_concurrent_read_write_scenario(
     size_t iterations,
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
+static int run_processlist_concurrent_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
+static int initialize_processlist_context(
+    struct runtime_processlist_context *context,
+    size_t worker_count,
+    size_t warmup_iterations
+);
+static int start_processlist_workers(
+    struct runtime_processlist_context *context,
+    size_t iterations
+);
+static void deinit_processlist_context(struct runtime_processlist_context *context);
+static int finish_processlist_workers(
+    struct runtime_processlist_context *context,
+    struct mylite_benchmark_runtime_stress_measurement *measurement
 );
 static int prepare_stress_database(const char *path, mylite_db **out_database);
 static int execute_stress_sql(mylite_db *database, const char *sql, size_t sql_length);
@@ -186,8 +231,14 @@ static const struct runtime_stress_scenario runtime_stress_scenarios[] = {
     {"runtime.wide_projection_16", runtime_stress_wide_projection, 16U},
     {"runtime.wide_projection_128", runtime_stress_wide_projection, 128U},
     {"runtime.catalog_cache_saturation", runtime_stress_cache_saturation, cache_table_count},
+    {"runtime.metadata_columns_128", runtime_stress_metadata_columns, 128U},
     {"runtime.catalog_ddl_generations", runtime_stress_catalog_ddl_generations, 0U},
     {"runtime.concurrent_read_write", runtime_stress_concurrent_read_write, 0U},
+    {
+        "runtime.processlist_concurrent_8",
+        runtime_stress_processlist_concurrent,
+        processlist_worker_count,
+    },
 };
 
 size_t mylite_benchmark_runtime_stress_scenario_count(void) {
@@ -260,6 +311,13 @@ int mylite_benchmark_run_runtime_stress_scenario(
             warmup_iterations,
             out_measurement
         );
+    case runtime_stress_metadata_columns:
+        return run_metadata_columns_scenario(
+            scenario,
+            iterations,
+            warmup_iterations,
+            out_measurement
+        );
     case runtime_stress_catalog_ddl_generations:
         return run_catalog_ddl_generations_scenario(
             scenario,
@@ -269,6 +327,13 @@ int mylite_benchmark_run_runtime_stress_scenario(
         );
     case runtime_stress_concurrent_read_write:
         return run_concurrent_read_write_scenario(
+            scenario,
+            iterations,
+            warmup_iterations,
+            out_measurement
+        );
+    case runtime_stress_processlist_concurrent:
+        return run_processlist_concurrent_scenario(
             scenario,
             iterations,
             warmup_iterations,
@@ -628,6 +693,67 @@ cleanup:
     return rc;
 }
 
+static int run_metadata_columns_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+) {
+    static const char query[] =
+        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'benchmark' ORDER BY TABLE_NAME, ORDINAL_POSITION";
+    char path[stress_path_capacity];
+    char sql[metadata_ddl_sql_capacity];
+    mylite_db *database = NULL;
+    uint64_t started = 0U;
+    int rc = 1;
+
+    if (make_stress_path(path, sizeof(path), scenario->name) != 0) {
+        return 1;
+    }
+    remove_stress_files(path);
+    if (prepare_stress_database(path, &database) != 0) {
+        goto cleanup;
+    }
+    for (size_t index = 0U; index < scenario->scale; ++index) {
+        int length = snprintf(
+            sql,
+            sizeof(sql),
+            "CREATE TABLE metadata_table_%zu ("
+            "id BIGINT PRIMARY KEY, c1 VARCHAR(32), c2 BIGINT, c3 DATETIME, "
+            "c4 DECIMAL(20,4), c5 TEXT, c6 BLOB, c7 VARCHAR(64))",
+            index
+        );
+
+        if (length < 0 || (size_t)length >= sizeof(sql) ||
+            execute_stress_sql(database, sql, (size_t)length) != 0) {
+            goto cleanup;
+        }
+    }
+    if (execute_stress_iterations(database, query, sizeof(query) - 1U, warmup_iterations, NULL) !=
+        0) {
+        goto cleanup;
+    }
+
+    started = monotonic_now_ns();
+    if (execute_stress_iterations(
+            database,
+            query,
+            sizeof(query) - 1U,
+            iterations,
+            out_measurement
+        ) != 0) {
+        goto cleanup;
+    }
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+    rc = 0;
+
+cleanup:
+    mylite_close(database);
+    remove_stress_files(path);
+    return rc;
+}
+
 static int run_catalog_ddl_generations_scenario(
     const struct runtime_stress_scenario *scenario,
     size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
@@ -874,6 +1000,155 @@ cleanup:
     mylite_close(reader);
     mylite_close(setup);
     remove_stress_files(path);
+    return rc;
+}
+
+static int run_processlist_concurrent_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+) {
+    static const char observer_sql[] = "SHOW PROCESSLIST";
+    struct runtime_processlist_context context = {0};
+    uint64_t started = 0U;
+    int rc = 1;
+
+    atomic_init(&context.start, false);
+    if (scenario->scale != processlist_worker_count ||
+        initialize_processlist_context(&context, scenario->scale, warmup_iterations) != 0 ||
+        start_processlist_workers(&context, iterations) != 0) {
+        goto cleanup;
+    }
+
+    started = monotonic_now_ns();
+    atomic_store_explicit(&context.start, true, memory_order_release);
+    rc = execute_stress_iterations(
+        context.observer,
+        observer_sql,
+        sizeof(observer_sql) - 1U,
+        iterations,
+        out_measurement
+    );
+    rc |= finish_processlist_workers(&context, out_measurement);
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+    if (out_measurement->error_count != 0U) {
+        rc = 1;
+    }
+
+cleanup:
+    deinit_processlist_context(&context);
+    return rc;
+}
+
+static int initialize_processlist_context(
+    struct runtime_processlist_context *context,
+    size_t worker_count,
+    size_t warmup_iterations
+) {
+    static const char observer_sql[] = "SHOW PROCESSLIST";
+    static const char worker_sql[] = "USE information_schema";
+
+    context->worker_count = worker_count;
+    if (mylite_open_memory(&context->observer) != MYLITE_OK) {
+        return 1;
+    }
+    for (size_t index = 0U; index < context->worker_count; ++index) {
+        if (mylite_open_memory(&context->databases[index]) != MYLITE_OK) {
+            return 1;
+        }
+    }
+    for (size_t index = 0U; index < warmup_iterations; ++index) {
+        if (execute_stress_sql(context->observer, observer_sql, sizeof(observer_sql) - 1U) != 0) {
+            return 1;
+        }
+        for (size_t worker_index = 0U; worker_index < context->worker_count; ++worker_index) {
+            if (execute_stress_sql(
+                    context->databases[worker_index],
+                    worker_sql,
+                    sizeof(worker_sql) - 1U
+                ) != 0) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int start_processlist_workers(
+    struct runtime_processlist_context *context,
+    size_t iterations
+) {
+    static const char worker_sql[] = "USE information_schema";
+
+    for (size_t index = 0U; index < context->worker_count; ++index) {
+        context->workers[index] = (struct runtime_stress_worker){
+            .database = context->databases[index],
+            .sql = worker_sql,
+            .sql_length = sizeof(worker_sql) - 1U,
+            .iterations = iterations,
+            .start = &context->start,
+        };
+#if defined(_WIN32)
+        context->threads[index] =
+            CreateThread(NULL, 0U, run_stress_worker, &context->workers[index], 0U, NULL);
+        if (context->threads[index] == NULL) {
+            return 1;
+        }
+#else
+        if (pthread_create(
+                &context->threads[index],
+                NULL,
+                run_stress_worker,
+                &context->workers[index]
+            ) != 0) {
+            return 1;
+        }
+        context->thread_started[index] = true;
+#endif
+        ++context->thread_count;
+    }
+    return 0;
+}
+
+static void deinit_processlist_context(struct runtime_processlist_context *context) {
+    atomic_store_explicit(&context->start, true, memory_order_release);
+    (void)finish_processlist_workers(context, NULL);
+    for (size_t index = 0U; index < context->worker_count; ++index) {
+        mylite_close(context->databases[index]);
+    }
+    mylite_close(context->observer);
+}
+
+static int finish_processlist_workers(
+    struct runtime_processlist_context *context,
+    struct mylite_benchmark_runtime_stress_measurement *measurement
+) {
+    int rc = 0;
+
+    for (size_t index = 0U; index < context->thread_count; ++index) {
+#if defined(_WIN32)
+        if (WaitForSingleObject(context->threads[index], INFINITE) != WAIT_OBJECT_0) {
+            rc = 1;
+        }
+        (void)CloseHandle(context->threads[index]);
+        context->threads[index] = NULL;
+#else
+        if (context->thread_started[index] && pthread_join(context->threads[index], NULL) != 0) {
+            rc = 1;
+        }
+        context->thread_started[index] = false;
+#endif
+        if (measurement != NULL) {
+            measurement->operations +=
+                context->workers[index].ok_count + context->workers[index].error_count;
+            measurement->ok_count += context->workers[index].ok_count;
+            measurement->error_count += context->workers[index].error_count;
+            measurement->bytes +=
+                context->workers[index].ok_count * context->workers[index].sql_length;
+        }
+    }
+    context->thread_count = 0U;
     return rc;
 }
 

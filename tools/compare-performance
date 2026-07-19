@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = ROOT / "tools/performance-scenarios.tsv"
+RECOVERY_SCENARIO_PREFIX = "parse.recovery."
 EXPECTED_COLUMNS = [
     "scenario",
     "kind",
@@ -44,10 +45,19 @@ def read_manifest(path):
         if not scenario or scenario in seen:
             raise RuntimeError("invalid or duplicate scenario at line {}".format(line_number))
         seen.add(scenario)
-        if row["kind"] not in ("lexer", "parse", "runtime"):
+        if row["kind"] not in ("lexer", "parse", "recovery", "runtime"):
             raise RuntimeError("invalid benchmark kind at line {}".format(line_number))
-        if row["output_kind"] not in ("lexer", "parse", "execute", "prepared", "stress"):
+        if row["output_kind"] not in (
+            "lexer",
+            "parse",
+            "recovery",
+            "execute",
+            "prepared",
+            "stress",
+        ):
             raise RuntimeError("invalid benchmark output kind at line {}".format(line_number))
+        if (row["kind"] == "recovery") != (row["output_kind"] == "recovery"):
+            raise RuntimeError("recovery kind mismatch at line {}".format(line_number))
         for field in ("iterations", "warmup", "samples_per_pass"):
             try:
                 row[field] = int(row[field])
@@ -60,23 +70,47 @@ def read_manifest(path):
                 raise RuntimeError("invalid {} at line {}".format(field, line_number)) from error
         if row["iterations"] < 1 or row["warmup"] < 0 or row["samples_per_pass"] < 5:
             raise RuntimeError("invalid sample configuration at line {}".format(line_number))
+        if row["kind"] == "recovery":
+            if row["warmup"] != 0:
+                raise RuntimeError("recovery warmup must be zero at line {}".format(line_number))
+            parse_recovery_scenario(row["scenario"])
         if row["max_regression_percent"] < 0.0 or row["max_noise_percent"] <= 0.0:
             raise RuntimeError("invalid tolerance at line {}".format(line_number))
     return rows
 
 
+def parse_recovery_scenario(scenario):
+    if not scenario.startswith(RECOVERY_SCENARIO_PREFIX):
+        raise RuntimeError("invalid recovery scenario {}".format(scenario))
+    shape_and_depth = scenario[len(RECOVERY_SCENARIO_PREFIX):]
+    shape, separator, depth_text = shape_and_depth.rpartition("_")
+    if separator == "" or shape not in ("expression", "table_reference"):
+        raise RuntimeError("invalid recovery scenario {}".format(scenario))
+    try:
+        depth = int(depth_text)
+    except ValueError as error:
+        raise RuntimeError("invalid recovery scenario {}".format(scenario)) from error
+    if depth < 1:
+        raise RuntimeError("invalid recovery scenario {}".format(scenario))
+    return shape, depth
+
+
 def run_benchmark(binary, row, role, pass_index, output_dir):
-    command = [
-        str(binary),
-        "--only",
-        row["kind"],
-        "--scenario",
-        row["scenario"],
-        "--iterations",
-        str(row["iterations"]),
-        "--warmup",
-        str(row["warmup"]),
-    ]
+    if row["kind"] == "recovery":
+        _, depth = parse_recovery_scenario(row["scenario"])
+        command = [str(binary), str(row["iterations"]), str(depth)]
+    else:
+        command = [
+            str(binary),
+            "--only",
+            row["kind"],
+            "--scenario",
+            row["scenario"],
+            "--iterations",
+            str(row["iterations"]),
+            "--warmup",
+            str(row["warmup"]),
+        ]
     repetitions = row["samples_per_pass"]
     expected_per_repetition = 1
     if row["kind"] == "runtime":
@@ -95,7 +129,52 @@ def run_benchmark(binary, row, role, pass_index, output_dir):
             raise RuntimeError("{} {} pass {} failed; see {}".format(
                 row["scenario"], role, pass_index, raw_path
             ))
-        values.extend(parse_samples(result.stdout, row, raw_path, expected_per_repetition))
+        if row["kind"] == "recovery":
+            values.extend(parse_recovery_samples(result.stdout, row, raw_path))
+        else:
+            values.extend(parse_samples(result.stdout, row, raw_path, expected_per_repetition))
+    return values
+
+
+def parse_recovery_samples(output, row, raw_path):
+    csv_lines = [line for line in output.splitlines() if line and not line.startswith("#")]
+    reader = csv.DictReader(csv_lines)
+    required = {
+        "shape",
+        "depth",
+        "iterations",
+        "ns_per_parse",
+        "status",
+        "retry_tokenizations",
+        "retry_callbacks",
+    }
+    if reader.fieldnames is None or not required.issubset(reader.fieldnames):
+        raise RuntimeError("invalid recovery benchmark CSV in {}".format(raw_path))
+
+    expected_shape, expected_depth = parse_recovery_scenario(row["scenario"])
+    values = []
+    for record in reader:
+        try:
+            depth = int(record["depth"])
+            iterations = int(record["iterations"])
+            nanoseconds = float(record["ns_per_parse"])
+            tokenizations = int(record["retry_tokenizations"])
+            callbacks = int(record["retry_callbacks"])
+        except ValueError as error:
+            raise RuntimeError("invalid recovery benchmark row in {}".format(raw_path)) from error
+        if record["shape"] != expected_shape or depth != expected_depth:
+            continue
+        if (
+            iterations != row["iterations"]
+            or nanoseconds <= 0.0
+            or not record["status"]
+            or tokenizations != 1
+            or callbacks < 1
+        ):
+            raise RuntimeError("unsuccessful recovery benchmark row in {}".format(raw_path))
+        values.append(nanoseconds / 1000.0)
+    if len(values) != 1:
+        raise RuntimeError("expected one recovery sample in {}, found {}".format(raw_path, len(values)))
     return values
 
 
@@ -207,6 +286,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("baseline", type=Path)
     parser.add_argument("candidate", type=Path)
+    parser.add_argument("--baseline-parser-recovery", type=Path)
+    parser.add_argument("--candidate-parser-recovery", type=Path)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output-dir", type=Path, required=True)
     options = parser.parse_args()
@@ -217,19 +298,37 @@ def main():
         if not baseline.is_file() or not candidate.is_file():
             raise RuntimeError("benchmark arguments must be executable files")
         rows = read_manifest(options.manifest)
+        binaries = {
+            "baseline": {"default": baseline},
+            "candidate": {"default": candidate},
+        }
+        if any(row["kind"] == "recovery" for row in rows):
+            recovery_paths = {
+                "baseline": options.baseline_parser_recovery
+                or baseline.with_name("mylite_parser_recovery_benchmark"),
+                "candidate": options.candidate_parser_recovery
+                or candidate.with_name("mylite_parser_recovery_benchmark"),
+            }
+            for role, path in recovery_paths.items():
+                resolved = path.resolve(strict=True)
+                if not resolved.is_file():
+                    raise RuntimeError("{} recovery benchmark is not a file".format(role))
+                binaries[role]["recovery"] = resolved
         options.output_dir.mkdir(parents=True, exist_ok=True)
         results = []
         for row in rows:
             values = {"baseline": [], "candidate": []}
-            sequence = (
-                ("baseline", baseline, 1),
-                ("candidate", candidate, 1),
-                ("candidate", candidate, 2),
-                ("baseline", baseline, 2),
-            )
-            for role, binary, pass_index in sequence:
+            binary_key = "recovery" if row["kind"] == "recovery" else "default"
+            sequence = (("baseline", 1), ("candidate", 1), ("candidate", 2), ("baseline", 2))
+            for role, pass_index in sequence:
                 values[role].extend(
-                    run_benchmark(binary, row, role, pass_index, options.output_dir)
+                    run_benchmark(
+                        binaries[role][binary_key],
+                        row,
+                        role,
+                        pass_index,
+                        options.output_dir,
+                    )
                 )
             result = compare_scenario(row, values["baseline"], values["candidate"])
             results.append(result)

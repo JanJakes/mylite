@@ -41,21 +41,43 @@ cp "$temporary_directory/benchmark" "$temporary_directory/candidate"
 cp "$temporary_directory/benchmark" "$temporary_directory/slow"
 cp "$temporary_directory/benchmark" "$temporary_directory/noisy"
 
+cat > "$temporary_directory/recovery" <<'EOF'
+#!/bin/sh
+set -eu
+iterations=$1
+depth=$2
+case "$0" in
+  *candidate*) value=105000 ;;
+  *) value=100000 ;;
+esac
+printf '%s\n' 'shape,depth,bytes,iterations,ns_per_parse,status,retry_tokenizations,retry_callbacks'
+printf 'expression,%s,100,%s,%s,syntax_error,1,8\n' "$depth" "$iterations" "$value"
+printf 'table_reference,%s,120,%s,%s,syntax_error,1,8\n' "$depth" "$iterations" "$value"
+EOF
+chmod +x "$temporary_directory/recovery"
+cp "$temporary_directory/recovery" "$temporary_directory/candidate-recovery"
+
 cat > "$temporary_directory/manifest.tsv" <<'EOF'
 scenario	kind	output_kind	iterations	warmup	samples_per_pass	max_regression_percent	max_noise_percent
 runtime.test	runtime	execute	1	0	5	10	20
+parse.recovery.expression_192	recovery	recovery	1	0	5	10	20
 EOF
 
 "$root/tools/compare-performance" \
   "$temporary_directory/benchmark" \
   "$temporary_directory/candidate" \
+  --baseline-parser-recovery "$temporary_directory/recovery" \
+  --candidate-parser-recovery "$temporary_directory/candidate-recovery" \
   --manifest "$temporary_directory/manifest.tsv" \
   --output-dir "$temporary_directory/pass" >/dev/null
 grep -q 'runtime.test[[:space:]]pass' "$temporary_directory/pass/summary.tsv"
+grep -q 'parse.recovery.expression_192[[:space:]]pass' "$temporary_directory/pass/summary.tsv"
 
 if "$root/tools/compare-performance" \
   "$temporary_directory/benchmark" \
   "$temporary_directory/slow" \
+  --baseline-parser-recovery "$temporary_directory/recovery" \
+  --candidate-parser-recovery "$temporary_directory/candidate-recovery" \
   --manifest "$temporary_directory/manifest.tsv" \
   --output-dir "$temporary_directory/slow-result" >/dev/null 2>&1; then
   echo "test-performance-regression-tools: accepted a performance regression" >&2
@@ -65,6 +87,8 @@ fi
 if "$root/tools/compare-performance" \
   "$temporary_directory/benchmark" \
   "$temporary_directory/noisy" \
+  --baseline-parser-recovery "$temporary_directory/recovery" \
+  --candidate-parser-recovery "$temporary_directory/candidate-recovery" \
   --manifest "$temporary_directory/manifest.tsv" \
   --output-dir "$temporary_directory/noisy-result" >/dev/null 2>&1; then
   echo "test-performance-regression-tools: accepted excessive noise" >&2

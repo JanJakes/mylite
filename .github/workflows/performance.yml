@@ -71,9 +71,11 @@ jobs:
           cmake -S /tmp/mylite-performance-baseline \
             -B /tmp/mylite-performance-baseline-build \
             -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-          cmake --build /tmp/mylite-performance-baseline-build --target mylite_benchmark
+          cmake --build /tmp/mylite-performance-baseline-build \
+            --target mylite_benchmark mylite_parser_recovery_benchmark
           cmake --preset ci
-          cmake --build --preset ci --target mylite_benchmark
+          cmake --build --preset ci \
+            --target mylite_benchmark mylite_parser_recovery_benchmark
 
       - name: Compare paired performance
         env:
@@ -93,6 +95,10 @@ jobs:
             tools/compare-performance \
               /tmp/mylite-performance-baseline-build/packages/libmylite/mylite_benchmark \
               build/ci/packages/libmylite/mylite_benchmark \
+              --baseline-parser-recovery \
+                /tmp/mylite-performance-baseline-build/packages/libmylite/mylite_parser_recovery_benchmark \
+              --candidate-parser-recovery \
+                build/ci/packages/libmylite/mylite_parser_recovery_benchmark \
               --output-dir build/performance-regression
 
       - name: Publish comparison summary

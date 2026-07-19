@@ -5,7 +5,8 @@ Build them with a Release configuration when comparing timings:
 
 ```sh
 cmake --preset ci
-cmake --build --preset ci --target mylite_benchmark
+cmake --build --preset ci \
+  --target mylite_benchmark mylite_parser_recovery_benchmark
 ```
 
 Run the built-in WordPress-inspired parser and runtime scenarios:
@@ -81,12 +82,28 @@ selected explicitly with `--scenario`:
 - `runtime.wide_order_128`
 - `runtime.wide_projection_16` and `runtime.wide_projection_128`
 - `runtime.catalog_cache_saturation`
+- `runtime.metadata_columns_128`
 - `runtime.catalog_ddl_generations`
 - `runtime.concurrent_read_write`
+- `runtime.processlist_concurrent_8`
 
 `runtime.catalog_ddl_generations` repeatedly changes a column comment and then
 warms table metadata. It reports `peak_retained_bytes` and fails if completed
 catalog generations or their cold strings escape the catalog cache byte budget.
+`runtime.metadata_columns_128` projects and orders 1,024 COLUMNS rows from 128
+eight-column tables. `runtime.processlist_concurrent_8` measures PROCESSLIST
+snapshot throughput while eight independent handles publish session state.
+
+Invalid-SQL recovery has a separate scaling benchmark:
+
+```sh
+build/ci/packages/libmylite/mylite_parser_recovery_benchmark 500 192
+```
+
+It reports nested expression and table-reference recovery cost, tokenization
+passes, and retry callback counts. The paired regression manifest selects the
+expression shape at depth 192 and rejects timing, retry-count, or output-schema
+regressions.
 
 Runtime databases are created below `TMPDIR`. Use a tmpfs directory to isolate
 CPU and allocator cost, or point `TMPDIR` at a block-backed filesystem to retain
@@ -185,6 +202,10 @@ and candidate revision using the scenarios and tolerances in
 14 baseline and 14 candidate samples. The gate compares medians and adds a
 three-standard-error allowance derived from scaled median absolute deviation.
 It rejects excessively noisy runs instead of silently widening the tolerance.
+The manifest covers the main benchmark plus the separate parser-recovery
+binary, and includes WordPress requests, retained prepared execution, large
+`IN` planning, cache saturation, high-cardinality metadata, and concurrent
+PROCESSLIST publication.
 
 The scheduled and pull-request performance workflow builds both revisions on
 one runner, pins the comparison to one allowed CPU, and uses tmpfs for runtime

@@ -58,6 +58,8 @@ static int select_statement_uses_materialized_cursor_dispatch(
 );
 static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *stmt, int *out_rc);
 static int analyze_prepared_select(mylite_stmt *stmt);
+static int ensure_prepared_statement_parse_tree(mylite_stmt *stmt);
+static void release_prepared_statement_parse_tree(mylite_stmt *stmt);
 static int prepared_select_parameter_contexts_are_reusable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

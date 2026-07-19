@@ -696,7 +696,9 @@ static int start_cursor_execution(mylite_stmt *stmt) {
         if (!stmt->returns_rows) {
             return execute_prepared_materialized_statement(stmt);
         }
-        rc = prepare_statement_transaction_boundary(database, stmt->statement);
+        if (stmt->statement != NULL) {
+            rc = prepare_statement_transaction_boundary(database, stmt->statement);
+        }
     }
     if (rc == MYLITE_OK) {
         rc = begin_read_statement_transaction(database, &stmt->read_transaction);
@@ -1379,11 +1381,12 @@ static int prepare_cursor_select_statement(
 #ifdef MYLITE_ENABLE_PROFILING
     profile_phase_started_ns = mylite_profile_now_ns();
 #endif
+    stmt->parse_modes = lexer_modes_for_session_sql_mode(&database->session);
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = stmt->normalized_sql.sql,
             .length = stmt->normalized_sql.sql_size,
-            .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .modes = stmt->parse_modes,
             .allow_parameters = true,
         },
         &stmt->parse_result
@@ -1621,6 +1624,11 @@ static int prepare_cursor_select_execution(mylite_stmt *stmt) {
         return rc;
     }
     if (plan_result == CURSOR_PLAN_ATTEMPT_FAILED) {
+        int parse_rc = ensure_prepared_statement_parse_tree(stmt);
+
+        if (parse_rc != MYLITE_OK) {
+            return parse_rc;
+        }
         int dispatch_rc = select_statement_uses_materialized_cursor_dispatch(
             stmt->database,
             stmt->statement,
@@ -1698,13 +1706,17 @@ static int select_statement_uses_materialized_cursor_dispatch(
 
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
     mylite_result *result = NULL;
-    int rc = execute_select_statement_in_read_transaction(
-        stmt->database,
-        &stmt->context,
-        stmt->statement,
-        true,
-        &result
-    );
+    int rc = ensure_prepared_statement_parse_tree(stmt);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_select_statement_in_read_transaction(
+            stmt->database,
+            &stmt->context,
+            stmt->statement,
+            true,
+            &result
+        );
+    }
 
     if (rc == MYLITE_OK) {
         stmt->metadata_result = result;
@@ -1831,6 +1843,9 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
     }
     *out_rc = rc;
     if (rc == MYLITE_OK) {
+        if (stmt->analyzed_select.parameter_values_are_reusable) {
+            release_prepared_statement_parse_tree(stmt);
+        }
         return CURSOR_PLAN_ATTEMPT_READY;
     }
     return unsupported ? CURSOR_PLAN_ATTEMPT_UNSUPPORTED : CURSOR_PLAN_ATTEMPT_FAILED;
@@ -1857,6 +1872,11 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
         mylite_profile_record_select_plan(database, 0U, true);
 #endif
         return MYLITE_OK;
+    }
+
+    rc = ensure_prepared_statement_parse_tree(stmt);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
 #ifdef MYLITE_ENABLE_PROFILING
@@ -1889,6 +1909,72 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
     analyzed->parameter_values_are_reusable = stmt->parameter_plan_reusable;
     analyzed->valid = true;
     return MYLITE_OK;
+}
+
+static int ensure_prepared_statement_parse_tree(mylite_stmt *stmt) {
+    size_t statement_count = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_parse_started_ns = 0U;
+#endif
+    int rc = MYLITE_OK;
+
+    if (stmt == NULL || stmt->database == NULL || !stmt->has_normalized_sql) {
+        return MYLITE_MISUSE;
+    }
+    if (stmt->statement != NULL) {
+        return MYLITE_OK;
+    }
+
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_parse_started_ns = mylite_profile_now_ns();
+#endif
+    rc = status_from_parse_status(mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = stmt->normalized_sql.sql,
+            .length = stmt->normalized_sql.sql_size,
+            .modes = stmt->parse_modes,
+            .allow_parameters = true,
+        },
+        &stmt->parse_result
+    ));
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_parse(
+        stmt->database,
+        profile_parse_started_ns,
+        stmt->parse_result.retry_callback_count,
+        stmt->parse_result.retry_handled_count
+    );
+#endif
+    stmt->has_parse_result = true;
+    if (rc != MYLITE_OK) {
+        rc = finish_parse_failure(stmt->database, &stmt->parse_result, rc);
+        release_prepared_statement_parse_tree(stmt);
+        return rc;
+    }
+
+    rc = script_statement_count(stmt->parse_result.root, &statement_count);
+    if (rc == MYLITE_OK && statement_count == 1U) {
+        stmt->statement = child_at(stmt->parse_result.root, 0U);
+    }
+    if (rc != MYLITE_OK || statement_count != 1U || stmt->statement == NULL ||
+        !prepared_statement_returns_rows(stmt->statement) ||
+        stmt->parse_result.parameter_count != stmt->parameter_count) {
+        set_parse_error(stmt->database, &stmt->parse_result);
+        release_prepared_statement_parse_tree(stmt);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static void release_prepared_statement_parse_tree(mylite_stmt *stmt) {
+    if (stmt == NULL || !stmt->has_parse_result) {
+        return;
+    }
+
+    mylite_sql_parse_result_deinit(&stmt->parse_result);
+    stmt->parse_result = (struct mylite_sql_parse_result){0};
+    stmt->statement = NULL;
+    stmt->has_parse_result = false;
 }
 
 static int prepared_select_parameter_contexts_are_reusable(

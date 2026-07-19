@@ -488,6 +488,7 @@ static int test_prepared_plan_cache_profile(void) {
         expect_int(mylite_profile_stop(database, &snapshot), MYLITE_OK, "stop plan cache profile");
     failures += expect_true(snapshot.select_plan_count == 0U, "cached plan build count");
     failures += expect_true(snapshot.select_plan_cache_hit_count == 3U, "cached plan hit count");
+    failures += expect_true(snapshot.parse_count == 0U, "cached plan parse count");
     failures += expect_true(snapshot.select_lowering_count == 0U, "cached lowering build count");
     failures +=
         expect_true(snapshot.select_lowering_cache_hit_count == 3U, "cached lowering hit count");
@@ -515,6 +516,7 @@ static int test_prepared_plan_cache_profile(void) {
         "stop invalidated plan profile"
     );
     failures += expect_true(snapshot.select_plan_count == 1U, "invalidated plan build count");
+    failures += expect_true(snapshot.parse_count == 1U, "invalidated plan parse count");
     failures +=
         expect_true(snapshot.select_plan_cache_hit_count == 0U, "invalidated plan hit count");
     failures += expect_true(snapshot.select_lowering_count == 1U, "invalidated lowering count");
@@ -581,12 +583,24 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
         "insert parameter plan cache rows"
     );
     mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "SET SESSION sql_mode = 'ANSI_QUOTES'",
+            strlen("SET SESSION sql_mode = 'ANSI_QUOTES'"),
+            &result
+        ),
+        MYLITE_OK,
+        "set parameter plan prepare-time SQL mode"
+    );
+    mylite_result_free(result);
 
     failures += expect_int(
         mylite_prepare(
             database,
-            "SELECT id FROM t WHERE id = ?",
-            strlen("SELECT id FROM t WHERE id = ?"),
+            "SELECT \"id\" FROM t WHERE id = ?",
+            strlen("SELECT \"id\" FROM t WHERE id = ?"),
             &stmt
         ),
         MYLITE_OK,
@@ -623,6 +637,7 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
     );
     failures += expect_true(snapshot.select_plan_count == 0U, "parameter plan build count");
     failures += expect_true(snapshot.select_plan_cache_hit_count == 3U, "parameter plan hit count");
+    failures += expect_true(snapshot.parse_count == 0U, "parameter plan parse count");
     failures += expect_true(snapshot.select_lowering_count == 0U, "parameter lowering build count");
     failures +=
         expect_true(snapshot.select_lowering_cache_hit_count == 3U, "parameter lowering hit count");
@@ -644,6 +659,7 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
         "stop parameter reanalysis"
     );
     failures += expect_true(snapshot.select_plan_count == 1U, "changed type plan build count");
+    failures += expect_true(snapshot.parse_count == 1U, "changed type plan parse count");
     failures +=
         expect_true(snapshot.select_plan_cache_hit_count == 0U, "changed type plan hit count");
     failures += expect_true(snapshot.select_lowering_count == 1U, "changed type lowering count");
@@ -662,6 +678,7 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
     failures +=
         expect_int(mylite_profile_stop(database, &snapshot), MYLITE_OK, "stop retained text plan");
     failures += expect_true(snapshot.select_plan_count == 0U, "retained text plan build count");
+    failures += expect_true(snapshot.parse_count == 0U, "retained text plan parse count");
     failures +=
         expect_true(snapshot.select_plan_cache_hit_count == 1U, "retained text plan hit count");
     failures += expect_true(snapshot.select_lowering_count == 0U, "retained text lowering count");
@@ -698,6 +715,7 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
         "stop invalidated parameter plan"
     );
     failures += expect_true(snapshot.select_plan_count == 1U, "invalidated parameter plan count");
+    failures += expect_true(snapshot.parse_count == 1U, "invalidated parameter parse count");
     failures += expect_true(
         snapshot.select_plan_cache_hit_count == 0U,
         "invalidated parameter plan hit count"
@@ -726,6 +744,10 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
     failures +=
         expect_int(mylite_profile_start(database), MYLITE_OK, "start session-invalidated plan");
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step session-invalidated row");
+    failures += expect_true(
+        strcmp(mylite_stmt_value_text(stmt, 0U), "2") == 0,
+        "session-invalidated plan retains prepare-time lexer modes"
+    );
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "step session-invalidated done");
     failures += expect_int(
         mylite_profile_stop(database, &snapshot),
@@ -733,6 +755,7 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
         "stop session-invalidated plan"
     );
     failures += expect_true(snapshot.select_plan_count == 1U, "session-invalidated plan count");
+    failures += expect_true(snapshot.parse_count == 1U, "session-invalidated parse count");
     failures += expect_true(
         snapshot.select_plan_cache_hit_count == 0U,
         "session-invalidated plan hit count"

@@ -2701,6 +2701,7 @@ struct mylite_stmt {
     mylite_result *completed_result;
     struct mylite_stmt_binding *bindings;
     uint64_t statement_id;
+    unsigned int parse_modes;
     size_t parameter_count;
     size_t row_count;
     size_t materialized_row_index;

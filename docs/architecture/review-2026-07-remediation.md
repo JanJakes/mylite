@@ -241,7 +241,10 @@ complete.
   UPDATE and `ON DUPLICATE KEY UPDATE` same-column arithmetic plans now retain
   the parsed delta and its validity instead of a literal AST pointer. Deferred
   execution errors remain conditional on a matching UPDATE row or an actual
-  duplicate-key evaluation.
+  duplicate-key evaluation. Reusable prepared SELECT plans are now fully
+  AST-independent after analysis and lowering: they release the parse tree,
+  execute warm plan hits without reparsing, and reparse once from owned SQL
+  under the prepare-time lexer mode after type, schema, or session invalidation.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization.
 - [x] Separate mutable session publication from statement-owned collections.

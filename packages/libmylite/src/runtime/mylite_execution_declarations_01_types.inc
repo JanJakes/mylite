@@ -1,3 +1,5 @@
+#include "mylite_execution_select_analysis.h"
+
 enum planned_type_size_budget {
     PLANNED_PREDICATE_NODE_SIZE_BUDGET = 512U,
     PLANNED_SELECT_ORDER_ITEM_SIZE_BUDGET = 512U,
@@ -2651,23 +2653,9 @@ enum cursor_plan_attempt_result {
     CURSOR_PLAN_ATTEMPT_FAILED,
 };
 
-struct mylite_select_analysis_session_key {
-    uint64_t sql_mode;
-    uint64_t last_insert_id;
-    int time_zone_offset_minutes;
-    bool sql_auto_is_null;
-};
-
 struct mylite_analyzed_select_plan {
     struct planned_select plan;
-    char *lowered_sql;
-    enum mylite_stmt_binding_type *binding_types;
-    struct mylite_select_analysis_session_key session_key;
-    uint64_t catalog_generation;
-    uint64_t sqlite_schema_generation;
-    size_t binding_type_count;
-    bool parameter_values_are_reusable;
-    bool valid;
+    struct mylite_select_analysis_state analysis;
 };
 
 struct mylite_stmt {

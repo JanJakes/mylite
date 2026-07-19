@@ -227,7 +227,11 @@ complete.
   independently compiled ownership/binding module. The module owns deep-copy
   and destruction semantics and is the sole primitive SQLite binder for typed
   values, so planners and executors no longer share those implementations
-  through the mega translation unit.
+  through the mega translation unit. Reusable SELECT analysis state now has a
+  separate typed owner as well: it captures the binding-type signature,
+  analysis-sensitive session values, catalog and SQLite schema generations,
+  parameter-reuse decision, and lowered SQL behind one match/capture/deinit
+  contract instead of duplicating that ownership in the execution unit.
 - [ ] Remove execution-time AST dependencies incrementally. Row-scalar SELECT
   items now retain owned result labels, normalized aliases, and compact typed
   source-metadata shapes; SQL lowering, result metadata, derived-source
@@ -252,6 +256,9 @@ complete.
   AST-independent after analysis and lowering: they release the parse tree,
   execute warm plan hits without reparsing, and reparse once from owned SQL
   under the prepare-time lexer mode after type, schema, or session invalidation.
+  The profiling regression asserts zero parses, plan builds, and lowerings on
+  warm stable-type executions and exactly one parse/rebuild after each type,
+  schema, or relevant session-state invalidation.
   Deferred UPDATE and `ON DUPLICATE KEY UPDATE` expressions now snapshot only
   the syntax subtrees still required for matched-row or duplicate-only
   conversion. Snapshots own compact subtree-local source bytes, clone
@@ -384,7 +391,12 @@ complete.
   dynamic LIMIT behavior. The WordPress
   prepared option lookup records 1,000 plan and lowering cache hits with zero
   rebuilds; its median per-request p50 across seven pinned Release samples fell
-  from about 33.9 us to 21.8 us (35.7%).
+  from about 33.9 us to 21.8 us (35.7%). A subsequent cursor-ordering
+  regression had consulted the parser before checking this retained plan; the
+  corrected warm path now records 10,000 plan and lowering cache hits with zero
+  parses, plans, or lowerings. Its seven-sample pinned Release median is
+  30.017 us per prepared lookup on the current qualification host; the
+  instrumented profile attributes no front-end work to the warm executions.
 - [x] Measure and correct administrative cache/concurrency scaling. Descriptor
   caches use LRU replacement rather than fixed-slot churn, PROCESSLIST publishes
   synchronized session snapshots and sorts with `qsort`, and ordinary writes

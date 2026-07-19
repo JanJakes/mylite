@@ -1682,6 +1682,16 @@ static int prepare_cursor_select_execution(mylite_stmt *stmt) {
     if (stmt->buffered_results) {
         return prepare_cursor_materialized_select_statement(stmt);
     }
+    if (stmt->analyzed_select.analysis.valid) {
+        plan_result = prepare_cursor_select_plan(stmt, &rc);
+        if (plan_result == CURSOR_PLAN_ATTEMPT_READY || plan_result == CURSOR_PLAN_ATTEMPT_FAILED) {
+            return rc;
+        }
+
+        clear_cursor_select_plan_resources(stmt, rc);
+        mylite_diagnostics_clear_condition(mylite_connection_diagnostics(stmt->database));
+        return prepare_cursor_materialized_select_statement(stmt);
+    }
     rc = ensure_prepared_statement_parse_tree(stmt);
     if (rc != MYLITE_OK) {
         return rc;
@@ -1867,11 +1877,11 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
             column_index
         );
     }
-    if (rc == MYLITE_OK && stmt->analyzed_select.lowered_sql == NULL) {
+    if (rc == MYLITE_OK && stmt->analyzed_select.analysis.lowered_sql == NULL) {
 #ifdef MYLITE_ENABLE_PROFILING
         profile_lowering_started_ns = mylite_profile_now_ns();
 #endif
-        rc = build_select_sql(plan, &stmt->analyzed_select.lowered_sql);
+        rc = build_select_sql(plan, &stmt->analyzed_select.analysis.lowered_sql);
 #ifdef MYLITE_ENABLE_PROFILING
         mylite_profile_record_select_lowering(database, profile_lowering_started_ns, false);
 #endif
@@ -1883,7 +1893,7 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
     if (rc == MYLITE_OK) {
         rc = prepare_cached_sqlite_statement(
             database,
-            stmt->analyzed_select.lowered_sql,
+            stmt->analyzed_select.analysis.lowered_sql,
             &stmt->sqlite_statement
         );
         if (rc == MYLITE_OK) {
@@ -1907,7 +1917,7 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
     }
     *out_rc = rc;
     if (rc == MYLITE_OK) {
-        if (stmt->analyzed_select.parameter_values_are_reusable) {
+        if (stmt->analyzed_select.analysis.parameter_values_are_reusable) {
             release_prepared_statement_parse_tree(stmt);
         }
         return CURSOR_PLAN_ATTEMPT_READY;
@@ -1917,21 +1927,27 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
 
 static int analyze_prepared_select(mylite_stmt *stmt) {
     struct mylite_analyzed_select_plan *analyzed = &stmt->analyzed_select;
+    struct mylite_select_analysis_state *analysis = &analyzed->analysis;
     struct mylite_db *database = stmt->database;
+    struct mylite_select_analysis_session_key session_key =
+        current_select_analysis_session_key(database);
     bool parameter_contexts_are_reusable = false;
 #ifdef MYLITE_ENABLE_PROFILING
     uint64_t profile_plan_started_ns = 0U;
 #endif
     int rc = MYLITE_OK;
 
-    if (analyzed->valid &&
-        (!analyzed->parameter_values_are_reusable || !analyzed_select_binding_types_match(stmt) ||
-         !analyzed_select_session_state_matches(stmt) ||
-         analyzed->catalog_generation != database->session.catalog_generation ||
-         analyzed->sqlite_schema_generation != database->session.sqlite_schema_generation)) {
+    if (analysis->valid && !mylite_execution_select_analysis_matches(
+                               analysis,
+                               stmt->bindings,
+                               stmt->parameter_count,
+                               session_key,
+                               database->session.catalog_generation,
+                               database->session.sqlite_schema_generation
+                           )) {
         deinit_analyzed_select_plan(analyzed);
     }
-    if (analyzed->valid) {
+    if (analysis->valid) {
 #ifdef MYLITE_ENABLE_PROFILING
         mylite_profile_record_select_plan(database, 0U, true);
 #endif
@@ -1964,16 +1980,22 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
         planned_select_deinit(&analyzed->plan);
         return rc;
     }
-    rc = retain_analyzed_select_binding_types(stmt);
+    rc = mylite_execution_select_analysis_capture(
+        analysis,
+        stmt->bindings,
+        stmt->parameter_count,
+        session_key,
+        database->session.catalog_generation,
+        database->session.sqlite_schema_generation,
+        stmt->parameter_plan_reusable
+    );
     if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
         deinit_analyzed_select_plan(analyzed);
         return rc;
     }
-    analyzed->catalog_generation = database->session.catalog_generation;
-    analyzed->sqlite_schema_generation = database->session.sqlite_schema_generation;
-    analyzed->session_key = current_select_analysis_session_key(database);
-    analyzed->parameter_values_are_reusable = stmt->parameter_plan_reusable;
-    analyzed->valid = true;
     return MYLITE_OK;
 }
 
@@ -2043,65 +2065,6 @@ static void release_prepared_statement_parse_tree(mylite_stmt *stmt) {
     stmt->has_parse_result = false;
 }
 
-static bool analyzed_select_binding_types_match(const mylite_stmt *stmt) {
-    const struct mylite_analyzed_select_plan *analyzed = NULL;
-
-    if (stmt == NULL) {
-        return false;
-    }
-    analyzed = &stmt->analyzed_select;
-    if (analyzed->binding_type_count != stmt->parameter_count) {
-        return false;
-    }
-    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
-        if (analyzed->binding_types[index] != stmt->bindings[index].type) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool analyzed_select_session_state_matches(const mylite_stmt *stmt) {
-    struct mylite_select_analysis_session_key current = {0};
-    const struct mylite_select_analysis_session_key *analyzed = NULL;
-
-    if (stmt == NULL || stmt->database == NULL) {
-        return false;
-    }
-    current = current_select_analysis_session_key(stmt->database);
-    analyzed = &stmt->analyzed_select.session_key;
-    return analyzed->sql_mode == current.sql_mode &&
-           analyzed->last_insert_id == current.last_insert_id &&
-           analyzed->time_zone_offset_minutes == current.time_zone_offset_minutes &&
-           analyzed->sql_auto_is_null == current.sql_auto_is_null;
-}
-
-static int retain_analyzed_select_binding_types(mylite_stmt *stmt) {
-    struct mylite_analyzed_select_plan *analyzed = NULL;
-
-    if (stmt == NULL) {
-        return MYLITE_MISUSE;
-    }
-    analyzed = &stmt->analyzed_select;
-    if (stmt->parameter_count == 0U) {
-        return MYLITE_OK;
-    }
-    if (stmt->parameter_count > SIZE_MAX / sizeof(*analyzed->binding_types)) {
-        set_nomem_error(stmt->database);
-        return MYLITE_NOMEM;
-    }
-    analyzed->binding_types = malloc(stmt->parameter_count * sizeof(*analyzed->binding_types));
-    if (analyzed->binding_types == NULL) {
-        set_nomem_error(stmt->database);
-        return MYLITE_NOMEM;
-    }
-    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
-        analyzed->binding_types[index] = stmt->bindings[index].type;
-    }
-    analyzed->binding_type_count = stmt->parameter_count;
-    return MYLITE_OK;
-}
-
 static struct mylite_select_analysis_session_key current_select_analysis_session_key(
     const struct mylite_db *database
 ) {
@@ -2128,8 +2091,7 @@ static void deinit_analyzed_select_plan(struct mylite_analyzed_select_plan *anal
     }
 
     planned_select_deinit(&analyzed->plan);
-    free(analyzed->lowered_sql);
-    free(analyzed->binding_types);
+    mylite_execution_select_analysis_deinit(&analyzed->analysis);
     *analyzed = (struct mylite_analyzed_select_plan){0};
 }
 

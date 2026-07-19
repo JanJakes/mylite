@@ -53,9 +53,6 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
 static int analyze_prepared_select(mylite_stmt *stmt);
 static int ensure_prepared_statement_parse_tree(mylite_stmt *stmt);
 static void release_prepared_statement_parse_tree(mylite_stmt *stmt);
-static bool analyzed_select_binding_types_match(const mylite_stmt *stmt);
-static bool analyzed_select_session_state_matches(const mylite_stmt *stmt);
-static int retain_analyzed_select_binding_types(mylite_stmt *stmt);
 static struct mylite_select_analysis_session_key current_select_analysis_session_key(
     const struct mylite_db *database
 );

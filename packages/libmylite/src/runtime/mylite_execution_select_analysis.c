@@ -88,6 +88,84 @@ int mylite_execution_select_parameters_are_plan_reusable(
     return rc;
 }
 
+bool mylite_execution_select_analysis_matches(
+    const struct mylite_select_analysis_state *analysis,
+    const struct mylite_stmt_binding *bindings,
+    size_t binding_count,
+    struct mylite_select_analysis_session_key session_key,
+    uint64_t catalog_generation,
+    uint64_t sqlite_schema_generation
+) {
+    if (analysis == NULL || !analysis->valid || !analysis->parameter_values_are_reusable ||
+        analysis->binding_type_count != binding_count ||
+        (binding_count != 0U && analysis->binding_types == NULL) ||
+        (binding_count != 0U && bindings == NULL) ||
+        analysis->catalog_generation != catalog_generation ||
+        analysis->sqlite_schema_generation != sqlite_schema_generation ||
+        analysis->session_key.sql_mode != session_key.sql_mode ||
+        analysis->session_key.last_insert_id != session_key.last_insert_id ||
+        analysis->session_key.time_zone_offset_minutes != session_key.time_zone_offset_minutes ||
+        analysis->session_key.sql_auto_is_null != session_key.sql_auto_is_null) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < binding_count; ++index) {
+        if (analysis->binding_types[index] != bindings[index].type) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int mylite_execution_select_analysis_capture(
+    struct mylite_select_analysis_state *analysis,
+    const struct mylite_stmt_binding *bindings,
+    size_t binding_count,
+    struct mylite_select_analysis_session_key session_key,
+    uint64_t catalog_generation,
+    uint64_t sqlite_schema_generation,
+    bool parameter_values_are_reusable
+) {
+    enum mylite_stmt_binding_type *binding_types = NULL;
+
+    if (analysis == NULL || analysis->valid || analysis->lowered_sql != NULL ||
+        analysis->binding_types != NULL || analysis->binding_type_count != 0U ||
+        (binding_count != 0U && bindings == NULL)) {
+        return MYLITE_MISUSE;
+    }
+    if (binding_count > SIZE_MAX / sizeof(*binding_types)) {
+        return MYLITE_NOMEM;
+    }
+    if (binding_count != 0U) {
+        binding_types = malloc(binding_count * sizeof(*binding_types));
+        if (binding_types == NULL) {
+            return MYLITE_NOMEM;
+        }
+        for (size_t index = 0U; index < binding_count; ++index) {
+            binding_types[index] = bindings[index].type;
+        }
+    }
+
+    analysis->binding_types = binding_types;
+    analysis->binding_type_count = binding_count;
+    analysis->session_key = session_key;
+    analysis->catalog_generation = catalog_generation;
+    analysis->sqlite_schema_generation = sqlite_schema_generation;
+    analysis->parameter_values_are_reusable = parameter_values_are_reusable;
+    analysis->valid = true;
+    return MYLITE_OK;
+}
+
+void mylite_execution_select_analysis_deinit(struct mylite_select_analysis_state *analysis) {
+    if (analysis == NULL) {
+        return;
+    }
+
+    free(analysis->lowered_sql);
+    free(analysis->binding_types);
+    *analysis = (struct mylite_select_analysis_state){0};
+}
+
 static bool select_parameter_context_is_reusable(
     const struct select_parameter_context_frame *frame
 ) {

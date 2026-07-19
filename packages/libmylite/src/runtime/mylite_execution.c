@@ -1599,9 +1599,16 @@ static int validate_prepared_statement_objects(mylite_stmt *stmt) {
     database->cursor_plan_attempt_unsupported = false;
     switch (stmt->statement->kind) {
     case MYLITE_SQL_AST_SELECT_STATEMENT: {
+        const char *argument_count_error_function =
+            select_statement_argument_count_error_function(stmt->statement);
         struct planned_select plan = {0};
 
-        rc = plan_select(database, stmt->statement, true, &plan);
+        if (argument_count_error_function != NULL) {
+            set_native_function_parameter_count_error(database, argument_count_error_function);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = plan_select(database, stmt->statement, true, &plan);
+        }
         planned_select_deinit(&plan);
         break;
     }

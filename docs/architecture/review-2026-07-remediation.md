@@ -221,7 +221,7 @@ complete.
 
 ### Planning and execution boundaries
 
-- [ ] Promote existing plan families into a typed analyzer boundary containing
+- [x] Promote existing plan families into a typed analyzer boundary containing
   resolved object IDs, expression types/collations, parameters, side effects,
   and diagnostics. Analyzed scalar values and prepared bindings now live in an
   independently compiled ownership/binding module. The module owns deep-copy
@@ -231,8 +231,14 @@ complete.
   separate typed owner as well: it captures the binding-type signature,
   analysis-sensitive session values, catalog and SQLite schema generations,
   parameter-reuse decision, and lowered SQL behind one match/capture/deinit
-  contract instead of duplicating that ownership in the execution unit.
-- [ ] Remove execution-time AST dependencies incrementally. Row-scalar SELECT
+  contract instead of duplicating that ownership in the execution unit. The
+  final boundary audit confirms that the existing typed plan families, rather
+  than a second universal IR, own resolved catalog descriptors and IDs, scalar
+  types and coercions, charset/collation decisions, parameter slots, planned
+  warnings, session/schema reuse keys, statement context, and completion side
+  effects. Planning, binding, lowering, result execution, and completion now
+  expose independently compiled ownership APIs around those contracts.
+- [x] Remove execution-time AST dependencies incrementally. Row-scalar SELECT
   items now retain owned result labels, normalized aliases, and compact typed
   source-metadata shapes; SQL lowering, result metadata, derived-source
   construction, and ORDER BY alias resolution no longer dereference their
@@ -271,7 +277,16 @@ complete.
   queries, and result materialization consume that plan without resolving
   columns, decoding values, allocating predicate values, or traversing AST
   sibling lists per row. Scaling coverage exercises a 512-value IN list and a
-  512-term conjunction under Debug and ASan+UBSan.
+  512-term conjunction under Debug and ASan+UBSan. The final lifetime audit
+  classifies all 121 AST-pointer fields in the execution type declarations.
+  Only nine occur in `planned_*` structures: four are transient COUNT planning
+  clause views, two are CREATE/ALTER column inputs consumed during same-statement
+  analysis, and the three deferred UPDATE/ODKU pointers refer exclusively to
+  owned `mylite_sql_ast_snapshot` roots. No reusable plan borrows parser-owned
+  storage. The profiling regression passes and proves that warm prepared SELECT
+  execution performs zero parses, plan builds, or lowerings, while type,
+  schema, and relevant session invalidation each trigger one owned reparse and
+  rebuild.
 - [x] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization. SQLite result
   extraction/row storage and analyzed-value ownership are now separate

@@ -49,7 +49,7 @@ static int resolve_information_schema_query(
         rc = mylite_execution_information_schema_plan_projection(database, select_list, out_query);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_where(database, where_clause, out_query);
+        rc = mylite_execution_information_schema_plan_predicate(database, where_clause, out_query);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_information_schema_plan_group(database, group_clause, out_query);
@@ -67,7 +67,7 @@ static int resolve_information_schema_query(
         rc = mylite_execution_information_schema_plan_limit(database, limit_clause, out_query);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_query_plan_materialization(database, statement, out_query);
+        rc = information_schema_query_plan_materialization(database, out_query);
     }
     if (rc == MYLITE_OK) {
         return MYLITE_OK;
@@ -79,10 +79,8 @@ static int resolve_information_schema_query(
 
 static int information_schema_query_plan_materialization(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     struct information_schema_query *query
 ) {
-    const struct mylite_sql_ast_node *where_clause = NULL;
     int rc = MYLITE_OK;
 
     if (query == NULL || query->definition == NULL) {
@@ -114,13 +112,19 @@ static int information_schema_query_plan_materialization(
             information_schema_query_require_column(query, query->projection_indexes[index]);
         }
     }
-    where_clause = information_schema_statement_where_clause(statement);
-    if (rc == MYLITE_OK && where_clause != NULL) {
-        rc = information_schema_query_require_expression_columns(
-            database,
-            query,
-            child_at(where_clause, 0U)
-        );
+    for (size_t index = 0U; index < query->predicate.instruction_count; ++index) {
+        enum information_schema_predicate_instruction_kind kind =
+            query->predicate.instructions[index].kind;
+
+        if (kind == INFORMATION_SCHEMA_PREDICATE_COMPARISON ||
+            kind == INFORMATION_SCHEMA_PREDICATE_IS_NULL ||
+            kind == INFORMATION_SCHEMA_PREDICATE_BETWEEN ||
+            kind == INFORMATION_SCHEMA_PREDICATE_IN) {
+            information_schema_query_require_column(
+                query,
+                query->predicate.instructions[index].column_index
+            );
+        }
     }
     for (size_t index = 0U; index < query->group_index_count; ++index) {
         information_schema_query_require_column(query, query->group_indexes[index]);
@@ -167,49 +171,6 @@ static int information_schema_query_plan_materialization(
     return rc;
 }
 
-static int information_schema_query_require_expression_columns(
-    struct mylite_db *database,
-    struct information_schema_query *query,
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    int rc = MYLITE_OK;
-
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    while (rc == MYLITE_OK && stack.count != 0U) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-
-        if (current == NULL) {
-            continue;
-        }
-        if (current->kind == MYLITE_SQL_AST_IDENTIFIER ||
-            current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-            size_t column_index = 0U;
-
-            rc = mylite_execution_information_schema_resolve_column_reference(
-                database,
-                query,
-                current,
-                COLUMN_REFERENCE_FIELD,
-                &column_index
-            );
-            if (rc == MYLITE_OK) {
-                information_schema_query_require_column(query, column_index);
-            }
-            continue;
-        }
-        if (!scalar_arithmetic_node_stack_push_children(&stack, current)) {
-            set_nomem_error(database);
-            rc = MYLITE_NOMEM;
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-    return rc;
-}
-
 static void information_schema_query_require_column(
     struct information_schema_query *query,
     size_t column_index
@@ -237,6 +198,7 @@ static void information_schema_query_deinit(struct information_schema_query *que
         );
     }
     free(query->count_name);
+    mylite_execution_information_schema_predicate_plan_deinit(&query->predicate);
     free(query->projection_names);
     free(query->projection_indexes);
     free(query->projection_kinds);
@@ -248,7 +210,6 @@ static void information_schema_query_deinit(struct information_schema_query *que
 static int execute_information_schema_query(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     bool apply_sql_select_limit,
     mylite_result **out_result
@@ -265,15 +226,13 @@ static int execute_information_schema_query(
     bool skip_row_enumeration =
         (query->limit.has_limit && query->limit.row_count == 0) ||
         (query->is_count_star && query->limit.has_offset && query->limit.offset != 0);
-    int rc =
-        information_schema_catalog_filter_init_from_statement(database, statement, query, &filter);
+    int rc = information_schema_catalog_filter_init_from_query(database, query, &filter);
 
     if (rc == MYLITE_OK) {
         bool handled = false;
 
         rc = information_schema_try_execute_tables_exact_base_table_query(
             database,
-            statement,
             query,
             &filter,
             apply_sql_select_limit,
@@ -301,7 +260,6 @@ static int execute_information_schema_query(
         rc = build_information_schema_rows_with_filter(
             database,
             context,
-            statement,
             query,
             query->definition,
             &filter,
@@ -311,18 +269,11 @@ static int execute_information_schema_query(
         );
     }
     if (rc == MYLITE_OK && query->is_count_star) {
-        rc = information_schema_append_count_result(
-            database,
-            statement,
-            query,
-            &rows,
-            result,
-            &read_row_count
-        );
+        rc =
+            information_schema_append_count_result(database, query, &rows, result, &read_row_count);
     } else if (rc == MYLITE_OK && query->has_group) {
         rc = information_schema_append_grouped_statistics_result_rows(
             database,
-            statement,
             query,
             &rows,
             result,
@@ -331,14 +282,7 @@ static int execute_information_schema_query(
     } else if (rc == MYLITE_OK && stream_during_enumeration) {
         read_row_count = rows.row_count;
     } else if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_rows(
-            database,
-            statement,
-            query,
-            &rows,
-            result,
-            &read_row_count
-        );
+        rc = information_schema_append_result_rows(database, query, &rows, result, &read_row_count);
     }
     if (rc == MYLITE_OK && query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_PROCESSLIST &&
         read_row_count > 0U) {
@@ -366,7 +310,6 @@ static int execute_information_schema_query(
 
 static int information_schema_try_execute_tables_exact_base_table_query(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_catalog_filter *filter,
     bool apply_sql_select_limit,
@@ -384,7 +327,6 @@ static int information_schema_try_execute_tables_exact_base_table_query(
     *out_handled = false;
     rc = information_schema_tables_exact_base_table_query_is_supported(
         database,
-        statement,
         query,
         filter,
         &supported
@@ -421,19 +363,16 @@ static int information_schema_try_execute_tables_exact_base_table_query(
 
 static int information_schema_tables_exact_base_table_query_is_supported(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_catalog_filter *filter,
     bool *out_supported
 ) {
-    const struct mylite_sql_ast_node *where_clause =
-        information_schema_statement_where_clause(statement);
-
     if (out_supported == NULL) {
         return MYLITE_MISUSE;
     }
     *out_supported = false;
-    if (query == NULL || query->definition == NULL || filter == NULL || where_clause == NULL ||
+    if (query == NULL || query->definition == NULL || filter == NULL ||
+        query->predicate.instruction_count == 0U ||
         query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES || query->has_group ||
         !filter->has_schema_name || !filter->has_table_name || !filter->has_table_type ||
         filter->schema_name == NULL || filter->table_name == NULL || filter->table_type == NULL ||
@@ -466,7 +405,6 @@ static int information_schema_tables_exact_base_table_query_is_supported(
         database,
         query,
         filter,
-        child_at(where_clause, 0U),
         out_supported
     );
 }
@@ -475,94 +413,44 @@ static int information_schema_exact_table_lookup_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct information_schema_catalog_filter *filter,
-    const struct mylite_sql_ast_node *predicate,
     bool *out_matches
 ) {
-    predicate = unwrap_parenthesized_predicate(predicate);
     if (out_matches == NULL) {
         return MYLITE_MISUSE;
     }
-    *out_matches = false;
-    if (predicate == NULL) {
-        return MYLITE_OK;
-    }
-    if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE) {
-        bool left_matches = false;
-        bool right_matches = false;
-        int rc = information_schema_exact_table_lookup_predicate_matches(
-            database,
-            query,
-            filter,
-            child_at(predicate, 0U),
-            &left_matches
-        );
+    *out_matches = query != NULL && query->predicate.instruction_count != 0U;
+    for (size_t index = 0U; *out_matches && index < query->predicate.instruction_count; ++index) {
+        const struct information_schema_predicate_instruction *instruction =
+            &query->predicate.instructions[index];
 
-        if (rc != MYLITE_OK || !left_matches) {
-            return rc;
+        if (instruction->kind == INFORMATION_SCHEMA_PREDICATE_AND) {
+            continue;
         }
-        rc = information_schema_exact_table_lookup_predicate_matches(
-            database,
-            query,
-            filter,
-            child_at(predicate, 1U),
-            &right_matches
-        );
-        if (rc == MYLITE_OK) {
-            *out_matches = right_matches;
+        if (instruction->kind != INFORMATION_SCHEMA_PREDICATE_COMPARISON) {
+            *out_matches = false;
+            continue;
         }
-        return rc;
+        *out_matches =
+            information_schema_exact_table_lookup_comparison_matches(query, filter, instruction);
     }
-    if (predicate->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-        return MYLITE_OK;
-    }
-    return information_schema_exact_table_lookup_comparison_matches(
-        database,
-        query,
-        filter,
-        predicate,
-        out_matches
-    );
+    (void)database;
+    return MYLITE_OK;
 }
 
-static int information_schema_exact_table_lookup_comparison_matches(
-    struct mylite_db *database,
+static bool information_schema_exact_table_lookup_comparison_matches(
     const struct information_schema_query *query,
     const struct information_schema_catalog_filter *filter,
-    const struct mylite_sql_ast_node *predicate,
-    bool *out_matches
+    const struct information_schema_predicate_instruction *instruction
 ) {
-    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
-    struct information_schema_predicate_value value = {0};
-    size_t column_index = 0U;
-    int rc = MYLITE_OK;
-
-    *out_matches = false;
-    if (operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
-        operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-        return MYLITE_OK;
-    }
-
-    rc = mylite_execution_information_schema_resolve_column_reference(
-        database,
-        query,
-        child_at(predicate, 0U),
-        COLUMN_REFERENCE_WHERE,
-        &column_index
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = information_schema_predicate_value_text(database, child_at(predicate, 1U), &value);
-    if (rc == MYLITE_OK) {
-        *out_matches = information_schema_exact_table_lookup_value_matches(
-            query,
-            filter,
-            column_index,
-            &value
-        );
-    }
-    free(value.text);
-    return rc;
+    return instruction != NULL && instruction->value_count == 1U && instruction->values != NULL &&
+           (instruction->operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL ||
+            instruction->operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) &&
+           information_schema_exact_table_lookup_value_matches(
+               query,
+               filter,
+               instruction->column_index,
+               &instruction->values[0]
+           );
 }
 
 static bool information_schema_exact_table_lookup_value_matches(
@@ -702,7 +590,6 @@ static int build_information_schema_rows(
         database,
         context,
         NULL,
-        NULL,
         definition,
         NULL,
         NULL,
@@ -714,7 +601,6 @@ static int build_information_schema_rows(
 static int build_information_schema_rows_with_filter(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_table_definition *definition,
     const struct information_schema_catalog_filter *filter,
@@ -725,7 +611,6 @@ static int build_information_schema_rows_with_filter(
     int rc = information_schema_row_set_init(
         database,
         out_rows,
-        statement,
         query,
         definition,
         stream_result,
@@ -758,21 +643,18 @@ static int build_information_schema_rows_with_filter(
 static int information_schema_row_set_init(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_table_definition *definition,
     mylite_result *stream_result,
     struct information_schema_result_projection_buffers *stream_buffers
 ) {
-    const struct mylite_sql_ast_node *where_clause =
-        statement == NULL ? NULL : information_schema_statement_where_clause(statement);
     bool includes_connection_control_failed_login_attempts = false;
     int rc = MYLITE_OK;
 
     *rows = (struct information_schema_row_set){
         .definition = definition,
         .query = query,
-        .predicate = where_clause == NULL ? NULL : child_at(where_clause, 0U),
+        .predicate = query == NULL ? NULL : &query->predicate,
         .required_columns = query == NULL ? NULL : query->required_columns,
         .stream_result = stream_result,
         .stream_buffers = stream_buffers,
@@ -783,7 +665,6 @@ static int information_schema_row_set_init(
     if (definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
         rc = information_schema_includes_connection_control_failed_login_attempts(
             database,
-            statement,
             query,
             &includes_connection_control_failed_login_attempts
         );
@@ -793,7 +674,7 @@ static int information_schema_row_set_init(
         rows->exclude_connection_control_failed_login_attempts =
             !includes_connection_control_failed_login_attempts;
     }
-    rows->predicate_applied = rows->predicate != NULL;
+    rows->predicate_applied = rows->predicate != NULL && rows->predicate->instruction_count != 0U;
     rows->count_only = query->is_count_star;
     if (!query->is_count_star && !query->has_order && !query->has_group && query->limit.has_limit &&
         definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES &&
@@ -809,15 +690,11 @@ static int information_schema_row_set_init(
     return MYLITE_OK;
 }
 
-static int information_schema_catalog_filter_init_from_statement(
+static int information_schema_catalog_filter_init_from_query(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     struct information_schema_catalog_filter *out_filter
 ) {
-    const struct mylite_sql_ast_node *optional_clause =
-        select_statement_optional_clause_start(statement);
-    const struct mylite_sql_ast_node *where_clause = NULL;
     int rc = MYLITE_OK;
 
     if (out_filter == NULL) {
@@ -852,23 +729,10 @@ static int information_schema_catalog_filter_init_from_statement(
         );
     }
 
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            where_clause = optional_clause;
-            break;
-        }
-        optional_clause = optional_clause->next_sibling;
-    }
-    if (where_clause == NULL) {
+    if (query->predicate.instruction_count == 0U) {
         return MYLITE_OK;
     }
-
-    rc = information_schema_catalog_filter_collect_predicate(
-        database,
-        query,
-        child_at(where_clause, 0U),
-        out_filter
-    );
+    rc = information_schema_catalog_filter_collect_predicate(database, query, out_filter);
     if (rc != MYLITE_OK) {
         information_schema_catalog_filter_deinit(out_filter);
     }
@@ -930,85 +794,63 @@ static void information_schema_catalog_filter_deinit(
 static int information_schema_catalog_filter_collect_predicate(
     struct mylite_db *database,
     const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *predicate,
     struct information_schema_catalog_filter *filter
 ) {
-    predicate = unwrap_parenthesized_predicate(predicate);
-    if (predicate == NULL) {
-        return MYLITE_OK;
-    }
-    if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE) {
-        int rc = information_schema_catalog_filter_collect_predicate(
-            database,
-            query,
-            child_at(predicate, 0U),
-            filter
-        );
+    for (size_t index = 0U; index < query->predicate.instruction_count; ++index) {
+        enum information_schema_predicate_instruction_kind kind =
+            query->predicate.instructions[index].kind;
 
+        if (kind != INFORMATION_SCHEMA_PREDICATE_COMPARISON &&
+            kind != INFORMATION_SCHEMA_PREDICATE_IS_NULL &&
+            kind != INFORMATION_SCHEMA_PREDICATE_BETWEEN &&
+            kind != INFORMATION_SCHEMA_PREDICATE_IN && kind != INFORMATION_SCHEMA_PREDICATE_AND) {
+            return MYLITE_OK;
+        }
+    }
+    for (size_t index = 0U; index < query->predicate.instruction_count; ++index) {
+        const struct information_schema_predicate_instruction *instruction =
+            &query->predicate.instructions[index];
+        int rc = MYLITE_OK;
+
+        if (instruction->kind != INFORMATION_SCHEMA_PREDICATE_COMPARISON) {
+            continue;
+        }
+        rc = information_schema_catalog_filter_collect_comparison(database, instruction, filter);
         if (rc != MYLITE_OK) {
             return rc;
         }
-        return information_schema_catalog_filter_collect_predicate(
-            database,
-            query,
-            child_at(predicate, 1U),
-            filter
-        );
-    }
-    if (predicate->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-        return information_schema_catalog_filter_collect_comparison(
-            database,
-            query,
-            predicate,
-            filter
-        );
     }
     return MYLITE_OK;
 }
 
 static int information_schema_catalog_filter_collect_comparison(
     struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *predicate,
+    const struct information_schema_predicate_instruction *instruction,
     struct information_schema_catalog_filter *filter
 ) {
-    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
-    struct information_schema_predicate_value value = {0};
-    size_t column_index = 0U;
-    int rc = MYLITE_OK;
-
-    if (operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
-        operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+    if (instruction->operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
+        instruction->operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
         return MYLITE_OK;
     }
-
-    rc = mylite_execution_information_schema_resolve_column_reference(
+    if (instruction->value_count != 1U || instruction->values == NULL ||
+        (instruction->column_index != filter->schema_column_index &&
+         instruction->column_index != filter->table_column_index &&
+         instruction->column_index != filter->table_type_column_index)) {
+        return MYLITE_OK;
+    }
+    return information_schema_catalog_filter_set_value(
         database,
-        query,
-        child_at(predicate, 0U),
-        COLUMN_REFERENCE_WHERE,
-        &column_index
+        filter,
+        instruction->column_index,
+        &instruction->values[0]
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (column_index != filter->schema_column_index && column_index != filter->table_column_index &&
-        column_index != filter->table_type_column_index) {
-        return MYLITE_OK;
-    }
-
-    rc = information_schema_predicate_value_text(database, child_at(predicate, 1U), &value);
-    if (rc == MYLITE_OK) {
-        rc = information_schema_catalog_filter_set_value(filter, column_index, &value);
-    }
-    free(value.text);
-    return rc;
 }
 
 static int information_schema_catalog_filter_set_value(
+    struct mylite_db *database,
     struct information_schema_catalog_filter *filter,
     size_t column_index,
-    struct information_schema_predicate_value *value
+    const struct information_schema_predicate_value *value
 ) {
     char **target = NULL;
     bool *has_target = NULL;
@@ -1033,8 +875,9 @@ static int information_schema_catalog_filter_set_value(
         return MYLITE_OK;
     }
 
-    *target = value->text;
-    value->text = NULL;
+    if (duplicate_text(database, value->text, target) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
     *has_target = true;
     return MYLITE_OK;
 }

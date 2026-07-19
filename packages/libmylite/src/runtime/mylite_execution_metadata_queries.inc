@@ -2251,7 +2251,6 @@ static int execute_information_schema_select_statement(
         rc = execute_information_schema_query(
             database,
             context,
-            statement,
             &query,
             apply_sql_select_limit,
             out_result
@@ -2419,7 +2418,6 @@ static int execute_mysql_system_table_select_statement(
         rc = execute_mysql_system_table_query(
             database,
             context,
-            statement,
             &query,
             definition,
             apply_sql_select_limit,
@@ -2705,7 +2703,7 @@ static int resolve_mysql_system_table_query(
         rc = mylite_execution_information_schema_plan_projection(database, select_list, out_query);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_plan_where(database, where_clause, out_query);
+        rc = mylite_execution_information_schema_plan_predicate(database, where_clause, out_query);
     }
     if (rc == MYLITE_OK) {
         out_query->limit = (struct planned_select_limit){

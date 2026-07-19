@@ -163,7 +163,6 @@ static int information_schema_join_compat_append_columns_tables_join_row(
 );
 static int information_schema_join_compat_append_tables_grouped_size_rows(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     mylite_result *result
@@ -564,6 +563,7 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
     };
     struct information_schema_row_set rows = {0};
     struct information_schema_query query = {.definition = definition};
+    const struct mylite_sql_ast_node *where_clause = NULL;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
@@ -571,9 +571,24 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
         set_runtime_error(database, "missing INFORMATION_SCHEMA.TABLES definition");
         return MYLITE_ERROR;
     }
-    rc = mylite_result_create(&result);
+    for (const struct mylite_sql_ast_node *clause =
+             select_statement_optional_clause_start(statement);
+         clause != NULL;
+         clause = clause->next_sibling) {
+        if (clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = clause;
+            break;
+        }
+    }
+    rc = mylite_execution_information_schema_plan_predicate(database, where_clause, &query);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+    }
     if (rc != MYLITE_OK) {
-        set_nomem_error(database);
+        information_schema_query_deinit(&query);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
         return rc;
     }
     rc = information_schema_join_compat_append_source_columns(
@@ -591,7 +606,6 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
     if (rc == MYLITE_OK) {
         rc = information_schema_join_compat_append_tables_grouped_size_rows(
             database,
-            statement,
             &query,
             &rows,
             result
@@ -599,14 +613,17 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
     }
     information_schema_row_set_deinit(&rows);
     if (rc == MYLITE_OK) {
-        return information_schema_join_compat_finish_result(
+        rc = information_schema_join_compat_finish_result(
             database,
             apply_sql_select_limit,
             result,
             out_result
         );
+        information_schema_query_deinit(&query);
+        return rc;
     }
     mylite_result_free(result);
+    information_schema_query_deinit(&query);
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
     }
@@ -1305,13 +1322,12 @@ static int information_schema_join_compat_append_columns_tables_join_row(
 
 static int information_schema_join_compat_append_tables_grouped_size_rows(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     mylite_result *result
 ) {
     struct information_schema_row_index_set indexes = {0};
-    int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+    int rc = information_schema_matching_row_indexes(database, query, rows, &indexes);
 
     if (rc == MYLITE_OK) {
         rc = information_schema_sort_tables_default_row_indexes(

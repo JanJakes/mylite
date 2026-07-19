@@ -55,6 +55,25 @@ struct information_schema_numeric_plan_stack {
     size_t capacity;
 };
 
+enum information_schema_predicate_plan_action {
+    INFORMATION_SCHEMA_PREDICATE_PLAN_VISIT = 0,
+    INFORMATION_SCHEMA_PREDICATE_PLAN_APPEND = 1,
+};
+
+struct information_schema_predicate_plan_frame {
+    const struct mylite_sql_ast_node *node;
+    enum information_schema_predicate_plan_action action;
+    enum information_schema_predicate_instruction_kind instruction_kind;
+};
+
+struct information_schema_predicate_plan_stack {
+    struct information_schema_predicate_plan_frame stack_items[if_stack_initial_capacity];
+    struct information_schema_predicate_plan_frame *items;
+    size_t count;
+    size_t capacity;
+    bool uses_heap;
+};
+
 static int information_schema_plan_projection(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -189,6 +208,62 @@ static int information_schema_plan_limit(
     const struct mylite_sql_ast_node *limit_clause,
     struct information_schema_query *out_query
 );
+static int information_schema_plan_where(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    struct information_schema_query *query
+);
+static int information_schema_compile_predicate(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_compile_predicate_visit(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct information_schema_predicate_plan_stack *stack
+);
+static int information_schema_compile_comparison_predicate(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_compile_is_null_predicate(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_compile_between_predicate(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_compile_in_predicate(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_append_predicate_instruction(
+    struct mylite_db *database,
+    struct information_schema_predicate_plan *plan,
+    struct information_schema_predicate_instruction *instruction
+);
+static void information_schema_predicate_instruction_deinit(
+    struct information_schema_predicate_instruction *instruction
+);
+static int information_schema_predicate_plan_stack_push(
+    struct mylite_db *database,
+    struct information_schema_predicate_plan_stack *stack,
+    struct information_schema_predicate_plan_frame frame
+);
+static bool information_schema_predicate_plan_stack_pop(
+    struct information_schema_predicate_plan_stack *stack,
+    struct information_schema_predicate_plan_frame *out_frame
+);
+static void information_schema_predicate_plan_stack_deinit(
+    struct information_schema_predicate_plan_stack *stack
+);
 static int information_schema_resolve_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *from_clause,
@@ -271,6 +346,14 @@ int mylite_execution_information_schema_plan_limit(
     return information_schema_plan_limit(database, limit_clause, out_query);
 }
 
+int mylite_execution_information_schema_plan_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    struct information_schema_query *out_query
+) {
+    return information_schema_plan_where(database, where_clause, out_query);
+}
+
 int mylite_execution_information_schema_resolve_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *from_clause,
@@ -320,6 +403,20 @@ void mylite_execution_information_schema_projection_expression_deinit(
     *expression = (struct information_schema_projection_expression){0};
 }
 
+void mylite_execution_information_schema_predicate_plan_deinit(
+    struct information_schema_predicate_plan *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < plan->instruction_count; ++index) {
+        information_schema_predicate_instruction_deinit(&plan->instructions[index]);
+    }
+    free(plan->instructions);
+    *plan = (struct information_schema_predicate_plan){0};
+}
+
+#include "mylite_execution_information_schema_predicate_validation.inc"
 #include "mylite_execution_information_schema_query_planning.inc"
 
 static int information_schema_resolve_column_reference(

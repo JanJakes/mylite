@@ -1,7 +1,6 @@
 static int execute_mysql_system_table_query(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     bool apply_sql_select_limit,
@@ -33,7 +32,6 @@ static int execute_mysql_system_table_query(
         rc = build_mysql_system_table_rows(
             database,
             context,
-            statement,
             query,
             definition,
             stream_during_enumeration ? result : NULL,
@@ -42,25 +40,12 @@ static int execute_mysql_system_table_query(
         );
     }
     if (rc == MYLITE_OK && query->is_count_star) {
-        rc = information_schema_append_count_result(
-            database,
-            statement,
-            query,
-            &rows,
-            result,
-            &read_row_count
-        );
+        rc =
+            information_schema_append_count_result(database, query, &rows, result, &read_row_count);
     } else if (rc == MYLITE_OK && stream_during_enumeration) {
         read_row_count = rows.row_count;
     } else if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_rows(
-            database,
-            statement,
-            query,
-            &rows,
-            result,
-            &read_row_count
-        );
+        rc = information_schema_append_result_rows(database, query, &rows, result, &read_row_count);
     }
     information_schema_result_projection_buffers_deinit(&stream_buffers);
     information_schema_row_set_deinit(&rows);
@@ -79,7 +64,6 @@ static int execute_mysql_system_table_query(
 static int build_mysql_system_table_rows(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     mylite_result *stream_result,
@@ -93,7 +77,6 @@ static int build_mysql_system_table_rows(
     rc = information_schema_row_set_init(
         database,
         out_rows,
-        statement,
         query,
         &definition->query_definition,
         stream_result,

@@ -2862,7 +2862,7 @@ struct information_schema_innodb_character_type_request {
 struct information_schema_row_set {
     const struct mylite_execution_catalog_table_definition *definition;
     const struct information_schema_query *query;
-    const struct mylite_sql_ast_node *predicate;
+    const struct information_schema_predicate_plan *predicate;
     const bool *required_columns;
     mylite_result *stream_result;
     struct information_schema_result_projection_buffers *stream_buffers;
@@ -2936,6 +2936,31 @@ struct information_schema_predicate_value {
     char like_escape_character;
 };
 
+enum information_schema_predicate_instruction_kind {
+    INFORMATION_SCHEMA_PREDICATE_COMPARISON = 0,
+    INFORMATION_SCHEMA_PREDICATE_IS_NULL = 1,
+    INFORMATION_SCHEMA_PREDICATE_BETWEEN = 2,
+    INFORMATION_SCHEMA_PREDICATE_IN = 3,
+    INFORMATION_SCHEMA_PREDICATE_NOT = 4,
+    INFORMATION_SCHEMA_PREDICATE_AND = 5,
+    INFORMATION_SCHEMA_PREDICATE_OR = 6,
+    INFORMATION_SCHEMA_PREDICATE_XOR = 7,
+};
+
+struct information_schema_predicate_instruction {
+    enum information_schema_predicate_instruction_kind kind;
+    enum mylite_sql_ast_operator operator_kind;
+    size_t column_index;
+    struct information_schema_predicate_value *values;
+    size_t value_count;
+};
+
+struct information_schema_predicate_plan {
+    struct information_schema_predicate_instruction *instructions;
+    size_t instruction_count;
+    size_t instruction_capacity;
+};
+
 struct enum_label_descriptor {
     const char *text;
     size_t text_length;
@@ -2973,28 +2998,10 @@ enum enum_string_trailing_space_policy {
     ENUM_STRING_TRIM_TRAILING_SPACES,
 };
 
-enum information_schema_predicate_eval_action {
-    INFORMATION_SCHEMA_PREDICATE_VISIT = 0,
-    INFORMATION_SCHEMA_PREDICATE_EVALUATE = 1,
-};
-
 enum information_schema_truth_value {
     INFORMATION_SCHEMA_TRUTH_FALSE = 0,
     INFORMATION_SCHEMA_TRUTH_TRUE = 1,
     INFORMATION_SCHEMA_TRUTH_UNKNOWN = 2,
-};
-
-struct information_schema_predicate_eval_frame {
-    const struct mylite_sql_ast_node *node;
-    enum information_schema_predicate_eval_action action;
-};
-
-struct information_schema_predicate_frame_stack {
-    struct information_schema_predicate_eval_frame stack_items[if_stack_initial_capacity];
-    struct information_schema_predicate_eval_frame *items;
-    size_t count;
-    size_t capacity;
-    bool uses_heap;
 };
 
 struct information_schema_truth_stack {
@@ -3042,6 +3049,7 @@ struct information_schema_query {
     bool has_alias;
     bool is_count_star;
     char *count_name;
+    struct information_schema_predicate_plan predicate;
     size_t *projection_indexes;
     enum information_schema_projection_kind *projection_kinds;
     struct information_schema_projection_expression *projection_expressions;

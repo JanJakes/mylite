@@ -3241,6 +3241,29 @@ int mylite_execution_information_schema_make_scalar_result_descriptor(
     return make_scalar_result_column_descriptor(database, expression, label, out_descriptor);
 }
 
+int mylite_execution_information_schema_copy_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    enum mylite_execution_information_schema_predicate_value_kind kind,
+    struct information_schema_predicate_value *out_value
+) {
+    if (kind == MYLITE_EXECUTION_INFORMATION_SCHEMA_PREDICATE_LITERAL) {
+        return information_schema_predicate_literal_value_text(database, value, out_value);
+    }
+    if (kind == MYLITE_EXECUTION_INFORMATION_SCHEMA_PREDICATE_LIKE_PATTERN) {
+        return information_schema_predicate_like_pattern_text(database, value, out_value);
+    }
+    return information_schema_predicate_value_text(database, value, out_value);
+}
+
+int mylite_execution_information_schema_predicate_escape_character(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    char *out_escape_character
+) {
+    return like_escape_character_from_predicate(database, predicate, out_escape_character);
+}
+
 bool mylite_execution_select_order_source_context_is_joined(
     const struct select_source_context *source_context
 ) {
@@ -3815,8 +3838,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_information_schema_statistics_rows.inc"
 
 #include "mylite_execution_information_schema_result_rows.inc"
-
-#include "mylite_execution_information_schema_predicate_validation.inc"
 
 #include "mylite_execution_information_schema_predicate_evaluation.inc"
 

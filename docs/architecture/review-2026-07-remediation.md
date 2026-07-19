@@ -264,7 +264,14 @@ complete.
   conversion. Snapshots own compact subtree-local source bytes, clone
   iteratively, and are released with their plans, so these executors no longer
   borrow the statement parser tree. Typed scalar-subquery and row-scalar plans
-  retain no redundant syntax snapshot.
+  retain no redundant syntax snapshot. INFORMATION_SCHEMA predicates now
+  compile once into an owned postfix instruction plan with resolved columns,
+  operators, decoded literals, and LIKE escape state. Row filtering, catalog
+  pushdown, exact-table lookup, connection-control gating, grouped compatibility
+  queries, and result materialization consume that plan without resolving
+  columns, decoding values, allocating predicate values, or traversing AST
+  sibling lists per row. Scaling coverage exercises a 512-value IN list and a
+  512-term conjunction under Debug and ASan+UBSan.
 - [ ] Split `mylite_execution.c` into cohesive translation units with explicit
   internal APIs and preserved caller-before-callee organization. SQLite result
   extraction/row storage and analyzed-value ownership are now separate
@@ -307,7 +314,14 @@ complete.
   planner object is 17,720 bytes. The archive remains effectively size-neutral
   because explicit interfaces add symbols, while metadata planner changes no
   longer require compiling that policy inside the main execution object.
-  Planner clusters still need the same treatment.
+  INFORMATION_SCHEMA predicate validation and compilation now live in that
+  planner too, exposed as an owned typed plan through a narrow API. Execution
+  retains only two explicit callbacks for compatibility literal decoding and
+  LIKE escape semantics. The CI execution object fell from 3,411,552 to
+  3,403,072 bytes while the planner object grew from 17,720 to 29,088 bytes;
+  this trades 8,480 bytes out of the dominant object for a net 2,888-byte
+  explicit-interface increase across the pair. Planner clusters still need the
+  same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

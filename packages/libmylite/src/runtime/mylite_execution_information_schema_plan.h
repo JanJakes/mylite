@@ -7,6 +7,7 @@
 
 struct information_schema_query;
 struct information_schema_projection_expression;
+struct information_schema_predicate_plan;
 struct mylite_db;
 struct mylite_execution_catalog_table_definition;
 struct mylite_sql_ast_node;
@@ -31,6 +32,11 @@ int mylite_execution_information_schema_plan_limit(
     const struct mylite_sql_ast_node *limit_clause,
     struct information_schema_query *out_query
 );
+int mylite_execution_information_schema_plan_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    struct information_schema_query *out_query
+);
 int mylite_execution_information_schema_resolve_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *from_clause,
@@ -53,6 +59,9 @@ const struct mylite_execution_catalog_table_definition *mylite_execution_find_in
 );
 void mylite_execution_information_schema_projection_expression_deinit(
     struct information_schema_projection_expression *expression
+);
+void mylite_execution_information_schema_predicate_plan_deinit(
+    struct information_schema_predicate_plan *plan
 );
 
 #endif

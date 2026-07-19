@@ -461,14 +461,11 @@ static void information_schema_make_logical_result_column_descriptor(
 
 static int information_schema_append_result_rows(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     mylite_result *result,
     size_t *out_read_row_count
 ) {
-    const struct mylite_sql_ast_node *where_clause =
-        information_schema_statement_where_clause(statement);
     struct information_schema_row_index_set indexes = {0};
     size_t visible_count = 0U;
     struct information_schema_result_projection_buffers buffers = {0};
@@ -477,7 +474,7 @@ static int information_schema_append_result_rows(
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
     }
-    if (information_schema_result_rows_can_stream(query, where_clause)) {
+    if (information_schema_result_rows_can_stream(query)) {
         return information_schema_append_streamed_result_rows(
             database,
             query,
@@ -487,7 +484,7 @@ static int information_schema_append_result_rows(
         );
     }
 
-    rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+    rc = information_schema_matching_row_indexes(database, query, rows, &indexes);
     if (rc == MYLITE_OK && indexes.count == 0U) {
         information_schema_row_index_set_deinit(&indexes);
         return MYLITE_OK;
@@ -500,7 +497,6 @@ static int information_schema_append_result_rows(
     if (rc == MYLITE_OK) {
         rc = information_schema_sort_row_indexes(
             database,
-            statement,
             query,
             rows,
             indexes.items,
@@ -582,17 +578,14 @@ static int information_schema_append_streamed_result_rows(
     return rc;
 }
 
-static bool information_schema_result_rows_can_stream(
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *where_clause
+static bool information_schema_result_rows_can_stream(const struct information_schema_query *query
 ) {
-    return query != NULL && query->definition != NULL && where_clause == NULL &&
+    return query != NULL && query->definition != NULL && query->predicate.instruction_count == 0U &&
            !query->has_order && query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES;
 }
 
 static int information_schema_append_grouped_statistics_result_rows(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     mylite_result *result,
@@ -602,7 +595,7 @@ static int information_schema_append_grouped_statistics_result_rows(
     size_t grouped_row_count = 0U;
     size_t visible_count = 0U;
     struct information_schema_result_projection_buffers buffers = {0};
-    int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+    int rc = information_schema_matching_row_indexes(database, query, rows, &indexes);
 
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
@@ -1446,7 +1439,6 @@ static int information_schema_numeric_text_value(
 
 static int information_schema_append_count_result(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     mylite_result *result,
@@ -1465,7 +1457,7 @@ static int information_schema_append_count_result(
     if (rows->count_only) {
         count = rows->row_count;
     } else {
-        rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+        rc = information_schema_matching_row_indexes(database, query, rows, &indexes);
         count = indexes.count;
     }
     if ((query->limit.has_limit && query->limit.row_count == 0) ||
@@ -1501,13 +1493,10 @@ static char *information_schema_projection_computed_buffer(
 
 static int information_schema_matching_row_indexes(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     struct information_schema_row_index_set *out_indexes
 ) {
-    const struct mylite_sql_ast_node *where_clause =
-        information_schema_statement_where_clause(statement);
     int rc = MYLITE_OK;
 
     if (out_indexes == NULL) {
@@ -1521,11 +1510,11 @@ static int information_schema_matching_row_indexes(
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < rows->row_count; ++row_index) {
         bool matches = true;
 
-        if (where_clause != NULL && !rows->predicate_applied) {
+        if (query->predicate.instruction_count != 0U && !rows->predicate_applied) {
             rc = information_schema_predicate_matches(
                 database,
                 query,
-                child_at(where_clause, 0U),
+                &query->predicate,
                 (const char *const *)rows->rows[row_index],
                 &matches
             );
@@ -1540,21 +1529,6 @@ static int information_schema_matching_row_indexes(
     }
 
     return MYLITE_OK;
-}
-
-static const struct mylite_sql_ast_node *information_schema_statement_where_clause(
-    const struct mylite_sql_ast_node *statement
-) {
-    const struct mylite_sql_ast_node *optional_clause =
-        select_statement_optional_clause_start(statement);
-
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            return optional_clause;
-        }
-        optional_clause = optional_clause->next_sibling;
-    }
-    return NULL;
 }
 
 static void information_schema_row_index_set_init(struct information_schema_row_index_set *indexes
@@ -1619,121 +1593,32 @@ static void information_schema_row_index_set_deinit(struct information_schema_ro
 
 static int information_schema_includes_connection_control_failed_login_attempts(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     bool *out_includes_table
 ) {
-    const struct mylite_sql_ast_node *optional_clause = NULL;
-
     if (out_includes_table == NULL) {
         return MYLITE_MISUSE;
     }
     *out_includes_table = false;
-    if (statement == NULL || query == NULL ||
-        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
+    if (query == NULL || query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
         return MYLITE_OK;
     }
+    for (size_t index = 0U; index < query->predicate.instruction_count; ++index) {
+        const struct information_schema_predicate_instruction *instruction =
+            &query->predicate.instructions[index];
 
-    optional_clause = information_schema_statement_where_clause(statement);
-    if (optional_clause != NULL) {
-        return information_schema_predicate_includes_connection_control_failed_login_attempts(
-            database,
-            query,
-            child_at(optional_clause, 0U),
-            out_includes_table
-        );
-    }
-    return MYLITE_OK;
-}
-
-static int information_schema_predicate_includes_connection_control_failed_login_attempts(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *predicate_node,
-    bool *out_includes_table
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    int rc = MYLITE_OK;
-
-    if (out_includes_table == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_includes_table = false;
-    if (!scalar_arithmetic_node_stack_push(&stack, predicate_node)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    while (rc == MYLITE_OK && stack.count != 0U && !*out_includes_table) {
-        const struct mylite_sql_ast_node *predicate =
-            unwrap_parenthesized_predicate(stack.items[--stack.count]);
-
-        if (predicate == NULL) {
-            continue;
-        }
-        if (predicate->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-            rc = information_schema_predicate_marks_connection_control_failed_login_attempts(
-                database,
-                query,
-                predicate,
-                out_includes_table
-            );
-        } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-                   predicate->kind == MYLITE_SQL_AST_OR_PREDICATE ||
-                   predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
-            rc = information_schema_predicate_stack_push_binary_children(
-                database,
-                &stack,
-                predicate
-            );
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-    return rc;
-}
-
-static int information_schema_predicate_marks_connection_control_failed_login_attempts(
-    struct mylite_db *database,
-    const struct information_schema_query *query,
-    const struct mylite_sql_ast_node *predicate,
-    bool *out_includes_table
-) {
-    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
-    size_t column_index = 0U;
-    struct information_schema_predicate_value right = {0};
-    int rc = MYLITE_OK;
-
-    if (operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
-        operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-        return MYLITE_OK;
-    }
-    rc = mylite_execution_information_schema_resolve_column_reference(
-        database,
-        query,
-        child_at(predicate, 0U),
-        COLUMN_REFERENCE_WHERE,
-        &column_index
-    );
-    if (rc == MYLITE_OK && column_index == information_schema_tables_table_name_column) {
-        rc = information_schema_predicate_value_text(database, child_at(predicate, 1U), &right);
-        if (rc == MYLITE_OK && !right.is_null && right.text != NULL &&
-            strcmp(right.text, "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS") == 0) {
+        if (instruction->kind == INFORMATION_SCHEMA_PREDICATE_COMPARISON &&
+            (instruction->operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL ||
+             instruction->operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) &&
+            instruction->column_index == information_schema_tables_table_name_column &&
+            instruction->value_count == 1U && instruction->values != NULL &&
+            !instruction->values[0].is_null && instruction->values[0].text != NULL &&
+            strcmp(instruction->values[0].text, "CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS") == 0) {
             *out_includes_table = true;
+            break;
         }
     }
-    free(right.text);
-    return rc;
-}
-
-static int information_schema_predicate_stack_push_binary_children(
-    struct mylite_db *database,
-    struct scalar_arithmetic_node_stack *stack,
-    const struct mylite_sql_ast_node *predicate
-) {
-    if (!scalar_arithmetic_node_stack_push(stack, child_at(predicate, 1U)) ||
-        !scalar_arithmetic_node_stack_push(stack, child_at(predicate, 0U))) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
+    (void)database;
     return MYLITE_OK;
 }
 
@@ -1751,7 +1636,6 @@ static bool information_schema_row_is_connection_control_failed_login_attempts(
 
 static int information_schema_sort_row_indexes(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     size_t *indexes,
@@ -1760,7 +1644,6 @@ static int information_schema_sort_row_indexes(
     int rc = MYLITE_OK;
 
     if (!query->has_order) {
-        (void)statement;
         if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
             rc = information_schema_sort_tables_default_row_indexes(
                 database,

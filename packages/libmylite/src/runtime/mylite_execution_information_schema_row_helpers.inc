@@ -12,7 +12,7 @@ static int append_information_schema_row(
         information_schema_row_is_connection_control_failed_login_attempts(values)) {
         return MYLITE_OK;
     }
-    if (rows->predicate != NULL) {
+    if (rows->predicate != NULL && rows->predicate->instruction_count != 0U) {
         rc = information_schema_predicate_matches(
             database,
             rows->query,

@@ -13,6 +13,8 @@
 enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16,
+    predicate_scaling_sql_capacity = 32768,
+    predicate_scaling_item_count = 512,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
 };
@@ -35,6 +37,7 @@ struct expected_sql_error {
 
 static int test_information_schema_predicates(void);
 static int seed_database(mylite_db *database);
+static int expect_owned_predicate_plan_scaling(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_error(mylite_db *database, struct expected_sql_error expected);
@@ -368,6 +371,7 @@ static int test_information_schema_predicates(void) {
     );
     failures += expect_statement_ok(database, "USE app", -1);
     failures += expect_statement_ok(database, "CREATE TABLE after_reopen (id INT)", -1);
+    failures += expect_owned_predicate_plan_scaling(database);
     failures += expect_query(
         database,
         (struct expected_query){
@@ -448,6 +452,76 @@ static int seed_database(mylite_db *database) {
     );
     failures += expect_statement_ok(database, "CREATE TABLE wp_options (id INT)", -1);
     failures += expect_statement_ok(database, "CREATE TABLE wpa (id INT)", -1);
+    return failures;
+}
+
+static int expect_owned_predicate_plan_scaling(mylite_db *database) {
+    static const char *const table_name_column[] = {"TABLE_NAME"};
+    static const char *const t_value[] = {"t"};
+    char sql[predicate_scaling_sql_capacity];
+    size_t length = 0U;
+    int failures = 0;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME IN ("
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    length = (size_t)written;
+    for (size_t index = 0U; index < predicate_scaling_item_count; ++index) {
+        written = snprintf(sql + length, sizeof(sql) - length, "'missing%zu',", index);
+        if (written < 0 || (size_t)written >= sizeof(sql) - length) {
+            return 1;
+        }
+        length += (size_t)written;
+    }
+    written = snprintf(sql + length, sizeof(sql) - length, "'t')");
+    if (written < 0 || (size_t)written >= sizeof(sql) - length) {
+        return 1;
+    }
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = sql,
+            .column_names = table_name_column,
+            .column_count = 1U,
+            .values = t_value,
+            .row_count = 1U,
+            .context = "large owned metadata IN predicate",
+        }
+    );
+
+    written = snprintf(sql, sizeof(sql), "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE ");
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        return failures + 1;
+    }
+    length = (size_t)written;
+    for (size_t index = 0U; index < predicate_scaling_item_count; ++index) {
+        written = snprintf(sql + length, sizeof(sql) - length, "TABLE_SCHEMA = 'app' AND ");
+        if (written < 0 || (size_t)written >= sizeof(sql) - length) {
+            return failures + 1;
+        }
+        length += (size_t)written;
+    }
+    written = snprintf(sql + length, sizeof(sql) - length, "TABLE_NAME = 't'");
+    if (written < 0 || (size_t)written >= sizeof(sql) - length) {
+        return failures + 1;
+    }
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = sql,
+            .column_names = table_name_column,
+            .column_count = 1U,
+            .values = t_value,
+            .row_count = 1U,
+            .context = "deep owned metadata conjunction",
+        }
+    );
     return failures;
 }
 

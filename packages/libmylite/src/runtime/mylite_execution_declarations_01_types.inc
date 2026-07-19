@@ -2658,19 +2658,6 @@ struct mylite_select_analysis_session_key {
     bool sql_auto_is_null;
 };
 
-struct mylite_select_parameter_context_frame {
-    const struct mylite_sql_ast_node *node;
-    enum mylite_sql_ast_node_kind parent_kind;
-    enum mylite_sql_ast_node_kind grandparent_kind;
-    size_t child_index;
-};
-
-struct mylite_select_parameter_context_stack {
-    struct mylite_select_parameter_context_frame *items;
-    size_t count;
-    size_t capacity;
-};
-
 struct mylite_analyzed_select_plan {
     struct planned_select plan;
     char *lowered_sql;

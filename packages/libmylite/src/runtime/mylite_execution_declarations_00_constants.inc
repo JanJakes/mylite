@@ -33,7 +33,6 @@ enum {
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
     integer_text_capacity = mylite_execution_scalar_integer_text_capacity,
-    select_parameter_context_stack_initial_capacity = 32,
     information_schema_projection_stack_capacity = 8,
     information_schema_join_predicate_stack_capacity = 8,
     information_schema_row_index_stack_capacity = 64,

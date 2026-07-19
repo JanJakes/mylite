@@ -37,6 +37,7 @@
 #include "mylite_execution_scalar_string_position.h"
 #include "mylite_execution_scalar_string_transform.h"
 #include "mylite_execution_scalar_temporal_format.h"
+#include "mylite_execution_select_analysis.h"
 #include "mylite_execution_show_filter.h"
 #include "mylite_execution_sql_lowering_support.h"
 #include "mylite_execution_sql_normalization.h"
@@ -1900,11 +1901,13 @@ static int analyze_prepared_select(mylite_stmt *stmt) {
 #ifdef MYLITE_ENABLE_PROFILING
     profile_plan_started_ns = mylite_profile_now_ns();
 #endif
-    rc = prepared_select_parameter_contexts_are_reusable(
-        database,
+    rc = mylite_execution_select_parameters_are_plan_reusable(
         stmt->statement,
         &parameter_contexts_are_reusable
     );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
     stmt->parameter_plan_reusable = parameter_contexts_are_reusable;
     if (rc == MYLITE_OK) {
         rc = plan_select(database, stmt->statement, true, &analyzed->plan);
@@ -1993,118 +1996,6 @@ static void release_prepared_statement_parse_tree(mylite_stmt *stmt) {
     stmt->parse_result = (struct mylite_sql_parse_result){0};
     stmt->statement = NULL;
     stmt->has_parse_result = false;
-}
-
-static int prepared_select_parameter_contexts_are_reusable(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    bool *out_reusable
-) {
-    struct mylite_select_parameter_context_stack stack = {0};
-    const struct mylite_select_parameter_context_frame root = {
-        .node = statement,
-        .parent_kind = MYLITE_SQL_AST_SCRIPT,
-        .grandparent_kind = MYLITE_SQL_AST_SCRIPT,
-        .child_index = SIZE_MAX,
-    };
-    int rc = MYLITE_OK;
-
-    if (statement == NULL || out_reusable == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_reusable = true;
-    if (!mylite_select_parameter_context_stack_push(&stack, &root)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    while (stack.count != 0U && *out_reusable) {
-        struct mylite_select_parameter_context_frame frame = stack.items[--stack.count];
-        const struct mylite_sql_ast_node *child = NULL;
-        size_t child_index = 0U;
-
-        if (frame.node->kind == MYLITE_SQL_AST_PARAMETER) {
-            *out_reusable = prepared_select_parameter_context_is_reusable(&frame);
-            continue;
-        }
-        for (child = frame.node->first_child; child != NULL; child = child->next_sibling) {
-            struct mylite_select_parameter_context_frame child_frame = {
-                .node = child,
-                .parent_kind = frame.node->kind,
-                .grandparent_kind = frame.parent_kind,
-                .child_index = child_index,
-            };
-
-            if (frame.node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-                child_frame.parent_kind = frame.parent_kind;
-                child_frame.grandparent_kind = frame.grandparent_kind;
-                child_frame.child_index = frame.child_index;
-            }
-            if (!mylite_select_parameter_context_stack_push(&stack, &child_frame)) {
-                set_nomem_error(database);
-                rc = MYLITE_NOMEM;
-                break;
-            }
-            ++child_index;
-        }
-        if (rc != MYLITE_OK) {
-            break;
-        }
-    }
-    mylite_select_parameter_context_stack_deinit(&stack);
-    return rc;
-}
-
-static bool prepared_select_parameter_context_is_reusable(
-    const struct mylite_select_parameter_context_frame *frame
-) {
-    if (frame == NULL) {
-        return false;
-    }
-    if (frame->parent_kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-        return frame->child_index == 1U;
-    }
-    if (frame->parent_kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
-        return frame->child_index == 1U || frame->child_index == 2U;
-    }
-    return frame->parent_kind == MYLITE_SQL_AST_PREDICATE_VALUE_LIST &&
-           frame->grandparent_kind == MYLITE_SQL_AST_IN_PREDICATE;
-}
-
-static bool mylite_select_parameter_context_stack_push(
-    struct mylite_select_parameter_context_stack *stack,
-    const struct mylite_select_parameter_context_frame *frame
-) {
-    struct mylite_select_parameter_context_frame *items = NULL;
-    size_t capacity = 0U;
-
-    if (stack == NULL || frame == NULL) {
-        return false;
-    }
-    if (stack->count == stack->capacity) {
-        capacity = stack->capacity == 0U ? select_parameter_context_stack_initial_capacity
-                                         : stack->capacity * 2U;
-        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
-            return false;
-        }
-        items = realloc(stack->items, capacity * sizeof(*items));
-        if (items == NULL) {
-            return false;
-        }
-        stack->items = items;
-        stack->capacity = capacity;
-    }
-    stack->items[stack->count++] = *frame;
-    return true;
-}
-
-static void mylite_select_parameter_context_stack_deinit(
-    struct mylite_select_parameter_context_stack *stack
-) {
-    if (stack == NULL) {
-        return;
-    }
-    free(stack->items);
-    *stack = (struct mylite_select_parameter_context_stack){0};
 }
 
 static bool analyzed_select_binding_types_match(const mylite_stmt *stmt) {

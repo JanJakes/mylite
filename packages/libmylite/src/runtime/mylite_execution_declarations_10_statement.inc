@@ -54,21 +54,6 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
 static int analyze_prepared_select(mylite_stmt *stmt);
 static int ensure_prepared_statement_parse_tree(mylite_stmt *stmt);
 static void release_prepared_statement_parse_tree(mylite_stmt *stmt);
-static int prepared_select_parameter_contexts_are_reusable(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    bool *out_reusable
-);
-static bool prepared_select_parameter_context_is_reusable(
-    const struct mylite_select_parameter_context_frame *frame
-);
-static bool mylite_select_parameter_context_stack_push(
-    struct mylite_select_parameter_context_stack *stack,
-    const struct mylite_select_parameter_context_frame *frame
-);
-static void mylite_select_parameter_context_stack_deinit(
-    struct mylite_select_parameter_context_stack *stack
-);
 static bool analyzed_select_binding_types_match(const mylite_stmt *stmt);
 static bool analyzed_select_session_state_matches(const mylite_stmt *stmt);
 static int retain_analyzed_select_binding_types(mylite_stmt *stmt);

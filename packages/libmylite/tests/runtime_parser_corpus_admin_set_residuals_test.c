@@ -42,7 +42,7 @@ int main(void) {
 static int test_admin_set_residual_runtime(void) {
     static const char *const describe_id[] = {"id", "int", "NO", "", NULL, ""};
     static const char *const describe_pattern[] = {"f1", "int", "YES", "", NULL, ""};
-    static const char *const time_zone[] = {"UTC"};
+    static const char *const time_zone[] = {"utc"};
     static const char *const ansi_quotes_mode[] = {"ANSI_QUOTES"};
     static const char *const empty_mode[] = {""};
     static const char *const explain_extra[] = {

@@ -266,6 +266,12 @@ with the read-only system-variable diagnostic.
 
 String and unquoted names are ASCII case-insensitive.
 
+MySQL's named-time-zone cache preserves the spelling used when a name is first
+loaded: a clean server that sees `UTC` first reads back `UTC`, while one that
+sees `utc` first reads back `utc` for subsequent case variants. MyLite avoids
+process-global first-use state and canonicalizes this supported alias to
+lowercase deterministically.
+
 Accepted values:
 
 - `SYSTEM`, read back as `SYSTEM`, effective offset `0`;

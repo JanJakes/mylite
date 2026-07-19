@@ -89,8 +89,8 @@ MySQL 8.4.9 behavior used for this slice:
   a regex comparison predicate.
 - Analyzer/planner: extends the shared descriptor predicate planner. The left
   operand is resolved from MyLite descriptors. The right operand must be a
-  decoded MyLite string literal and is validated before generated SQLite SQL is
-  prepared.
+  decoded MyLite string literal or a bound native-statement parameter and is
+  validated before generated SQLite SQL is prepared.
 - Catalog: read-only descriptor authority. This phase does not mutate catalog
   rows, descriptor versions, descriptor caches, catalog generation, or
   `sqlite_schema_generation`.
@@ -110,7 +110,11 @@ regexp_predicate:
     string_column REGEXP regexp_pattern_literal
   | string_column RLIKE regexp_pattern_literal
   | string_column NOT REGEXP regexp_pattern_literal
+  | string_column REGEXP parameter_marker
+  | string_column RLIKE parameter_marker
+  | string_column NOT REGEXP parameter_marker
   | string_column NOT RLIKE regexp_pattern_literal
+  | string_column NOT RLIKE parameter_marker
 ```
 
 Supported contexts:
@@ -200,8 +204,7 @@ Unsupported in this slice:
   shorthand classes, named classes, equivalence classes, and collating symbols;
 - non-ASCII pattern bytes;
 - embedded `NUL`;
-- pattern operands from columns, functions, parameters, subqueries, or general
-  expressions.
+- pattern operands from columns, functions, subqueries, or general expressions.
 
 This scope is intentionally compatible with the WordPress-style anchored
 prefix/suffix patterns currently targeted, including
@@ -216,11 +219,13 @@ Planning:
 1. Resolve the left operand through the existing descriptor-column resolver for
    the current statement context.
 2. Require a string descriptor type.
-3. Decode the right operand as an ordinary string literal using current MyLite
-   string-literal and SQL-mode rules.
-4. Reject embedded `NUL`, non-ASCII pattern bytes, unsupported regex syntax,
+3. Decode a literal right operand using current MyLite string-literal and
+   SQL-mode rules, or read a bound native-statement parameter without textual
+   SQL reconstruction.
+4. Require a non-NULL parameter value to be text.
+5. Reject embedded `NUL`, non-ASCII pattern bytes, unsupported regex syntax,
    and invalid baseline regex syntax before preparing SQLite SQL.
-5. Bind the decoded pattern as a `TEXT` parameter.
+6. Bind the validated pattern as a `TEXT` parameter.
 
 Generated SQLite predicate SQL:
 

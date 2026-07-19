@@ -533,7 +533,7 @@ static int test_regexp_predicate_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE REGEXP pattern literals support only ASCII text",
+            .message_part = "WHERE REGEXP patterns support only ASCII text",
         }
     );
     failures += execute_error(

@@ -4,6 +4,7 @@ set -eu
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_RESET_TOOL="${MYLITE_MYSQL_RESET_TOOL:-$ROOT_DIR/tools/reset-mysql-runtime}"
 MANIFEST="${MYLITE_MYSQL_EXPECTATIONS_MANIFEST:-$ROOT_DIR/tools/mysql-runtime-expectations-ci.txt}"
 SHARD_INDEX="${MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX:-}"
 SHARD_COUNT="${MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT:-}"
@@ -18,14 +19,20 @@ fail() {
 }
 
 verify_mysql_runtime() {
-    version=$(
+    if ! version=$(
         printf '%s\n' "SELECT VERSION();" \
             | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
                 --batch --raw --skip-column-names
-    )
+    ); then
+        printf '%s\n' "could not query MySQL runtime version" >&2
+        return 1
+    fi
     case "$version" in
-        8.4.9*) ;;
-        *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
+        8.4.9*) return 0 ;;
+        *)
+            printf '%s\n' "expected MySQL 8.4.9 runtime, got [$version]" >&2
+            return 1
+            ;;
     esac
 }
 
@@ -68,6 +75,18 @@ run_expectation_script() {
     total=$((total + 1))
     start_seconds=$(date +%s)
     printf '%s\n' "==> $script"
+    if ! MYLITE_MYSQL_CONTAINER="$MYSQL_CONTAINER" "$MYSQL_RESET_TOOL"; then
+        end_seconds=$(date +%s)
+        printf '%s\n' "failed to reset MySQL for $script ($((end_seconds - start_seconds))s)" >&2
+        failures=$((failures + 1))
+        return
+    fi
+    if ! verify_mysql_runtime; then
+        end_seconds=$(date +%s)
+        printf '%s\n' "failed to verify MySQL for $script ($((end_seconds - start_seconds))s)" >&2
+        failures=$((failures + 1))
+        return
+    fi
     if MYLITE_MYSQL_CONTAINER="$MYSQL_CONTAINER" sh "$script_path"; then
         end_seconds=$(date +%s)
         printf '%s\n' "ok $script ($((end_seconds - start_seconds))s)"
@@ -95,7 +114,6 @@ run_manifest_script() {
 }
 
 validate_shard_configuration
-verify_mysql_runtime
 
 if [ "$#" -gt 0 ]; then
     for script in "$@"; do

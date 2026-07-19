@@ -1,0 +1,116 @@
+#!/usr/bin/env sh
+
+set -eu
+
+MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_IMAGE="${MYLITE_MYSQL_IMAGE:-mysql:8.4.9@sha256:14690274f4967ba207939c97dd79a8d6604f1d532218ea6be69c0001ddd2d45f}"
+MYSQL_TEMPLATE_VOLUME="${MYLITE_MYSQL_TEMPLATE_VOLUME:-$MYSQL_CONTAINER-template}"
+MYSQL_DATA_VOLUME="${MYLITE_MYSQL_DATA_VOLUME:-$MYSQL_CONTAINER-data}"
+MYSQL_TEMPLATE_CONTAINER="$MYSQL_CONTAINER-template-init"
+START_TIMEOUT_SECONDS="${MYLITE_MYSQL_START_TIMEOUT_SECONDS:-120}"
+
+fail() {
+    printf '%s\n' "reset-mysql-runtime: $1" >&2
+    exit 1
+}
+
+case "$START_TIMEOUT_SECONDS" in
+    '' | *[!0-9]*) fail "start timeout must be a positive integer" ;;
+esac
+if [ "$START_TIMEOUT_SECONDS" -eq 0 ]; then
+    fail "start timeout must be a positive integer"
+fi
+
+wait_for_mysql() {
+    container=$1
+    elapsed_seconds=0
+    while [ "$elapsed_seconds" -lt "$START_TIMEOUT_SECONDS" ]; do
+        if docker exec "$container" \
+            mysqladmin --protocol=TCP -h127.0.0.1 -uroot ping --silent >/dev/null 2>&1; then
+            if ! version=$(
+                printf '%s\n' "SELECT VERSION();" \
+                    | docker exec -i "$container" mysql --protocol=TCP -h127.0.0.1 -uroot \
+                        --batch --raw --skip-column-names
+            ); then
+                printf '%s\n' "reset-mysql-runtime: could not query MySQL runtime version" >&2
+                return 1
+            fi
+            case "$version" in
+                8.4.9*) return 0 ;;
+                *)
+                    printf '%s\n' \
+                        "reset-mysql-runtime: expected MySQL 8.4.9 runtime, got [$version]" >&2
+                    return 1
+                    ;;
+            esac
+        fi
+        sleep 1
+        elapsed_seconds=$((elapsed_seconds + 1))
+    done
+    docker logs "$container" >&2 || true
+    printf '%s\n' \
+        "reset-mysql-runtime: container $container did not become ready within $START_TIMEOUT_SECONDS seconds" \
+        >&2
+    return 1
+}
+
+start_mysql_container() {
+    container=$1
+    volume=$2
+    docker run \
+        --name "$container" \
+        -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+        -e MYSQL_ROOT_HOST=% \
+        -v "$volume:/var/lib/mysql" \
+        -d "$MYSQL_IMAGE" \
+        --skip-log-bin >/dev/null
+}
+
+template_image=$(
+    docker volume inspect \
+        --format '{{ index .Labels "mylite.mysql.image" }}' "$MYSQL_TEMPLATE_VOLUME" 2>/dev/null \
+        || true
+)
+if [ "$template_image" != "$MYSQL_IMAGE" ]; then
+    docker rm -f "$MYSQL_TEMPLATE_CONTAINER" >/dev/null 2>&1 || true
+    docker volume rm -f "$MYSQL_TEMPLATE_VOLUME" >/dev/null 2>&1 || true
+    if ! docker volume create \
+        --label "mylite.mysql.image=$MYSQL_IMAGE" "$MYSQL_TEMPLATE_VOLUME" >/dev/null; then
+        fail "could not create template volume $MYSQL_TEMPLATE_VOLUME"
+    fi
+    if ! start_mysql_container "$MYSQL_TEMPLATE_CONTAINER" "$MYSQL_TEMPLATE_VOLUME"; then
+        docker volume rm -f "$MYSQL_TEMPLATE_VOLUME" >/dev/null 2>&1 || true
+        fail "could not start template container $MYSQL_TEMPLATE_CONTAINER"
+    fi
+    if ! wait_for_mysql "$MYSQL_TEMPLATE_CONTAINER"; then
+        docker rm -f "$MYSQL_TEMPLATE_CONTAINER" >/dev/null 2>&1 || true
+        docker volume rm -f "$MYSQL_TEMPLATE_VOLUME" >/dev/null 2>&1 || true
+        fail "could not initialize template volume $MYSQL_TEMPLATE_VOLUME"
+    fi
+    if ! docker stop --time 30 "$MYSQL_TEMPLATE_CONTAINER" >/dev/null; then
+        docker rm -f "$MYSQL_TEMPLATE_CONTAINER" >/dev/null 2>&1 || true
+        docker volume rm -f "$MYSQL_TEMPLATE_VOLUME" >/dev/null 2>&1 || true
+        fail "could not stop template container $MYSQL_TEMPLATE_CONTAINER cleanly"
+    fi
+    docker rm "$MYSQL_TEMPLATE_CONTAINER" >/dev/null
+fi
+
+docker rm -f "$MYSQL_CONTAINER" >/dev/null 2>&1 || true
+docker volume rm -f "$MYSQL_DATA_VOLUME" >/dev/null 2>&1 || true
+if ! docker volume create "$MYSQL_DATA_VOLUME" >/dev/null; then
+    fail "could not create data volume $MYSQL_DATA_VOLUME"
+fi
+if ! docker run --rm --entrypoint /bin/sh \
+    -v "$MYSQL_TEMPLATE_VOLUME:/mylite-template:ro" \
+    -v "$MYSQL_DATA_VOLUME:/var/lib/mysql" \
+    "$MYSQL_IMAGE" -c 'cp -a /mylite-template/. /var/lib/mysql/'; then
+    docker volume rm -f "$MYSQL_DATA_VOLUME" >/dev/null 2>&1 || true
+    fail "could not clone template volume $MYSQL_TEMPLATE_VOLUME"
+fi
+if ! start_mysql_container "$MYSQL_CONTAINER" "$MYSQL_DATA_VOLUME"; then
+    docker volume rm -f "$MYSQL_DATA_VOLUME" >/dev/null 2>&1 || true
+    fail "could not start container $MYSQL_CONTAINER"
+fi
+if ! wait_for_mysql "$MYSQL_CONTAINER"; then
+    fail "could not verify container $MYSQL_CONTAINER"
+fi

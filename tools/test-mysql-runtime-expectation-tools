@@ -4,7 +4,9 @@ set -eu
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mylite-mysql-tools.XXXXXX")
-LOG_PATH="$TEMP_DIR/executed.log"
+EVENT_LOG="$TEMP_DIR/events.log"
+DOCKER_LOG="$TEMP_DIR/docker.log"
+RESET_STATE="$TEMP_DIR/reset-state"
 MANIFEST_PATH="$TEMP_DIR/manifest.txt"
 
 cleanup() {
@@ -12,18 +14,80 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+fail() {
+    printf '%s\n' "test-mysql-runtime-expectation-tools: $1" >&2
+    exit 1
+}
+
 cat >"$TEMP_DIR/docker" <<'EOF'
 #!/usr/bin/env sh
-printf '%s\n' '8.4.9'
+set -eu
+
+if [ -n "${MYLITE_EXPECTATION_DOCKER_LOG:-}" ]; then
+    printf '%s\n' "$*" >>"$MYLITE_EXPECTATION_DOCKER_LOG"
+fi
+
+case "${1:-}" in
+    rm)
+        exit "${MYLITE_EXPECTATION_DOCKER_RM_STATUS:-0}"
+        ;;
+    run)
+        exit "${MYLITE_EXPECTATION_DOCKER_RUN_STATUS:-0}"
+        ;;
+    volume)
+        if [ "${2:-}" = 'inspect' ]; then
+            if [ -z "${MYLITE_EXPECTATION_TEMPLATE_IMAGE:-}" ]; then
+                exit 1
+            fi
+            printf '%s\n' "$MYLITE_EXPECTATION_TEMPLATE_IMAGE"
+        fi
+        ;;
+    exec)
+        case " $* " in
+            *' mysqladmin '*) exit "${MYLITE_EXPECTATION_DOCKER_PING_STATUS:-0}" ;;
+            *' mysql '*) printf '%s\n' "${MYLITE_EXPECTATION_MYSQL_VERSION:-8.4.9}" ;;
+        esac
+        ;;
+    logs)
+        printf '%s\n' 'test MySQL container log' >&2
+        ;;
+esac
 EOF
 chmod +x "$TEMP_DIR/docker"
+
+cat >"$TEMP_DIR/reset" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+
+count=0
+if [ -f "$MYLITE_EXPECTATION_RESET_STATE" ]; then
+    count=$(cat "$MYLITE_EXPECTATION_RESET_STATE")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" >"$MYLITE_EXPECTATION_RESET_STATE"
+printf '%s\n' "reset:$count" >>"$MYLITE_EXPECTATION_TEST_LOG"
+if [ "${MYLITE_EXPECTATION_RESET_FAIL_AT:-}" = "$count" ]; then
+    exit 17
+fi
+EOF
+chmod +x "$TEMP_DIR/reset"
 
 for script_number in 0 1 2 3 4; do
     cat >"$TEMP_DIR/expectation-$script_number.sh" <<'EOF'
 #!/usr/bin/env sh
+set -eu
 printf '%s\n' "$(basename "$0")" >>"$MYLITE_EXPECTATION_TEST_LOG"
 EOF
+    chmod +x "$TEMP_DIR/expectation-$script_number.sh"
 done
+
+cat >"$TEMP_DIR/failing-expectation.sh" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+printf '%s\n' "$(basename "$0")" >>"$MYLITE_EXPECTATION_TEST_LOG"
+exit 23
+EOF
+chmod +x "$TEMP_DIR/failing-expectation.sh"
 
 {
     printf '%s\n' '# test manifest' ''
@@ -32,35 +96,152 @@ done
     done
 } >"$MANIFEST_PATH"
 
+run_expectations() {
+    PATH="$TEMP_DIR:$PATH" \
+        MYLITE_EXPECTATION_RESET_STATE="$RESET_STATE" \
+        MYLITE_EXPECTATION_TEST_LOG="$EVENT_LOG" \
+        MYLITE_MYSQL_RESET_TOOL="$TEMP_DIR/reset" \
+        "$ROOT_DIR/tools/run-mysql-runtime-expectations" "$@"
+}
+
 expect_shard() {
     shard_index=$1
     expected=$2
 
-    : >"$LOG_PATH"
+    : >"$EVENT_LOG"
+    rm -f "$RESET_STATE"
     PATH="$TEMP_DIR:$PATH" \
-        MYLITE_EXPECTATION_TEST_LOG="$LOG_PATH" \
+        MYLITE_EXPECTATION_RESET_STATE="$RESET_STATE" \
+        MYLITE_EXPECTATION_TEST_LOG="$EVENT_LOG" \
+        MYLITE_MYSQL_RESET_TOOL="$TEMP_DIR/reset" \
         MYLITE_MYSQL_EXPECTATIONS_MANIFEST="$MANIFEST_PATH" \
         MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX="$shard_index" \
         MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT=3 \
         "$ROOT_DIR/tools/run-mysql-runtime-expectations" >/dev/null
-    actual=$(LC_ALL=C sort "$LOG_PATH")
+    actual=$(cat "$EVENT_LOG")
     if [ "$actual" != "$expected" ]; then
-        printf '%s\n' "unexpected shard $shard_index output: [$actual]" >&2
-        return 1
+        fail "unexpected shard $shard_index event sequence: [$actual]"
     fi
 }
 
-expect_shard 0 "$(printf '%s\n' expectation-0.sh expectation-3.sh)"
-expect_shard 1 "$(printf '%s\n' expectation-1.sh expectation-4.sh)"
-expect_shard 2 "expectation-2.sh"
+expect_shard 0 "$(printf '%s\n' reset:1 expectation-0.sh reset:2 expectation-3.sh)"
+expect_shard 1 "$(printf '%s\n' reset:1 expectation-1.sh reset:2 expectation-4.sh)"
+expect_shard 2 "$(printf '%s\n' reset:1 expectation-2.sh)"
 
 if PATH="$TEMP_DIR:$PATH" \
+    MYLITE_EXPECTATION_RESET_STATE="$RESET_STATE" \
+    MYLITE_EXPECTATION_TEST_LOG="$EVENT_LOG" \
+    MYLITE_MYSQL_RESET_TOOL="$TEMP_DIR/reset" \
     MYLITE_MYSQL_EXPECTATIONS_MANIFEST="$MANIFEST_PATH" \
     MYLITE_MYSQL_EXPECTATIONS_SHARD_INDEX=3 \
     MYLITE_MYSQL_EXPECTATIONS_SHARD_COUNT=3 \
     "$ROOT_DIR/tools/run-mysql-runtime-expectations" >/dev/null 2>&1; then
-    printf '%s\n' 'out-of-range shard unexpectedly succeeded' >&2
-    exit 1
+    fail 'out-of-range shard unexpectedly succeeded'
+fi
+
+: >"$EVENT_LOG"
+rm -f "$RESET_STATE"
+if MYLITE_EXPECTATION_RESET_FAIL_AT=2 \
+    run_expectations \
+        "$TEMP_DIR/expectation-0.sh" \
+        "$TEMP_DIR/expectation-1.sh" \
+        "$TEMP_DIR/expectation-2.sh" \
+        >"$TEMP_DIR/reset-failure.out" 2>&1; then
+    fail 'reset failure unexpectedly succeeded'
+fi
+actual=$(cat "$EVENT_LOG")
+expected=$(printf '%s\n' reset:1 expectation-0.sh reset:2 reset:3 expectation-2.sh)
+if [ "$actual" != "$expected" ]; then
+    fail "reset failure did not skip only its fixture: [$actual]"
+fi
+if ! grep -F "failed to reset MySQL for $TEMP_DIR/expectation-1.sh" \
+    "$TEMP_DIR/reset-failure.out" >/dev/null; then
+    fail 'reset failure did not identify its fixture'
+fi
+if ! grep -F '1 of 3 expectation scripts failed' "$TEMP_DIR/reset-failure.out" >/dev/null; then
+    fail 'reset failure summary was inaccurate'
+fi
+
+: >"$EVENT_LOG"
+rm -f "$RESET_STATE"
+if run_expectations \
+    "$TEMP_DIR/expectation-0.sh" \
+    "$TEMP_DIR/failing-expectation.sh" \
+    >"$TEMP_DIR/fixture-failure.out" 2>&1; then
+    fail 'fixture failure unexpectedly succeeded'
+fi
+actual=$(cat "$EVENT_LOG")
+expected=$(printf '%s\n' reset:1 expectation-0.sh reset:2 failing-expectation.sh)
+if [ "$actual" != "$expected" ]; then
+    fail "fixture execution was not isolated: [$actual]"
+fi
+if ! grep -F '1 of 2 expectation scripts failed' "$TEMP_DIR/fixture-failure.out" >/dev/null; then
+    fail 'fixture failure summary was inaccurate'
+fi
+
+: >"$DOCKER_LOG"
+PATH="$TEMP_DIR:$PATH" \
+    MYLITE_EXPECTATION_DOCKER_LOG="$DOCKER_LOG" \
+    MYLITE_MYSQL_CONTAINER=test-mysql-849 \
+    MYLITE_MYSQL_START_TIMEOUT_SECONDS=1 \
+    "$ROOT_DIR/tools/reset-mysql-runtime"
+if ! grep -Fx 'rm -f test-mysql-849' "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper did not remove the prior container'
+fi
+if ! grep -F \
+    'mysql:8.4.9@sha256:14690274f4967ba207939c97dd79a8d6604f1d532218ea6be69c0001ddd2d45f' \
+    "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper did not use the pinned MySQL image'
+fi
+if ! grep -F 'mysqladmin --protocol=TCP' "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper did not wait for MySQL readiness'
+fi
+if ! grep -F \
+    'test-mysql-849-template:/mylite-template:ro -v test-mysql-849-data:/var/lib/mysql' \
+    "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper did not clone the read-only clean template'
+fi
+if ! grep -F -- \
+    '--name test-mysql-849 -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -e MYSQL_ROOT_HOST=% -v test-mysql-849-data:/var/lib/mysql' \
+    "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper did not start the fixture on its fresh data volume'
+fi
+
+: >"$DOCKER_LOG"
+PATH="$TEMP_DIR:$PATH" \
+    MYLITE_EXPECTATION_DOCKER_LOG="$DOCKER_LOG" \
+    MYLITE_EXPECTATION_TEMPLATE_IMAGE='mysql:8.4.9@sha256:14690274f4967ba207939c97dd79a8d6604f1d532218ea6be69c0001ddd2d45f' \
+    MYLITE_MYSQL_CONTAINER=test-mysql-849 \
+    MYLITE_MYSQL_START_TIMEOUT_SECONDS=1 \
+    "$ROOT_DIR/tools/reset-mysql-runtime"
+if grep -F 'test-mysql-849-template-init' "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper reinitialized a matching clean template'
+fi
+if ! grep -F \
+    'test-mysql-849-template:/mylite-template:ro -v test-mysql-849-data:/var/lib/mysql' \
+    "$DOCKER_LOG" >/dev/null; then
+    fail 'reset helper did not clone a reused clean template'
+fi
+
+if PATH="$TEMP_DIR:$PATH" \
+    MYLITE_EXPECTATION_MYSQL_VERSION=8.4.8 \
+    MYLITE_MYSQL_START_TIMEOUT_SECONDS=1 \
+    "$ROOT_DIR/tools/reset-mysql-runtime" >"$TEMP_DIR/version-failure.out" 2>&1; then
+    fail 'wrong MySQL version unexpectedly succeeded'
+fi
+if ! grep -F 'expected MySQL 8.4.9 runtime, got [8.4.8]' \
+    "$TEMP_DIR/version-failure.out" >/dev/null; then
+    fail 'wrong MySQL version failure was inaccurate'
+fi
+
+if PATH="$TEMP_DIR:$PATH" \
+    MYLITE_EXPECTATION_DOCKER_RUN_STATUS=42 \
+    "$ROOT_DIR/tools/reset-mysql-runtime" >"$TEMP_DIR/start-failure.out" 2>&1; then
+    fail 'container start failure unexpectedly succeeded'
+fi
+if ! grep -F 'could not start template container mylite-mysql-849-template-init' \
+    "$TEMP_DIR/start-failure.out" >/dev/null; then
+    fail 'container start failure was not propagated'
 fi
 
 printf '%s\n' 'test-mysql-runtime-expectation-tools: passed'

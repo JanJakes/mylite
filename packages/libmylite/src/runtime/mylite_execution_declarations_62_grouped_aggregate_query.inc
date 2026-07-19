@@ -91,7 +91,8 @@ static int count_grouped_source_columns_by_unqualified_name(
     size_t *out_match_count
 );
 static size_t grouped_aggregate_group_key_count(const struct mylite_sql_ast_node *group_clause);
-static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
+static bool grouped_aggregate_group_clause_has_rollup(
+    const struct mylite_sql_ast_node *group_clause
 );
 static int validate_grouped_aggregate_group_column(
     struct mylite_db *database,
@@ -138,9 +139,7 @@ static int append_grouped_projection_grouping_marker(
 );
 static int copy_grouped_projection_result_label(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node *alias,
-    const struct mylite_catalog_column_descriptor *column,
+    const struct grouped_projection_result_label_source *source,
     char **out_label
 );
 static int reserve_grouped_projections(
@@ -935,7 +934,8 @@ static bool aggregate_function_is_distinct(const struct mylite_sql_ast_node *fun
 static bool column_aggregate_function_is_count(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);
-static bool column_aggregate_function_is_statistical(enum planned_column_aggregate_function function
+static bool column_aggregate_function_is_statistical(
+    enum planned_column_aggregate_function function
 );
 static bool column_aggregate_function_is_json(enum planned_column_aggregate_function function);
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function);
@@ -1013,8 +1013,7 @@ static int append_column_aggregate_result_column(
 );
 static int copy_planned_aggregate_result_label(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node *alias,
+    const struct aggregate_result_label_source *source,
     char **out_label
 );
 static int append_spatial_collect_result_column(

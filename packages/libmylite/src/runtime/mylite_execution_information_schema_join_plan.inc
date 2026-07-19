@@ -82,19 +82,13 @@ static bool information_schema_join_compat_select_projections_match(
 );
 static bool information_schema_join_compat_source_table_matches(
     const struct mylite_sql_ast_node *source,
-    const char *schema_name,
-    const char *table_name,
-    const char *alias
+    const struct information_schema_join_compat_table_source *expected
 );
 static bool information_schema_join_compat_join_matches(
     const struct mylite_sql_ast_node *source,
     enum mylite_sql_ast_join_kind join_kind,
-    const char *left_schema,
-    const char *left_table,
-    const char *left_alias,
-    const char *right_schema,
-    const char *right_table,
-    const char *right_alias,
+    const struct information_schema_join_compat_table_source *left,
+    const struct information_schema_join_compat_table_source *right,
     const struct information_schema_join_compat_column_equality *equalities,
     size_t equality_count
 );
@@ -290,9 +284,10 @@ static int information_schema_join_compat_plan_columns_statistics_union(
         ) ||
         !information_schema_join_compat_source_table_matches(
             child_at(columns_select, 1U),
-            "information_schema",
-            "columns",
-            NULL
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "columns",
+            }
         ) ||
         !information_schema_join_compat_select_projections_match(
             indexes_select,
@@ -305,9 +300,10 @@ static int information_schema_join_compat_plan_columns_statistics_union(
             MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT ||
         !information_schema_join_compat_source_table_matches(
             child_at(indexes_select, 1U),
-            "information_schema",
-            "statistics",
-            NULL
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "statistics",
+            }
         )) {
         return MYLITE_OK;
     }
@@ -428,12 +424,16 @@ static int information_schema_join_compat_plan_columns_statistics(
         !information_schema_join_compat_join_matches(
             source,
             MYLITE_SQL_AST_JOIN_KIND_INNER,
-            "information_schema",
-            "columns",
-            "cols",
-            "information_schema",
-            "statistics",
-            "stats",
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "columns",
+                .alias = "cols",
+            },
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "statistics",
+                .alias = "stats",
+            },
             equalities,
             sizeof(equalities) / sizeof(equalities[0])
         ) ||
@@ -521,12 +521,16 @@ static int information_schema_join_compat_plan_columns_tables(
         !information_schema_join_compat_join_matches(
             child_at(statement, 1U),
             MYLITE_SQL_AST_JOIN_KIND_INNER,
-            "information_schema",
-            "columns",
-            "c",
-            "information_schema",
-            "tables",
-            "t",
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "columns",
+                .alias = "c",
+            },
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "tables",
+                .alias = "t",
+            },
             equalities,
             1U
         ) ||
@@ -623,9 +627,10 @@ static int information_schema_join_compat_plan_tables_grouped_size(
         information_schema_join_compat_alias_matches(child_at(third_item, 1U), "bytes") &&
         information_schema_join_compat_source_table_matches(
             child_at(statement, 1U),
-            "information_schema",
-            "tables",
-            NULL
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "tables",
+            }
         ) &&
         information_schema_join_compat_group_matches(statement, NULL, "TABLE_NAME") &&
         information_schema_join_compat_order_matches(statement, order, 1U) &&
@@ -678,28 +683,33 @@ static bool information_schema_join_compat_select_projections_match(
 
 static bool information_schema_join_compat_source_table_matches(
     const struct mylite_sql_ast_node *source,
-    const char *schema_name,
-    const char *table_name,
-    const char *alias
+    const struct information_schema_join_compat_table_source *expected
 ) {
     const struct mylite_sql_ast_node *name = child_at(source, 0U);
     const struct mylite_sql_ast_node *source_alias = NULL;
-    const char *const qualified_parts[] = {schema_name, table_name};
-    const char *const unqualified_parts[] = {table_name};
+    const char *const qualified_parts[] = {
+        expected == NULL ? NULL : expected->schema_name,
+        expected == NULL ? NULL : expected->table_name
+    };
+    const char *const unqualified_parts[] = {expected == NULL ? NULL : expected->table_name};
 
-    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_TABLE || table_name == NULL) {
+    if (source == NULL || source->kind != MYLITE_SQL_AST_FROM_TABLE || expected == NULL ||
+        expected->table_name == NULL) {
         return false;
     }
     source_alias = from_table_alias_node(source);
     if (from_table_index_hint_list_node(source) != NULL) {
         return false;
     }
-    if ((alias == NULL && source_alias != NULL) ||
-        (alias != NULL &&
-         !information_schema_join_compat_identifier_parts_match(source_alias, &alias, 1U))) {
+    if ((expected->alias == NULL && source_alias != NULL) ||
+        (expected->alias != NULL && !information_schema_join_compat_identifier_parts_match(
+                                        source_alias,
+                                        &expected->alias,
+                                        1U
+                                    ))) {
         return false;
     }
-    return schema_name == NULL
+    return expected->schema_name == NULL
                ? information_schema_join_compat_identifier_parts_match(name, unqualified_parts, 1U)
                : information_schema_join_compat_identifier_parts_match(name, qualified_parts, 2U);
 }
@@ -707,29 +717,15 @@ static bool information_schema_join_compat_source_table_matches(
 static bool information_schema_join_compat_join_matches(
     const struct mylite_sql_ast_node *source,
     enum mylite_sql_ast_join_kind join_kind,
-    const char *left_schema,
-    const char *left_table,
-    const char *left_alias,
-    const char *right_schema,
-    const char *right_table,
-    const char *right_alias,
+    const struct information_schema_join_compat_table_source *left,
+    const struct information_schema_join_compat_table_source *right,
     const struct information_schema_join_compat_column_equality *equalities,
     size_t equality_count
 ) {
     return source != NULL && source->kind == MYLITE_SQL_AST_FROM_JOIN &&
            mylite_sql_ast_node_join_kind(source) == join_kind &&
-           information_schema_join_compat_source_table_matches(
-               child_at(source, 0U),
-               left_schema,
-               left_table,
-               left_alias
-           ) &&
-           information_schema_join_compat_source_table_matches(
-               child_at(source, 1U),
-               right_schema,
-               right_table,
-               right_alias
-           ) &&
+           information_schema_join_compat_source_table_matches(child_at(source, 0U), left) &&
+           information_schema_join_compat_source_table_matches(child_at(source, 1U), right) &&
            information_schema_join_compat_column_equalities_match(
                child_at(source, 2U),
                equalities,
@@ -742,8 +738,8 @@ static bool information_schema_join_compat_column_equalities_match(
     const struct information_schema_join_compat_column_equality *expected,
     size_t expected_count
 ) {
-    const struct mylite_sql_ast_node *stack[8];
-    bool matched[8] = {false};
+    const struct mylite_sql_ast_node *stack[information_schema_join_predicate_stack_capacity];
+    bool matched[information_schema_join_predicate_stack_capacity] = {false};
     size_t stack_count = 0U;
     size_t leaf_count = 0U;
 
@@ -817,8 +813,8 @@ static int information_schema_join_compat_copy_literal_filters(
     size_t filter_count,
     bool *out_matches
 ) {
-    const struct mylite_sql_ast_node *stack[8];
-    bool matched[8] = {false};
+    const struct mylite_sql_ast_node *stack[information_schema_join_predicate_stack_capacity];
+    bool matched[information_schema_join_predicate_stack_capacity] = {false};
     size_t stack_count = 0U;
     size_t leaf_count = 0U;
     int rc = MYLITE_OK;
@@ -1147,9 +1143,7 @@ static bool information_schema_join_compat_concat_projection_matches(
            information_schema_join_compat_identifier_parts_match(child_at(item, 1U), &alias, 1U) &&
            information_schema_join_compat_source_table_matches(
                child_at(statement, 1U),
-               NULL,
-               source,
-               NULL
+               &(const struct information_schema_join_compat_table_source){.table_name = source}
            );
 }
 
@@ -1206,9 +1200,11 @@ static int information_schema_join_compat_plan_dynamic_columns(
         mylite_sql_ast_node_join_kind(outer_join) != MYLITE_SQL_AST_JOIN_KIND_INNER ||
         !information_schema_join_compat_source_table_matches(
             child_at(outer_join, 1U),
-            "information_schema",
-            "schemata",
-            "s"
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "schemata",
+                .alias = "s",
+            }
         ) ||
         !information_schema_join_compat_column_equalities_match(
             child_at(outer_join, 2U),
@@ -1219,15 +1215,15 @@ static int information_schema_join_compat_plan_dynamic_columns(
         mylite_sql_ast_node_join_kind(columns_table_join) != MYLITE_SQL_AST_JOIN_KIND_INNER ||
         !information_schema_join_compat_source_table_matches(
             child_at(columns_table_join, 0U),
-            "information_schema",
-            "columns",
-            "c"
+            &(const struct information_schema_join_compat_table_source){
+                .schema_name = "information_schema",
+                .table_name = "columns",
+                .alias = "c",
+            }
         ) ||
         !information_schema_join_compat_source_table_matches(
             child_at(columns_table_join, 1U),
-            NULL,
-            "t",
-            NULL
+            &(const struct information_schema_join_compat_table_source){.table_name = "t"}
         ) ||
         dynamic_condition == NULL ||
         dynamic_condition->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
@@ -1327,12 +1323,16 @@ static int information_schema_join_compat_plan_schemata_tables(
                    information_schema_join_compat_join_matches(
                        child_at(statement, 1U),
                        MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
-                       "information_schema",
-                       "schemata",
-                       "s",
-                       "information_schema",
-                       "tables",
-                       "t",
+                       &(const struct information_schema_join_compat_table_source){
+                           .schema_name = "information_schema",
+                           .table_name = "schemata",
+                           .alias = "s",
+                       },
+                       &(const struct information_schema_join_compat_table_source){
+                           .schema_name = "information_schema",
+                           .table_name = "tables",
+                           .alias = "t",
+                       },
                        equalities,
                        1U
                    ) &&

@@ -165,9 +165,11 @@ static int plan_row_scalar_exists_select_item(
         database,
         plan,
         item,
-        predicate,
-        source_expression,
-        alias,
+        &(const struct row_scalar_exists_select_item_source){
+            .predicate = predicate,
+            .expression = source_expression,
+            .alias = alias,
+        },
         &handled
     );
     if (rc != MYLITE_OK || handled) {
@@ -200,9 +202,7 @@ static int plan_row_scalar_information_schema_exists_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item,
-    const struct mylite_sql_ast_node *predicate,
-    const struct mylite_sql_ast_node *source_expression,
-    const struct mylite_sql_ast_node *alias,
+    const struct row_scalar_exists_select_item_source *source,
     bool *out_handled
 ) {
     const struct mylite_sql_ast_node *statement = NULL;
@@ -211,15 +211,15 @@ static int plan_row_scalar_information_schema_exists_select_item(
     bool matches = false;
     int rc = MYLITE_OK;
 
-    if (plan == NULL || item == NULL || out_handled == NULL) {
+    if (plan == NULL || item == NULL || source == NULL || out_handled == NULL) {
         return MYLITE_MISUSE;
     }
     *out_handled = false;
 
-    if (predicate == NULL || predicate->kind != MYLITE_SQL_AST_EXISTS_PREDICATE) {
+    if (source->predicate == NULL || source->predicate->kind != MYLITE_SQL_AST_EXISTS_PREDICATE) {
         return MYLITE_OK;
     }
-    statement = child_at(predicate, 0U);
+    statement = child_at(source->predicate, 0U);
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         return MYLITE_OK;
     }
@@ -250,7 +250,13 @@ static int plan_row_scalar_information_schema_exists_select_item(
             .is_text = false,
             .integer = matches ? 1 : 0,
         };
-        rc = append_planned_row_scalar_select_item(database, plan, item, source_expression, alias);
+        rc = append_planned_row_scalar_select_item(
+            database,
+            plan,
+            item,
+            source->expression,
+            source->alias
+        );
     }
     if (rc != MYLITE_OK) {
         planned_row_scalar_select_item_deinit(item);
@@ -392,7 +398,7 @@ static int append_row_scalar_qualified_wildcard_select_items(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -406,7 +412,7 @@ static int append_row_scalar_qualified_wildcard_select_items(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }
@@ -466,7 +472,14 @@ static int append_planned_row_scalar_select_item(
         return MYLITE_MISUSE;
     }
 
-    rc = finalize_planned_row_scalar_select_item(database, item, source_expression, alias);
+    rc = finalize_planned_row_scalar_select_item(
+        database,
+        item,
+        &(const struct row_scalar_select_item_label_source){
+            .expression = source_expression,
+            .alias = alias,
+        }
+    );
     if (rc != MYLITE_OK) {
         planned_row_scalar_select_item_deinit(item);
         return rc;
@@ -493,31 +506,31 @@ static int append_planned_row_scalar_select_item(
 static int finalize_planned_row_scalar_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select_item *item,
-    const struct mylite_sql_ast_node *source_expression,
-    const struct mylite_sql_ast_node *alias
+    const struct row_scalar_select_item_label_source *source
 ) {
     const struct mylite_sql_ast_node *unwrapped_expression =
-        unwrap_parenthesized_expression(source_expression);
+        source == NULL ? NULL : unwrap_parenthesized_expression(source->expression);
     struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor(NULL);
     char *label = NULL;
     int rc = MYLITE_OK;
 
-    if (database == NULL || item == NULL) {
+    if (database == NULL || item == NULL || source == NULL) {
         return MYLITE_MISUSE;
     }
-    if (alias != NULL) {
-        rc = copy_select_item_alias_text(database, alias, &label);
+    if (source->alias != NULL) {
+        rc = copy_select_item_alias_text(database, source->alias, &label);
         if (rc == MYLITE_OK) {
             item->has_alias = true;
-            item->alias_is_identifier = alias->kind == MYLITE_SQL_AST_IDENTIFIER;
+            item->alias_is_identifier = source->alias->kind == MYLITE_SQL_AST_IDENTIFIER;
         }
-    } else if (unwrapped_expression != NULL &&
-               unwrapped_expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {
-        rc = copy_scalar_projection_column_name(database, source_expression, &label);
-    } else if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+    } else if (
+        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN &&
+        (unwrapped_expression == NULL ||
+         unwrapped_expression->kind != MYLITE_SQL_AST_ANY_VALUE_FUNCTION)
+    ) {
         rc = duplicate_text(database, item->expression.column->name, &label);
-    } else if (source_expression != NULL) {
-        rc = copy_scalar_projection_column_name(database, source_expression, &label);
+    } else if (source->expression != NULL) {
+        rc = copy_scalar_projection_column_name(database, source->expression, &label);
     } else {
         set_parse_error(database, NULL);
         rc = MYLITE_ERROR;
@@ -528,14 +541,14 @@ static int finalize_planned_row_scalar_select_item(
     }
     item->result_label = label;
 
-    if (source_expression == NULL ||
+    if (source->expression == NULL ||
         item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
         item->is_exists_expression) {
         return MYLITE_OK;
     }
     rc = populate_row_scalar_source_result_column_descriptor(
         database,
-        source_expression,
+        source->expression,
         &descriptor
     );
     if (rc != MYLITE_OK || !row_scalar_descriptor_has_known_type(&descriptor)) {

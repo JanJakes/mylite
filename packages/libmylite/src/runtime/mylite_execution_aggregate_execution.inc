@@ -172,7 +172,11 @@ static int plan_count(
         set_unsupported_error(database, count_exactly_one_message(out_plan->function));
         return MYLITE_ERROR;
     }
-    rc = copy_planned_aggregate_result_label(database, expression, alias, &out_plan->result_label);
+    rc = copy_planned_aggregate_result_label(
+        database,
+        &(const struct aggregate_result_label_source){.expression = expression, .alias = alias},
+        &out_plan->result_label
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -865,16 +869,18 @@ static int append_count_result_column(
 
 static int copy_planned_aggregate_result_label(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node *alias,
+    const struct aggregate_result_label_source *source,
     char **out_label
 ) {
-    if (alias != NULL) {
-        return copy_select_item_alias_text(database, alias, out_label);
+    if (source == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (source->alias != NULL) {
+        return copy_select_item_alias_text(database, source->alias, out_label);
     }
     return copy_aggregate_result_column_name(
         database,
-        expression == NULL ? NULL : &expression->span,
+        source->expression == NULL ? NULL : &source->expression->span,
         out_label
     );
 }
@@ -1122,7 +1128,8 @@ static bool select_statement_has_column_aggregate(const struct mylite_sql_ast_no
     return false;
 }
 
-static bool select_statement_has_multi_count_aggregate(const struct mylite_sql_ast_node *statement
+static bool select_statement_has_multi_count_aggregate(
+    const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
@@ -1351,8 +1358,10 @@ static int plan_column_aggregate_select_item(
     }
     rc = copy_planned_aggregate_result_label(
         database,
-        source_expression,
-        alias,
+        &(const struct aggregate_result_label_source){
+            .expression = source_expression,
+            .alias = alias,
+        },
         &out_item->result_label
     );
     if (rc != MYLITE_OK) {
@@ -1483,9 +1492,11 @@ static int plan_column_aggregate_select_item(
             input->table_column_count,
             out_item
         );
-    } else if (out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
-               out_item->function != PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
-               column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+    } else if (
+        out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
+        out_item->function != PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
+        column_aggregate_argument_is_row_scalar_expression(aggregate_expression)
+    ) {
         rc = plan_column_aggregate_row_scalar_expression(
             database,
             aggregate_expression,
@@ -1875,7 +1886,8 @@ static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_f
            0;
 }
 
-static bool column_aggregate_function_is_statistical(enum planned_column_aggregate_function function
+static bool column_aggregate_function_is_statistical(
+    enum planned_column_aggregate_function function
 ) {
     return (function == PLANNED_COLUMN_AGGREGATE_STDDEV_POP ||
             function == PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP ||
@@ -2560,7 +2572,7 @@ static int append_column_aggregate_sqlite_row(
     mylite_result *result
 ) {
     struct mylite_result_cell *cells = NULL;
-    char(*buffers)[approximate_numeric_text_capacity] = NULL;
+    char (*buffers)[approximate_numeric_text_capacity] = NULL;
     int sqlite_column_index = 0;
     int rc = MYLITE_OK;
 
@@ -2774,8 +2786,8 @@ static int append_grouped_aggregate_sqlite_row(
     mylite_result *result
 ) {
     struct mylite_result_cell *cells = NULL;
-    char(*projection_buffers)[approximate_numeric_text_capacity] = NULL;
-    char(*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
+    char (*projection_buffers)[approximate_numeric_text_capacity] = NULL;
+    char (*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
     int sqlite_column_index = 0;
     size_t visible_aggregate_count = 0U;
     size_t result_column_count = 0U;
@@ -2867,7 +2879,7 @@ static int append_grouped_aggregate_rollup_sqlite_row(
     mylite_result *result
 ) {
     struct mylite_result_cell *cells = NULL;
-    char(*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
+    char (*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
     int sqlite_column_index = 0;
     size_t visible_aggregate_count = 0U;
     size_t result_column_count = 0U;

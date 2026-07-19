@@ -101,8 +101,10 @@ static int plan_grouped_aggregate_item(
     }
     rc = copy_planned_aggregate_result_label(
         database,
-        aggregate_expression,
-        alias,
+        &(const struct aggregate_result_label_source){
+            .expression = aggregate_expression,
+            .alias = alias,
+        },
         &out_item->result_label
     );
     if (rc != MYLITE_OK) {
@@ -920,7 +922,8 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
     return PLANNED_COLUMN_AGGREGATE_NONE;
 }
 
-static bool grouped_aggregate_function_has_column(enum planned_grouped_aggregate_function function
+static bool grouped_aggregate_function_has_column(
+    enum planned_grouped_aggregate_function function
 ) {
     if (function == PLANNED_GROUPED_AGGREGATE_NONE) {
         return false;
@@ -932,7 +935,8 @@ static bool grouped_aggregate_function_has_column(enum planned_grouped_aggregate
     return true;
 }
 
-static bool grouped_aggregate_function_is_bitwise(enum planned_grouped_aggregate_function function
+static bool grouped_aggregate_function_is_bitwise(
+    enum planned_grouped_aggregate_function function
 ) {
     if (function == PLANNED_GROUPED_AGGREGATE_BIT_AND) {
         return true;

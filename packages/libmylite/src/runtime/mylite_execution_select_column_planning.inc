@@ -106,7 +106,7 @@ static int plan_select_qualified_wildcard_columns(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -120,7 +120,7 @@ static int plan_select_qualified_wildcard_columns(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }
@@ -425,13 +425,14 @@ static int reserve_select_columns(
         return MYLITE_NOMEM;
     }
 
-    columns = realloc(plan->columns, capacity * sizeof(*columns));
+    columns = (const struct mylite_catalog_column_descriptor **)
+        realloc((void *)plan->columns, capacity * sizeof(*columns));
     if (columns == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     plan->columns = columns;
-    aliases = realloc(plan->column_aliases, capacity * sizeof(*aliases));
+    aliases = (char **)realloc((void *)plan->column_aliases, capacity * sizeof(*aliases));
     if (aliases == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -869,9 +870,9 @@ static int populate_string_result_column_descriptor(
     }
 
     if (is_national) {
-        descriptor->charset_id =
-            result_metadata_collation_id(mylite_connection_statement_collation_connection(database)
-            );
+        descriptor->charset_id = result_metadata_collation_id(
+            mylite_connection_statement_collation_connection(database)
+        );
         descriptor->collation_id = descriptor->charset_id;
         max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
             mylite_connection_statement_collation_connection(database)

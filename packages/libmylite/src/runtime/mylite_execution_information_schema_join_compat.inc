@@ -907,7 +907,7 @@ static int information_schema_join_compat_append_grouped_bytes_column(
     descriptor.flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM;
     descriptor.charset_id = mysql_collation_binary_id;
     descriptor.collation_id = mysql_collation_binary_id;
-    descriptor.display_length = 45U;
+    descriptor.display_length = information_schema_grouped_bytes_display_length;
     descriptor.decimals = 0U;
     descriptor.nullable = true;
     rc = mylite_result_append_column_descriptor(result, &descriptor);

@@ -46,13 +46,17 @@ static int plan_grouped_aggregate_projection_columns(
                 table_column_count,
                 out_plan
             );
-        } else if (grouped_aggregate_function_from_expression(
-                       unwrap_parenthesized_expression(expression)
-                   ) != PLANNED_GROUPED_AGGREGATE_NONE) {
+        } else if (
+            grouped_aggregate_function_from_expression(
+                unwrap_parenthesized_expression(expression)
+            ) != PLANNED_GROUPED_AGGREGATE_NONE
+        ) {
             *out_first_aggregate_index = item_index;
             return MYLITE_OK;
-        } else if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
-                   child_at(item, 1U) == NULL) {
+        } else if (
+            expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
+            child_at(item, 1U) == NULL
+        ) {
             rc = plan_grouped_aggregate_wildcard_projection_columns(
                 database,
                 expression_index,
@@ -185,9 +189,11 @@ static int append_grouped_projection_column(
     if (rc == MYLITE_OK) {
         rc = copy_grouped_projection_result_label(
             database,
-            expression,
-            alias,
-            column,
+            &(const struct grouped_projection_result_label_source){
+                .expression = expression,
+                .alias = alias,
+                .column = column,
+            },
             &result_label
         );
     }
@@ -216,7 +222,14 @@ static int append_grouped_projection_row_scalar_expression(
 ) {
     char *result_label = NULL;
     size_t required_count = plan->projection_count + 1U;
-    int rc = copy_grouped_projection_result_label(database, expression, alias, NULL, &result_label);
+    int rc = copy_grouped_projection_result_label(
+        database,
+        &(const struct grouped_projection_result_label_source){
+            .expression = expression,
+            .alias = alias,
+        },
+        &result_label
+    );
 
     if (rc == MYLITE_OK) {
         rc = reserve_grouped_projections(database, plan, required_count);
@@ -247,7 +260,14 @@ static int append_grouped_projection_grouping_marker(
 ) {
     char *result_label = NULL;
     size_t required_count = plan->projection_count + 1U;
-    int rc = copy_grouped_projection_result_label(database, expression, alias, NULL, &result_label);
+    int rc = copy_grouped_projection_result_label(
+        database,
+        &(const struct grouped_projection_result_label_source){
+            .expression = expression,
+            .alias = alias,
+        },
+        &result_label
+    );
 
     if (rc == MYLITE_OK) {
         rc = reserve_grouped_projections(database, plan, required_count);
@@ -269,18 +289,19 @@ static int append_grouped_projection_grouping_marker(
 
 static int copy_grouped_projection_result_label(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const struct mylite_sql_ast_node *alias,
-    const struct mylite_catalog_column_descriptor *column,
+    const struct grouped_projection_result_label_source *source,
     char **out_label
 ) {
-    if (alias != NULL) {
-        return copy_select_item_alias_text(database, alias, out_label);
+    if (source == NULL) {
+        return MYLITE_MISUSE;
     }
-    if (column != NULL) {
-        return duplicate_text(database, column->name, out_label);
+    if (source->alias != NULL) {
+        return copy_select_item_alias_text(database, source->alias, out_label);
     }
-    return copy_scalar_projection_column_name(database, expression, out_label);
+    if (source->column != NULL) {
+        return duplicate_text(database, source->column->name, out_label);
+    }
+    return copy_scalar_projection_column_name(database, source->expression, out_label);
 }
 
 static int reserve_grouped_projections(
@@ -830,7 +851,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
 
             if (!joined_source_matches_qualified_wildcard_parts(
                     source,
-                    (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+                    (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
                     part_count
                 )) {
                 continue;
@@ -844,7 +865,7 @@ static int plan_grouped_aggregate_qualified_wildcard_projection_columns(
     } else {
         matched = select_source_matches_qualified_wildcard_parts(
             source_context,
-            (const char(*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
             part_count
         );
     }

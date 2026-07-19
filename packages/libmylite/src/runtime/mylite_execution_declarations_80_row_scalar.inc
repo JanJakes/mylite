@@ -32,9 +32,7 @@ static int plan_row_scalar_information_schema_exists_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item,
-    const struct mylite_sql_ast_node *predicate,
-    const struct mylite_sql_ast_node *source_expression,
-    const struct mylite_sql_ast_node *alias,
+    const struct row_scalar_exists_select_item_source *source,
     bool *out_handled
 );
 static int information_schema_exists_subquery_matches(
@@ -73,8 +71,7 @@ static int append_planned_row_scalar_select_item(
 static int finalize_planned_row_scalar_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select_item *item,
-    const struct mylite_sql_ast_node *source_expression,
-    const struct mylite_sql_ast_node *alias
+    const struct row_scalar_select_item_label_source *source
 );
 static int reserve_planned_row_scalar_select_items(
     struct mylite_db *database,
@@ -3463,7 +3460,8 @@ static int plan_row_scalar_unix_timestamp_sysdate_expression(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static bool unix_timestamp_argument_is_sysdate_function(const struct mylite_sql_ast_node *expression
+static bool unix_timestamp_argument_is_sysdate_function(
+    const struct mylite_sql_ast_node *expression
 );
 static int plan_row_scalar_unix_timestamp_column(
     struct mylite_db *database,
@@ -3726,7 +3724,8 @@ static bool row_scalar_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
-static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_row_function(
+    const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression,

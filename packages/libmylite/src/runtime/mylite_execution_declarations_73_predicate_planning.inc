@@ -39,7 +39,8 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
 static void planned_select_predicate_deinit_without_exists(
     struct planned_select_predicate *predicate
 );
-static void planned_select_predicate_owned_columns_deinit(struct planned_select_predicate *predicate
+static void planned_select_predicate_owned_columns_deinit(
+    struct planned_select_predicate *predicate
 );
 static void planned_exists_subquery_deinit(struct planned_exists_subquery *subquery);
 static void planned_in_subquery_deinit(struct planned_in_subquery *subquery);
@@ -355,7 +356,8 @@ static bool scalar_literal_is_result(
 static bool predicate_node_is_find_in_set_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_json_valid_expression(const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_json_valid_expression(
+    const struct mylite_sql_ast_node *predicate_node
 );
 static bool predicate_node_is_json_contains_expression(
     const struct mylite_sql_ast_node *predicate_node
@@ -366,7 +368,8 @@ static bool predicate_node_is_regexp_like_expression(
 static bool predicate_node_is_string_length_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_substring_expression(const struct mylite_sql_ast_node *predicate_node
+static bool predicate_node_is_substring_expression(
+    const struct mylite_sql_ast_node *predicate_node
 );
 static int plan_row_scalar_expression_truth_predicate(
     struct mylite_db *database,
@@ -1292,6 +1295,9 @@ static int retain_planned_select_predicate_column(
     const struct mylite_catalog_column_descriptor *column,
     const struct mylite_catalog_column_descriptor **out_column
 );
+static bool planned_select_predicate_columns_match(
+    const struct catalog_column_descriptor_pair *columns
+);
 static int reserve_planned_select_predicate_nodes(
     struct mylite_db *database,
     struct planned_select_predicate *predicate,
@@ -1304,7 +1310,8 @@ static int reserve_planned_select_predicate_columns(
 );
 static int append_deprecated_logical_and_warning(struct mylite_db *database);
 static int append_deprecated_logical_or_warning(struct mylite_db *database);
-static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(
+    const struct planned_select_predicate *predicate
 );
 static int append_predicate_work_node(
     struct mylite_db *database,
@@ -1674,7 +1681,8 @@ static bool select_order_key_is_row_constant_noop(const struct mylite_sql_ast_no
 static bool select_order_key_is_integer_ordinal(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *order_key);
-static bool select_order_key_is_searched_case_expression(const struct mylite_sql_ast_node *order_key
+static bool select_order_key_is_searched_case_expression(
+    const struct mylite_sql_ast_node *order_key
 );
 static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_collate_expression(const struct mylite_sql_ast_node *order_key);

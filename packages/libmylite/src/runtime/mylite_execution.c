@@ -20,10 +20,10 @@
 #include "mylite_execution_catalog.h"
 #include "mylite_execution_completion.h"
 #include "mylite_execution_connection_lifecycle.h"
-#include "mylite_execution_diagnostics.h"
-#include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_ddl_sql_lowering.h"
 #include "mylite_execution_ddl_sql_lowering_support.h"
+#include "mylite_execution_diagnostics.h"
+#include "mylite_execution_dml_numeric.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_metadata_setup_metrics.h"
 #include "mylite_execution_parameter_binding.h"
@@ -533,11 +533,25 @@ int mylite_stmt_bind_double(mylite_stmt *stmt, size_t index, double value) {
 }
 
 int mylite_stmt_bind_text(mylite_stmt *stmt, size_t index, const char *value, size_t value_size) {
-    return bind_stmt_bytes(stmt, index, MYLITE_STMT_BINDING_TEXT, value, value_size);
+    const struct stmt_bytes_binding_request request = {
+        .index = index,
+        .type = MYLITE_STMT_BINDING_TEXT,
+        .value = value,
+        .value_size = value_size,
+    };
+
+    return bind_stmt_bytes(stmt, &request);
 }
 
 int mylite_stmt_bind_blob(mylite_stmt *stmt, size_t index, const void *value, size_t value_size) {
-    return bind_stmt_bytes(stmt, index, MYLITE_STMT_BINDING_BLOB, value, value_size);
+    const struct stmt_bytes_binding_request request = {
+        .index = index,
+        .type = MYLITE_STMT_BINDING_BLOB,
+        .value = value,
+        .value_size = value_size,
+    };
+
+    return bind_stmt_bytes(stmt, &request);
 }
 
 int mylite_stmt_clear_bindings(mylite_stmt *stmt) {
@@ -594,21 +608,15 @@ static int validate_stmt_binding_index(mylite_stmt *stmt, size_t index) {
     return MYLITE_OK;
 }
 
-static int bind_stmt_bytes(
-    mylite_stmt *stmt,
-    size_t index,
-    enum mylite_stmt_binding_type type,
-    const void *value,
-    size_t value_size
-) {
+static int bind_stmt_bytes(mylite_stmt *stmt, const struct stmt_bytes_binding_request *request) {
     struct mylite_stmt_binding *binding = NULL;
     unsigned char *bytes = NULL;
-    int rc = validate_stmt_binding_index(stmt, index);
+    int rc = request == NULL ? MYLITE_MISUSE : validate_stmt_binding_index(stmt, request->index);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (value == NULL && value_size != 0U) {
+    if (request->value == NULL && request->value_size != 0U) {
         mylite_diagnostics_set_error(
             mylite_connection_diagnostics(stmt->database),
             MYLITE_MISUSE,
@@ -618,24 +626,24 @@ static int bind_stmt_bytes(
         return MYLITE_MISUSE;
     }
 
-    binding = &stmt->bindings[index];
-    if (value_size > binding->capacity) {
-        bytes = malloc(value_size);
+    binding = &stmt->bindings[request->index];
+    if (request->value_size > binding->capacity) {
+        bytes = malloc(request->value_size);
         if (bytes == NULL) {
             set_nomem_error(stmt->database);
             return MYLITE_NOMEM;
         }
-        if (value_size != 0U) {
-            memcpy(bytes, value, value_size);
+        if (request->value_size != 0U) {
+            memcpy(bytes, request->value, request->value_size);
         }
         free(binding->bytes);
         binding->bytes = bytes;
-        binding->capacity = value_size;
-    } else if (value_size != 0U) {
-        memmove(binding->bytes, value, value_size);
+        binding->capacity = request->value_size;
+    } else if (request->value_size != 0U) {
+        memmove(binding->bytes, request->value, request->value_size);
     }
-    binding->type = type;
-    binding->size = value_size;
+    binding->type = request->type;
+    binding->size = request->value_size;
     return MYLITE_OK;
 }
 
@@ -834,7 +842,7 @@ static int copy_active_stmt_parameter_value(
             return MYLITE_OK;
         }
         {
-            char text[32];
+            char text[integer_text_capacity];
             int written = snprintf(text, sizeof(text), "%" PRIu64, binding->scalar.uint64_value);
 
             if (written <= 0 || (size_t)written >= sizeof(text)) {
@@ -1844,8 +1852,10 @@ static enum cursor_plan_attempt_result prepare_cursor_select_plan(mylite_stmt *s
     }
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
-    } else if (rc != MYLITE_OK &&
-               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
         set_physical_sqlite_row_error(database);
         rc = MYLITE_ERROR;
     }
@@ -2071,7 +2081,8 @@ static bool mylite_select_parameter_context_stack_push(
         return false;
     }
     if (stack->count == stack->capacity) {
-        capacity = stack->capacity == 0U ? 32U : stack->capacity * 2U;
+        capacity = stack->capacity == 0U ? select_parameter_context_stack_initial_capacity
+                                         : stack->capacity * 2U;
         if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
             return false;
         }
@@ -3056,7 +3067,8 @@ const char *mylite_execution_temporal_constructor_function_name(
     return temporal_constructor_function_name(ast_kind);
 }
 
-bool mylite_execution_is_temporal_constructor_function_kind(enum mylite_sql_ast_node_kind ast_kind
+bool mylite_execution_is_temporal_constructor_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
 ) {
     return is_temporal_constructor_function_kind(ast_kind);
 }
@@ -3302,10 +3314,7 @@ int mylite_execution_ddl_append_numbered_parameter(
     return append_numbered_parameter(string, parameter_index);
 }
 
-int mylite_execution_ddl_append_size_literal(
-    struct mylite_dynamic_string *string,
-    size_t value
-) {
+int mylite_execution_ddl_append_size_literal(struct mylite_dynamic_string *string, size_t value) {
     return append_size_literal(string, value);
 }
 
@@ -3328,9 +3337,7 @@ bool mylite_execution_ddl_planned_secondary_index_is_spatial(
     return planned_secondary_index_is_spatial(index);
 }
 
-bool mylite_execution_ddl_planned_column_is_char_or_varchar(
-    const struct planned_column *column
-) {
+bool mylite_execution_ddl_planned_column_is_char_or_varchar(const struct planned_column *column) {
     return planned_column_is_char_or_varchar(column);
 }
 
@@ -3350,10 +3357,7 @@ bool mylite_execution_ddl_column_descriptor_is_char_or_varchar(
     return column_descriptor_is_char_or_varchar(column);
 }
 
-bool mylite_execution_ddl_text_equals_ascii_case_insensitive(
-    const char *left,
-    const char *right
-) {
+bool mylite_execution_ddl_text_equals_ascii_case_insensitive(const char *left, const char *right) {
     return text_equals_ascii_case_insensitive(left, right);
 }
 

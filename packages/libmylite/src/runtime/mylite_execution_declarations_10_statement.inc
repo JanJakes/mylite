@@ -8,13 +8,7 @@ static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast
 static int reject_poisoned_connection(struct mylite_db *database);
 static int reject_command_with_active_cursor(struct mylite_db *database);
 static int validate_stmt_binding_index(mylite_stmt *stmt, size_t index);
-static int bind_stmt_bytes(
-    mylite_stmt *stmt,
-    size_t index,
-    enum mylite_stmt_binding_type type,
-    const void *value,
-    size_t value_size
-);
+static int bind_stmt_bytes(mylite_stmt *stmt, const struct stmt_bytes_binding_request *request);
 static int reset_cursor_execution(mylite_stmt *stmt);
 static int start_cursor_execution(mylite_stmt *stmt);
 static int validate_stmt_bindings_complete(mylite_stmt *stmt);
@@ -228,7 +222,8 @@ static int begin_persistent_auto_increment_high_water_reconciliation(
     bool *out_started_transaction
 );
 static int commit_persistent_auto_increment_high_water_reconciliation(struct mylite_db *database);
-static void rollback_persistent_auto_increment_high_water_reconciliation(struct mylite_db *database
+static void rollback_persistent_auto_increment_high_water_reconciliation(
+    struct mylite_db *database
 );
 static int apply_persistent_auto_increment_high_waters(
     struct mylite_db *database,
@@ -696,7 +691,8 @@ static int apply_set_system_variable_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment
 );
-static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(
+    enum mylite_execution_system_variable_kind kind
 );
 static int apply_set_system_variable_user_variable_assignment(
     struct mylite_db *database,
@@ -2232,7 +2228,8 @@ static int apply_set_bootstrap_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
-static bool bootstrap_system_variable_is_global_only(enum mylite_execution_system_variable_kind kind
+static bool bootstrap_system_variable_is_global_only(
+    enum mylite_execution_system_variable_kind kind
 );
 static int validate_set_bootstrap_system_variable_value(
     struct mylite_db *database,
@@ -2248,9 +2245,11 @@ static int validate_set_compatibility_system_variable_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
-static bool compatibility_system_variable_is_boolean(enum mylite_execution_system_variable_kind kind
+static bool compatibility_system_variable_is_boolean(
+    enum mylite_execution_system_variable_kind kind
 );
-static bool compatibility_system_variable_is_uint64(enum mylite_execution_system_variable_kind kind
+static bool compatibility_system_variable_is_uint64(
+    enum mylite_execution_system_variable_kind kind
 );
 static uint64_t compatibility_system_variable_uint64_value(
     enum mylite_execution_system_variable_kind kind
@@ -2384,7 +2383,8 @@ static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
 static unsigned int lexer_modes_for_statement(const struct mylite_db *database);
-static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(
+    const struct mylite_sql_ast_node *expression
 );
 static bool system_variable_expression_has_session_scope(
     const struct mylite_sql_ast_node *expression
@@ -2468,7 +2468,8 @@ static int set_transaction_variable_invalid_node_value_error(
     const struct mylite_sql_ast_node *value_node
 );
 static const char *transaction_isolation_value_text(enum mylite_transaction_isolation isolation);
-static const char *transaction_read_only_scalar_text(enum mylite_transaction_access_mode access_mode
+static const char *transaction_read_only_scalar_text(
+    enum mylite_transaction_access_mode access_mode
 );
 static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode);
 static const char *transaction_isolation_system_variable_value(

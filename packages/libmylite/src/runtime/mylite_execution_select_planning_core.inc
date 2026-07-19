@@ -1379,8 +1379,9 @@ static int plan_derived_select_source_child(
                 out_source
             );
         }
-    } else if (rc == MYLITE_OK &&
-               select_statement_is_row_scalar_projection_attempt(select_statement)) {
+    } else if (
+        rc == MYLITE_OK && select_statement_is_row_scalar_projection_attempt(select_statement)
+    ) {
         out_source->derived_row_scalar_select =
             calloc(1U, sizeof(*out_source->derived_row_scalar_select));
         if (out_source->derived_row_scalar_select == NULL) {
@@ -1687,8 +1688,10 @@ static int make_derived_row_scalar_source_column(
     }
     if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         *out_column = *item->expression.column;
-    } else if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC ||
-               item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+    } else if (
+        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC ||
+        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE
+    ) {
         *out_column = (struct mylite_catalog_column_descriptor){
             .column_id = (int64_t)output_index + 1,
             .ordinal_position = (int64_t)output_index + 1,
@@ -2185,8 +2188,10 @@ static int match_select_index_hint_name(
     if (index != NULL && context != NULL &&
         text_equals_ascii_case_insensitive(index->name, context->name)) {
         context->exact_match = true;
-    } else if (index != NULL && context != NULL &&
-               text_has_ascii_case_insensitive_prefix(index->name, context->name)) {
+    } else if (
+        index != NULL && context != NULL &&
+        text_has_ascii_case_insensitive_prefix(index->name, context->name)
+    ) {
         ++context->prefix_match_count;
     }
     return MYLITE_OK;
@@ -2225,7 +2230,8 @@ static int reject_duplicate_select_source_reference(
     return MYLITE_OK;
 }
 
-static const char *planned_select_source_reference_name(const struct planned_select_source *source
+static const char *planned_select_source_reference_name(
+    const struct planned_select_source *source
 ) {
     if (source->has_alias) {
         return source->alias;
@@ -2290,8 +2296,10 @@ static int plan_joined_select_condition_with_extra_predicate(
          joined_select_on_node_is_primary_condition(left_node))) {
         primary_node = left_node;
         extra_node = right_node;
-    } else if (joined_select_on_node_is_descriptor_equality(right_node) ||
-               joined_select_on_node_is_primary_condition(right_node)) {
+    } else if (
+        joined_select_on_node_is_descriptor_equality(right_node) ||
+        joined_select_on_node_is_primary_condition(right_node)
+    ) {
         primary_node = right_node;
         extra_node = left_node;
     } else {
@@ -2537,11 +2545,11 @@ static void planned_select_deinit_shallow(struct planned_select *plan) {
     }
     free(plan->sources);
     mylite_execution_release_table_columns(plan->source_columns_cache_entry, plan->source_columns);
-    free(plan->columns);
+    free((void *)plan->columns);
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         free(plan->column_aliases[column_index]);
     }
-    free(plan->column_aliases);
+    free((void *)plan->column_aliases);
     free(plan->column_source_indexes);
     free(plan->join_kinds);
     if (plan->join_conditions != NULL) {
@@ -3546,7 +3554,8 @@ static int plan_row_scalar_select_exists_filter(
     return rc;
 }
 
-static bool row_scalar_select_where_is_exists_filter(const struct mylite_sql_ast_node *where_clause
+static bool row_scalar_select_where_is_exists_filter(
+    const struct mylite_sql_ast_node *where_clause
 ) {
     const struct mylite_sql_ast_node *predicate = NULL;
 
@@ -3646,7 +3655,8 @@ static bool planned_row_scalar_tableless_filter_node_is_supported(
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN:
-        if (!planned_row_scalar_tableless_filter_expression_is_supported(node->row_scalar_expression
+        if (!planned_row_scalar_tableless_filter_expression_is_supported(
+                node->row_scalar_expression
             )) {
             return false;
         }

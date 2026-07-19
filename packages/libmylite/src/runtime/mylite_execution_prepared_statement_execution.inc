@@ -261,14 +261,14 @@ static int bind_execute_integer_user_variable(
 
     errno = 0;
     if (variable->value[0] == '-') {
-        intmax_t value = strtoimax(variable->value, &end, 10);
+        intmax_t value = strtoimax(variable->value, &end, decimal_base);
 
         if (errno == 0 && end == variable->value + variable->value_size && value >= INT64_MIN &&
             value <= INT64_MAX) {
             return mylite_stmt_bind_int64(statement, parameter_index, (int64_t)value);
         }
     } else {
-        uintmax_t value = strtoumax(variable->value, &end, 10);
+        uintmax_t value = strtoumax(variable->value, &end, decimal_base);
 
         if (errno == 0 && end == variable->value + variable->value_size && value <= UINT64_MAX) {
             return mylite_stmt_bind_uint64(statement, parameter_index, (uint64_t)value);

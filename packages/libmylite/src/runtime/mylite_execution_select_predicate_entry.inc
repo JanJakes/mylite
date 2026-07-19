@@ -149,7 +149,8 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         }
         free(predicate->nodes[node_index].row_scalar_value_expressions);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
-            planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
+            planned_row_scalar_expression_deinit(
+                predicate->nodes[node_index].row_scalar_expression
             );
         }
         free(predicate->nodes[node_index].row_scalar_expression);
@@ -173,10 +174,12 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
             predicate->nodes[node_index].subject_scalar_subquery
         );
         free(predicate->nodes[node_index].subject_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].value_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].value_scalar_subquery
         );
         free(predicate->nodes[node_index].value_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].upper_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].upper_scalar_subquery
         );
         free(predicate->nodes[node_index].upper_scalar_subquery);
     }
@@ -210,7 +213,8 @@ static void planned_select_predicate_deinit_without_exists(
         }
         free(predicate->nodes[node_index].row_scalar_value_expressions);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
-            planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
+            planned_row_scalar_expression_deinit(
+                predicate->nodes[node_index].row_scalar_expression
             );
         }
         free(predicate->nodes[node_index].row_scalar_expression);
@@ -230,10 +234,12 @@ static void planned_select_predicate_deinit_without_exists(
             predicate->nodes[node_index].subject_scalar_subquery
         );
         free(predicate->nodes[node_index].subject_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].value_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].value_scalar_subquery
         );
         free(predicate->nodes[node_index].value_scalar_subquery);
-        planned_scalar_aggregate_subquery_deinit(predicate->nodes[node_index].upper_scalar_subquery
+        planned_scalar_aggregate_subquery_deinit(
+            predicate->nodes[node_index].upper_scalar_subquery
         );
         free(predicate->nodes[node_index].upper_scalar_subquery);
     }
@@ -242,12 +248,13 @@ static void planned_select_predicate_deinit_without_exists(
     *predicate = (struct planned_select_predicate){0};
 }
 
-static void planned_select_predicate_owned_columns_deinit(struct planned_select_predicate *predicate
+static void planned_select_predicate_owned_columns_deinit(
+    struct planned_select_predicate *predicate
 ) {
     for (size_t index = 0U; index < predicate->owned_column_count; ++index) {
         free(predicate->owned_columns[index]);
     }
-    free(predicate->owned_columns);
+    free((void *)predicate->owned_columns);
     predicate->owned_columns = NULL;
     predicate->owned_column_count = 0U;
     predicate->owned_column_capacity = 0U;
@@ -352,13 +359,13 @@ static int merge_select_predicate_with_and(
     }
     if (addition->owned_column_count > 0U) {
         memcpy(
-            &target->owned_columns[target->owned_column_count],
-            addition->owned_columns,
+            (void *)&target->owned_columns[target->owned_column_count],
+            (const void *)addition->owned_columns,
             addition->owned_column_count * sizeof(*addition->owned_columns)
         );
         target->owned_column_count += addition->owned_column_count;
     }
-    free(addition->owned_columns);
+    free((void *)addition->owned_columns);
     addition->owned_columns = NULL;
     addition->owned_column_count = 0U;
     addition->owned_column_capacity = 0U;

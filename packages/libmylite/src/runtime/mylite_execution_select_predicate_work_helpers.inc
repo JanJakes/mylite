@@ -58,10 +58,9 @@ static int retain_planned_select_predicate_column(
     for (size_t index = 0U; index < predicate->owned_column_count; ++index) {
         const struct mylite_catalog_column_descriptor *owned = predicate->owned_columns[index];
 
-        if ((column->column_id > 0 && column->table_id > 0 &&
-             owned->column_id == column->column_id && owned->table_id == column->table_id) ||
-            (column->column_id <= 0 && column->table_id <= 0 &&
-             memcmp(owned, column, sizeof(*column)) == 0)) {
+        if (planned_select_predicate_columns_match(
+                &(const struct catalog_column_descriptor_pair){.left = owned, .right = column}
+            )) {
             *out_column = owned;
             return MYLITE_OK;
         }
@@ -85,6 +84,50 @@ static int retain_planned_select_predicate_column(
     predicate->owned_column_count = required_count;
     *out_column = copy;
     return MYLITE_OK;
+}
+
+static bool planned_select_predicate_columns_match(
+    const struct catalog_column_descriptor_pair *columns
+) {
+    const struct mylite_catalog_column_descriptor *left = columns == NULL ? NULL : columns->left;
+    const struct mylite_catalog_column_descriptor *right = columns == NULL ? NULL : columns->right;
+
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+    if (right->column_id > 0 && right->table_id > 0) {
+        return left->column_id == right->column_id && left->table_id == right->table_id;
+    }
+    return left->column_id == right->column_id && left->table_id == right->table_id &&
+           left->ordinal_position == right->ordinal_position &&
+           strcmp(left->name, right->name) == 0 &&
+           strcmp(left->logical_type, right->logical_type) == 0 &&
+           strcmp(left->physical_type, right->physical_type) == 0 &&
+           left->is_nullable == right->is_nullable && left->is_visible == right->is_visible &&
+           left->is_auto_increment == right->is_auto_increment &&
+           left->default_kind == right->default_kind &&
+           left->default_integer == right->default_integer &&
+           (left->default_text == right->default_text ||
+            (left->default_text != NULL && right->default_text != NULL &&
+             strcmp(left->default_text, right->default_text) == 0)) &&
+           left->on_update_current_timestamp == right->on_update_current_timestamp &&
+           strcmp(left->character_set_name, right->character_set_name) == 0 &&
+           strcmp(left->collation_name, right->collation_name) == 0 &&
+           (left->comment == right->comment || (left->comment != NULL && right->comment != NULL &&
+                                                strcmp(left->comment, right->comment) == 0)) &&
+           left->is_generated == right->is_generated &&
+           left->generated_kind == right->generated_kind &&
+           (left->generation_expression == right->generation_expression ||
+            (left->generation_expression != NULL && right->generation_expression != NULL &&
+             strcmp(left->generation_expression, right->generation_expression) == 0)) &&
+           (left->sqlite_generation_expression == right->sqlite_generation_expression ||
+            (left->sqlite_generation_expression != NULL &&
+             right->sqlite_generation_expression != NULL &&
+             strcmp(left->sqlite_generation_expression, right->sqlite_generation_expression) ==
+                 0)) &&
+           left->descriptor_version == right->descriptor_version &&
+           left->created_catalog_generation == right->created_catalog_generation &&
+           left->updated_catalog_generation == right->updated_catalog_generation;
 }
 
 static int reserve_planned_select_predicate_nodes(
@@ -152,7 +195,8 @@ static int reserve_planned_select_predicate_columns(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    columns = realloc(predicate->owned_columns, capacity * sizeof(*columns));
+    columns = (struct mylite_catalog_column_descriptor **)
+        realloc((void *)predicate->owned_columns, capacity * sizeof(*columns));
     if (columns == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -191,7 +235,8 @@ static int append_deprecated_logical_or_warning(struct mylite_db *database) {
     return rc;
 }
 
-static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate
+static bool planned_select_predicate_has_expression(
+    const struct planned_select_predicate *predicate
 ) {
     if (predicate == NULL) {
         return false;
@@ -270,7 +315,7 @@ static int append_predicate_work_item(
 
     if (stack->count == stack->capacity) {
         if (capacity == 0U) {
-            capacity = 8U;
+            capacity = predicate_planning_stack_initial_capacity;
         } else if (capacity > SIZE_MAX / 2U) {
             set_nomem_error(database);
             return MYLITE_NOMEM;
@@ -307,7 +352,7 @@ static int append_predicate_result_index(
 
     if (stack->count == stack->capacity) {
         if (capacity == 0U) {
-            capacity = 8U;
+            capacity = predicate_planning_stack_initial_capacity;
         } else if (capacity > SIZE_MAX / 2U) {
             set_nomem_error(database);
             return MYLITE_NOMEM;

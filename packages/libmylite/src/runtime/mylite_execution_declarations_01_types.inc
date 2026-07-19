@@ -3555,3 +3555,43 @@ struct set_session_snapshot {
     size_t system_variable_override_count;
     size_t system_variable_override_capacity;
 };
+
+struct stmt_bytes_binding_request {
+    size_t index;
+    enum mylite_stmt_binding_type type;
+    const void *value;
+    size_t value_size;
+};
+
+struct aggregate_result_label_source {
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+};
+
+struct grouped_projection_result_label_source {
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+    const struct mylite_catalog_column_descriptor *column;
+};
+
+struct information_schema_join_compat_table_source {
+    const char *schema_name;
+    const char *table_name;
+    const char *alias;
+};
+
+struct row_scalar_exists_select_item_source {
+    const struct mylite_sql_ast_node *predicate;
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+};
+
+struct row_scalar_select_item_label_source {
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+};
+
+struct catalog_column_descriptor_pair {
+    const struct mylite_catalog_column_descriptor *left;
+    const struct mylite_catalog_column_descriptor *right;
+};

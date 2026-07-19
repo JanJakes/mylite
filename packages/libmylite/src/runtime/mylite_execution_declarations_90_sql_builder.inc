@@ -1,3 +1,4 @@
+#ifndef MYLITE_EXECUTION_ROW_SCALAR_SQL_ONLY
 static int append_select_result_column(
     struct mylite_db *database,
     mylite_result *result,
@@ -1326,11 +1327,9 @@ static int append_row_scalar_tableless_filter_sql(
     const struct planned_row_scalar_select *plan,
     size_t *next_parameter
 );
-static int append_row_scalar_expression_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_row_scalar_expression *expression,
-    size_t *next_parameter
-);
+#endif
+
+#ifdef MYLITE_EXECUTION_ROW_SCALAR_SQL_IMPLEMENTATION
 static int append_row_scalar_collate_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -1340,9 +1339,6 @@ static const char *row_scalar_sql_collation_name(const char *collation_name);
 static bool row_scalar_mysql_collation_is_binary_sensitive(const char *collation_name);
 static bool row_scalar_mysql_collation_is_binary(const char *collation_name);
 static bool row_scalar_mysql_collation_is_case_sensitive(const char *collation_name);
-static bool row_scalar_expression_is_binary_sensitive_collate(
-    const struct planned_row_scalar_expression *expression
-);
 static bool text_has_ascii_case_insensitive_suffix(const char *text, const char *suffix);
 static int append_row_scalar_sum_column_expression_sql(
     struct mylite_dynamic_string *string,
@@ -1831,11 +1827,6 @@ static int append_row_scalar_json_constructor_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
-static int append_row_scalar_json_constructor_argument_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_row_scalar_expression *argument,
-    size_t *next_parameter
-);
 static int append_row_scalar_control_flow_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -2063,6 +2054,9 @@ static int append_row_scalar_string_slice_operand_sql(
     size_t *next_parameter,
     bool negate
 );
+#endif
+
+#ifndef MYLITE_EXECUTION_ROW_SCALAR_SQL_ONLY
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql);
 static int append_select_distinct_found_rows_sql(
     struct mylite_dynamic_string *string,
@@ -2923,3 +2917,4 @@ static int append_foreign_key_column_reference(
     const char *column_name
 );
 static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind);
+#endif

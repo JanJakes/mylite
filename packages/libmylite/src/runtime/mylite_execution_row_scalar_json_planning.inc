@@ -1768,11 +1768,6 @@ static bool json_mutation_kind_is_merge(enum planned_json_mutation_kind mutation
            mutation_kind == PLANNED_JSON_MUTATION_MERGE_PRESERVE;
 }
 
-static bool json_mutation_kind_preserves_first_null(enum planned_json_mutation_kind mutation_kind) {
-    return mutation_kind == PLANNED_JSON_MUTATION_MERGE ||
-           mutation_kind == PLANNED_JSON_MUTATION_MERGE_PRESERVE;
-}
-
 static int plan_row_scalar_json_merge_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *arguments,

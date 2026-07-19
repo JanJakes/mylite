@@ -1303,7 +1303,7 @@ static int append_row_scalar_json_constructor_expression_sql(
     return rc;
 }
 
-static int append_row_scalar_json_constructor_argument_sql(
+int append_row_scalar_json_constructor_argument_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *argument,
     size_t *next_parameter

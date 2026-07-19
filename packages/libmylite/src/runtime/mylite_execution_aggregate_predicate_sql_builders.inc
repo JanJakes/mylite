@@ -3312,6 +3312,15 @@ static int append_exists_subquery_join_condition_sql(
     return append_select_join_condition_sql(string, &condition, next_parameter);
 }
 
+int mylite_execution_append_descriptor_value_sql_for_source(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify
+) {
+    return append_descriptor_value_sql_for_source(string, column, source_index, qualify);
+}
+
 static int append_descriptor_value_sql_for_source(
     struct mylite_dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column,

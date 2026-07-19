@@ -26,6 +26,7 @@
 #include "mylite_execution_parameter_binding.h"
 #include "mylite_execution_plan_types.h"
 #include "mylite_execution_result_rows.h"
+#include "mylite_execution_row_scalar_sql.h"
 #include "mylite_execution_scalar.h"
 #include "mylite_execution_scalar_charset_collation.h"
 #include "mylite_execution_scalar_numeric.h"
@@ -3907,12 +3908,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_insert_sql_builders.inc"
 
 #include "mylite_execution_select_sql_builders.inc"
-
-#include "mylite_execution_row_scalar_sql_core.inc"
-
-#include "mylite_execution_row_scalar_sql_functions.inc"
-
-#include "mylite_execution_row_scalar_sql_json_control.inc"
 
 #include "mylite_execution_aggregate_predicate_sql_builders.inc"
 

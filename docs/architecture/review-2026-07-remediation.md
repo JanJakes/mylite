@@ -260,8 +260,12 @@ complete.
   cohesive binder module instead of eleven implementation fragments in the
   mega translation unit. Statement row-count classification, diagnostics
   snapshot policy, and successful-result publication now form a separate
-  completion module as well. Subsequent planner, SQL-lowering, and metadata
-  clusters still need the same treatment.
+  completion module as well. Typed row-scalar SQL lowering now forms another
+  independently compiled module: three fragments totaling 7,654 lines expose
+  one primary expression-lowering operation plus two compatibility helpers,
+  with a single explicit bridge for descriptor value formatting. Subsequent
+  planner, general SQL-lowering, and metadata clusters still need the same
+  treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

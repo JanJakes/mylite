@@ -516,6 +516,12 @@ static bool column_descriptor_is_set(const struct mylite_catalog_column_descript
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
+bool mylite_execution_column_descriptor_is_binary_value(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column);
+}
+
 static bool column_descriptor_is_binary_string_family(
     const struct mylite_catalog_column_descriptor *column
 ) {

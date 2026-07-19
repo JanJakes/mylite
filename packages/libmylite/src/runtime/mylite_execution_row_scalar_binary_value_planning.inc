@@ -978,24 +978,6 @@ static const char *row_scalar_digest_error_function_name(
     return NULL;
 }
 
-static const char *row_scalar_digest_sql_function_name(
-    enum planned_row_scalar_digest_kind digest_kind
-) {
-    switch (digest_kind) {
-    case PLANNED_ROW_SCALAR_DIGEST_MD5:
-        return "_mylite_md5";
-    case PLANNED_ROW_SCALAR_DIGEST_SHA:
-        return "_mylite_sha";
-    case PLANNED_ROW_SCALAR_DIGEST_SHA1:
-        return "_mylite_sha1";
-    case PLANNED_ROW_SCALAR_DIGEST_SHA2:
-        return "_mylite_sha2";
-    case PLANNED_ROW_SCALAR_DIGEST_NONE:
-        break;
-    }
-    return NULL;
-}
-
 static enum mylite_digest_algorithm row_scalar_digest_algorithm(
     const struct planned_row_scalar_expression *expression
 ) {

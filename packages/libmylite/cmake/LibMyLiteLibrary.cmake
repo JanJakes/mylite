@@ -125,6 +125,7 @@ add_library(mylite
   src/runtime/mylite_execution_loaded_catalog.c
   src/runtime/mylite_execution_parameter_binding.c
   src/runtime/mylite_execution_result_rows.c
+  src/runtime/mylite_execution_row_scalar_sql.c
   src/runtime/mylite_execution_value.c
   src/runtime/mylite_execution_scalar_base_conversion.c
   src/runtime/mylite_execution_scalar_binary_aes.c

@@ -1239,8 +1239,7 @@ static bool row_scalar_string_length_argument_is_binary(
     if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return false;
     }
-    return (column_descriptor_is_binary_string_family(expression->column) ||
-            column_descriptor_is_bit(expression->column)) != 0;
+    return mylite_execution_column_descriptor_is_binary_value(expression->column);
 }
 
 static int append_row_scalar_string_codepoint_expression_sql(

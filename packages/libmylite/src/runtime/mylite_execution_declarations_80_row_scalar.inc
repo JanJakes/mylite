@@ -1378,11 +1378,6 @@ static int validate_row_scalar_regexp_string_pattern(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *pattern_argument
 );
-static int append_row_scalar_regexp_string_expression_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_row_scalar_expression *expression,
-    size_t *next_parameter
-);
 #ifdef MYLITE_EXECUTION_PARAMETER_BINDING_IMPLEMENTATION
 static int bind_row_scalar_regexp_string_expression_parameters(
     sqlite3_stmt *statement,
@@ -1715,7 +1710,6 @@ static int plan_row_scalar_json_mutation_arguments(
     struct planned_row_scalar_expression *out_expression
 );
 static bool json_mutation_kind_is_merge(enum planned_json_mutation_kind mutation_kind);
-static bool json_mutation_kind_preserves_first_null(enum planned_json_mutation_kind mutation_kind);
 static int plan_row_scalar_json_merge_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *arguments,
@@ -2207,9 +2201,6 @@ static enum planned_row_scalar_digest_kind row_scalar_digest_kind_from_ast(
 );
 static const char *row_scalar_digest_error_function_name(
     const struct mylite_sql_ast_node *expression
-);
-static const char *row_scalar_digest_sql_function_name(
-    enum planned_row_scalar_digest_kind digest_kind
 );
 static enum mylite_digest_algorithm row_scalar_digest_algorithm(
     const struct planned_row_scalar_expression *expression

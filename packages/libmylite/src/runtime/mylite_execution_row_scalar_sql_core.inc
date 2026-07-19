@@ -1,4 +1,4 @@
-static int append_row_scalar_expression_sql(
+int append_row_scalar_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -564,7 +564,7 @@ static bool row_scalar_mysql_collation_is_binary(const char *collation_name) {
     if (collation_name == NULL) {
         return false;
     }
-    return text_equals_ascii_case_insensitive(collation_name, "binary") ||
+    return mylite_execution_text_equals_ascii_case_insensitive(collation_name, "binary") ||
            text_has_ascii_case_insensitive_suffix(collation_name, "_bin");
 }
 
@@ -575,7 +575,7 @@ static bool row_scalar_mysql_collation_is_case_sensitive(const char *collation_n
     return text_has_ascii_case_insensitive_suffix(collation_name, "_cs");
 }
 
-static bool row_scalar_expression_is_binary_sensitive_collate(
+bool row_scalar_expression_is_binary_sensitive_collate(
     const struct planned_row_scalar_expression *expression
 ) {
     return expression != NULL && expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
@@ -595,7 +595,10 @@ static bool text_has_ascii_case_insensitive_suffix(const char *text, const char 
     if (suffix_length > text_length) {
         return false;
     }
-    return text_equals_ascii_case_insensitive(text + text_length - suffix_length, suffix);
+    return mylite_execution_text_equals_ascii_case_insensitive(
+        text + text_length - suffix_length,
+        suffix
+    );
 }
 
 static int append_row_scalar_sum_column_expression_sql(
@@ -832,7 +835,7 @@ static int append_row_scalar_window_over_clause_sql(
         rc = mylite_dynamic_string_append(string, "PARTITION BY ");
     }
     if (rc == MYLITE_OK && expression->window_has_partition) {
-        rc = append_descriptor_value_sql_for_source(
+        rc = mylite_execution_append_descriptor_value_sql_for_source(
             string,
             expression->window_partition_column,
             0U,
@@ -846,7 +849,7 @@ static int append_row_scalar_window_over_clause_sql(
         rc = mylite_dynamic_string_append(string, "ORDER BY ");
     }
     if (rc == MYLITE_OK && expression->window_has_order) {
-        rc = append_descriptor_value_sql_for_source(
+        rc = mylite_execution_append_descriptor_value_sql_for_source(
             string,
             expression->window_order_column,
             0U,

@@ -198,7 +198,7 @@ static int test_sys_ps_helper_table_backed_contexts(void) {
         NULL,
         "YES",
         "root@%",
-        "NO",
+        "YES",
         "NO",
         "2",
         NULL,

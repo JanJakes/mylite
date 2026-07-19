@@ -300,7 +300,7 @@ static const struct sys_consumer_default sys_consumer_defaults[] = {
     {"events_stages_history_long", "NO"},
     {"events_statements_cpu", "NO"},
     {"events_statements_current", "YES"},
-    {"events_statements_history", "NO"},
+    {"events_statements_history", "YES"},
     {"events_statements_history_long", "NO"},
     {"events_transactions_current", "YES"},
     {"events_transactions_history", "YES"},

@@ -55,7 +55,7 @@ esac
 
 expect_output \
     "sys ps consumer defaults" \
-    "$(printf '%b' 'YES\tNO\tNO\tNO\tNULL')" \
+    "$(printf '%b' 'YES\tYES\tNO\tNO\tNULL')" \
     "SELECT
         sys.ps_is_consumer_enabled('thread_instrumentation'),
         sys.ps_is_consumer_enabled('events_statements_history'),

@@ -6,11 +6,13 @@ elseif(MYLITE_ENABLE_TSAN)
 endif()
 
 set(mylite_install_consumer_zlib_pkgconfig_dir "")
-if(WIN32 AND ZLIB_LIBRARY_RELEASE)
+if(ZLIB_LIBRARY_RELEASE)
   cmake_path(GET ZLIB_LIBRARY_RELEASE PARENT_PATH mylite_zlib_library_dir)
-  set(mylite_install_consumer_zlib_pkgconfig_dir
-    "${mylite_zlib_library_dir}/pkgconfig"
-  )
+  if(EXISTS "${mylite_zlib_library_dir}/pkgconfig/zlib.pc")
+    set(mylite_install_consumer_zlib_pkgconfig_dir
+      "${mylite_zlib_library_dir}/pkgconfig"
+    )
+  endif()
 endif()
 
 add_test(

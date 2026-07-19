@@ -99,10 +99,37 @@ if(NOT pkg_config_executable)
   find_program(pkg_config_executable NAMES pkg-config)
 endif()
 if(pkg_config_executable)
-  set(pkgconfig_paths "${install_prefix}/${MYLITE_INSTALL_LIBDIR}/pkgconfig")
+  file(RELATIVE_PATH pkgconfig_install_path
+    "${test_root}"
+    "${install_prefix}/${MYLITE_INSTALL_LIBDIR}/pkgconfig"
+  )
+  set(pkgconfig_paths "${pkgconfig_install_path}")
   if(DEFINED MYLITE_ZLIB_PKGCONFIG_DIR
      AND NOT MYLITE_ZLIB_PKGCONFIG_DIR STREQUAL "")
-    list(APPEND pkgconfig_paths "${MYLITE_ZLIB_PKGCONFIG_DIR}")
+    set(zlib_pkgconfig_source "${MYLITE_ZLIB_PKGCONFIG_DIR}/zlib.pc")
+    if(NOT EXISTS "${zlib_pkgconfig_source}")
+      message(FATAL_ERROR "zlib pkg-config metadata is missing")
+    endif()
+    cmake_path(GET MYLITE_ZLIB_PKGCONFIG_DIR PARENT_PATH zlib_library_dir)
+    cmake_path(GET zlib_library_dir PARENT_PATH zlib_prefix)
+    file(READ "${zlib_pkgconfig_source}" zlib_pkgconfig_contents)
+    string(REGEX REPLACE
+      "(^|\n)prefix=[^\n]*"
+      "\\1prefix=${zlib_prefix}"
+      zlib_pkgconfig_contents
+      "${zlib_pkgconfig_contents}"
+    )
+    set(pkgconfig_dependency_path "${test_root}/pkgconfig-dependencies")
+    file(MAKE_DIRECTORY "${pkgconfig_dependency_path}")
+    file(WRITE
+      "${pkgconfig_dependency_path}/zlib.pc"
+      "${zlib_pkgconfig_contents}"
+    )
+    file(RELATIVE_PATH pkgconfig_dependency_path
+      "${test_root}"
+      "${pkgconfig_dependency_path}"
+    )
+    list(APPEND pkgconfig_paths "${pkgconfig_dependency_path}")
   endif()
   cmake_path(CONVERT "${pkgconfig_paths}" TO_NATIVE_PATH_LIST pkgconfig_search_path)
   set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
@@ -112,20 +139,10 @@ if(pkg_config_executable)
     OUTPUT_VARIABLE pkgconfig_arguments
     ERROR_VARIABLE pkgconfig_error
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    WORKING_DIRECTORY "${test_root}"
   )
   if(WIN32 AND NOT pkgconfig_query_result EQUAL 0)
-    set(pkgconfig_posix_paths)
-    foreach(pkgconfig_path IN LISTS pkgconfig_paths)
-      if(pkgconfig_path MATCHES "^([A-Za-z]):/(.*)$")
-        string(TOLOWER "${CMAKE_MATCH_1}" pkgconfig_drive)
-        list(APPEND pkgconfig_posix_paths
-          "/${pkgconfig_drive}/${CMAKE_MATCH_2}"
-        )
-      else()
-        list(APPEND pkgconfig_posix_paths "${pkgconfig_path}")
-      endif()
-    endforeach()
-    list(JOIN pkgconfig_posix_paths ":" pkgconfig_search_path)
+    list(JOIN pkgconfig_paths ":" pkgconfig_search_path)
     set(ENV{PKG_CONFIG_PATH} "${pkgconfig_search_path}")
     execute_process(
       COMMAND "${pkg_config_executable}" --cflags --libs --static mylite
@@ -133,10 +150,14 @@ if(pkg_config_executable)
       OUTPUT_VARIABLE pkgconfig_arguments
       ERROR_VARIABLE pkgconfig_error
       OUTPUT_STRIP_TRAILING_WHITESPACE
+      WORKING_DIRECTORY "${test_root}"
     )
   endif()
   if(NOT pkgconfig_query_result EQUAL 0)
-    message(FATAL_ERROR "Installed pkg-config metadata failed: ${pkgconfig_error}")
+    message(FATAL_ERROR
+      "Installed pkg-config metadata failed in ${pkgconfig_search_path}: "
+      "${pkgconfig_error}"
+    )
   endif()
   separate_arguments(pkgconfig_arguments NATIVE_COMMAND "${pkgconfig_arguments}")
   set(sanitizer_link_arguments)
@@ -153,6 +174,7 @@ if(pkg_config_executable)
       ${sanitizer_link_arguments}
     RESULT_VARIABLE pkgconfig_build_result
     ERROR_VARIABLE pkgconfig_build_error
+    WORKING_DIRECTORY "${test_root}"
   )
   if(NOT pkgconfig_build_result EQUAL 0)
     message(FATAL_ERROR "Installed pkg-config consumer build failed: ${pkgconfig_build_error}")

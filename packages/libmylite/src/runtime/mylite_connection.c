@@ -21,7 +21,7 @@ static int allocate_database_handle(struct mylite_db **out_database);
 static int open_memory_sqlite(struct mylite_db *database);
 static int open_file_sqlite(struct mylite_db *database, const char *path);
 static int bootstrap_sqlite_connection(struct mylite_db *database);
-static int initialize_file_backed_catalog(struct mylite_db *database);
+static int initialize_catalog(struct mylite_db *database);
 static void initialize_open_diagnostic(struct mylite_open_diagnostic *diagnostic);
 static void capture_open_diagnostic(
     struct mylite_open_diagnostic *diagnostic,
@@ -423,7 +423,11 @@ static int open_memory_sqlite(struct mylite_db *database) {
 
     database->sqlite = sqlite;
 
-    return bootstrap_sqlite_connection(database);
+    rc = bootstrap_sqlite_connection(database);
+    if (rc == MYLITE_OK) {
+        rc = initialize_catalog(database);
+    }
+    return rc;
 }
 
 static int open_file_sqlite(struct mylite_db *database, const char *path) {
@@ -442,7 +446,7 @@ static int open_file_sqlite(struct mylite_db *database, const char *path) {
         rc = mylite_storage_configure_sqlite_payload(database->sqlite);
     }
     if (rc == MYLITE_OK) {
-        rc = initialize_file_backed_catalog(database);
+        rc = initialize_catalog(database);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_storage_commit_sqlite_initialization(database->sqlite);
@@ -462,7 +466,7 @@ static int bootstrap_sqlite_connection(struct mylite_db *database) {
     );
 }
 
-static int initialize_file_backed_catalog(struct mylite_db *database) {
+static int initialize_catalog(struct mylite_db *database) {
     return mylite_catalog_initialize_file_backed(database);
 }
 

@@ -142,6 +142,13 @@ before each execution according to the type string. `execute(array)` binds the
 array values directly. SELECT execution uses the native cursor/result path;
 DML status comes from the same native statement completion record.
 
+The adapter enforces its fixed MySQL-compatible `max_allowed_packet` boundary
+against the complete encoded execute packet, including command metadata, null
+bitmap, parameter types, length prefixes, and all ordinary bound values.
+Overflow-safe accounting occurs before execution. Values supplied through
+`send_long_data()` remain separately bounded per parameter because MySQL sends
+and accumulates those chunks outside the execute packet.
+
 ### PDO
 
 The driver advertises positional placeholders and binds through the native
@@ -271,6 +278,8 @@ SQLite fork. Schema-generation invalidation remains MyLite-owned.
   destruction order;
 - connection and statement insert IDs after native prepared DML, including
   framework code that reads the mysqli connection property;
+- per-value and aggregate `max_allowed_packet` rejection for statement
+  execution and `execute_query()` without materializing an oversized result;
 - proof that values containing SQL syntax cannot change row count, schema, or
   subsequent diagnostics.
 

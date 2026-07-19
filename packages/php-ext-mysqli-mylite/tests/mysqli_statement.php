@@ -136,6 +136,26 @@ expect_same(1153, $oversized->errno, 'oversized prepared payload statement errno
 expect_same(1153, $mysqli->errno, 'oversized prepared payload link errno');
 unset($oversizedPayload);
 
+$aggregatePacket = $mysqli->prepare(
+    'SELECT LENGTH(?) AS first_length, LENGTH(?) AS second_length'
+);
+$aggregatePacketPart = str_repeat('x', 32 * 1024 * 1024 + 1);
+expect_false(
+    $aggregatePacket->execute([$aggregatePacketPart, $aggregatePacketPart]),
+    'reject aggregate oversized prepared packet'
+);
+expect_same(1153, $aggregatePacket->errno, 'aggregate packet statement errno');
+expect_same(1153, $mysqli->errno, 'aggregate packet link errno');
+expect_false(
+    $mysqli->execute_query(
+        'SELECT LENGTH(?) AS first_length, LENGTH(?) AS second_length',
+        [$aggregatePacketPart, $aggregatePacketPart]
+    ),
+    'reject aggregate oversized execute-query packet'
+);
+expect_same(1153, $mysqli->errno, 'aggregate execute-query packet link errno');
+unset($aggregatePacketPart);
+
 $reset = $mysqli->prepare('SELECT ? AS value');
 expect_true($reset->execute([1]), 'execute reset statement');
 expect_true($reset->reset(), 'reset statement');

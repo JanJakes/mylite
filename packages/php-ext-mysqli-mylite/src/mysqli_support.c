@@ -99,14 +99,28 @@ static int mylite_mysqli_result_next_row(mylite_mysqli_result *result, zval **ou
 static zend_string *mylite_mysqli_column_string(const char *value);
 static int mylite_mysqli_column_type(enum mylite_result_column_type type);
 static bool mylite_mysqli_bind_statement_parameters(mylite_mysqli_stmt *stmt, zval *params);
+static bool mylite_mysqli_initialize_execute_packet_size(
+    mylite_mysqli_link *link,
+    size_t parameter_count,
+    size_t *out_packet_size
+);
 static bool mylite_mysqli_bind_native_value(
     mylite_mysqli_link *link,
     mylite_stmt *native_stmt,
     size_t index,
     zval *value,
     char type,
-    const zend_string *long_data
+    const zend_string *long_data,
+    size_t *packet_size
 );
+static bool mylite_mysqli_add_execute_packet_value(
+    mylite_mysqli_link *link,
+    size_t *packet_size,
+    size_t value_size,
+    bool has_length_prefix
+);
+static size_t mylite_mysqli_length_encoded_integer_size(size_t value);
+static void mylite_mysqli_set_packet_too_large_error(mylite_mysqli_link *link);
 static bool mylite_mysqli_capture_stmt_status(
     mylite_mysqli_stmt *stmt,
     mylite_mysqli_link *link,
@@ -806,6 +820,7 @@ bool mylite_mysqli_link_execute_query(
     zval *out_result
 ) {
     mylite_stmt *native_stmt = NULL;
+    size_t packet_size = 0U;
     int status = MYLITE_OK;
 
     if (params == NULL) {
@@ -845,11 +860,23 @@ bool mylite_mysqli_link_execute_query(
         mylite_mysqli_report_link_error(link);
         return false;
     }
+    if (!mylite_mysqli_initialize_execute_packet_size(link, parameter_count, &packet_size)) {
+        (void)mylite_stmt_finalize(native_stmt);
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
     for (size_t index = 0U; index < parameter_count; ++index) {
         zval *value = zend_hash_index_find(Z_ARRVAL_P(params), index);
 
-        if (value == NULL ||
-            !mylite_mysqli_bind_native_value(link, native_stmt, index, value, '\0', NULL)) {
+        if (value == NULL || !mylite_mysqli_bind_native_value(
+                                 link,
+                                 native_stmt,
+                                 index,
+                                 value,
+                                 '\0',
+                                 NULL,
+                                 &packet_size
+                             )) {
             (void)mylite_stmt_finalize(native_stmt);
             mylite_mysqli_report_link_error(link);
             return false;
@@ -1556,12 +1583,7 @@ static bool mylite_mysqli_reject_oversized_packet(mylite_mysqli_link *link, size
         return false;
     }
 
-    mylite_mysqli_set_error(
-        link,
-        MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
-        "08S01",
-        "Got a packet bigger than 'max_allowed_packet' bytes"
-    );
+    mylite_mysqli_set_packet_too_large_error(link);
     mylite_mysqli_report_link_error(link);
     return true;
 }
@@ -2161,6 +2183,7 @@ static bool mylite_mysqli_bind_statement_parameters(mylite_mysqli_stmt *stmt, zv
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ(stmt->link));
     const uint32_t supplied_count =
         params == NULL ? stmt->bound_param_count : zend_hash_num_elements(Z_ARRVAL_P(params));
+    size_t packet_size = 0U;
 
     if (supplied_count != stmt->param_count) {
         mylite_mysqli_set_stmt_error(
@@ -2169,6 +2192,10 @@ static bool mylite_mysqli_bind_statement_parameters(mylite_mysqli_stmt *stmt, zv
             "HY000",
             "parameter count mismatch"
         );
+        return false;
+    }
+    if (!mylite_mysqli_initialize_execute_packet_size(link, supplied_count, &packet_size)) {
+        mylite_mysqli_set_stmt_error(stmt, link->error_code, link->sqlstate, ZSTR_VAL(link->error));
         return false;
     }
     for (uint32_t index = 0U; index < supplied_count; ++index) {
@@ -2185,7 +2212,8 @@ static bool mylite_mysqli_bind_statement_parameters(mylite_mysqli_stmt *stmt, zv
                                  index,
                                  value,
                                  type,
-                                 long_data
+                                 long_data,
+                                 &packet_size
                              )) {
             if (link->error_code == MYLITE_MYSQLI_ERROR_NONE) {
                 mylite_mysqli_set_error(
@@ -2207,25 +2235,64 @@ static bool mylite_mysqli_bind_statement_parameters(mylite_mysqli_stmt *stmt, zv
     return true;
 }
 
+static bool mylite_mysqli_initialize_execute_packet_size(
+    mylite_mysqli_link *link,
+    size_t parameter_count,
+    size_t *out_packet_size
+) {
+    enum {
+        command_and_statement_header_size = 10,
+        new_parameter_bindings_flag_size = 1,
+        parameter_type_size = 2,
+    };
+
+    size_t null_bitmap_size = 0U;
+    size_t type_bytes = 0U;
+    size_t packet_size = 0U;
+
+    if (out_packet_size == NULL || parameter_count > (SIZE_MAX - 7U)) {
+        mylite_mysqli_set_packet_too_large_error(link);
+        return false;
+    }
+    null_bitmap_size = (parameter_count + 7U) / 8U;
+    if (parameter_count > SIZE_MAX / parameter_type_size) {
+        mylite_mysqli_set_packet_too_large_error(link);
+        return false;
+    }
+    type_bytes = parameter_count * parameter_type_size;
+    if (null_bitmap_size >
+            SIZE_MAX - command_and_statement_header_size - new_parameter_bindings_flag_size ||
+        type_bytes > SIZE_MAX - command_and_statement_header_size -
+                         new_parameter_bindings_flag_size - null_bitmap_size) {
+        mylite_mysqli_set_packet_too_large_error(link);
+        return false;
+    }
+    packet_size = command_and_statement_header_size + new_parameter_bindings_flag_size +
+                  null_bitmap_size + type_bytes;
+    if (packet_size > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+        mylite_mysqli_set_packet_too_large_error(link);
+        return false;
+    }
+
+    *out_packet_size = packet_size;
+    return true;
+}
+
 static bool mylite_mysqli_bind_native_value(
     mylite_mysqli_link *link,
     mylite_stmt *native_stmt,
     size_t index,
     zval *value,
     char type,
-    const zend_string *long_data
+    const zend_string *long_data,
+    size_t *packet_size
 ) {
     int status = MYLITE_OK;
 
     ZVAL_DEREF(value);
     if (long_data != NULL) {
         if (ZSTR_LEN(long_data) > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
-            mylite_mysqli_set_error(
-                link,
-                MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
-                "08S01",
-                "Got a packet bigger than 'max_allowed_packet' bytes"
-            );
+            mylite_mysqli_set_packet_too_large_error(link);
             return false;
         }
         status =
@@ -2233,8 +2300,14 @@ static bool mylite_mysqli_bind_native_value(
     } else if (Z_TYPE_P(value) == IS_NULL) {
         status = mylite_stmt_bind_null(native_stmt, index);
     } else if (type == 'i') {
+        if (!mylite_mysqli_add_execute_packet_value(link, packet_size, sizeof(zend_long), false)) {
+            return false;
+        }
         status = mylite_stmt_bind_int64(native_stmt, index, zval_get_long(value));
     } else if (type == 'd') {
+        if (!mylite_mysqli_add_execute_packet_value(link, packet_size, sizeof(double), false)) {
+            return false;
+        }
         status = mylite_stmt_bind_double(native_stmt, index, zval_get_double(value));
     } else if (type == 's' || type == 'b') {
         zend_string *text = zval_get_string(value);
@@ -2242,14 +2315,8 @@ static bool mylite_mysqli_bind_native_value(
         if (UNEXPECTED(EG(exception) != NULL)) {
             return false;
         }
-        if (ZSTR_LEN(text) > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+        if (!mylite_mysqli_add_execute_packet_value(link, packet_size, ZSTR_LEN(text), true)) {
             zend_string_release(text);
-            mylite_mysqli_set_error(
-                link,
-                MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
-                "08S01",
-                "Got a packet bigger than 'max_allowed_packet' bytes"
-            );
             return false;
         }
         status = type == 'b'
@@ -2268,12 +2335,31 @@ static bool mylite_mysqli_bind_native_value(
         switch (Z_TYPE_P(value)) {
         case IS_FALSE:
         case IS_TRUE:
+            if (!mylite_mysqli_add_execute_packet_value(
+                    link,
+                    packet_size,
+                    sizeof(zend_long),
+                    false
+                )) {
+                return false;
+            }
             status = mylite_stmt_bind_int64(native_stmt, index, Z_TYPE_P(value) == IS_TRUE ? 1 : 0);
             break;
         case IS_LONG:
+            if (!mylite_mysqli_add_execute_packet_value(
+                    link,
+                    packet_size,
+                    sizeof(zend_long),
+                    false
+                )) {
+                return false;
+            }
             status = mylite_stmt_bind_int64(native_stmt, index, Z_LVAL_P(value));
             break;
         case IS_DOUBLE:
+            if (!mylite_mysqli_add_execute_packet_value(link, packet_size, sizeof(double), false)) {
+                return false;
+            }
             status = mylite_stmt_bind_double(native_stmt, index, Z_DVAL_P(value));
             break;
         default: {
@@ -2282,14 +2368,8 @@ static bool mylite_mysqli_bind_native_value(
             if (UNEXPECTED(EG(exception) != NULL)) {
                 return false;
             }
-            if (ZSTR_LEN(text) > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+            if (!mylite_mysqli_add_execute_packet_value(link, packet_size, ZSTR_LEN(text), true)) {
                 zend_string_release(text);
-                mylite_mysqli_set_error(
-                    link,
-                    MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
-                    "08S01",
-                    "Got a packet bigger than 'max_allowed_packet' bytes"
-                );
                 return false;
             }
             status = mylite_stmt_bind_text(native_stmt, index, ZSTR_VAL(text), ZSTR_LEN(text));
@@ -2318,6 +2398,52 @@ static bool mylite_mysqli_bind_native_value(
         return false;
     }
     return true;
+}
+
+static bool mylite_mysqli_add_execute_packet_value(
+    mylite_mysqli_link *link,
+    size_t *packet_size,
+    size_t value_size,
+    bool has_length_prefix
+) {
+    size_t prefix_size =
+        has_length_prefix ? mylite_mysqli_length_encoded_integer_size(value_size) : 0U;
+    size_t remaining = 0U;
+
+    if (packet_size == NULL || *packet_size > (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET) {
+        mylite_mysqli_set_packet_too_large_error(link);
+        return false;
+    }
+    remaining = (size_t)MYLITE_MYSQLI_MAX_ALLOWED_PACKET - *packet_size;
+    if (prefix_size > remaining || value_size > remaining - prefix_size) {
+        mylite_mysqli_set_packet_too_large_error(link);
+        return false;
+    }
+
+    *packet_size += prefix_size + value_size;
+    return true;
+}
+
+static size_t mylite_mysqli_length_encoded_integer_size(size_t value) {
+    if (value < 251U) {
+        return 1U;
+    }
+    if (value <= UINT16_MAX) {
+        return 3U;
+    }
+    if (value <= 0xFFFFFFU) {
+        return 4U;
+    }
+    return 9U;
+}
+
+static void mylite_mysqli_set_packet_too_large_error(mylite_mysqli_link *link) {
+    mylite_mysqli_set_error(
+        link,
+        MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE,
+        "08S01",
+        "Got a packet bigger than 'max_allowed_packet' bytes"
+    );
 }
 
 static bool mylite_mysqli_capture_stmt_status(

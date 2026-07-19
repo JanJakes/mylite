@@ -152,4 +152,40 @@ expect_error \
     "PREPARE s FROM 'SELECT * FROM ?';" \
     "$DATABASE"
 
+command -v php >/dev/null 2>&1 || fail "php is required for mysqli packet expectations"
+mysql_host=$(
+    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+        "$MYSQL_CONTAINER"
+)
+[ -n "$mysql_host" ] || fail "could not resolve MySQL container address"
+
+MYLITE_MYSQL_EXPECTATION_HOST="$mysql_host" php <<'PHP'
+<?php
+
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+$host = getenv('MYLITE_MYSQL_EXPECTATION_HOST');
+$admin = new mysqli($host, 'root', '');
+$admin->query('SET GLOBAL max_allowed_packet = 1048576');
+$admin->close();
+
+$connection = new mysqli($host, 'root', '');
+$statement = $connection->prepare('SELECT LENGTH(?), LENGTH(?)');
+$first = str_repeat('a', 700000);
+$second = str_repeat('b', 700000);
+$statement->bind_param('ss', $first, $second);
+
+try {
+    $statement->execute();
+    throw new RuntimeException('aggregate oversized prepared packet unexpectedly succeeded');
+} catch (mysqli_sql_exception $exception) {
+    if ($exception->getCode() !== 1153 || $exception->getSqlState() !== '08S01') {
+        throw $exception;
+    }
+}
+
+$statement->close();
+$connection->close();
+PHP
+
 printf '%s\n' "mysql_native_prepared_statement_binding_expectations: ok"

@@ -1,4 +1,4 @@
-static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql) {
+int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;
@@ -64,7 +64,7 @@ static int append_select_distinct_found_rows_sql(
     return rc;
 }
 
-static int build_count_sql(const struct planned_count *plan, char **out_sql) {
+int build_count_sql(const struct planned_count *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = plan->function == PLANNED_COUNT_LITERAL ? 2U : 1U;
     int rc = MYLITE_OK;
@@ -264,7 +264,7 @@ static const char *union_modifier_sql(enum mylite_sql_ast_union_modifier modifie
     }
 }
 
-static int build_column_aggregate_sql(
+int build_column_aggregate_sql(
     const struct planned_column_aggregate_select *plan,
     char **out_sql
 ) {
@@ -323,7 +323,7 @@ static int append_column_aggregate_select_list_sql(
     return rc;
 }
 
-static int append_column_aggregate_select_item_sql(
+int append_column_aggregate_select_item_sql(
     struct mylite_dynamic_string *string,
     const struct planned_column_aggregate *item,
     size_t *next_parameter
@@ -801,7 +801,7 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
     return "";
 }
 
-static int build_grouped_aggregate_sql(
+int build_grouped_aggregate_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
 ) {
@@ -825,7 +825,7 @@ static int build_grouped_aggregate_sql(
     return rc;
 }
 
-static int build_grouped_aggregate_rollup_sql(
+int build_grouped_aggregate_rollup_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
 ) {
@@ -849,7 +849,7 @@ static int build_grouped_aggregate_rollup_sql(
     return rc;
 }
 
-static int build_grouped_aggregate_found_rows_sql(
+int build_grouped_aggregate_found_rows_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
 ) {
@@ -1749,7 +1749,7 @@ static int append_grouped_avg_order_argument_sql(
     );
 }
 
-static int append_select_predicate_sql(
+int append_select_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate *predicate,
     size_t *next_parameter
@@ -1816,7 +1816,7 @@ static int append_select_predicate_expression_sql(
     return rc;
 }
 
-static int append_select_predicate_expression_sql_without_exists(
+int append_select_predicate_expression_sql_without_exists(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate *predicate,
     size_t *next_parameter
@@ -4026,7 +4026,7 @@ static int append_in_subquery_from_sql(
     return rc;
 }
 
-static int append_predicate_sql_work_node(
+int append_predicate_sql_work_node(
     struct predicate_sql_work_item **items,
     size_t *item_count,
     size_t node_index
@@ -4082,7 +4082,7 @@ static int append_predicate_sql_work_text(
     );
 }
 
-static int append_predicate_sql_work_item(
+int append_predicate_sql_work_item(
     struct predicate_sql_work_item **items,
     size_t *item_count,
     struct predicate_sql_work_item item
@@ -4106,7 +4106,7 @@ static int append_predicate_sql_work_item(
     return MYLITE_OK;
 }
 
-static int append_select_order_sql(
+int append_select_order_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_order *order,
     size_t *next_parameter
@@ -4212,7 +4212,7 @@ static int append_select_order_item_sql(
     return append_select_order_direction_sql(string, item->direction);
 }
 
-static int append_select_order_direction_sql(
+int append_select_order_direction_sql(
     struct mylite_dynamic_string *string,
     enum planned_select_order_direction direction
 ) {
@@ -4223,7 +4223,7 @@ static int append_select_order_direction_sql(
     return mylite_dynamic_string_append(string, " ASC");
 }
 
-static int append_select_limit_sql(
+int append_select_limit_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_limit *limit
 ) {

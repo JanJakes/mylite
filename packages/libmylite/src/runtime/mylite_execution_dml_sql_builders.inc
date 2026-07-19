@@ -1,4 +1,4 @@
-static int build_delete_sql(const struct planned_delete *plan, char **out_sql) {
+int build_delete_sql(const struct planned_delete *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;
@@ -102,7 +102,7 @@ static int append_joined_delete_rowid_filter_sql(
     return rc;
 }
 
-static int append_joined_delete_rowid_subquery_sql(
+int append_joined_delete_rowid_subquery_sql(
     struct mylite_dynamic_string *string,
     const struct planned_delete *plan,
     size_t *next_parameter
@@ -199,7 +199,7 @@ static int append_joined_delete_from_sql(
     return rc;
 }
 
-static int build_update_sql(const struct planned_update *plan, char **out_sql) {
+int build_update_sql(const struct planned_update *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;
@@ -420,7 +420,7 @@ static int append_update_auto_update_columns_sql(
     return rc;
 }
 
-static bool planned_update_column_has_auto_update(
+bool planned_update_column_has_auto_update(
     const struct planned_update *plan,
     const struct mylite_catalog_column_descriptor *column
 ) {
@@ -441,7 +441,7 @@ static bool planned_update_column_has_auto_update(
     return column->column_id != plan->assignment_column.column_id;
 }
 
-static size_t planned_update_auto_update_column_count(const struct planned_update *plan) {
+size_t planned_update_auto_update_column_count(const struct planned_update *plan) {
     size_t count = 0U;
 
     if (plan == NULL) {
@@ -455,14 +455,14 @@ static size_t planned_update_auto_update_column_count(const struct planned_updat
     return count;
 }
 
-static int append_single_update_matched_from_sql(
+int append_single_update_matched_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan
 ) {
     return append_single_update_target_sql(string, plan);
 }
 
-static int append_joined_update_matched_target_filter_sql(
+int append_joined_update_matched_target_filter_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -484,7 +484,7 @@ static int append_joined_update_matched_target_filter_sql(
     return rc;
 }
 
-static bool planned_update_has_row_filter(const struct planned_update *plan) {
+bool planned_update_has_row_filter(const struct planned_update *plan) {
     if (plan->is_joined || plan->limit.has_limit) {
         return true;
     }
@@ -494,7 +494,7 @@ static bool planned_update_has_row_filter(const struct planned_update *plan) {
     return false;
 }
 
-static int append_update_row_filter_sql(
+int append_update_row_filter_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -511,7 +511,7 @@ static int append_update_row_filter_sql(
     return mylite_dynamic_string_append(string, " WHERE ");
 }
 
-static int append_update_rowid_limited_sql(
+int append_update_rowid_limited_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -556,7 +556,7 @@ static int append_single_update_rowid_source_sql(
     return append_single_update_target_sql(string, plan);
 }
 
-static int append_joined_update_rowid_filter_sql(
+int append_joined_update_rowid_filter_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -579,7 +579,7 @@ static int append_joined_update_rowid_filter_sql(
     return rc;
 }
 
-static int append_joined_update_rowid_subquery_sql(
+int append_joined_update_rowid_subquery_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -602,7 +602,7 @@ static int append_joined_update_rowid_subquery_sql(
     return rc;
 }
 
-static int append_joined_update_target_rowid_sql(
+int append_joined_update_target_rowid_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan
 ) {
@@ -618,7 +618,7 @@ static int append_joined_update_target_rowid_sql(
     return rc;
 }
 
-static int append_joined_update_from_sql(
+int append_joined_update_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -647,7 +647,7 @@ static int append_joined_update_from_sql(
     return rc;
 }
 
-static int append_update_changed_condition_sql(
+int append_update_changed_condition_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -716,7 +716,7 @@ static int append_update_row_scalar_changed_condition_sql(
     );
 }
 
-static int append_update_assignment_row_scalar_changed_condition_sql(
+int append_update_assignment_row_scalar_changed_condition_sql(
     struct mylite_dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column,
     const struct planned_row_scalar_expression *expression,
@@ -992,7 +992,7 @@ static int append_update_arithmetic_changed_condition_sql(
     return rc;
 }
 
-static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind) {
+const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
         return "=";

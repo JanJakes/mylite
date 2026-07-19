@@ -36,6 +36,7 @@
 #include "mylite_execution_scalar_string_transform.h"
 #include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_execution_show_filter.h"
+#include "mylite_execution_sql_lowering_support.h"
 #include "mylite_execution_sql_normalization.h"
 #include "mylite_execution_sqlite_internal.h"
 #include "mylite_execution_statement_transaction.h"
@@ -3270,6 +3271,39 @@ bool mylite_execution_text_equals_ascii_case_insensitive(const char *left, const
     return text_equals_ascii_case_insensitive(left, right);
 }
 
+bool mylite_execution_column_descriptor_is_time(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return column_descriptor_is_time(column);
+}
+
+int mylite_execution_append_json_table_source_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_source *source,
+    size_t source_index,
+    size_t *next_parameter
+) {
+    return append_json_table_source_sql(string, source, source_index, next_parameter);
+}
+
+bool mylite_execution_column_descriptor_uses_string_key_collation(
+    const struct mylite_catalog_column_descriptor *column,
+    bool include_text_family
+) {
+    return column_descriptor_uses_string_key_collation(column, include_text_family);
+}
+
+int mylite_execution_append_string_key_collation_sql(struct mylite_dynamic_string *string) {
+    return append_string_key_collation_sql(string);
+}
+
+int mylite_execution_append_mysql_quoted_text(
+    struct mylite_dynamic_string *string,
+    const char *text
+) {
+    return append_mysql_quoted_text(string, text);
+}
+
 bool mylite_execution_text_value_is_supported_string_key(const char *text, size_t text_length) {
     return text_value_is_supported_string_key(text, text_length);
 }
@@ -3903,14 +3937,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_sql_builder_alter_modify_copy.inc"
 
 #include "mylite_execution_sql_builder_alter_order_force_rename_truncate.inc"
-
-#include "mylite_execution_insert_sql_builders.inc"
-
-#include "mylite_execution_select_sql_builders.inc"
-
-#include "mylite_execution_aggregate_predicate_sql_builders.inc"
-
-#include "mylite_execution_dml_sql_builders.inc"
 
 #include "mylite_execution_sqlite_write_statements.inc"
 

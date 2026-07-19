@@ -1,4 +1,4 @@
-static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
+int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t physical_column_count = count_physical_insert_columns(plan);
     int rc = MYLITE_OK;
@@ -37,7 +37,7 @@ static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
     return rc;
 }
 
-static int append_insert_column_names(
+int append_insert_column_names(
     struct mylite_dynamic_string *string,
     const struct planned_insert *plan
 ) {
@@ -75,7 +75,7 @@ static size_t count_physical_insert_columns(const struct planned_insert *plan) {
     return count;
 }
 
-static int append_insert_parameters(struct mylite_dynamic_string *string, size_t column_count) {
+int append_insert_parameters(struct mylite_dynamic_string *string, size_t column_count) {
     int rc = MYLITE_OK;
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
@@ -90,7 +90,7 @@ static int append_insert_parameters(struct mylite_dynamic_string *string, size_t
     return rc;
 }
 
-static int append_numbered_parameter(struct mylite_dynamic_string *string, size_t parameter_index) {
+int append_numbered_parameter(struct mylite_dynamic_string *string, size_t parameter_index) {
     char parameter[integer_text_capacity];
     int written = snprintf(parameter, sizeof(parameter), "?%zu", parameter_index);
 
@@ -101,7 +101,7 @@ static int append_numbered_parameter(struct mylite_dynamic_string *string, size_
     return mylite_dynamic_string_append(string, parameter);
 }
 
-static int append_size_literal(struct mylite_dynamic_string *string, size_t value) {
+int append_size_literal(struct mylite_dynamic_string *string, size_t value) {
     char text[integer_text_capacity];
     int written = snprintf(text, sizeof(text), "%zu", value);
 
@@ -112,7 +112,7 @@ static int append_size_literal(struct mylite_dynamic_string *string, size_t valu
     return mylite_dynamic_string_append(string, text);
 }
 
-static int append_uint64_literal(struct mylite_dynamic_string *string, uint64_t value) {
+int append_uint64_literal(struct mylite_dynamic_string *string, uint64_t value) {
     char text[integer_text_capacity];
     int written = snprintf(text, sizeof(text), "%" PRIu64, value);
 
@@ -123,7 +123,7 @@ static int append_uint64_literal(struct mylite_dynamic_string *string, uint64_t 
     return mylite_dynamic_string_append(string, text);
 }
 
-static int build_insert_select_temp_table_name(
+int build_insert_select_temp_table_name(
     const struct mylite_db *database,
     char *destination,
     size_t destination_size
@@ -142,7 +142,7 @@ static int build_insert_select_temp_table_name(
     return MYLITE_OK;
 }
 
-static int build_insert_select_materialize_sql(
+int build_insert_select_materialize_sql(
     const struct planned_insert_select *plan,
     const char *temporary_table_name,
     char **out_sql
@@ -420,7 +420,7 @@ static int append_insert_select_compound_row_scalar_projection_sql(
     return rc;
 }
 
-static bool row_scalar_expression_uses_string_collation(
+bool row_scalar_expression_uses_string_collation(
     const struct planned_row_scalar_expression *expression
 ) {
     if (expression == NULL) {
@@ -573,7 +573,7 @@ static bool row_scalar_expression_uses_string_collation(
     return false;
 }
 
-static int build_insert_select_validation_sql(
+int build_insert_select_validation_sql(
     const struct planned_insert_select *plan,
     const char *temporary_table_name,
     char **out_sql
@@ -916,7 +916,7 @@ static bool insert_select_compound_output_uses_string_collation(
     return false;
 }
 
-static int build_drop_temp_table_sql(const char *temporary_table_name, char **out_sql) {
+int build_drop_temp_table_sql(const char *temporary_table_name, char **out_sql) {
     struct mylite_dynamic_string string;
     int rc = MYLITE_OK;
 
@@ -994,7 +994,7 @@ static int append_insert_select_temp_table_name(
     return rc;
 }
 
-static bool find_insert_select_target_position(
+bool find_insert_select_target_position(
     const struct planned_insert_select *plan,
     size_t column_index,
     size_t *out_target_position
@@ -1009,7 +1009,7 @@ static bool find_insert_select_target_position(
     return false;
 }
 
-static int build_create_table_select_insert_sql(
+int build_create_table_select_insert_sql(
     const struct planned_create_table_select *plan,
     const char *physical_name,
     char **out_sql

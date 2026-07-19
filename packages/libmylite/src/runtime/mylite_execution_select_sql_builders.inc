@@ -1,4 +1,4 @@
-static int build_select_sql(const struct planned_select *plan, char **out_sql) {
+int build_select_sql(const struct planned_select *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;
@@ -382,7 +382,7 @@ static void select_sql_work_stack_deinit(struct select_sql_work_stack *stack) {
     *stack = (struct select_sql_work_stack){0};
 }
 
-static int append_select_projection_column_sql(
+int append_select_projection_column_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select *plan,
     size_t column_index
@@ -403,7 +403,7 @@ static int append_select_projection_column_sql(
     return rc;
 }
 
-static int append_select_from_sql(
+int append_select_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select *plan,
     size_t *next_parameter
@@ -585,7 +585,7 @@ static int append_select_join_condition_sql(
     return rc;
 }
 
-static int append_select_source_alias(struct mylite_dynamic_string *string, size_t source_index) {
+int append_select_source_alias(struct mylite_dynamic_string *string, size_t source_index) {
     char alias[select_source_alias_capacity];
     int written = snprintf(alias, sizeof(alias), "_mylite_s%zu", source_index);
 
@@ -690,7 +690,7 @@ static int append_row_scalar_select_query_sql(
     return rc;
 }
 
-static int build_row_scalar_select_sql(
+int build_row_scalar_select_sql(
     const struct planned_row_scalar_select *plan,
     char **out_sql
 ) {

@@ -266,9 +266,12 @@ complete.
   with a single explicit bridge for descriptor value formatting. The 2,600-line
   Performance Schema setup-metrics dataset is now an independently compiled,
   callback-driven provider with no database, diagnostics, or result-row
-  dependency; the query dispatcher owns validation and row adaptation.
-  Subsequent planner, general SQL-lowering, and metadata clusters still need
-  the same treatment.
+  dependency; the query dispatcher owns validation and row adaptation. General
+  DML/query SQL lowering is now a separate 7,178-line translation unit as well:
+  INSERT, SELECT, aggregate/predicate, UPDATE, and DELETE lowering share a
+  module-local declaration surface and five explicit support callbacks instead
+  of the mega unit's implicit helper namespace. Planner and DDL-lowering
+  clusters still need the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

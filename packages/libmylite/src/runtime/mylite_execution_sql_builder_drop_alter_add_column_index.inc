@@ -1,5 +1,5 @@
 
-static int build_drop_table_sql(const char *physical_name, char **out_sql) {
+int build_drop_table_sql(const char *physical_name, char **out_sql) {
     struct mylite_dynamic_string string;
     int rc = MYLITE_OK;
 
@@ -22,7 +22,7 @@ static int build_drop_table_sql(const char *physical_name, char **out_sql) {
     return rc;
 }
 
-static int build_drop_index_sql(const char *physical_name, char **out_sql) {
+int build_drop_index_sql(const char *physical_name, char **out_sql) {
     struct mylite_dynamic_string string;
     int rc = MYLITE_OK;
 
@@ -44,7 +44,7 @@ static int build_drop_index_sql(const char *physical_name, char **out_sql) {
     return rc;
 }
 
-static int build_alter_table_add_column_sql(
+int build_alter_table_add_column_sql(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan,
     char **out_sql
@@ -89,7 +89,7 @@ static int build_alter_table_add_column_sql(
     return rc;
 }
 
-static int build_alter_table_add_primary_key_null_validation_sql(
+int build_alter_table_add_primary_key_null_validation_sql(
     const struct planned_alter_table_add_primary_key *plan,
     char **out_sql
 ) {
@@ -134,7 +134,7 @@ static int build_alter_table_add_primary_key_null_validation_sql(
     return rc;
 }
 
-static int build_alter_table_add_primary_key_duplicate_validation_sql(
+int build_alter_table_add_primary_key_duplicate_validation_sql(
     const struct planned_alter_table_add_primary_key *plan,
     char **out_sql
 ) {
@@ -186,7 +186,7 @@ static int build_alter_table_add_primary_key_duplicate_validation_sql(
     return rc;
 }
 
-static int build_alter_table_add_primary_key_string_validation_sql(
+int build_alter_table_add_primary_key_string_validation_sql(
     const struct planned_alter_table_add_primary_key *plan,
     char **out_sql
 ) {
@@ -250,7 +250,7 @@ static int build_alter_table_add_primary_key_string_validation_sql(
     return rc;
 }
 
-static int build_alter_table_add_primary_key_index_sql(
+int build_alter_table_add_primary_key_index_sql(
     const struct planned_alter_table_add_primary_key *plan,
     const char *index_physical_name,
     char **out_sql
@@ -300,7 +300,7 @@ static int build_alter_table_add_primary_key_index_sql(
     return rc;
 }
 
-static int build_add_index_sql(
+int build_add_index_sql(
     const struct planned_alter_table_add_index *plan,
     const char *index_physical_name,
     char **out_sql
@@ -356,7 +356,7 @@ static int build_add_index_sql(
     return rc;
 }
 
-static int build_create_unique_index_string_validation_sql(
+int build_create_unique_index_string_validation_sql(
     const struct planned_alter_table_add_index *plan,
     char **out_sql
 ) {
@@ -452,7 +452,7 @@ static int append_create_unique_index_string_validation_where_sql(
     return rc;
 }
 
-static int build_create_unique_index_duplicate_validation_sql(
+int build_create_unique_index_duplicate_validation_sql(
     const struct planned_alter_table_add_index *plan,
     char **out_sql
 ) {
@@ -581,7 +581,7 @@ static int append_alter_table_primary_key_expression_list_sql(
     return rc;
 }
 
-static int build_alter_table_auto_increment_max_sql(
+int build_alter_table_auto_increment_max_sql(
     const struct planned_alter_table_auto_increment *plan,
     char **out_sql
 ) {

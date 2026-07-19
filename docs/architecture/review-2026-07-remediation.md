@@ -270,8 +270,12 @@ complete.
   DML/query SQL lowering is now a separate 7,178-line translation unit as well:
   INSERT, SELECT, aggregate/predicate, UPDATE, and DELETE lowering share a
   module-local declaration surface and five explicit support callbacks instead
-  of the mega unit's implicit helper namespace. Planner and DDL-lowering
-  clusters still need the same treatment.
+  of the mega unit's implicit helper namespace. Three pure DDL builder
+  fragments totaling 1,711 lines now form a separate module as well, with an
+  explicit 30-operation internal API and 13 support callbacks. ALTER default
+  materialization and physical row-copy execution intentionally remain with
+  the execution/conversion owner rather than widening the lowering boundary.
+  Planner clusters still need the same treatment.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them

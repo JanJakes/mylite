@@ -22,6 +22,8 @@
 #include "mylite_execution_connection_lifecycle.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
+#include "mylite_execution_ddl_sql_lowering.h"
+#include "mylite_execution_ddl_sql_lowering_support.h"
 #include "mylite_execution_loaded_catalog.h"
 #include "mylite_execution_metadata_setup_metrics.h"
 #include "mylite_execution_parameter_binding.h"
@@ -3277,6 +3279,98 @@ bool mylite_execution_column_descriptor_is_time(
     return column_descriptor_is_time(column);
 }
 
+int mylite_execution_ddl_integer_range_for_logical_type(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *unsupported_message,
+    struct integer_column_range *out_range
+) {
+    return integer_range_for_logical_type(
+        database,
+        (struct integer_logical_type_range_request){
+            .logical_type = logical_type,
+            .unsupported_message = unsupported_message,
+        },
+        out_range
+    );
+}
+
+int mylite_execution_ddl_append_numbered_parameter(
+    struct mylite_dynamic_string *string,
+    size_t parameter_index
+) {
+    return append_numbered_parameter(string, parameter_index);
+}
+
+int mylite_execution_ddl_append_size_literal(
+    struct mylite_dynamic_string *string,
+    size_t value
+) {
+    return append_size_literal(string, value);
+}
+
+int mylite_execution_ddl_append_uint64_literal(
+    struct mylite_dynamic_string *string,
+    uint64_t value
+) {
+    return append_uint64_literal(string, value);
+}
+
+bool mylite_execution_ddl_planned_secondary_index_is_fulltext(
+    const struct planned_secondary_index *index
+) {
+    return planned_secondary_index_is_fulltext(index);
+}
+
+bool mylite_execution_ddl_planned_secondary_index_is_spatial(
+    const struct planned_secondary_index *index
+) {
+    return planned_secondary_index_is_spatial(index);
+}
+
+bool mylite_execution_ddl_planned_column_is_char_or_varchar(
+    const struct planned_column *column
+) {
+    return planned_column_is_char_or_varchar(column);
+}
+
+bool mylite_execution_ddl_planned_column_is_string_family(const struct planned_column *column) {
+    return planned_column_is_string_family(column);
+}
+
+bool mylite_execution_ddl_column_descriptor_is_string_family(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return column_descriptor_is_string_family(column);
+}
+
+bool mylite_execution_ddl_column_descriptor_is_char_or_varchar(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return column_descriptor_is_char_or_varchar(column);
+}
+
+bool mylite_execution_ddl_text_equals_ascii_case_insensitive(
+    const char *left,
+    const char *right
+) {
+    return text_equals_ascii_case_insensitive(left, right);
+}
+
+bool mylite_execution_ddl_loaded_index_part_requires_string_key_validation(
+    const struct loaded_index_part *part
+) {
+    return loaded_index_part_requires_string_key_validation(part);
+}
+
+int mylite_execution_ddl_append_alter_table_add_column_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+) {
+    return append_alter_table_add_column_default(database, string, plan);
+}
+
 int mylite_execution_append_json_table_source_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_source *source,
@@ -3928,15 +4022,9 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_show_table_status_count_helpers.inc"
 
-#include "mylite_execution_sql_builder_create_table_index_helpers.inc"
-
-#include "mylite_execution_sql_builder_drop_alter_add_column_index.inc"
-
 #include "mylite_execution_sql_builder_alter_column_defaults.inc"
 
 #include "mylite_execution_sql_builder_alter_modify_copy.inc"
-
-#include "mylite_execution_sql_builder_alter_order_force_rename_truncate.inc"
 
 #include "mylite_execution_sqlite_write_statements.inc"
 

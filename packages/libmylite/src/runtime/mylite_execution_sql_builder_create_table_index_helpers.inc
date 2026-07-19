@@ -1,4 +1,4 @@
-static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size) {
+int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size) {
     int written = snprintf(destination, destination_size, "_mylite_user_table_%" PRId64, table_id);
 
     if (written < 0 || (size_t)written >= destination_size) {
@@ -8,7 +8,7 @@ static int build_physical_table_name(int64_t table_id, char *destination, size_t
     return MYLITE_OK;
 }
 
-static int build_physical_view_name(int64_t table_id, char *destination, size_t destination_size) {
+int build_physical_view_name(int64_t table_id, char *destination, size_t destination_size) {
     int written = snprintf(destination, destination_size, "_mylite_user_view_%" PRId64, table_id);
 
     if (written < 0 || (size_t)written >= destination_size) {
@@ -18,7 +18,7 @@ static int build_physical_view_name(int64_t table_id, char *destination, size_t 
     return MYLITE_OK;
 }
 
-static int build_physical_index_name(int64_t index_id, char *destination, size_t destination_size) {
+int build_physical_index_name(int64_t index_id, char *destination, size_t destination_size) {
     int written = snprintf(destination, destination_size, "_mylite_user_index_%" PRId64, index_id);
 
     if (written < 0 || (size_t)written >= destination_size) {
@@ -28,7 +28,7 @@ static int build_physical_index_name(int64_t index_id, char *destination, size_t
     return MYLITE_OK;
 }
 
-static int build_physical_check_constraint_name(
+int build_physical_check_constraint_name(
     int64_t check_constraint_id,
     char *destination,
     size_t destination_size
@@ -43,7 +43,7 @@ static int build_physical_check_constraint_name(
     return MYLITE_OK;
 }
 
-static int build_create_table_sql(
+int build_create_table_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
     bool temporary,
@@ -74,7 +74,7 @@ static int build_create_table_sql(
     return rc;
 }
 
-static int build_create_table_definition_sql(
+int build_create_table_definition_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
     bool temporary,
@@ -134,7 +134,7 @@ static int append_create_table_definition_sql(
     return rc;
 }
 
-static int build_create_table_indexes_sql(
+int build_create_table_indexes_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
     char **out_sql
@@ -519,7 +519,7 @@ static int append_planned_secondary_key_part_sql(
     return rc;
 }
 
-static int append_loaded_key_part_sql(
+int append_loaded_key_part_sql(
     struct mylite_dynamic_string *string,
     const struct loaded_index_part *part,
     const char *qualifier
@@ -587,7 +587,7 @@ static int append_loaded_prefix_key_part_sql(
     return rc;
 }
 
-static int append_loaded_key_part_parameter_sql(
+int append_loaded_key_part_parameter_sql(
     struct mylite_dynamic_string *string,
     const struct loaded_index_part *part,
     size_t parameter_index
@@ -652,7 +652,7 @@ static bool planned_column_uses_string_key_collation(
     return !string_key_collation_name_is_binary(collation_name);
 }
 
-static bool column_descriptor_uses_string_key_collation(
+bool column_descriptor_uses_string_key_collation(
     const struct mylite_catalog_column_descriptor *column,
     bool include_text_family
 ) {
@@ -680,7 +680,7 @@ static bool string_key_collation_name_is_binary(const char *name) {
             text_equals_ascii_case_insensitive(name, "utf8mb4_0900_bin")) != 0;
 }
 
-static int append_string_key_collation_sql(struct mylite_dynamic_string *string) {
+int append_string_key_collation_sql(struct mylite_dynamic_string *string) {
     return append_named_string_key_collation_sql(string, string_key_collation_name);
 }
 

@@ -725,395 +725,11 @@ static int decode_show_databases_where_string_literal(
     const struct mylite_sql_ast_node *literal_node,
     char **out_text
 );
-
-static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size);
-static int build_physical_view_name(int64_t table_id, char *destination, size_t destination_size);
-static int build_physical_index_name(int64_t index_id, char *destination, size_t destination_size);
-static int build_physical_check_constraint_name(
-    int64_t check_constraint_id,
-    char *destination,
-    size_t destination_size
-);
-static int build_create_table_sql(
-    const struct planned_create_table *plan,
-    const char *physical_name,
-    bool temporary,
-    char **out_sql
-);
-static int build_create_table_definition_sql(
-    const struct planned_create_table *plan,
-    const char *physical_name,
-    bool temporary,
-    char **out_sql
-);
-static int append_create_table_definition_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan,
-    const char *physical_name,
-    bool temporary
-);
-static int build_create_table_indexes_sql(
-    const struct planned_create_table *plan,
-    const char *physical_name,
-    char **out_sql
-);
-static int append_create_table_columns_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan
-);
-static int append_create_table_check_constraints_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan
-);
-static int append_create_table_generated_column_constraints_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan
-);
-static int append_generated_column_range_check_constraint_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_column *column,
-    size_t column_index
-);
-static int append_generated_column_range_check_constraint_name(
-    struct mylite_dynamic_string *string,
-    size_t column_index
-);
-static int append_create_table_primary_key_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan,
-    const char *physical_name
-);
-static int append_create_table_secondary_indexes_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan,
-    const char *physical_name
-);
-static int append_create_table_index_sql(
-    struct mylite_dynamic_string *string,
-    bool is_unique,
-    const char *index_physical_name,
-    const char *table_physical_name
-);
-static int append_planned_key_part_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan,
-    const struct planned_column *column
-);
-static int append_planned_secondary_key_part_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_create_table *plan,
-    const struct planned_secondary_index_part *part
-);
-static int append_loaded_key_part_sql(
-    struct mylite_dynamic_string *string,
-    const struct loaded_index_part *part,
-    const char *qualifier
-);
-static int append_loaded_prefix_key_part_sql(
-    struct mylite_dynamic_string *string,
-    const struct loaded_index_part *part,
-    const char *qualifier
-);
-static int append_loaded_key_part_parameter_sql(
-    struct mylite_dynamic_string *string,
-    const struct loaded_index_part *part,
-    size_t parameter_index
-);
-static bool planned_column_uses_string_key_collation(
-    const struct planned_create_table *plan,
-    const struct planned_column *column,
-    bool include_text_family
-);
-static bool column_descriptor_uses_string_key_collation(
-    const struct mylite_catalog_column_descriptor *column,
-    bool include_text_family
-);
-static bool string_key_collation_name_is_binary(const char *name);
-static int append_string_key_collation_sql(struct mylite_dynamic_string *string);
-static int append_named_string_key_collation_sql(
-    struct mylite_dynamic_string *string,
-    const char *collation_name
-);
 int append_select_projection_column_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select *plan,
     size_t column_index
 );
-static int append_create_table_index_sql_close(struct mylite_dynamic_string *string);
-static int build_drop_table_sql(const char *physical_name, char **out_sql);
-static int build_alter_table_add_column_sql(
-    struct mylite_db *database,
-    const struct planned_alter_table_add_column *plan,
-    char **out_sql
-);
-static int build_alter_table_add_primary_key_null_validation_sql(
-    const struct planned_alter_table_add_primary_key *plan,
-    char **out_sql
-);
-static int build_alter_table_add_primary_key_duplicate_validation_sql(
-    const struct planned_alter_table_add_primary_key *plan,
-    char **out_sql
-);
-static int build_alter_table_add_primary_key_string_validation_sql(
-    const struct planned_alter_table_add_primary_key *plan,
-    char **out_sql
-);
-static int build_alter_table_add_primary_key_index_sql(
-    const struct planned_alter_table_add_primary_key *plan,
-    const char *index_physical_name,
-    char **out_sql
-);
-static int build_add_index_sql(
-    const struct planned_alter_table_add_index *plan,
-    const char *index_physical_name,
-    char **out_sql
-);
-static int build_create_unique_index_string_validation_sql(
-    const struct planned_alter_table_add_index *plan,
-    char **out_sql
-);
-static int append_create_unique_index_string_validation_select_list_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_index *plan
-);
-static int append_create_unique_index_string_validation_where_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_index *plan
-);
-static int build_create_unique_index_duplicate_validation_sql(
-    const struct planned_alter_table_add_index *plan,
-    char **out_sql
-);
-static int append_loaded_key_part_list_sql(
-    struct mylite_dynamic_string *string,
-    const struct loaded_index_part *parts,
-    size_t part_count
-);
-static int append_loaded_key_part_not_null_filter_sql(
-    struct mylite_dynamic_string *string,
-    const struct loaded_index_part *parts,
-    size_t part_count
-);
-static int build_drop_index_sql(const char *physical_name, char **out_sql);
-static int append_alter_table_primary_key_expression_list_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_primary_key *plan
-);
-static int build_alter_table_auto_increment_max_sql(
-    const struct planned_alter_table_auto_increment *plan,
-    char **out_sql
-);
-static int append_alter_table_add_column_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_explicit_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_current_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_character_expression_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_enum_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_bit_expression_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_year_expression_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_bit_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_binary_default(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_decimal_zero(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_binary_zero(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_alter_table_add_column_bit_zero(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_add_column *plan
-);
-static int append_sqlite_blob_default(
-    struct mylite_dynamic_string *string,
-    const char *bytes,
-    size_t byte_count
-);
-static int append_quoted_sql_text(struct mylite_dynamic_string *string, const char *text);
-static int append_mysql_quoted_text(struct mylite_dynamic_string *string, const char *text);
-static int append_mysql_quoted_comment_text(struct mylite_dynamic_string *string, const char *text);
-static int append_mysql_quoted_default_text(struct mylite_dynamic_string *string, const char *text);
-static int build_alter_table_drop_column_sql(
-    const struct planned_alter_table_drop_column *plan,
-    char **out_sql
-);
-static int build_alter_table_rename_column_sql(
-    const struct planned_alter_table_rename_column *plan,
-    char **out_sql
-);
-static int build_modify_temporary_physical_name(
-    const struct planned_alter_table_modify_column *plan,
-    uint64_t generation,
-    char *destination,
-    size_t destination_size
-);
-static int build_alter_table_modify_validation_sql(
-    const struct planned_alter_table_modify_column *plan,
-    char **out_sql
-);
-static int build_alter_table_modify_create_sql(
-    const struct planned_alter_table_modify_column *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static int build_alter_table_modify_copy_sql(
-    const struct planned_alter_table_modify_column *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static bool alter_table_modify_needs_binary_copy_materialization(
-    const struct planned_alter_table_modify_column *plan
-);
-static bool alter_table_modify_changes_binary_to_string(
-    const struct planned_alter_table_modify_column *plan,
-    const struct mylite_catalog_column_descriptor *column
-);
-static int execute_physical_alter_table_modify_copy_rows(
-    struct mylite_db *database,
-    const struct planned_alter_table_modify_column *plan,
-    const char *temporary_physical_name
-);
-static int build_alter_table_modify_select_sql(
-    const struct planned_alter_table_modify_column *plan,
-    char **out_sql
-);
-static int build_alter_table_modify_insert_sql(
-    const struct planned_alter_table_modify_column *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static int execute_alter_table_modify_copy_row(
-    struct mylite_db *database,
-    struct alter_table_modify_copy_statements *statements,
-    const struct planned_alter_table_modify_column *plan,
-    size_t row_number,
-    struct planned_value *values
-);
-static int materialize_alter_table_modify_copy_row(
-    struct mylite_db *database,
-    sqlite3_stmt *select_statement,
-    const struct planned_alter_table_modify_column *plan,
-    size_t row_number,
-    struct planned_value *values
-);
-static int materialize_alter_table_modify_binary_to_text_value(
-    struct mylite_db *database,
-    sqlite3_stmt *select_statement,
-    int selected_column_index,
-    const struct mylite_catalog_column_descriptor *column,
-    size_t row_number,
-    struct planned_value *out_value
-);
-static int materialize_alter_table_modify_decimal_value(
-    struct mylite_db *database,
-    sqlite3_stmt *select_statement,
-    int selected_column_index,
-    const struct mylite_catalog_column_descriptor *column,
-    size_t row_number,
-    struct planned_value *out_value
-);
-static int bind_alter_table_modify_copy_row(
-    sqlite3_stmt *insert_statement,
-    const struct planned_alter_table_modify_column *plan,
-    const struct planned_value *values
-);
-static void deinit_alter_table_modify_copy_row(struct planned_value *values, size_t column_count);
-static int build_alter_table_modify_indexes_sql(
-    const struct planned_alter_table_modify_column *plan,
-    char **out_sql
-);
-static int append_alter_table_modify_index_sql(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_modify_column *plan,
-    const struct loaded_index_info *index
-);
-static int build_alter_table_order_temporary_physical_name(
-    const struct planned_alter_table_order_by *plan,
-    uint64_t sqlite_schema_generation,
-    char *destination,
-    size_t destination_size
-);
-static int build_alter_table_order_create_sql(
-    const struct planned_alter_table_order_by *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static int build_alter_table_order_copy_sql(
-    const struct planned_alter_table_order_by *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static int append_alter_table_order_column_list(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_order_by *plan
-);
-static int append_alter_table_order_order_list(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_order_by *plan
-);
-static int build_alter_table_force_temporary_physical_name(
-    const struct planned_alter_table_force *plan,
-    uint64_t sqlite_schema_generation,
-    char *destination,
-    size_t destination_size
-);
-static int build_alter_table_force_create_sql(
-    const struct planned_alter_table_force *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static int build_alter_table_force_copy_sql(
-    const struct planned_alter_table_force *plan,
-    const char *temporary_physical_name,
-    char **out_sql
-);
-static int append_alter_table_force_column_list(
-    struct mylite_dynamic_string *string,
-    const struct planned_alter_table_force *plan
-);
-static int build_alter_table_rename_physical_table_sql(
-    const char *source_physical_name,
-    const char *target_physical_name,
-    char **out_sql
-);
-static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql);
 int build_insert_sql(const struct planned_insert *plan, char **out_sql);
 int append_insert_column_names(
     struct mylite_dynamic_string *string,
@@ -2102,5 +1718,173 @@ static int append_foreign_key_column_reference(
     const char *table_alias,
     const char *column_name
 );
+static int append_alter_table_add_column_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_explicit_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_current_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_character_expression_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_bit_expression_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_year_expression_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_enum_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_bit_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_binary_default(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_decimal_zero(
+    struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_binary_zero(
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_bit_zero(
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_sqlite_blob_default(
+    struct mylite_dynamic_string *string,
+    const char *bytes,
+    size_t byte_count
+);
+static int append_quoted_sql_text(struct mylite_dynamic_string *string, const char *text);
+static int append_mysql_quoted_default_text(
+    struct mylite_dynamic_string *string,
+    const char *text
+);
+static int append_mysql_quoted_text(struct mylite_dynamic_string *string, const char *text);
+static int append_mysql_quoted_comment_text(
+    struct mylite_dynamic_string *string,
+    const char *text
+);
+static int build_alter_table_drop_column_sql(
+    const struct planned_alter_table_drop_column *plan,
+    char **out_sql
+);
+static int build_alter_table_rename_column_sql(
+    const struct planned_alter_table_rename_column *plan,
+    char **out_sql
+);
+static int build_modify_temporary_physical_name(
+    const struct planned_alter_table_modify_column *plan,
+    uint64_t generation,
+    char *destination,
+    size_t destination_size
+);
+static int build_alter_table_modify_validation_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+);
+static int build_alter_table_modify_create_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int build_alter_table_modify_copy_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static bool alter_table_modify_needs_binary_copy_materialization(
+    const struct planned_alter_table_modify_column *plan
+);
+static bool alter_table_modify_changes_binary_to_string(
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int execute_physical_alter_table_modify_copy_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name
+);
+static int build_alter_table_modify_select_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+);
+static int build_alter_table_modify_insert_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int execute_alter_table_modify_copy_row(
+    struct mylite_db *database,
+    struct alter_table_modify_copy_statements *statements,
+    const struct planned_alter_table_modify_column *plan,
+    size_t row_number,
+    struct planned_value *values
+);
+static int materialize_alter_table_modify_copy_row(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    const struct planned_alter_table_modify_column *plan,
+    size_t row_number,
+    struct planned_value *values
+);
+static int materialize_alter_table_modify_binary_to_text_value(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int materialize_alter_table_modify_decimal_value(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int bind_alter_table_modify_copy_row(
+    sqlite3_stmt *insert_statement,
+    const struct planned_alter_table_modify_column *plan,
+    const struct planned_value *values
+);
+static void deinit_alter_table_modify_copy_row(struct planned_value *values, size_t column_count);
+static int build_alter_table_modify_indexes_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+);
+static int append_alter_table_modify_index_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_alter_table_modify_column *plan,
+    const struct loaded_index_info *index
+);
+
 const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind);
 #endif

@@ -1,5 +1,5 @@
 
-static int build_alter_table_order_temporary_physical_name(
+int build_alter_table_order_temporary_physical_name(
     const struct planned_alter_table_order_by *plan,
     uint64_t sqlite_schema_generation,
     char *destination,
@@ -25,7 +25,7 @@ static int build_alter_table_order_temporary_physical_name(
     return MYLITE_OK;
 }
 
-static int build_alter_table_order_create_sql(
+int build_alter_table_order_create_sql(
     const struct planned_alter_table_order_by *plan,
     const char *temporary_physical_name,
     char **out_sql
@@ -78,7 +78,7 @@ static int build_alter_table_order_create_sql(
     return rc;
 }
 
-static int build_alter_table_order_copy_sql(
+int build_alter_table_order_copy_sql(
     const struct planned_alter_table_order_by *plan,
     const char *temporary_physical_name,
     char **out_sql
@@ -178,7 +178,7 @@ static int append_alter_table_order_order_list(
     return rc;
 }
 
-static int build_alter_table_force_temporary_physical_name(
+int build_alter_table_force_temporary_physical_name(
     const struct planned_alter_table_force *plan,
     uint64_t sqlite_schema_generation,
     char *destination,
@@ -204,7 +204,7 @@ static int build_alter_table_force_temporary_physical_name(
     return MYLITE_OK;
 }
 
-static int build_alter_table_force_create_sql(
+int build_alter_table_force_create_sql(
     const struct planned_alter_table_force *plan,
     const char *temporary_physical_name,
     char **out_sql
@@ -257,7 +257,7 @@ static int build_alter_table_force_create_sql(
     return rc;
 }
 
-static int build_alter_table_force_copy_sql(
+int build_alter_table_force_copy_sql(
     const struct planned_alter_table_force *plan,
     const char *temporary_physical_name,
     char **out_sql
@@ -324,7 +324,7 @@ static int append_alter_table_force_column_list(
     return rc;
 }
 
-static int build_alter_table_rename_physical_table_sql(
+int build_alter_table_rename_physical_table_sql(
     const char *source_physical_name,
     const char *target_physical_name,
     char **out_sql
@@ -357,7 +357,7 @@ static int build_alter_table_rename_physical_table_sql(
     return rc;
 }
 
-static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql) {
+int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql) {
     struct mylite_dynamic_string string;
     int rc = MYLITE_OK;
 

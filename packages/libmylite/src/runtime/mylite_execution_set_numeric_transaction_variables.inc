@@ -165,8 +165,11 @@ static int apply_set_transaction_system_variable_value(
         return MYLITE_ERROR;
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION) {
-        rc =
-            parse_set_transaction_isolation_value(database, value_node, &characteristics.isolation);
+        rc = mylite_execution_parse_set_transaction_isolation_value(
+            database,
+            value_node,
+            &characteristics.isolation
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -180,7 +183,7 @@ static int apply_set_transaction_system_variable_value(
             return MYLITE_ERROR;
         }
     } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
-        rc = parse_set_transaction_read_only_value(
+        rc = mylite_execution_parse_set_transaction_read_only_value(
             database,
             value_node,
             &characteristics.access_mode
@@ -202,7 +205,11 @@ static int apply_set_transaction_system_variable_value(
         return MYLITE_ERROR;
     }
 
-    return apply_transaction_system_variable_characteristics(database, target, &characteristics);
+    return mylite_execution_apply_transaction_system_variable_characteristics(
+        database,
+        target,
+        &characteristics
+    );
 }
 
 static int apply_set_auto_increment_step_value(

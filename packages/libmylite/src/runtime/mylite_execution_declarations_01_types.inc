@@ -11,55 +11,8 @@ enum planned_type_size_budget {
     PLANNED_COLUMN_AGGREGATE_SIZE_BUDGET = 16384U,
 };
 
-enum table_maintenance_operation {
-    TABLE_MAINTENANCE_ANALYZE = 0,
-    TABLE_MAINTENANCE_CHECK = 1,
-    TABLE_MAINTENANCE_OPTIMIZE = 2,
-    TABLE_MAINTENANCE_REPAIR = 3,
-};
-
-enum checksum_table_option {
-    CHECKSUM_TABLE_OPTION_DEFAULT = 0,
-    CHECKSUM_TABLE_OPTION_QUICK = 1,
-    CHECKSUM_TABLE_OPTION_EXTENDED = 2,
-};
-
 struct show_binlog_events_options {
     bool include_placeholder_row;
-};
-
-struct planned_lock_tables {
-    struct mylite_session_table_lock *locks;
-    size_t lock_count;
-};
-
-struct table_maintenance_target {
-    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    char display_name[(MYLITE_CATALOG_IDENTIFIER_CAPACITY * 2) + 2];
-    struct mylite_catalog_table_descriptor table;
-    bool missing_schema;
-    bool missing_table;
-    bool unsupported_kind;
-    bool has_table;
-};
-
-struct transaction_characteristics {
-    bool has_isolation;
-    bool has_access_mode;
-    bool has_consistent_snapshot;
-    enum mylite_transaction_isolation isolation;
-    enum mylite_transaction_access_mode access_mode;
-};
-
-struct savepoint_control_sql_request {
-    const char *prefix;
-    const char *sqlite_name;
-};
-
-struct user_savepoint_values {
-    const char *name;
-    const char *sqlite_name;
 };
 
 struct planned_compound_select;
@@ -1393,13 +1346,6 @@ struct select_order_ast_item_nodes {
 struct joined_select_having_reference_request {
     const struct mylite_sql_ast_node *select_list;
     const struct mylite_sql_ast_node *having_node;
-};
-
-struct planned_select_limit {
-    bool has_limit;
-    int64_t row_count;
-    bool has_offset;
-    int64_t offset;
 };
 
 enum planned_grouped_having_kind {

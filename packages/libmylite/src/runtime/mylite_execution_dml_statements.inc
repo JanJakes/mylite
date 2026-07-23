@@ -87,7 +87,8 @@ static int execute_planned_insert_statement(
         rc = append_insert_duplicate_update_warnings_if_needed(database, &plan);
     }
     if (rc == MYLITE_OK) {
-        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+        rc =
+            mylite_execution_reject_read_only_persistent_write(database, &plan.target, &plan.table);
     }
     if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
@@ -98,7 +99,7 @@ static int execute_planned_insert_statement(
         return rc;
     }
 
-    clear_next_transaction_characteristics_after_statement(database);
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -156,7 +157,11 @@ static int execute_planned_insert_select_statement(
         rc = append_select_modifier_warnings(database, child_at(statement, 2U));
     }
     if (rc == MYLITE_OK) {
-        rc = reject_read_only_persistent_write(database, &plan.target.target, &plan.target.table);
+        rc = mylite_execution_reject_read_only_persistent_write(
+            database,
+            &plan.target.target,
+            &plan.target.table
+        );
     }
     if (rc == MYLITE_OK) {
         rc = execute_insert_select_from_plan(database, &plan, result);
@@ -167,7 +172,7 @@ static int execute_planned_insert_select_statement(
         return rc;
     }
 
-    clear_next_transaction_characteristics_after_statement(database);
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -216,7 +221,8 @@ static int execute_planned_insert_set_statement(
         rc = append_insert_duplicate_update_warnings_if_needed(database, &plan);
     }
     if (rc == MYLITE_OK) {
-        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+        rc =
+            mylite_execution_reject_read_only_persistent_write(database, &plan.target, &plan.table);
     }
     if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
@@ -227,7 +233,7 @@ static int execute_planned_insert_set_statement(
         return rc;
     }
 
-    clear_next_transaction_characteristics_after_statement(database);
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -253,7 +259,11 @@ static int execute_load_data_infile_statement(
 
     rc = plan_load_data_infile(database, statement, &plan);
     if (rc == MYLITE_OK) {
-        rc = reject_read_only_persistent_write(database, &plan.insert.target, &plan.insert.table);
+        rc = mylite_execution_reject_read_only_persistent_write(
+            database,
+            &plan.insert.target,
+            &plan.insert.table
+        );
     }
     if (rc == MYLITE_OK) {
         rc = execute_load_data_infile_from_plan(database, &plan, result);
@@ -264,7 +274,7 @@ static int execute_load_data_infile_statement(
         return rc;
     }
 
-    clear_next_transaction_characteristics_after_statement(database);
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -317,7 +327,8 @@ static int execute_delete_statement(
 
     rc = plan_delete(database, statement, &plan);
     if (rc == MYLITE_OK) {
-        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+        rc =
+            mylite_execution_reject_read_only_persistent_write(database, &plan.target, &plan.table);
     }
     if (rc == MYLITE_OK) {
         rc = execute_delete_from_plan(database, &plan, result);
@@ -328,7 +339,7 @@ static int execute_delete_statement(
         return rc;
     }
 
-    clear_next_transaction_characteristics_after_statement(database);
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -348,7 +359,8 @@ static int execute_update_statement(
 
     rc = plan_update(database, statement, &plan);
     if (rc == MYLITE_OK) {
-        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+        rc =
+            mylite_execution_reject_read_only_persistent_write(database, &plan.target, &plan.table);
     }
     if (rc == MYLITE_OK) {
         rc = execute_update_from_plan(database, &plan, result);
@@ -362,7 +374,7 @@ static int execute_update_statement(
         return rc;
     }
 
-    clear_next_transaction_characteristics_after_statement(database);
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 

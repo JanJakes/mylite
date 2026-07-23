@@ -119,6 +119,7 @@ add_library(mylite
   src/runtime/mylite_execution_result_rows.c
   src/runtime/mylite_execution_row_scalar_sql.c
   src/runtime/mylite_execution_value.c
+  src/runtime/mylite_execution_values.c
   src/runtime/mylite_execution_scalar_base_conversion.c
   src/runtime/mylite_execution_scalar_binary_aes.c
   src/runtime/mylite_execution_scalar_binary.c
@@ -161,7 +162,9 @@ add_library(mylite
   src/runtime/mylite_execution_statement_transaction.c
   src/runtime/mylite_execution_sql_normalization.c
   src/runtime/mylite_execution_system_variables.c
+  src/runtime/mylite_execution_table_maintenance.c
   src/runtime/mylite_execution_text_internal.c
+  src/runtime/mylite_execution_transaction_control.c
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_ip_address.c

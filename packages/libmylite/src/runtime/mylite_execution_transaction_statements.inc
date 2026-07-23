@@ -592,7 +592,7 @@ static int drop_orphaned_temporary_physical_tables(
             &found
         );
         if (rc == MYLITE_OK && found) {
-            rc = execute_physical_drop_table(database, physical_name);
+            rc = mylite_execution_transaction_execute_physical_drop_table(database, physical_name);
             if (rc == MYLITE_OK) {
                 *out_schema_changed = true;
             }
@@ -709,9 +709,14 @@ static int rebuild_temporary_physical_table(
     int rc = rebuild_temporary_create_table_plan(database, table, &plan);
 
     if (rc == MYLITE_OK) {
-        rc = execute_physical_create_table(database, &plan, table->table.physical_name, true);
+        rc = mylite_execution_transaction_execute_physical_create_table(
+            database,
+            &plan,
+            table->table.physical_name,
+            true
+        );
     }
-    planned_create_table_deinit(&plan);
+    mylite_execution_transaction_planned_create_table_deinit(&plan);
     return rc;
 }
 
@@ -793,7 +798,7 @@ static int rebuild_temporary_create_table_columns(
     out_plan->column_count = table->column_count;
 
     for (size_t column_index = 0U; column_index < table->column_count; ++column_index) {
-        planned_column_from_catalog_descriptor(
+        mylite_execution_transaction_planned_column_from_catalog_descriptor(
             &table->columns[column_index],
             NULL,
             &out_plan->columns[column_index]
@@ -831,7 +836,7 @@ static int rebuild_temporary_create_table_primary_index(
     struct planned_create_table *out_plan
 ) {
     size_t part_count = temporary_index_part_count(table, index->index_id);
-    int rc = reserve_planned_primary_key_parts(database, out_plan, part_count);
+    int rc = mylite_execution_transaction_reserve_primary_key_parts(database, out_plan, part_count);
 
     if (part_count == 0U) {
         return MYLITE_ERROR;
@@ -888,8 +893,11 @@ static int rebuild_temporary_create_table_secondary_index(
     if (part_count == 0U) {
         return MYLITE_ERROR;
     }
-    rc =
-        reserve_planned_secondary_indexes(database, out_plan, out_plan->secondary_index_count + 1U);
+    rc = mylite_execution_transaction_reserve_secondary_indexes(
+        database,
+        out_plan,
+        out_plan->secondary_index_count + 1U
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -905,7 +913,7 @@ static int rebuild_temporary_create_table_secondary_index(
     snprintf(planned->physical_name, sizeof(planned->physical_name), "%s", index->physical_name);
     snprintf(planned->comment, sizeof(planned->comment), "%s", index->comment);
 
-    rc = reserve_planned_secondary_index_parts(database, planned, part_count);
+    rc = mylite_execution_transaction_reserve_secondary_index_parts(database, planned, part_count);
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
         const struct mylite_catalog_index_column_descriptor *part =
             temporary_index_part_by_ordinal(table, index->index_id, (int64_t)part_index + 1);

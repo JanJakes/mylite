@@ -74,13 +74,16 @@ static int execute_insert_select_table(
     int rc = MYLITE_OK;
 
     if (plan->target.has_auto_increment) {
-        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->target.table);
+        rc = mylite_execution_ensure_persistent_auto_increment_high_water_slot(
+            database,
+            &plan->target.table
+        );
     }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &execution->transaction);
     }
     if (rc == MYLITE_OK && locked_plan.target.has_auto_increment) {
-        rc = read_current_auto_increment_next_after_write_lock(
+        rc = mylite_execution_read_current_auto_increment_next_after_write_lock(
             database,
             &locked_plan.target.table,
             locked_plan.target.auto_increment_next,
@@ -129,7 +132,7 @@ static int execute_insert_select_table(
     if (rc == MYLITE_OK && locked_plan.target.has_auto_increment &&
         execution->counters.auto_increment_next_after_rows !=
             locked_plan.target.auto_increment_next) {
-        rc = record_persistent_auto_increment_high_water(
+        rc = mylite_execution_record_persistent_auto_increment_high_water(
             database,
             &locked_plan.target.table,
             execution->counters.auto_increment_next_after_rows

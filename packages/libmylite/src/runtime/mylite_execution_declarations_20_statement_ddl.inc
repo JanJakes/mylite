@@ -573,11 +573,6 @@ static int execute_do_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int execute_values_statement(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    mylite_result **out_result
-);
 static int execute_explain_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

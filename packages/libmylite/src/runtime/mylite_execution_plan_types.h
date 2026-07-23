@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 struct table_name_resolution {
     struct mylite_catalog_schema_descriptor schema;
@@ -40,6 +41,13 @@ struct planned_drop_table {
 struct load_data_missing_warning_request {
     size_t row_number;
     size_t warning_count;
+};
+
+struct planned_select_limit {
+    bool has_limit;
+    int64_t row_count;
+    bool has_offset;
+    int64_t offset;
 };
 
 #endif

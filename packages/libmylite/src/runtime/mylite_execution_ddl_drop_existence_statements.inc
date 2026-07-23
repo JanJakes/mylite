@@ -14,7 +14,7 @@ static int execute_drop_table_statement(
 
     rc = plan_drop_table(database, statement, false, &plan);
     if (rc == MYLITE_OK && drop_table_plan_requires_implicit_commit(&plan)) {
-        rc = commit_active_user_transaction_for_ddl(database);
+        rc = mylite_execution_commit_active_user_transaction_for_ddl(database);
     }
     if (rc == MYLITE_OK && plan.missing_count != 0U && !drop_table_has_if_exists(statement)) {
         rc = finish_drop_table_missing_targets(database, &plan);
@@ -85,7 +85,7 @@ static int execute_drop_view_statement(
         rc = finish_drop_table_missing_targets(database, &plan);
     }
     if (rc == MYLITE_OK && (plan.existing_count != 0U || plan.missing_count != 0U)) {
-        rc = commit_active_user_transaction_for_ddl(database);
+        rc = mylite_execution_commit_active_user_transaction_for_ddl(database);
     }
     if (rc == MYLITE_OK) {
         rc = append_drop_table_missing_notes(database, &plan);
@@ -459,7 +459,7 @@ static int execute_drop_table_from_plan(
         return rc;
     }
     if (has_persistent_targets) {
-        rc = commit_active_user_transaction_for_ddl(database);
+        rc = mylite_execution_commit_active_user_transaction_for_ddl(database);
         if (rc != MYLITE_OK) {
             return rc;
         }

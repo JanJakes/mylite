@@ -106,7 +106,10 @@ static void fold_savepoint_name(const char *source, char *destination, size_t de
     }
 
     for (; index + 1U < destination_size && source[index] != '\0'; ++index) {
-        destination[index] = ascii_lower((unsigned char)source[index]);
+        const unsigned char value = (unsigned char)source[index];
+        destination[index] = (char)(value >= (unsigned char)'A' && value <= (unsigned char)'Z'
+                                        ? value + ((unsigned char)'a' - (unsigned char)'A')
+                                        : value);
     }
     destination[index] = '\0';
 }

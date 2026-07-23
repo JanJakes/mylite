@@ -54,10 +54,10 @@ static int apply_set_transaction_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (text_equals_ascii_case_insensitive(scope_text, "session")) {
+    if (mylite_execution_text_equals_ascii_case_insensitive(scope_text, "session")) {
         return apply_session_transaction_characteristics(database, &characteristics);
     }
-    if (text_equals_ascii_case_insensitive(scope_text, "global")) {
+    if (mylite_execution_text_equals_ascii_case_insensitive(scope_text, "global")) {
         set_unsupported_error(database, "SET GLOBAL TRANSACTION is not supported");
         return MYLITE_ERROR;
     }
@@ -254,16 +254,20 @@ static int parse_set_transaction_isolation_value(
         );
     }
 
-    if (text_equals_ascii_case_insensitive(value, "REPEATABLE-READ")) {
+    if (mylite_execution_text_equals_ascii_case_insensitive(value, "REPEATABLE-READ")) {
         *out_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
-    } else if (text_equals_ascii_case_insensitive(value, "READ-COMMITTED")) {
+    } else if (mylite_execution_text_equals_ascii_case_insensitive(value, "READ-COMMITTED")) {
         *out_isolation = MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED;
-    } else if (text_equals_ascii_case_insensitive(value, "READ-UNCOMMITTED")) {
+    } else if (mylite_execution_text_equals_ascii_case_insensitive(value, "READ-UNCOMMITTED")) {
         *out_isolation = MYLITE_TRANSACTION_ISOLATION_READ_UNCOMMITTED;
-    } else if (text_equals_ascii_case_insensitive(value, "SERIALIZABLE")) {
+    } else if (mylite_execution_text_equals_ascii_case_insensitive(value, "SERIALIZABLE")) {
         *out_isolation = MYLITE_TRANSACTION_ISOLATION_SERIALIZABLE;
     } else {
-        set_system_variable_cant_be_set_value_error(database, "transaction_isolation", value);
+        mylite_execution_transaction_set_system_variable_value_error(
+            database,
+            "transaction_isolation",
+            value
+        );
         rc = MYLITE_ERROR;
     }
 
@@ -310,7 +314,8 @@ static int parse_set_transaction_read_only_value(
         return MYLITE_OK;
     }
     if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        if (parse_unsigned_integer_literal(&value_node->span, &magnitude) != MYLITE_OK ||
+        if (mylite_execution_parse_unsigned_integer_literal(&value_node->span, &magnitude) !=
+                MYLITE_OK ||
             magnitude > 1U) {
             return set_transaction_variable_invalid_node_value_error(
                 database,
@@ -333,10 +338,14 @@ static int parse_set_transaction_read_only_value(
         if (rc != MYLITE_OK) {
             return rc;
         }
-        if (text_equals_ascii_case_insensitive(decoded, "ON")) {
+        if (mylite_execution_text_equals_ascii_case_insensitive(decoded, "ON")) {
             *out_access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
-        } else if (!text_equals_ascii_case_insensitive(decoded, "OFF")) {
-            set_system_variable_cant_be_set_value_error(database, "transaction_read_only", decoded);
+        } else if (!mylite_execution_text_equals_ascii_case_insensitive(decoded, "OFF")) {
+            mylite_execution_transaction_set_system_variable_value_error(
+                database,
+                "transaction_read_only",
+                decoded
+            );
             rc = MYLITE_ERROR;
         }
         free(decoded);
@@ -379,7 +388,7 @@ static int decode_set_transaction_string_value(
     if (nul_written < 0) {
         nul_message[0] = '\0';
     }
-    return decode_sql_string_literal(
+    return mylite_execution_decode_sql_string_literal(
         database,
         value_node,
         unsupported_message,
@@ -421,7 +430,7 @@ static int set_transaction_variable_invalid_node_value_error(
     copied = value_node->span.length < sizeof(value) ? value_node->span.length : sizeof(value) - 1U;
     memcpy(value, value_node->span.text, copied);
     value[copied] = '\0';
-    set_system_variable_cant_be_set_value_error(database, variable_name, value);
+    mylite_execution_transaction_set_system_variable_value_error(database, variable_name, value);
     return MYLITE_ERROR;
 }
 

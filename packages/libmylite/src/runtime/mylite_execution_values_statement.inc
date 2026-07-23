@@ -207,7 +207,7 @@ static int validate_values_integer_literal(
         set_unsupported_error(database, "VALUES supports only signed integer literals");
         return MYLITE_ERROR;
     }
-    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+    if (mylite_execution_parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
         set_values_integer_out_of_range_error(database);
         return MYLITE_ERROR;
     }
@@ -309,8 +309,8 @@ static int validate_values_order_ordinal(
     uint64_t ordinal = 0U;
     char *display_text = NULL;
 
-    if (parse_unsigned_integer_literal(&order_key->span, &ordinal) == MYLITE_OK && ordinal >= 1U &&
-        ordinal <= column_count) {
+    if (mylite_execution_parse_unsigned_integer_literal(&order_key->span, &ordinal) == MYLITE_OK &&
+        ordinal >= 1U && ordinal <= column_count) {
         return MYLITE_OK;
     }
 
@@ -327,28 +327,25 @@ static int validate_values_order_identifier(
     const struct mylite_sql_ast_node *order_key,
     size_t column_count
 ) {
-    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    char display_text[MYLITE_CATALOG_IDENTIFIER_CAPACITY * table_name_part_capacity];
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char display_text[MYLITE_CATALOG_IDENTIFIER_CAPACITY * 3U];
     size_t part_count = 0U;
     size_t column_index = 0U;
-    int rc = collect_column_reference_parts(database, order_key, parts, &part_count);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (part_count == 1U && values_column_name_to_index(parts[0], column_count, &column_index)) {
-        return MYLITE_OK;
-    }
-
-    rc = format_column_reference_name(
+    int rc = mylite_execution_values_resolve_column_reference(
         database,
-        parts,
-        part_count,
+        order_key,
+        column_name,
+        sizeof(column_name),
         display_text,
-        sizeof(display_text)
+        sizeof(display_text),
+        &part_count
     );
+
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    if (part_count == 1U && values_column_name_to_index(column_name, column_count, &column_index)) {
+        return MYLITE_OK;
     }
     set_unknown_order_column_error(database, display_text);
     return MYLITE_ERROR;
@@ -368,7 +365,8 @@ static bool values_column_name_to_index(
     if (out_index != NULL) {
         *out_index = 0U;
     }
-    if (column_name == NULL || !text_has_ascii_case_insensitive_prefix(column_name, prefix)) {
+    if (column_name == NULL ||
+        !values_text_has_ascii_case_insensitive_prefix(column_name, prefix)) {
         return false;
     }
 
@@ -397,6 +395,33 @@ static bool values_column_name_to_index(
     return true;
 }
 
+static bool values_text_has_ascii_case_insensitive_prefix(const char *text, const char *prefix) {
+    size_t index = 0U;
+
+    if (text == NULL || prefix == NULL) {
+        return false;
+    }
+    while (prefix[index] != '\0') {
+        unsigned char text_byte = (unsigned char)text[index];
+        unsigned char prefix_byte = (unsigned char)prefix[index];
+
+        if (text_byte == '\0') {
+            return false;
+        }
+        if (text_byte >= 'A' && text_byte <= 'Z') {
+            text_byte = (unsigned char)(text_byte + ('a' - 'A'));
+        }
+        if (prefix_byte >= 'A' && prefix_byte <= 'Z') {
+            prefix_byte = (unsigned char)(prefix_byte + ('a' - 'A'));
+        }
+        if (text_byte != prefix_byte) {
+            return false;
+        }
+        ++index;
+    }
+    return true;
+}
+
 static int plan_values_limit(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *limit_clause,
@@ -421,14 +446,21 @@ static int plan_values_limit(
         return MYLITE_ERROR;
     }
 
-    rc = convert_limit_integer_literal(database, child_at(limit_clause, 0U), &out_limit->row_count);
+    rc = mylite_execution_select_order_convert_limit_literal(
+        database,
+        child_at(limit_clause, 0U),
+        &out_limit->row_count
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
     out_limit->has_limit = true;
     if (child_at(limit_clause, 1U) != NULL) {
-        rc =
-            convert_limit_integer_literal(database, child_at(limit_clause, 1U), &out_limit->offset);
+        rc = mylite_execution_select_order_convert_limit_literal(
+            database,
+            child_at(limit_clause, 1U),
+            &out_limit->offset
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -444,7 +476,7 @@ static int append_values_result_columns(
     size_t column_count
 ) {
     for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-        char label[sizeof("column_") + uint64_decimal_digit_capacity];
+        char label[sizeof("column_") + sizeof("18446744073709551615")];
         int written = snprintf(label, sizeof(label), "column_%zu", column_index);
         int rc = MYLITE_OK;
 
@@ -532,7 +564,7 @@ static int append_values_result_row(
     }
     result_cells = (struct mylite_result_cell *)calloc(shape.column_count, sizeof(*result_cells));
     if (result_cells == NULL) {
-        session_scalar_cell_array_deinit(cells, shape.column_count);
+        values_scalar_cells_deinit(cells, shape.column_count);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
@@ -540,7 +572,7 @@ static int append_values_result_row(
     while (value != NULL && column_index < shape.column_count && rc == MYLITE_OK) {
         rc = values_statement_value_cell(database, value, &cells[column_index]);
         if (rc == MYLITE_OK) {
-            result_cells[column_index] = session_scalar_cell_result_cell(&cells[column_index]);
+            result_cells[column_index] = values_result_cell(&cells[column_index]);
         }
         value = value->next_sibling;
         ++column_index;
@@ -556,7 +588,7 @@ static int append_values_result_row(
         }
     }
 
-    session_scalar_cell_array_deinit(cells, shape.column_count);
+    values_scalar_cells_deinit(cells, shape.column_count);
     free(result_cells);
     return rc;
 }
@@ -602,7 +634,7 @@ static int values_statement_value_cell(
     }
     if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
         literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING) {
-        int rc = decode_sql_string_literal_with_policy(
+        int rc = mylite_execution_decode_sql_string_literal_with_policy(
             database,
             value,
             "VALUES supports only ordinary string literals",
@@ -648,7 +680,7 @@ static int values_statement_integer_cell(
         literal = child_at(value, 0U);
     }
 
-    rc = normalize_decimal_integer_literal(
+    rc = mylite_execution_normalize_decimal_integer_literal(
         database,
         &literal->span,
         is_negative,
@@ -659,4 +691,28 @@ static int values_statement_integer_cell(
         out_cell->value = out_cell->literal_text;
     }
     return rc;
+}
+
+static struct mylite_result_cell values_result_cell(const struct session_scalar_cell *cell) {
+    size_t value_size = 0U;
+
+    if (cell == NULL || cell->value == NULL) {
+        return (struct mylite_result_cell){.is_null = true};
+    }
+    value_size = cell->has_value_size ? cell->value_size : strlen(cell->value);
+    return (struct mylite_result_cell){
+        .bytes = cell->value,
+        .size = value_size,
+        .is_null = false,
+    };
+}
+
+static void values_scalar_cells_deinit(struct session_scalar_cell *cells, size_t cell_count) {
+    if (cells == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < cell_count; ++index) {
+        mylite_execution_session_scalar_cell_deinit(&cells[index]);
+    }
+    free(cells);
 }

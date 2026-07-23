@@ -49,12 +49,12 @@ static bool alter_table_comment_targets_existing_temporary_table(
         return false;
     }
 
-    rc = collect_identifier_parts(
+    rc = mylite_execution_transaction_collect_identifier_parts(
+        database,
         child_at(statement, 0U),
         parts,
         table_name_part_capacity,
-        &part_count,
-        database
+        &part_count
     );
     if (rc != MYLITE_OK) {
         return false;

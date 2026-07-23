@@ -176,7 +176,7 @@ static int execute_parsed_statement(
     }
     database->session.active_statement_time = (int64_t)mylite_statement_context_time(context);
 
-    rc = prepare_statement_transaction_boundary(database, statement);
+    rc = mylite_execution_prepare_statement_transaction_boundary(database, statement);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -337,23 +337,35 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT:
         return execute_unsupported_utility_statement(database);
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
-        return execute_set_transaction_statement(database, statement, out_result);
+        return mylite_execution_execute_set_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
-        return execute_start_transaction_statement(database, statement, out_result);
+        return mylite_execution_execute_start_transaction_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
-        return execute_commit_statement(database, statement, out_result);
+        return mylite_execution_execute_commit_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
-        return execute_rollback_statement(database, statement, out_result);
+        return mylite_execution_execute_rollback_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
-        return execute_savepoint_statement(database, statement, out_result);
+        return mylite_execution_execute_savepoint_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
-        return execute_rollback_to_savepoint_statement(database, statement, out_result);
+        return mylite_execution_execute_rollback_to_savepoint_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
-        return execute_release_savepoint_statement(database, statement, out_result);
+        return mylite_execution_execute_release_savepoint_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_LOCK_TABLES_STATEMENT:
-        return execute_lock_tables_statement(database, statement, out_result);
+        return mylite_execution_execute_lock_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT:
-        return execute_unlock_tables_statement(database, out_result);
+        return mylite_execution_execute_unlock_tables_statement(database, out_result);
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
         return execute_create_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_SCHEMA_DEFAULT_CHARSET_COLLATION_STATEMENT:
@@ -515,7 +527,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DO_STATEMENT:
         return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_VALUES_STATEMENT:
-        return execute_values_statement(database, statement, out_result);
+        return mylite_execution_execute_values_statement(database, statement, out_result);
     case MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION:
         return execute_parenthesized_query_expression(database, context, statement, out_result);
     case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
@@ -533,7 +545,7 @@ static int execute_non_prepared_statement(
                        );
 
         if (rc == MYLITE_OK) {
-            clear_select_consumed_next_transaction_characteristics(database);
+            mylite_execution_clear_select_consumed_next_transaction_characteristics(database);
         }
         return rc;
     }
@@ -541,7 +553,7 @@ static int execute_non_prepared_statement(
         int rc = execute_compound_select_statement(database, context, statement, out_result);
 
         if (rc == MYLITE_OK) {
-            clear_select_consumed_next_transaction_characteristics(database);
+            mylite_execution_clear_select_consumed_next_transaction_characteristics(database);
         }
         return rc;
     }
@@ -628,9 +640,13 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
     case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
-        return execute_table_maintenance_statement(database, statement, out_result);
+        return mylite_execution_execute_table_maintenance_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
-        return execute_checksum_table_statement(database, statement, out_result);
+        return mylite_execution_execute_checksum_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST:
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET:
     case MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK:

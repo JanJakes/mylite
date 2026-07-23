@@ -400,7 +400,7 @@ static int execute_expanded_prepared_statement_sql(
             );
         }
         database->session.active_statement_time = (int64_t)mylite_statement_context_time(&context);
-        rc = prepare_statement_transaction_boundary(database, statement);
+        rc = mylite_execution_prepare_statement_transaction_boundary(database, statement);
         if (rc == MYLITE_OK) {
             rc = mylite_catalog_synchronize_snapshot(database);
         }

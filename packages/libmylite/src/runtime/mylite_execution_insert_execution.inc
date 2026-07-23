@@ -11,7 +11,10 @@ static int execute_insert_from_plan(
     int rc = build_insert_sql(plan, &sql);
 
     if (rc == MYLITE_OK && plan->has_auto_increment) {
-        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
+        rc = mylite_execution_ensure_persistent_auto_increment_high_water_slot(
+            database,
+            &plan->table
+        );
     }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
@@ -65,7 +68,7 @@ static int execute_insert_from_plan(
     free(sql);
     if (rc == MYLITE_OK && plan->has_auto_increment &&
         counters.auto_increment_next_after_rows != plan->auto_increment_next) {
-        rc = record_persistent_auto_increment_high_water(
+        rc = mylite_execution_record_persistent_auto_increment_high_water(
             database,
             &plan->table,
             counters.auto_increment_next_after_rows
@@ -113,7 +116,7 @@ static int rebase_insert_auto_increment_after_write_lock(
     if (plan == NULL || !plan->has_auto_increment) {
         return MYLITE_OK;
     }
-    rc = read_current_auto_increment_next_after_write_lock(
+    rc = mylite_execution_read_current_auto_increment_next_after_write_lock(
         database,
         &plan->table,
         plan->auto_increment_next,
@@ -199,7 +202,10 @@ static int execute_load_data_infile_from_plan(
     int rc = build_insert_sql(&plan->insert, &sql);
 
     if (rc == MYLITE_OK && plan->insert.has_auto_increment) {
-        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->insert.table);
+        rc = mylite_execution_ensure_persistent_auto_increment_high_water_slot(
+            database,
+            &plan->insert.table
+        );
     }
     if (rc == MYLITE_OK) {
         errno = 0;
@@ -213,7 +219,7 @@ static int execute_load_data_infile_from_plan(
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK && plan->insert.has_auto_increment) {
-        rc = read_current_auto_increment_next_after_write_lock(
+        rc = mylite_execution_read_current_auto_increment_next_after_write_lock(
             database,
             &plan->insert.table,
             plan->insert.auto_increment_next,
@@ -267,7 +273,7 @@ static int execute_load_data_infile_from_plan(
     free(sql);
     if (rc == MYLITE_OK && plan->insert.has_auto_increment &&
         counters.auto_increment_next_after_rows != auto_increment_next) {
-        rc = record_persistent_auto_increment_high_water(
+        rc = mylite_execution_record_persistent_auto_increment_high_water(
             database,
             &plan->insert.table,
             counters.auto_increment_next_after_rows

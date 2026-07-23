@@ -508,7 +508,7 @@ static int apply_set_autocommit_boolean_value(struct mylite_db *database, bool v
     int rc = MYLITE_OK;
 
     if (value && !database->session.autocommit_enabled) {
-        rc = commit_active_user_transaction(database);
+        rc = mylite_execution_commit_active_user_transaction(database);
         if (rc != MYLITE_OK) {
             return rc;
         }

@@ -57,8 +57,14 @@
 #include "mylite_execution_sqlite_internal.h"
 #include "mylite_execution_statement_transaction.h"
 #include "mylite_execution_system_variables.h"
+#include "mylite_execution_table_maintenance.h"
+#include "mylite_execution_table_maintenance_support.h"
 #include "mylite_execution_text_internal.h"
+#include "mylite_execution_transaction_control.h"
+#include "mylite_execution_transaction_control_support.h"
 #include "mylite_execution_value.h"
+#include "mylite_execution_values.h"
+#include "mylite_execution_values_support.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
 #include "mylite_json_internal.h"
@@ -378,13 +384,17 @@ int mylite_execute_transaction_control(
 
     switch (statement) {
     case MYLITE_TRANSACTION_CONTROL_START:
-        rc = execute_start_transaction_statement_with_characteristics(database, NULL, out_result);
+        rc = mylite_execution_execute_start_transaction_with_characteristics(
+            database,
+            NULL,
+            out_result
+        );
         break;
     case MYLITE_TRANSACTION_CONTROL_COMMIT:
-        rc = execute_commit_statement_with_chain(database, false, out_result);
+        rc = mylite_execution_execute_commit_with_chain(database, false, out_result);
         break;
     case MYLITE_TRANSACTION_CONTROL_ROLLBACK:
-        rc = execute_rollback_statement_with_chain(database, false, out_result);
+        rc = mylite_execution_execute_rollback_with_chain(database, false, out_result);
         break;
     default:
         rc = MYLITE_MISUSE;
@@ -782,7 +792,7 @@ static int start_cursor_execution(mylite_stmt *stmt) {
         if (!stmt->returns_rows) {
             rc = execute_prepared_materialized_statement(stmt);
         } else if (stmt->statement != NULL) {
-            rc = prepare_statement_transaction_boundary(database, stmt->statement);
+            rc = mylite_execution_prepare_statement_transaction_boundary(database, stmt->statement);
         }
     }
     if (rc == MYLITE_OK && stmt->returns_rows) {
@@ -1536,7 +1546,7 @@ static int prepare_cursor_select_statement(
     if (rc == MYLITE_OK) {
         database->session.active_statement_time =
             (int64_t)mylite_statement_context_time(&stmt->context);
-        rc = prepare_statement_transaction_boundary(database, stmt->statement);
+        rc = mylite_execution_prepare_statement_transaction_boundary(database, stmt->statement);
     }
     if (rc == MYLITE_OK) {
         rc = begin_read_statement_transaction(database, &stmt->read_transaction);
@@ -1885,7 +1895,7 @@ static int publish_buffered_statement_completion(mylite_stmt *stmt) {
         stmt->has_context = false;
     }
     if (rc == MYLITE_OK) {
-        clear_select_consumed_next_transaction_characteristics(database);
+        mylite_execution_clear_select_consumed_next_transaction_characteristics(database);
     }
     mylite_connection_publish_processlist_session(database);
     return rc;
@@ -2212,7 +2222,7 @@ static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
         stmt->has_context = false;
     }
     if (is_current_statement) {
-        clear_select_consumed_next_transaction_characteristics(database);
+        mylite_execution_clear_select_consumed_next_transaction_characteristics(database);
     }
     if (database->active_cursor == stmt) {
         database->active_cursor = NULL;
@@ -2256,15 +2266,15 @@ int mylite_execution_prepare_connection_close(struct mylite_db *database) {
         if (rc == MYLITE_OK) {
             mylite_catalog_invalidate_descriptor_cache(database);
             database->session.user_transaction_active = false;
-            clear_active_transaction_characteristics(database);
-            clear_user_savepoints(database);
+            mylite_execution_clear_active_transaction_characteristics(database);
+            mylite_execution_clear_user_savepoints(database);
         }
     }
     if (rc == MYLITE_OK) {
-        rc = reconcile_persistent_auto_increment_high_waters(database);
+        rc = mylite_execution_reconcile_persistent_auto_increment_high_waters(database);
     }
     if (rc == MYLITE_OK) {
-        clear_persistent_auto_increment_high_waters(database);
+        mylite_execution_clear_persistent_auto_increment_high_waters(database);
     }
     return rc;
 }
@@ -3633,6 +3643,182 @@ int mylite_execution_set_unknown_column_reference_error(
     return MYLITE_ERROR;
 }
 
+int mylite_execution_values_resolve_column_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    char *column_name,
+    size_t column_name_size,
+    char *display_name,
+    size_t display_name_size,
+    size_t *out_part_count
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (column_name == NULL || column_name_size == 0U || display_name == NULL ||
+        display_name_size == 0U || out_part_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    column_name[0] = '\0';
+    display_name[0] = '\0';
+    *out_part_count = 0U;
+    rc = collect_column_reference_parts(database, column_node, parts, &part_count);
+    if (rc == MYLITE_OK && part_count != 0U) {
+        int written = snprintf(column_name, column_name_size, "%s", parts[0]);
+
+        if (written < 0 || (size_t)written >= column_name_size) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            display_name,
+            display_name_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_part_count = part_count;
+    }
+    return rc;
+}
+
+uint32_t mylite_execution_table_maintenance_result_collation_id(const char *collation_name) {
+    return result_metadata_collation_id(collation_name);
+}
+
+int mylite_execution_table_maintenance_resolve_target_names(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *schema_name,
+    size_t schema_name_size,
+    char *table_name,
+    size_t table_name_size
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int schema_written = 0;
+    int table_written = 0;
+    int rc = reject_builtin_schema_write_target(database, node);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = collect_identifier_parts(node, parts, table_name_part_capacity, &part_count, database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U) {
+        if (database == NULL || !database->session.has_selected_schema) {
+            set_no_database_error(database);
+            return MYLITE_ERROR;
+        }
+        schema_written =
+            snprintf(schema_name, schema_name_size, "%s", database->session.selected_schema);
+        table_written = snprintf(table_name, table_name_size, "%s", parts[0]);
+    } else if (part_count == 2U) {
+        schema_written = snprintf(schema_name, schema_name_size, "%s", parts[0]);
+        table_written = snprintf(table_name, table_name_size, "%s", parts[1]);
+    } else {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (schema_written < 0 || (size_t)schema_written >= schema_name_size || table_written < 0 ||
+        (size_t)table_written >= table_name_size) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+int mylite_execution_transaction_collect_identifier_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t capacity,
+    size_t *out_part_count
+) {
+    return collect_identifier_parts(node, parts, capacity, out_part_count, database);
+}
+
+int mylite_execution_transaction_execute_physical_create_table(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    bool temporary
+) {
+    return execute_physical_create_table(database, plan, physical_name, temporary);
+}
+
+int mylite_execution_transaction_execute_physical_drop_table(
+    struct mylite_db *database,
+    const char *physical_name
+) {
+    return execute_physical_drop_table(database, physical_name);
+}
+
+void mylite_execution_transaction_planned_column_from_catalog_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    const struct mylite_sql_ast_node *default_node,
+    struct planned_column *out_column
+) {
+    planned_column_from_catalog_descriptor(column, default_node, out_column);
+}
+
+void mylite_execution_transaction_planned_create_table_deinit(struct planned_create_table *plan) {
+    planned_create_table_deinit(plan);
+}
+
+int mylite_execution_transaction_reserve_primary_key_parts(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t required_capacity
+) {
+    return reserve_planned_primary_key_parts(database, plan, required_capacity);
+}
+
+int mylite_execution_transaction_reserve_secondary_index_parts(
+    struct mylite_db *database,
+    struct planned_secondary_index *index,
+    size_t required_capacity
+) {
+    return reserve_planned_secondary_index_parts(database, index, required_capacity);
+}
+
+int mylite_execution_transaction_reserve_secondary_indexes(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t required_capacity
+) {
+    return reserve_planned_secondary_indexes(database, plan, required_capacity);
+}
+
+int mylite_execution_transaction_resolve_lock_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    int rc = reject_builtin_schema_write_target(database, node);
+
+    if (rc == MYLITE_OK) {
+        rc = resolve_visible_table_reference(database, node, out_resolution, out_table);
+    }
+    return rc;
+}
+
+void mylite_execution_transaction_set_system_variable_value_error(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value
+) {
+    set_system_variable_cant_be_set_value_error(database, variable_name, value);
+}
+
 void mylite_execution_set_illegal_mix_of_collations_error(
     struct mylite_db *database,
     const char *first_collation,
@@ -3867,19 +4053,19 @@ const char *mylite_execution_session_myisam_stats_method_text(
 const char *mylite_execution_session_transaction_isolation_text(
     enum mylite_transaction_isolation isolation
 ) {
-    return transaction_isolation_value_text(isolation);
+    return mylite_execution_transaction_isolation_value_text(isolation);
 }
 
 const char *mylite_execution_session_transaction_read_only_scalar_text(
     enum mylite_transaction_access_mode access_mode
 ) {
-    return transaction_read_only_scalar_text(access_mode);
+    return mylite_execution_transaction_read_only_scalar_text(access_mode);
 }
 
 const char *mylite_execution_session_transaction_read_only_show_text(
     enum mylite_transaction_access_mode access_mode
 ) {
-    return transaction_read_only_show_text(access_mode);
+    return mylite_execution_transaction_read_only_show_text(access_mode);
 }
 
 bool mylite_execution_session_sql_mode_token_matches(
@@ -3897,18 +4083,6 @@ bool mylite_execution_session_sql_mode_token_matches(
 #include "mylite_execution_statement_session_handlers.inc"
 
 #include "mylite_execution_prepared_statement_execution.inc"
-
-#include "mylite_execution_transaction_characteristics.inc"
-
-#include "mylite_execution_statement_transaction_boundaries.inc"
-
-#include "mylite_execution_transaction_statements.inc"
-
-#include "mylite_execution_lock_tables.inc"
-
-#include "mylite_execution_statement_implicit_commits.inc"
-
-#include "mylite_execution_session_savepoints.inc"
 
 #include "mylite_execution_set_connection_charset.inc"
 
@@ -4044,8 +4218,6 @@ bool mylite_execution_session_sql_mode_token_matches(
 
 #include "mylite_execution_information_schema_descriptor_metadata.inc"
 
-#include "mylite_execution_table_maintenance_queries.inc"
-
 #include "mylite_execution_show_tables_status_general.inc"
 
 #include "mylite_execution_show_charset_variables_status.inc"
@@ -4167,8 +4339,6 @@ bool mylite_execution_session_sql_mode_token_matches(
 #include "mylite_execution_aggregate_execution.inc"
 
 #include "mylite_execution_scalar_projection_classification.inc"
-
-#include "mylite_execution_values_statement.inc"
 
 #include "mylite_execution_scalar_projection_select_execution.inc"
 

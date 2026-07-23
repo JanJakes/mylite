@@ -19,14 +19,17 @@ static int execute_update_from_plan(
 
     if (rc == MYLITE_OK && executes_physical_update &&
         planned_update_assigns_auto_increment(plan)) {
-        rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
+        rc = mylite_execution_ensure_persistent_auto_increment_high_water_slot(
+            database,
+            &plan->table
+        );
     }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK && executes_physical_update &&
         planned_update_assigns_auto_increment(plan)) {
-        rc = read_current_auto_increment_next_after_write_lock(
+        rc = mylite_execution_read_current_auto_increment_next_after_write_lock(
             database,
             &plan->table,
             plan->table.auto_increment_next,
@@ -92,7 +95,7 @@ static int execute_update_from_plan(
     }
     executable_update_deinit(&executable_plan);
     if (rc == MYLITE_OK && auto_increment_next_after_update != current_auto_increment_next) {
-        rc = record_persistent_auto_increment_high_water(
+        rc = mylite_execution_record_persistent_auto_increment_high_water(
             database,
             &plan->table,
             auto_increment_next_after_update

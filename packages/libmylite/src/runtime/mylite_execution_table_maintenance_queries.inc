@@ -63,7 +63,8 @@ static int execute_checksum_table_statement(
 }
 
 static int append_checksum_table_result_columns(struct mylite_db *database, mylite_result *result) {
-    const uint32_t table_collation_id = result_metadata_collation_id("latin1_swedish_ci");
+    const uint32_t table_collation_id =
+        mylite_execution_table_maintenance_result_collation_id("latin1_swedish_ci");
     const struct mylite_result_column_descriptor descriptors[checksum_table_result_column_count] = {
         {
             .label = "Table",
@@ -77,7 +78,7 @@ static int append_checksum_table_result_columns(struct mylite_db *database, myli
             .charset_id = table_collation_id,
             .collation_id = table_collation_id,
             .display_length = checksum_table_name_display_length,
-            .decimals = mysql_approximate_decimals,
+            .decimals = table_maintenance_mysql_approximate_decimals,
             .nullable = true,
         },
         {
@@ -89,8 +90,8 @@ static int append_checksum_table_result_columns(struct mylite_db *database, myli
             .origin_column_name = "",
             .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
             .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
-            .charset_id = mysql_collation_binary_id,
-            .collation_id = mysql_collation_binary_id,
+            .charset_id = table_maintenance_mysql_binary_collation_id,
+            .collation_id = table_maintenance_mysql_binary_collation_id,
             .display_length = checksum_table_checksum_display_length,
             .decimals = 0U,
             .nullable = true,
@@ -709,41 +710,23 @@ static int resolve_table_maintenance_target(
     const struct mylite_sql_ast_node *node,
     struct table_maintenance_target *out_target
 ) {
-    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor table = {0};
-    size_t part_count = 0U;
     bool schema_found = false;
     bool table_found = false;
     int rc = MYLITE_OK;
 
     *out_target = (struct table_maintenance_target){0};
-    rc = reject_builtin_schema_write_target(database, node);
+    rc = mylite_execution_table_maintenance_resolve_target_names(
+        database,
+        node,
+        out_target->schema_name,
+        sizeof(out_target->schema_name),
+        out_target->table_name,
+        sizeof(out_target->table_name)
+    );
     if (rc != MYLITE_OK) {
         return rc;
-    }
-
-    rc = collect_identifier_parts(node, parts, table_name_part_capacity, &part_count, database);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (part_count == 1U) {
-        if (database == NULL || !database->session.has_selected_schema) {
-            set_no_database_error(database);
-            return MYLITE_ERROR;
-        }
-        memcpy(
-            out_target->schema_name,
-            database->session.selected_schema,
-            sizeof(out_target->schema_name)
-        );
-        memcpy(out_target->table_name, parts[0], sizeof(out_target->table_name));
-    } else if (part_count == 2U) {
-        memcpy(out_target->schema_name, parts[0], sizeof(out_target->schema_name));
-        memcpy(out_target->table_name, parts[1], sizeof(out_target->table_name));
-    } else {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
     }
 
     rc = format_table_maintenance_display_name(database, out_target);
@@ -818,8 +801,14 @@ static int check_table_maintenance_duplicate_target(
     const struct table_maintenance_target *target
 ) {
     for (size_t index = 0U; index < target_count; ++index) {
-        if (text_equals_ascii_case_insensitive(targets[index].schema_name, target->schema_name) &&
-            text_equals_ascii_case_insensitive(targets[index].table_name, target->table_name)) {
+        if (mylite_execution_text_equals_ascii_case_insensitive(
+                targets[index].schema_name,
+                target->schema_name
+            ) &&
+            mylite_execution_text_equals_ascii_case_insensitive(
+                targets[index].table_name,
+                target->table_name
+            )) {
             set_duplicate_table_alias_error(database, target->table_name);
             return MYLITE_ERROR;
         }

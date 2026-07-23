@@ -121,10 +121,8 @@ static int plan_lock_table_target(
     alias_node = child_count == 3U ? child_at(target_node, 1U) : NULL;
     mode_node = child_at(target_node, child_count - 1U);
 
-    rc = reject_builtin_schema_write_target(database, table_node);
-    if (rc == MYLITE_OK) {
-        rc = resolve_visible_table_reference(database, table_node, &resolution, &table);
-    }
+    rc =
+        mylite_execution_transaction_resolve_lock_target(database, table_node, &resolution, &table);
     if (rc != MYLITE_OK) {
         return rc;
     }

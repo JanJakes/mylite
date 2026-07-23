@@ -6,7 +6,10 @@ function(mylite_configure_c_target target)
   endif()
 
   set_target_properties("${target}" PROPERTIES C_EXTENSIONS OFF)
-  if(MYLITE_ENABLE_COVERAGE)
+  if(MYLITE_ENABLE_COVERAGE
+     OR (target STREQUAL "mylite"
+         AND BUILD_SHARED_LIBS
+         AND MYLITE_ENABLE_ASAN_UBSAN))
     set_target_properties("${target}" PROPERTIES C_VISIBILITY_PRESET default)
   else()
     set_target_properties("${target}" PROPERTIES C_VISIBILITY_PRESET hidden)
@@ -107,5 +110,8 @@ function(mylite_configure_sanitizer_link_options target sanitizer_option)
     target_link_options("${target}" INTERFACE "${sanitizer_option}")
   else()
     target_link_options("${target}" PRIVATE "${sanitizer_option}")
+    if(target STREQUAL "mylite" AND BUILD_SHARED_LIBS)
+      target_link_options("${target}" INTERFACE "${sanitizer_option}")
+    endif()
   endif()
 endfunction()

@@ -108,6 +108,7 @@
       "inherits": "dev",
       "binaryDir": "${sourceDir}/build/asan-ubsan",
       "cacheVariables": {
+        "BUILD_SHARED_LIBS": "ON",
         "CMAKE_BUILD_TYPE": "Debug",
         "MYLITE_ENABLE_ASAN_UBSAN": "ON"
       }
@@ -118,6 +119,7 @@
       "inherits": "asan-ubsan",
       "binaryDir": "${sourceDir}/build/php-asan-ubsan",
       "cacheVariables": {
+        "BUILD_SHARED_LIBS": "OFF",
         "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
       }
     },
@@ -147,6 +149,7 @@
       "inherits": "asan-ubsan",
       "binaryDir": "${sourceDir}/build/fuzz",
       "cacheVariables": {
+        "BUILD_SHARED_LIBS": "OFF",
         "MYLITE_BUILD_FUZZERS": "ON"
       }
     }

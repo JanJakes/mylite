@@ -28,7 +28,7 @@ set_target_properties(mylite_sqlite PROPERTIES
   C_EXTENSIONS OFF
   POSITION_INDEPENDENT_CODE ON
 )
-if(MYLITE_ENABLE_COVERAGE)
+if(MYLITE_ENABLE_COVERAGE OR (BUILD_SHARED_LIBS AND MYLITE_ENABLE_ASAN_UBSAN))
   set_target_properties(mylite_sqlite PROPERTIES C_VISIBILITY_PRESET default)
 else()
   set_target_properties(mylite_sqlite PROPERTIES C_VISIBILITY_PRESET hidden)

@@ -67,7 +67,9 @@ function(mylite_add_manifest_test source profile condition)
   if(profile STREQUAL "internal-sql")
     target_include_directories("${target}" PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/sql")
   elseif(profile STREQUAL "internal-sqlite")
-    target_link_libraries("${target}" PRIVATE MyLite::sqlite)
+    if(NOT (BUILD_SHARED_LIBS AND MYLITE_ENABLE_ASAN_UBSAN))
+      target_link_libraries("${target}" PRIVATE MyLite::sqlite)
+    endif()
   elseif(profile STREQUAL "lexer")
     target_compile_definitions("${target}" PRIVATE
       MYLITE_LEXER_CORPUS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus/mysql_lexer_success.sql"

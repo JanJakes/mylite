@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -11,10 +13,6 @@ static int test_null_public_diagnostic_accessors(void);
 static int test_live_diagnostics_set_read_reset_and_warning_order(void);
 static int test_diagnostics_replace_copies_condition_and_warnings(void);
 static int test_diagnostics_deinit_and_misuse_paths(void);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -30,10 +28,13 @@ int main(void) {
 static int test_null_public_diagnostic_accessors(void) {
     int failures = 0;
 
-    failures += expect_int(mylite_errcode(NULL), MYLITE_MISUSE, "NULL errcode");
-    failures += expect_text(mylite_sqlstate(NULL), "HY000", "NULL SQLSTATE");
-    failures +=
-        expect_text(mylite_errmsg(NULL), "bad parameter or other API misuse", "NULL error message");
+    failures += mylite_test_expect_int(mylite_errcode(NULL), MYLITE_MISUSE, "NULL errcode");
+    failures += mylite_test_expect_text(mylite_sqlstate(NULL), "HY000", "NULL SQLSTATE");
+    failures += mylite_test_expect_text(
+        mylite_errmsg(NULL),
+        "bad parameter or other API misuse",
+        "NULL error message"
+    );
 
     return failures;
 }
@@ -49,20 +50,20 @@ static int test_live_diagnostics_set_read_reset_and_warning_order(void) {
     const struct mylite_diagnostic_record *warning = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open handle");
+    failures += mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open handle");
     diagnostics = mylite_connection_diagnostics(database);
-    failures += expect_true(diagnostics != NULL, "diagnostics exists");
+    failures += mylite_test_expect_true(diagnostics != NULL, "diagnostics exists");
 
-    failures += expect_int(mylite_errcode(database), MYLITE_OK, "initial errcode");
-    failures += expect_text(mylite_sqlstate(database), "00000", "initial SQLSTATE");
-    failures += expect_text(mylite_errmsg(database), "not an error", "initial message");
+    failures += mylite_test_expect_int(mylite_errcode(database), MYLITE_OK, "initial errcode");
+    failures += mylite_test_expect_text(mylite_sqlstate(database), "00000", "initial SQLSTATE");
+    failures += mylite_test_expect_text(mylite_errmsg(database), "not an error", "initial message");
 
     mylite_diagnostics_set_error(diagnostics, MYLITE_ERROR, "HY001", "synthetic error");
-    failures += expect_int(mylite_errcode(database), MYLITE_ERROR, "set errcode");
-    failures += expect_text(mylite_sqlstate(database), "HY001", "set SQLSTATE");
-    failures += expect_text(mylite_errmsg(database), "synthetic error", "set message");
+    failures += mylite_test_expect_int(mylite_errcode(database), MYLITE_ERROR, "set errcode");
+    failures += mylite_test_expect_text(mylite_sqlstate(database), "HY001", "set SQLSTATE");
+    failures += mylite_test_expect_text(mylite_errmsg(database), "synthetic error", "set message");
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(
             diagnostics,
             synthetic_warning_code,
@@ -72,7 +73,7 @@ static int test_live_diagnostics_set_read_reset_and_warning_order(void) {
         MYLITE_OK,
         "append first warning"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(
             diagnostics,
             synthetic_second_warning_code,
@@ -82,27 +83,38 @@ static int test_live_diagnostics_set_read_reset_and_warning_order(void) {
         MYLITE_OK,
         "append second warning"
     );
-    failures += expect_size(mylite_diagnostics_warning_count(diagnostics), 2U, "warning count");
+    failures +=
+        mylite_test_expect_size(mylite_diagnostics_warning_count(diagnostics), 2U, "warning count");
 
     warning = mylite_diagnostics_warning_at(diagnostics, 0U);
-    failures += expect_true(warning != NULL, "first warning exists");
+    failures += mylite_test_expect_true(warning != NULL, "first warning exists");
     if (warning != NULL) {
-        failures += expect_int(warning->code, synthetic_warning_code, "first warning code");
-        failures += expect_text(warning->message, "first warning", "first warning message");
+        failures +=
+            mylite_test_expect_int(warning->code, synthetic_warning_code, "first warning code");
+        failures +=
+            mylite_test_expect_text(warning->message, "first warning", "first warning message");
     }
     warning = mylite_diagnostics_warning_at(diagnostics, 1U);
-    failures += expect_true(warning != NULL, "second warning exists");
+    failures += mylite_test_expect_true(warning != NULL, "second warning exists");
     if (warning != NULL) {
-        failures += expect_int(warning->code, synthetic_second_warning_code, "second warning code");
-        failures += expect_text(warning->message, "second warning", "second warning message");
+        failures += mylite_test_expect_int(
+            warning->code,
+            synthetic_second_warning_code,
+            "second warning code"
+        );
+        failures +=
+            mylite_test_expect_text(warning->message, "second warning", "second warning message");
     }
 
     mylite_diagnostics_reset(diagnostics);
-    failures += expect_int(mylite_errcode(database), MYLITE_OK, "reset errcode");
-    failures += expect_text(mylite_sqlstate(database), "00000", "reset SQLSTATE");
-    failures += expect_text(mylite_errmsg(database), "not an error", "reset message");
-    failures +=
-        expect_size(mylite_diagnostics_warning_count(diagnostics), 0U, "reset warning count");
+    failures += mylite_test_expect_int(mylite_errcode(database), MYLITE_OK, "reset errcode");
+    failures += mylite_test_expect_text(mylite_sqlstate(database), "00000", "reset SQLSTATE");
+    failures += mylite_test_expect_text(mylite_errmsg(database), "not an error", "reset message");
+    failures += mylite_test_expect_size(
+        mylite_diagnostics_warning_count(diagnostics),
+        0U,
+        "reset warning count"
+    );
 
     mylite_close(database);
 
@@ -116,7 +128,7 @@ static int test_diagnostics_deinit_and_misuse_paths(void) {
 
     mylite_diagnostics_deinit(&zero_diagnostics);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(NULL, MYLITE_ERROR, "01000", "warning"),
         MYLITE_MISUSE,
         "append warning rejects NULL diagnostics"
@@ -124,12 +136,12 @@ static int test_diagnostics_deinit_and_misuse_paths(void) {
 
     mylite_diagnostics_init(&diagnostics);
     diagnostics.warning_count = SIZE_MAX;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(&diagnostics, MYLITE_ERROR, "01000", "warning"),
         MYLITE_NOMEM,
         "append warning rejects count overflow"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_errcode(&diagnostics),
         MYLITE_NOMEM,
         "warning overflow sets diagnostic"
@@ -151,39 +163,54 @@ static int test_diagnostics_replace_copies_condition_and_warnings(void) {
     mylite_diagnostics_init(&destination);
 
     mylite_diagnostics_set_error(&source, MYLITE_ERROR, "42000", "source error");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(&source, copied_warning_code, "HY000", "source warning"),
         MYLITE_OK,
         "append source warning"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_replace(&destination, &source),
         MYLITE_OK,
         "replace diagnostics"
     );
 
     mylite_diagnostics_reset(&source);
-    failures +=
-        expect_int(mylite_diagnostics_errcode(&destination), MYLITE_ERROR, "copied error code");
-    failures += expect_text(mylite_diagnostics_sqlstate(&destination), "42000", "copied SQLSTATE");
-    failures +=
-        expect_text(mylite_diagnostics_errmsg(&destination), "source error", "copied message");
-    failures +=
-        expect_size(mylite_diagnostics_warning_count(&destination), 1U, "copied warning count");
+    failures += mylite_test_expect_int(
+        mylite_diagnostics_errcode(&destination),
+        MYLITE_ERROR,
+        "copied error code"
+    );
+    failures += mylite_test_expect_text(
+        mylite_diagnostics_sqlstate(&destination),
+        "42000",
+        "copied SQLSTATE"
+    );
+    failures += mylite_test_expect_text(
+        mylite_diagnostics_errmsg(&destination),
+        "source error",
+        "copied message"
+    );
+    failures += mylite_test_expect_size(
+        mylite_diagnostics_warning_count(&destination),
+        1U,
+        "copied warning count"
+    );
     warning = mylite_diagnostics_warning_at(&destination, 0U);
-    failures += expect_true(warning != NULL, "copied warning exists");
+    failures += mylite_test_expect_true(warning != NULL, "copied warning exists");
     if (warning != NULL) {
-        failures += expect_int(warning->code, copied_warning_code, "copied warning code");
-        failures += expect_text(warning->sqlstate, "HY000", "copied warning SQLSTATE");
-        failures += expect_text(warning->message, "source warning", "copied warning message");
+        failures +=
+            mylite_test_expect_int(warning->code, copied_warning_code, "copied warning code");
+        failures += mylite_test_expect_text(warning->sqlstate, "HY000", "copied warning SQLSTATE");
+        failures +=
+            mylite_test_expect_text(warning->message, "source warning", "copied warning message");
     }
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_replace(NULL, &source),
         MYLITE_MISUSE,
         "replace rejects NULL destination"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_replace(&destination, NULL),
         MYLITE_MISUSE,
         "replace rejects NULL source"
@@ -193,40 +220,4 @@ static int test_diagnostics_replace_copies_condition_and_warnings(void) {
     mylite_diagnostics_deinit(&source);
 
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
 }

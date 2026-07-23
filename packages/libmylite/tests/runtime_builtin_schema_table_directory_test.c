@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -28,13 +30,8 @@ struct expected_query {
 static int test_builtin_schema_table_directory(void);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query(mylite_db *database, struct expected_query expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 
 int main(void) {
     return test_builtin_schema_table_directory() == 0 ? 0 : 1;
@@ -126,12 +123,12 @@ static int test_builtin_schema_table_directory(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "builtin-schema-table-directory") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "builtin-schema-table-directory") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open file");
+    failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE t (id INT)");
@@ -321,10 +318,10 @@ static int test_builtin_schema_table_directory(void) {
 static int expect_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, sql);
+    int failures = mylite_test_expect_int(rc, MYLITE_OK, sql);
 
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
     } else {
         (void)fprintf(
             stderr,
@@ -356,12 +353,19 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     if (expected.column_names != NULL) {
         for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_column_name(result, column_index),
                 expected.column_names[column_index],
                 expected.context
@@ -373,7 +377,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
             for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
                 size_t value_index = (row_index * expected.column_count) + column_index;
 
-                failures += expect_text_or_null(
+                failures += mylite_test_expect_text_or_null(
                     mylite_result_value_text(result, row_index, column_index),
                     expected.values[value_index],
                     expected.context
@@ -384,24 +388,6 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
 
     mylite_result_free(result);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(path, path_size, "/tmp/mylite-%s-%d.mylite", name, current_process_id());
-
-    if (written < 0 || (size_t)written >= path_size) {
-        (void)fprintf(stderr, "failed to format test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -419,40 +405,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
         return;
     }
     (void)remove(buffer);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    (void)fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    (void)fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    (void)fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
 }

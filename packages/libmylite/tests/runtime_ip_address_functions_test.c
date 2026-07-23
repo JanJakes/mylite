@@ -74,13 +74,6 @@ static int expect_column_metadata(
     struct expected_column_metadata expected,
     const char *context
 );
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_uint16(uint16_t actual, uint16_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(const void *actual, const void *expected, size_t size, const char *context);
 
 int main(void) {
@@ -277,9 +270,9 @@ static int test_ip_address_dual_do_and_arity(void) {
         }
     );
     failures += execute_ok(database, "DO INET_ATON('127.0.0.1'), INET_NTOA(1)", &result);
-    failures += expect_size(mylite_result_column_count(result), 0U, "ip DO columns");
-    failures += expect_size(mylite_result_row_count(result), 0U, "ip DO rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "ip DO warnings");
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, "ip DO columns");
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, "ip DO rows");
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, "ip DO warnings");
     mylite_result_free(result);
 
     failures += execute_error(
@@ -460,9 +453,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -475,11 +468,21 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     if (failures != 0) {
         return failures;
     }
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures +=
-        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        expected.warning_count,
+        expected.context
+    );
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
             failures += expect_result_cell(
@@ -519,7 +522,7 @@ static int expect_result_cell(
         fprintf(stderr, "%s: expected value at %zu,%zu\n", context, row, column);
         return 1;
     }
-    failures += expect_size(actual_size, expected.size, context);
+    failures += mylite_test_expect_size(actual_size, expected.size, context);
     if (failures == 0) {
         failures += expect_bytes(actual, expected.bytes, expected.size, context);
     }
@@ -534,85 +537,42 @@ static int expect_column_metadata(
 ) {
     int failures = 0;
 
-    failures +=
-        expect_int((int)mylite_result_column_type(result, column), (int)expected.type, context);
-    failures += expect_uint32(mylite_result_column_flags(result, column), expected.flags, context);
-    failures += expect_uint32(
+    failures += mylite_test_expect_int(
+        (int)mylite_result_column_type(result, column),
+        (int)expected.type,
+        context
+    );
+    failures += mylite_test_expect_uint32(
+        mylite_result_column_flags(result, column),
+        expected.flags,
+        context
+    );
+    failures += mylite_test_expect_uint32(
         mylite_result_column_charset_id(result, column),
         expected.charset_id,
         context
     );
-    failures += expect_uint32(
+    failures += mylite_test_expect_uint32(
         mylite_result_column_collation_id(result, column),
         expected.collation_id,
         context
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         mylite_result_column_display_length(result, column),
         expected.display_length,
         context
     );
-    failures +=
-        expect_uint16(mylite_result_column_decimals(result, column), expected.decimals, context);
-    failures +=
-        expect_int(mylite_result_column_nullable(result, column), expected.nullable, context);
+    failures += mylite_test_expect_uint16(
+        mylite_result_column_decimals(result, column),
+        expected.decimals,
+        context
+    );
+    failures += mylite_test_expect_int(
+        mylite_result_column_nullable(result, column),
+        expected.nullable,
+        context
+    );
     return failures;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected size %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu32 ", got %" PRIu32 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint16(uint16_t actual, uint16_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu16 ", got %" PRIu16 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected [%s], got [%s]\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(stderr, "%s: expected [%s] to contain [%s]\n", context, actual, needle);
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_bytes(

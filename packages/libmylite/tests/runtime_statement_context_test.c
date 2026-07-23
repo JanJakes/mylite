@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -10,9 +12,6 @@
 #include <string.h>
 
 static int test_statement_context_lifecycle_and_diagnostic_boundaries(void);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_wrapper_state(
     enum mylite_statement_wrapper_transaction_state actual,
     enum mylite_statement_wrapper_transaction_state expected,
@@ -24,9 +23,6 @@ static int expect_backend_status(
     const char *context
 );
 static int expect_bool(bool actual, bool expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 
 int main(void) {
     return test_statement_context_lifecycle_and_diagnostic_boundaries() == 0 ? 0 : 1;
@@ -67,11 +63,11 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
 
     mylite_statement_context_deinit(&context);
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open handle");
+    failures += mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open handle");
     diagnostics = mylite_connection_diagnostics(database);
 
     mylite_diagnostics_set_error(diagnostics, MYLITE_ERROR, "HY001", "previous error");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(
             diagnostics,
             synthetic_warning_code,
@@ -82,7 +78,7 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         "append previous warning"
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_statement_context_begin(&context, database, first_sql, strlen(first_sql)),
         MYLITE_OK,
         "begin first statement"
@@ -92,28 +88,38 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         true,
         "first statement is active"
     );
-    failures += expect_text(mylite_statement_context_sql(&context), first_sql, "first SQL text");
-    failures += expect_size(
+    failures += mylite_test_expect_text(
+        mylite_statement_context_sql(&context),
+        first_sql,
+        "first SQL text"
+    );
+    failures += mylite_test_expect_size(
         mylite_statement_context_sql_size(&context),
         strlen(first_sql),
         "first SQL size"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         mylite_statement_context_time(&context) != (time_t)0,
         "statement time is captured"
     );
-    failures += expect_int(mylite_errcode(database), MYLITE_OK, "begin resets errcode");
-    failures +=
-        expect_size(mylite_diagnostics_warning_count(diagnostics), 0U, "begin resets warnings");
+    failures += mylite_test_expect_int(mylite_errcode(database), MYLITE_OK, "begin resets errcode");
+    failures += mylite_test_expect_size(
+        mylite_diagnostics_warning_count(diagnostics),
+        0U,
+        "begin resets warnings"
+    );
 
     metadata = mylite_statement_context_result_metadata(&context);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_metadata_append(metadata, &descriptor),
         MYLITE_OK,
         "append statement metadata"
     );
-    failures +=
-        expect_size(mylite_result_metadata_column_count(metadata), 1U, "statement metadata count");
+    failures += mylite_test_expect_size(
+        mylite_result_metadata_column_count(metadata),
+        1U,
+        "statement metadata count"
+    );
 
     mylite_statement_context_set_affected_rows(&context, expected_affected_rows);
     mylite_statement_context_set_previous_row_count(&context, expected_previous_row_count);
@@ -122,12 +128,12 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         &context,
         MYLITE_STATEMENT_WRAPPER_TRANSACTION_ACTIVE
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_statement_context_affected_rows(&context),
         expected_affected_rows,
         "affected rows"
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_statement_context_previous_row_count(&context),
         expected_previous_row_count,
         "previous row count"
@@ -137,7 +143,7 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         true,
         "first insert id is set"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         mylite_statement_context_first_insert_id(&context),
         expected_insert_id,
         "first insert id"
@@ -154,7 +160,7 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
     );
 
     mylite_diagnostics_set_error(diagnostics, MYLITE_ERROR, "HY001", "completion error");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_diagnostics_append_warning(
             diagnostics,
             synthetic_warning_code,
@@ -164,7 +170,7 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         MYLITE_OK,
         "append completion warning"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_statement_context_end(&context, MYLITE_OK),
         MYLITE_OK,
         "end first statement"
@@ -179,25 +185,30 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         MYLITE_STATEMENT_BACKEND_DONE,
         "backend done"
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_errmsg(database),
         "completion error",
         "completion diagnostics remain readable"
     );
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_diagnostics_warning_count(diagnostics),
         1U,
         "completion warning remains readable"
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_statement_context_begin(&context, database, second_sql, strlen(second_sql)),
         MYLITE_OK,
         "begin second statement"
     );
-    failures += expect_text(mylite_statement_context_sql(&context), second_sql, "second SQL text");
-    failures += expect_int(mylite_errcode(database), MYLITE_OK, "second begin resets errcode");
-    failures += expect_size(
+    failures += mylite_test_expect_text(
+        mylite_statement_context_sql(&context),
+        second_sql,
+        "second SQL text"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_errcode(database), MYLITE_OK, "second begin resets errcode");
+    failures += mylite_test_expect_size(
         mylite_diagnostics_warning_count(diagnostics),
         0U,
         "second begin resets warnings"
@@ -207,13 +218,13 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
         false,
         "second statement insert id reset"
     );
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_metadata_column_count(mylite_statement_context_result_metadata(&context)),
         0U,
         "second statement metadata reset"
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_statement_context_end(&context, MYLITE_ERROR),
         MYLITE_ERROR,
         "end failed statement"
@@ -228,33 +239,6 @@ static int test_statement_context_lifecycle_and_diagnostic_boundaries(void) {
     mylite_close(database);
 
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
 }
 
 static int expect_wrapper_state(
@@ -286,33 +270,6 @@ static int expect_backend_status(
 static int expect_bool(bool actual, bool expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %d, got %d\n", context, (int)expected, (int)actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
         return 1;
     }
 

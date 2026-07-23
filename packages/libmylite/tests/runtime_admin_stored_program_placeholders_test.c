@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -47,13 +49,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 
@@ -103,7 +98,8 @@ static int test_admin_noop_warning_surface(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open admin no-op memory");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open admin no-op memory");
     for (size_t index = 0U; index < sizeof(admin_statements) / sizeof(admin_statements[0]);
          ++index) {
         failures += expect_admin_noop(database, admin_statements[index]);
@@ -140,12 +136,13 @@ static int test_admin_noop_preserves_user_transaction(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "admin_noop_transaction") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "admin_noop_transaction") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open transaction no-op");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open transaction no-op");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT)");
@@ -207,7 +204,11 @@ static int test_stored_program_placeholder_errors(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open stored placeholders");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open stored placeholders"
+    );
     for (size_t index = 0U;
          index < sizeof(stored_program_statements) / sizeof(stored_program_statements[0]);
          ++index) {
@@ -232,12 +233,13 @@ static int test_existing_limited_call_still_runs(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "limited_procedure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "limited_procedure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open limited procedure");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open limited procedure");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE posts (id INT PRIMARY KEY)");
@@ -264,10 +266,10 @@ static int expect_admin_noop(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 0U, sql);
-    failures += expect_size(mylite_result_row_count(result), 0U, sql);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, sql);
-    failures += expect_size(mylite_result_warning_count(result), 1U, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, sql);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 1U, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -310,9 +312,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_e
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -321,8 +323,13 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     mylite_result *result = NULL;
     int failures = execute_ok(database, query.sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t row = 0U; row < query.row_count; ++row) {
         for (size_t column = 0U; column < query.column_count; ++column) {
             failures += expect_result_value(
@@ -347,80 +354,7 @@ static int expect_result_value(
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
 
-    return expect_text(actual, expected, context);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected `%s`, got `%s`\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected `%s` to contain `%s`\n", context, actual, needle);
-    return 1;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite-admin-stored-program-%s-%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path too long\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -117,17 +119,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -173,20 +167,28 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "concurrent_writer") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "concurrent_writer") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &first), MYLITE_OK, "open concurrent first handle");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &first),
+        MYLITE_OK,
+        "open concurrent first handle"
+    );
     failures += expect_statement_ok(first, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
-    failures += expect_int(mylite_open(path, &second), MYLITE_OK, "open concurrent second handle");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &second),
+        MYLITE_OK,
+        "open concurrent second handle"
+    );
     failures += expect_statement_ok(second, "USE app");
 
     for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
         int written = snprintf(table_name, sizeof(table_name), "concurrent_%s", cases[index].name);
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(table_name),
             1,
             "format concurrent table name"
@@ -197,14 +199,14 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
             "CREATE TABLE %s (id INT AUTO_INCREMENT PRIMARY KEY, v INT)",
             table_name
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(create_sql),
             1,
             "format concurrent table SQL"
         );
         written =
             snprintf(writer_sql, sizeof(writer_sql), "INSERT INTO %s(v) VALUES(200)", table_name);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(writer_sql),
             1,
             "format interleaved writer SQL"
@@ -225,7 +227,7 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
 
         written =
             snprintf(query_sql, sizeof(query_sql), "SELECT id, v FROM %s ORDER BY id", table_name);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(query_sql),
             1,
             "format concurrent row query"
@@ -296,7 +298,7 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
 
         failures += execute_ok(first, "INSERT INTO concurrent_explicit(v) VALUES(210)", &result);
         if (result != NULL) {
-            failures += expect_uint64(
+            failures += mylite_test_expect_uint64(
                 mylite_result_insert_id(result),
                 interleaved_next_generated_id,
                 "explicit interleave preserves higher counter"
@@ -376,20 +378,22 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
         FILE *load_file = NULL;
         int written = snprintf(load_path, sizeof(load_path), "%s.tsv", path);
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(load_path),
             1,
             "format concurrent LOAD DATA path"
         );
         load_file = fopen(load_path, "wb");
-        failures += expect_int(load_file != NULL, 1, "open concurrent LOAD DATA fixture");
+        failures +=
+            mylite_test_expect_int(load_file != NULL, 1, "open concurrent LOAD DATA fixture");
         if (load_file != NULL) {
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 fputs("\\N\t100\n", load_file) >= 0,
                 1,
                 "write concurrent LOAD DATA fixture"
             );
-            failures += expect_int(fclose(load_file), 0, "close concurrent LOAD DATA fixture");
+            failures +=
+                mylite_test_expect_int(fclose(load_file), 0, "close concurrent LOAD DATA fixture");
         }
         written = snprintf(
             load_sql,
@@ -397,7 +401,7 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
             "LOAD DATA INFILE '%s' INTO TABLE concurrent_load",
             load_path
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(load_sql),
             1,
             "format concurrent LOAD DATA statement"
@@ -452,7 +456,7 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
 
         failures += execute_ok(first, "INSERT INTO concurrent_update(v) VALUES(210)", &result);
         if (result != NULL) {
-            failures += expect_uint64(
+            failures += mylite_test_expect_uint64(
                 mylite_result_insert_id(result),
                 interleaved_next_generated_id,
                 "UPDATE interleave preserves higher counter"
@@ -490,7 +494,7 @@ static int expect_interleaved_auto_increment_statement(
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_trace_v2(
             sqlite,
             SQLITE_TRACE_STMT,
@@ -501,26 +505,27 @@ static int expect_interleaved_auto_increment_statement(
         "install auto-increment writer trace"
     );
     failures += execute_ok(expected->first, expected->first_sql, &result);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
         SQLITE_OK,
         "remove auto-increment writer trace"
     );
-    failures += expect_int(writer.triggered, 1, expected->context);
-    failures += expect_int(writer.rc, MYLITE_OK, "interleaved writer committed");
-    failures += expect_int64(writer.affected_rows, 1, "interleaved writer affected rows");
-    failures += expect_uint64(
+    failures += mylite_test_expect_int(writer.triggered, 1, expected->context);
+    failures += mylite_test_expect_int(writer.rc, MYLITE_OK, "interleaved writer committed");
+    failures +=
+        mylite_test_expect_int64(writer.affected_rows, 1, "interleaved writer affected rows");
+    failures += mylite_test_expect_uint64(
         writer.insert_id,
         expected->expected_writer_insert_id,
         "interleaved writer insert id"
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             expected->expected_first_affected_rows,
             "rebased statement affected rows"
         );
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             mylite_result_insert_id(result),
             expected->expected_first_insert_id,
             "rebased statement insert id"
@@ -575,11 +580,15 @@ static int test_auto_increment_close_and_process_death(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "close_and_process_death") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "close_and_process_death") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open close lifecycle file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open close lifecycle file"
+    );
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
@@ -592,14 +601,15 @@ static int test_auto_increment_close_and_process_death(void) {
         "INSERT INTO close_tx(v) VALUES(10)",
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_close_checked(database),
         MYLITE_OK,
         "checked close reconciles generated high water"
     );
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen clean-close file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen clean-close file");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_query_values(
         database,
@@ -613,7 +623,7 @@ static int test_auto_increment_close_and_process_death(void) {
     );
     failures += execute_ok(database, "INSERT INTO close_tx(v) VALUES(20)", &result);
     if (result != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             mylite_result_insert_id(result),
             2U,
             "clean close preserves consumed generated id"
@@ -675,25 +685,30 @@ static int test_auto_increment_close_and_process_death(void) {
             }
             _exit(child_rc == MYLITE_OK ? 0 : 1);
         }
-        failures += expect_int(child >= 0, 1, "fork auto-increment process-death writer");
+        failures +=
+            mylite_test_expect_int(child >= 0, 1, "fork auto-increment process-death writer");
         if (child > 0) {
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 waitpid(child, &child_status, 0) == child,
                 1,
                 "wait for auto-increment process-death writer"
             );
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0,
                 1,
                 "process-death writer reached uncommitted insert"
             );
         }
     }
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen process-death file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen process-death file"
+    );
     failures += expect_statement_ok(database, "USE app");
     failures += execute_ok(database, "INSERT INTO close_tx(v) VALUES(40)", &result);
     if (result != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             mylite_result_insert_id(result),
             3U,
             "process death may reuse uncommitted generated id"
@@ -837,13 +852,14 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
     uint64_t sqlite_schema_generation = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "success") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "success") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures +=
@@ -1000,12 +1016,12 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
     );
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->catalog_generation,
             catalog_generation,
             "auto increment inserts leave catalog generation"
         );
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_schema_generation,
             "auto increment inserts leave SQLite schema generation"
@@ -1245,7 +1261,8 @@ static int test_auto_increment_success_metadata_persistence_and_mutation(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_query_values(
         database,
@@ -1287,12 +1304,13 @@ static int test_auto_increment_user_rollback_high_water(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "rollback") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "rollback") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open rollback file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open rollback file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures +=
@@ -1533,12 +1551,13 @@ static int test_auto_increment_type_families_and_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
 
@@ -1841,16 +1860,17 @@ static int test_auto_increment_independent_handles(void) {
     mylite_db *shared_second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "second") != 0 ||
-        make_test_path(shared_path, sizeof(shared_path), "shared") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "second") != 0 ||
+        mylite_test_make_path(shared_path, sizeof(shared_path), "shared") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
     remove_related_files(shared_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
     failures += expect_statement_ok(first, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
     failures +=
@@ -1861,7 +1881,8 @@ static int test_auto_increment_independent_handles(void) {
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
     );
 
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(second, "USE app");
     failures += expect_statement_ok(
@@ -1897,16 +1918,22 @@ static int test_auto_increment_independent_handles(void) {
     failures += expect_show_table_status_auto_increment(first, "t", "2", "first handle status");
     failures += expect_show_table_status_auto_increment(second, "t", "5", "second handle status");
 
-    failures +=
-        expect_int(mylite_open(shared_path, &shared_first), MYLITE_OK, "open shared first file");
+    failures += mylite_test_expect_int(
+        mylite_open(shared_path, &shared_first),
+        MYLITE_OK,
+        "open shared first file"
+    );
     failures += expect_statement_ok(shared_first, "CREATE DATABASE app");
     failures += expect_statement_ok(shared_first, "USE app");
     failures += expect_statement_ok(
         shared_first,
         "CREATE TABLE shared_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
     );
-    failures +=
-        expect_int(mylite_open(shared_path, &shared_second), MYLITE_OK, "open shared second file");
+    failures += mylite_test_expect_int(
+        mylite_open(shared_path, &shared_second),
+        MYLITE_OK,
+        "open shared second file"
+    );
     failures += expect_statement_ok(shared_second, "USE app");
     failures += expect_statement_ok(shared_first, "START TRANSACTION");
     failures += expect_statement_result(
@@ -1980,9 +2007,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -2004,10 +2031,18 @@ static int expect_statement_result(
     int failures = execute_ok(database, sql, &result);
 
     if (result != NULL) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            sql
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            expected.warning_count,
+            sql
+        );
     }
     mylite_result_free(result);
     return failures;
@@ -2018,9 +2053,16 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int failures = execute_ok(database, query.sql, &result);
 
     if (result != NULL) {
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
         for (size_t row = 0U; row < query.row_count; ++row) {
             for (size_t column = 0U; column < query.column_count; ++column) {
                 failures += expect_result_value(
@@ -2032,8 +2074,8 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
                 );
             }
         }
-        failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
-        failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+        failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, query.context);
+        failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, query.context);
     }
     mylite_result_free(result);
     return failures;
@@ -2056,9 +2098,12 @@ static int expect_show_table_status_auto_increment(
     }
     failures += execute_ok(database, sql, &result);
     if (result != NULL) {
-        failures +=
-            expect_size(mylite_result_column_count(result), show_table_status_field_count, context);
-        failures += expect_size(mylite_result_row_count(result), 1U, context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            show_table_status_field_count,
+            context
+        );
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
         failures +=
             expect_result_value(result, 0U, show_table_status_name_column, table_name, context);
         failures += expect_result_value(
@@ -2080,31 +2125,11 @@ static int expect_result_value(
     const char *expected,
     const char *context
 ) {
-    return expect_text_or_null(mylite_result_value_text(result, row, column), expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_auto_increment_lifecycle_%ld_%s.mylite",
-        (long)current_process_id(),
-        name
+    return mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, row, column),
+        expected,
+        context
     );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        (void)fprintf(stderr, "failed to build test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -2143,81 +2168,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     }
     fclose(file);
     return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    (void)fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    (void)fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    (void)fprintf(
-        stderr,
-        "%s: expected %llu, got %llu\n",
-        context,
-        (unsigned long long)expected,
-        (unsigned long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    (void)fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    (void)fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    (void)fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
 }
 
 static int expect_bytes(

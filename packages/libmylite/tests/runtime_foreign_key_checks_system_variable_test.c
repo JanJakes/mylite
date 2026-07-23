@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_mysql_server_identity.h"
@@ -72,16 +74,9 @@ static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_text_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -151,13 +146,14 @@ static int test_foreign_key_checks_values_and_persistence(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "lifecycle") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "lifecycle") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open foreign key file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open foreign key file");
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
@@ -266,17 +262,17 @@ static int test_foreign_key_checks_values_and_persistence(void) {
         expect_show_count_warnings(database, "0", "foreign key checks clears error warnings");
 
     session = mylite_connection_session_state(database);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         (int64_t)session->catalog_generation,
         (int64_t)catalog_generation,
         "catalog generation unchanged by foreign key checks reads"
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         (int64_t)session->sqlite_schema_generation,
         (int64_t)sqlite_schema_generation,
         "sqlite schema generation unchanged by foreign key checks reads"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read foreign key checks preamble"
@@ -317,7 +313,8 @@ static int test_foreign_key_checks_values_and_persistence(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen foreign key file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen foreign key file");
     failures += expect_query_result(
         database,
         "SELECT @@foreign_key_checks, @@global.foreign_key_checks",
@@ -358,7 +355,8 @@ static int test_mutable_foreign_key_checks_set_values(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open mutable FK memory");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open mutable FK memory");
 
     failures += expect_dml_ok(database, "SET foreign_key_checks = 0", 0);
     failures += expect_query_result(
@@ -483,9 +481,10 @@ static int test_disabled_foreign_key_checks_dml(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += make_test_path(path, sizeof(path), "disabled_checks");
+    failures += mylite_test_make_path(path, sizeof(path), "disabled_checks");
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open disabled FK file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open disabled FK file");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
@@ -614,7 +613,8 @@ static int test_foreign_key_checks_qualifiers_and_errors(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open foreign key memory");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open foreign key memory");
     failures += execute_ok(
         database,
         "SELECT @@FOREIGN_KEY_CHECKS, @@SESSION.FOREIGN_KEY_CHECKS, "
@@ -701,9 +701,16 @@ static int test_independent_foreign_key_checks_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first foreign key handle");
-    failures +=
-        expect_int(mylite_open_memory(&second), MYLITE_OK, "open second foreign key handle");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&first),
+        MYLITE_OK,
+        "open first foreign key handle"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&second),
+        MYLITE_OK,
+        "open second foreign key handle"
+    );
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures +=
@@ -775,16 +782,20 @@ static int expect_result(const mylite_result *result, struct expected_result exp
         return 1;
     }
 
-    failures += expect_size(mylite_result_column_count(result), expected.count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     for (size_t index = 0U; index < expected.count; ++index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, index),
             expected.columns[index],
             expected.context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0U, index),
             expected.values[index],
             expected.context
@@ -815,9 +826,13 @@ static int expect_show_count_warnings(
     mylite_result *result = NULL;
     int failures = execute_ok(database, "SHOW COUNT(*) WARNINGS", &result);
 
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
-    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), expected, context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
+    failures += mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        expected,
+        context
+    );
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, context);
 
     mylite_result_free(result);
     return failures;
@@ -831,9 +846,13 @@ static int expect_show_count_errors(
     mylite_result *result = NULL;
     int failures = execute_ok(database, "SHOW COUNT(*) ERRORS", &result);
 
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
-    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), expected, context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
+    failures += mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        expected,
+        context
+    );
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, context);
 
     mylite_result_free(result);
     return failures;
@@ -844,10 +863,11 @@ static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures +=
+            mylite_test_expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+        failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -891,37 +911,11 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_text_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
 
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_foreign_key_checks_system_variable_%d_%s.mylite",
-        P_tmpdir,
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long\n");
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -959,72 +953,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
 
     fclose(file);
     return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected text [%s], got [%s]\n",
-        context,
-        expected == NULL ? "(null)" : expected,
-        actual == NULL ? "(null)" : actual
-    );
-    return 1;
-}
-
-static int expect_text_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "(null)" : actual,
-        needle == NULL ? "(null)" : needle
-    );
-    return 1;
 }
 
 static int expect_bytes(

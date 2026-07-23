@@ -100,15 +100,8 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_not_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
@@ -157,23 +150,26 @@ static int test_no_foreign_key_role_cache(void) {
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_table_descriptor parent_table = {0};
-    int failures =
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open FK role cache database");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open FK role cache database"
+    );
 
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE no_fk (id INT PRIMARY KEY, v INT)");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read FK role cache schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "no_fk", &table),
         MYLITE_OK,
         "read FK role cache table"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_foreign_key_roles(
             database,
             table.table_id,
@@ -183,11 +179,13 @@ static int test_no_foreign_key_role_cache(void) {
         MYLITE_OK,
         "warm no-FK role cache"
     );
-    failures += expect_int(has_child_foreign_keys, 0, "ordinary table has no child FK role");
-    failures += expect_int(has_parent_foreign_keys, 0, "ordinary table has no parent FK role");
+    failures +=
+        mylite_test_expect_int(has_child_foreign_keys, 0, "ordinary table has no child FK role");
+    failures +=
+        mylite_test_expect_int(has_parent_foreign_keys, 0, "ordinary table has no parent FK role");
 
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_trace_v2(sqlite, SQLITE_TRACE_STMT, count_foreign_key_role_probe, &trace),
         SQLITE_OK,
         "install FK role probe trace"
@@ -195,22 +193,23 @@ static int test_no_foreign_key_role_cache(void) {
     failures += expect_dml_ok(database, "INSERT INTO no_fk VALUES (1, 10)", 1);
     failures += expect_dml_ok(database, "UPDATE no_fk SET v = 11 WHERE id = 1", 1);
     failures += expect_dml_ok(database, "DELETE FROM no_fk WHERE id = 1", 1);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
         SQLITE_OK,
         "remove FK role probe trace"
     );
-    failures += expect_size(trace.role_probe_count, 0U, "warmed no-FK DML skips role probes");
+    failures +=
+        mylite_test_expect_size(trace.role_probe_count, 0U, "warmed no-FK DML skips role probes");
 
     failures += expect_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
     failures +=
         expect_statement_ok(database, "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT)");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "child", &table),
         MYLITE_OK,
         "read uncoupled child table"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_foreign_key_roles(
             database,
             table.table_id,
@@ -220,13 +219,13 @@ static int test_no_foreign_key_role_cache(void) {
         MYLITE_OK,
         "cache uncoupled child roles"
     );
-    failures += expect_int(has_child_foreign_keys, 0, "uncoupled child role absent");
+    failures += mylite_test_expect_int(has_child_foreign_keys, 0, "uncoupled child role absent");
     failures += expect_statement_ok(
         database,
         "ALTER TABLE child ADD CONSTRAINT fk_role_parent FOREIGN KEY (parent_id) "
         "REFERENCES parent (id)"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_foreign_key_roles(
             database,
             table.table_id,
@@ -236,13 +235,14 @@ static int test_no_foreign_key_role_cache(void) {
         MYLITE_OK,
         "reload child roles after adding FK"
     );
-    failures += expect_int(has_child_foreign_keys, 1, "added child FK invalidates role cache");
-    failures += expect_int(
+    failures +=
+        mylite_test_expect_int(has_child_foreign_keys, 1, "added child FK invalidates role cache");
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "parent", &parent_table),
         MYLITE_OK,
         "read FK role parent table"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_foreign_key_roles(
             database,
             parent_table.table_id,
@@ -252,9 +252,10 @@ static int test_no_foreign_key_role_cache(void) {
         MYLITE_OK,
         "load parent roles after adding FK"
     );
-    failures += expect_int(has_parent_foreign_keys, 1, "added parent FK role is visible");
+    failures +=
+        mylite_test_expect_int(has_parent_foreign_keys, 1, "added parent FK role is visible");
     failures += expect_statement_ok(database, "ALTER TABLE child DROP FOREIGN KEY fk_role_parent");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_foreign_key_roles(
             database,
             table.table_id,
@@ -264,8 +265,12 @@ static int test_no_foreign_key_role_cache(void) {
         MYLITE_OK,
         "reload child roles after dropping FK"
     );
-    failures += expect_int(has_child_foreign_keys, 0, "dropped child FK invalidates role cache");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
+        has_child_foreign_keys,
+        0,
+        "dropped child FK invalidates role cache"
+    );
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_foreign_key_roles(
             database,
             parent_table.table_id,
@@ -275,7 +280,11 @@ static int test_no_foreign_key_role_cache(void) {
         MYLITE_OK,
         "reload parent roles after dropping FK"
     );
-    failures += expect_int(has_parent_foreign_keys, 0, "dropped parent FK invalidates role cache");
+    failures += mylite_test_expect_int(
+        has_parent_foreign_keys,
+        0,
+        "dropped parent FK invalidates role cache"
+    );
 
     mylite_close(database);
     return failures;
@@ -339,7 +348,7 @@ static int test_create_table_foreign_key_lifecycle(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE child", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "KEY `fk_child_parent` (`parent_id`)",
             "SHOW CREATE named foreign-key child index"
@@ -498,12 +507,12 @@ static int test_self_referencing_foreign_key_lifecycle(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE self_ref", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "KEY `parent_id_fk` (`parent_id`)",
             "SHOW CREATE self-referencing foreign-key child index"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "CONSTRAINT `parent_id_fk` FOREIGN KEY (`parent_id`) REFERENCES `self_ref` (`id`)",
             "SHOW CREATE self-referencing foreign-key definition"
@@ -690,7 +699,7 @@ static int test_foreign_key_metadata_name_order(void) {
         const char *explicit_name = strstr(create_sql, "CONSTRAINT `fk_named`");
         const char *generated_name = strstr(create_sql, "CONSTRAINT `ordered_child_ibfk_1`");
 
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             create_sql,
             "KEY `fk_named` (`id`)",
             "SHOW CREATE foreign-key child index display name"
@@ -766,12 +775,12 @@ static int test_composite_foreign_key_lifecycle(void) {
     if (failures == 0) {
         const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
 
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             create_sql,
             "KEY `fk_child_parent` (`a`,`b`)",
             "composite FK child index in SHOW CREATE"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             create_sql,
             "CONSTRAINT `fk_child_parent` FOREIGN KEY (`a`, `b`) REFERENCES `parent_pk` (`a`, `b`)",
             "composite FK constraint in SHOW CREATE"
@@ -816,7 +825,7 @@ static int test_composite_foreign_key_lifecycle(void) {
     if (failures == 0) {
         const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
 
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             create_sql,
             "KEY `existing_ab` (`a`,`b`,`c`)",
             "composite FK reuses existing child index"
@@ -839,9 +848,12 @@ static int test_composite_foreign_key_lifecycle(void) {
     if (failures == 0) {
         const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
 
-        failures +=
-            expect_contains(create_sql, "KEY `a` (`a`,`b`)", "unnamed composite FK child index");
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
+            create_sql,
+            "KEY `a` (`a`,`b`)",
+            "unnamed composite FK child index"
+        );
+        failures += mylite_test_expect_contains(
             create_sql,
             "CONSTRAINT `child_unnamed_ibfk_1` FOREIGN KEY",
             "unnamed composite FK constraint name"
@@ -1107,12 +1119,12 @@ static int test_foreign_key_symbol_action_metadata(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE child_symbol", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "KEY `fk_idx` (`parent_id`)",
             "SHOW CREATE unnamed foreign-key index symbol"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "CONSTRAINT `child_symbol_ibfk_1` FOREIGN KEY",
             "SHOW CREATE unnamed foreign-key generated constraint"
@@ -1153,12 +1165,12 @@ static int test_foreign_key_symbol_action_metadata(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE child_action", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "KEY `fk_action` (`parent_id`)",
             "SHOW CREATE explicit constraint names generated child index"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "ON DELETE RESTRICT ON UPDATE CASCADE",
             "SHOW CREATE renders non-default foreign-key actions"
@@ -1247,7 +1259,7 @@ static int test_foreign_key_symbol_action_metadata(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE child_set_null", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "ON DELETE SET NULL ON UPDATE SET NULL",
             "SHOW CREATE renders SET NULL foreign-key actions"
@@ -1277,17 +1289,17 @@ static int test_foreign_key_symbol_action_metadata(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE child_alter_symbol", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "KEY `idx_pid` (`parent_id`)",
             "SHOW CREATE alter foreign-key index symbol"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "CONSTRAINT `child_alter_symbol_ibfk_1` FOREIGN KEY",
             "SHOW CREATE alter generated foreign-key constraint"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "ON DELETE CASCADE",
             "SHOW CREATE alter delete cascade action"
@@ -1695,7 +1707,7 @@ static int test_foreign_key_set_null_actions(void) {
     );
     failures += execute_ok(database, "SHOW CREATE TABLE csetalter", &show_create_result);
     if (failures == 0) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(show_create_result, 0U, 1U),
             "ON DELETE SET NULL",
             "SHOW CREATE renders alter-added SET NULL action"
@@ -1876,8 +1888,11 @@ static int test_alter_table_drop_foreign_key_lifecycle(void) {
     );
     failures += execute_ok(database, "SHOW INDEX FROM child", &show_index_result);
     if (failures == 0) {
-        failures +=
-            expect_size(mylite_result_row_count(show_index_result), 2U, "SHOW INDEX after drop FK");
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(show_index_result),
+            2U,
+            "SHOW INDEX after drop FK"
+        );
     }
     mylite_result_free(show_index_result);
     show_index_result = NULL;
@@ -1885,7 +1900,7 @@ static int test_alter_table_drop_foreign_key_lifecycle(void) {
     if (failures == 0) {
         const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
 
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             create_sql,
             "KEY `fk_child_parent` (`parent_id`)",
             "SHOW CREATE after DROP FOREIGN KEY preserves child index"
@@ -1914,7 +1929,7 @@ static int test_alter_table_drop_foreign_key_lifecycle(void) {
     failures += expect_statement_ok(database, "DROP INDEX fk_child_parent ON child");
     failures += execute_ok(database, "SHOW INDEX FROM child", &show_index_result);
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_row_count(show_index_result),
             1U,
             "SHOW INDEX after dropping preserved index"
@@ -2135,7 +2150,11 @@ static int test_foreign_key_diagnostics(void) {
 
 static int test_drop_foreign_key_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open diagnostics");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open diagnostics"
+    );
 
     failures += execute_error(
         database,
@@ -2201,12 +2220,13 @@ static int test_foreign_key_persistence(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "persistence") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "persistence") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open persistence file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open persistence file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
@@ -2250,7 +2270,8 @@ static int test_foreign_key_persistence(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen persistence file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen persistence file");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_dml_ok(database, "INSERT INTO child VALUES (11, 2)", 1);
     failures += expect_dml_ok(database, "INSERT INTO child_pair VALUES (21,3,4)", 1);
@@ -2335,12 +2356,16 @@ static int test_drop_foreign_key_persistence_and_file_format(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "drop_persistence") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "drop_persistence") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open drop persistence file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open drop persistence file"
+    );
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
@@ -2352,7 +2377,7 @@ static int test_drop_foreign_key_persistence_and_file_format(void) {
     failures += expect_dml_ok(database, "INSERT INTO parent VALUES (1)", 1);
     failures += expect_dml_ok(database, "INSERT INTO child VALUES (10, 1)", 1);
     failures += read_preamble(path, before_preamble);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_file_preamble_validate(before_preamble),
         1,
         "pre-drop preamble validates"
@@ -2362,7 +2387,7 @@ static int test_drop_foreign_key_persistence_and_file_format(void) {
     database = NULL;
 
     failures += read_preamble(path, after_preamble);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_file_preamble_validate(after_preamble),
         1,
         "post-drop preamble validates"
@@ -2373,7 +2398,11 @@ static int test_drop_foreign_key_persistence_and_file_format(void) {
         sizeof(after_preamble),
         "DROP FOREIGN KEY preserves MyLite preamble"
     );
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen drop persistence file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen drop persistence file"
+    );
     failures += expect_statement_ok(database, "USE app");
     failures += expect_query_values(
         database,
@@ -2410,15 +2439,17 @@ static int test_drop_foreign_key_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "drop_independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "drop_independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "drop_independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "drop_independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first FK file");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second FK file");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first FK file");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second FK file");
     failures += expect_statement_ok(first, "CREATE DATABASE app");
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
@@ -2485,7 +2516,8 @@ static int test_drop_database_cleans_foreign_key_descriptors(void) {
 }
 
 static int open_seeded_memory(mylite_db **out_database) {
-    int failures = expect_int(mylite_test_open_temporary(out_database), MYLITE_OK, "open memory");
+    int failures =
+        mylite_test_expect_int(mylite_test_open_temporary(out_database), MYLITE_OK, "open memory");
 
     if (failures == 0) {
         failures += expect_statement_ok(*out_database, "CREATE DATABASE app");
@@ -2521,9 +2553,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -2533,9 +2565,9 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -2546,10 +2578,11 @@ static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures +=
+            mylite_test_expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+        failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -2564,10 +2597,18 @@ static int expect_dml_warning(
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            sql
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            expected.warning_count,
+            sql
+        );
     }
     mylite_result_free(result);
     return failures;
@@ -2578,9 +2619,16 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int failures = execute_ok(database, query.sql, &result);
 
     if (failures == 0) {
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
     }
     for (size_t row = 0U; failures == 0 && row < query.row_count; ++row) {
         for (size_t column = 0U; column < query.column_count; ++column) {
@@ -2618,31 +2666,7 @@ static int expect_result_value(
         }
         return 0;
     }
-    return expect_text(actual, expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_foreign_key_constraints_%d_%s.mylite",
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {
@@ -2658,64 +2682,6 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written >= 0 && (size_t)written < sizeof(related)) {
         remove(related);
     }
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_not_contains(const char *actual, const char *needle, const char *context) {

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdint.h>
@@ -59,14 +61,8 @@ static int test_sys_host_summary_by_file_io_views(void);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_query_contains(mylite_db *database, struct expected_query_contains expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_datetime_text(const char *actual, const char *context);
 
 static const char
@@ -428,12 +424,16 @@ static int test_sys_host_summary_by_file_io_views(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "main") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "main") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open file-backed database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open file-backed database"
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -881,20 +881,27 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
     for (size_t column_index = 0U;
          expected.column_names != NULL && column_index < expected.column_count;
          ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
         );
     }
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
 
     if (expected.values != NULL) {
         for (size_t row_index = 0U; row_index < expected.row_count; ++row_index) {
@@ -907,7 +914,11 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
                 if (expected_value == expected_datetime_value) {
                     failures += expect_datetime_text(actual_value, expected.context);
                 } else {
-                    failures += expect_text_or_null(actual_value, expected_value, expected.context);
+                    failures += mylite_test_expect_text_or_null(
+                        actual_value,
+                        expected_value,
+                        expected.context
+                    );
                 }
             }
         }
@@ -941,20 +952,27 @@ static int expect_query_contains(mylite_db *database, struct expected_query_cont
         return 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
     for (size_t column_index = 0U;
          expected.column_names != NULL && column_index < expected.column_count;
          ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
         );
     }
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
 
     if (failures == 0) {
         actual = mylite_result_value_text(result, expected.row_index, expected.column_index);
@@ -974,30 +992,6 @@ static int expect_query_contains(mylite_db *database, struct expected_query_cont
     return failures;
 }
 
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_runtime_sys_host_summary_by_file_io_views_%d_%s.mylite",
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path buffer too small\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
-}
-
 static void remove_related_files(const char *path) {
     remove_with_suffix(path, "");
     remove_with_suffix(path, "-journal");
@@ -1012,53 +1006,6 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written >= 0 && (size_t)written < sizeof(buffer)) {
         (void)remove(buffer);
     }
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "<NULL>" : expected,
-            actual == NULL ? "<NULL>" : actual
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_datetime_text(const char *actual, const char *context) {

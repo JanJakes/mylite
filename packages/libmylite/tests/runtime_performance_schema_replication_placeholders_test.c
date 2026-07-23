@@ -49,10 +49,6 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 static int expect_query(mylite_db *database, struct expected_query query);
 static int expect_empty_count(mylite_db *database, const char *sql, const char *context);
 static int expect_row_count_state(mylite_db *database, const char *context);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     return test_performance_schema_replication_placeholders() == 0 ? 0 : 1;
@@ -412,7 +408,8 @@ static int test_performance_schema_replication_placeholders(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open database");
+    failures +=
+        mylite_test_expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open database");
     failures += execute_ok(database, "CREATE DATABASE app");
     failures += execute_ok(database, "USE app");
     failures += expect_empty_count(
@@ -736,10 +733,10 @@ static int execute_ok(mylite_db *database, const char *sql) {
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, sql);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -750,10 +747,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -763,18 +760,23 @@ static int expect_query(mylite_db *database, struct expected_query query) {
     int rc = mylite_execute(database, query.sql, strlen(query.sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, query.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, query.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s failed: %s\n", query.context, mylite_errmsg(database));
         mylite_result_free(result);
         return failures + 1;
     }
 
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     if (mylite_result_column_count(result) == query.column_count) {
         for (size_t column = 0U; column < query.column_count; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column),
                 query.column_names[column],
                 query.context
@@ -786,7 +788,7 @@ static int expect_query(mylite_db *database, struct expected_query query) {
         for (size_t row = 0U; row < query.row_count; ++row) {
             for (size_t column = 0U; column < query.column_count; ++column) {
                 size_t index = (row * query.column_count) + column;
-                failures += expect_text(
+                failures += mylite_test_expect_text(
                     mylite_result_value_text(result, row, column),
                     query.values[index],
                     query.context
@@ -831,55 +833,4 @@ static int expect_row_count_state(mylite_db *database, const char *context) {
             .context = context,
         }
     );
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
 }

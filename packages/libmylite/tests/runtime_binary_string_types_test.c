@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "storage/mylite_file_format.h"
@@ -96,17 +98,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -185,13 +179,14 @@ static int test_binary_success_persistence_and_introspection(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "success") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "success") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open binary success file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
@@ -246,7 +241,8 @@ static int test_binary_success_persistence_and_introspection(void) {
         "SELECT id, b, vb, cb, tb, bl, mb, lb, nn FROM bin_family ORDER BY id",
         &result
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "binary selected row count");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "binary selected row count");
     failures += expect_result_value(result, 0U, 0U, "1", "binary selected id");
     failures += expect_binary_cell(
         result,
@@ -304,7 +300,7 @@ static int test_binary_success_persistence_and_introspection(void) {
         (struct expected_bytes){.bytes = nn_initial, .size = sizeof(nn_initial)},
         "NOT NULL VARBINARY"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         mylite_result_value_bytes(NULL, 0U, 0U) == NULL &&
             mylite_result_value_size(result, binary_family_column_count, 0U) == 0U,
         "binary result byte API misuse"
@@ -325,7 +321,11 @@ static int test_binary_success_persistence_and_introspection(void) {
         2
     );
     failures += execute_ok(database, "SELECT id, b, vb, bl FROM bit_binary ORDER BY id", &result);
-    failures += expect_size(mylite_result_row_count(result), 2U, "binary bit literal row count");
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        2U,
+        "binary bit literal row count"
+    );
     failures += expect_result_value(result, 0U, 0U, "1", "binary bit literal first id");
     failures += expect_binary_cell(
         result,
@@ -549,7 +549,7 @@ static int test_binary_success_persistence_and_introspection(void) {
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read preamble"
@@ -560,7 +560,8 @@ static int test_binary_success_persistence_and_introspection(void) {
         sizeof(expected_preamble),
         "binary file preamble"
     );
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary file");
     failures += expect_statement_ok(database, "USE app");
     failures += execute_ok(database, "SELECT vb FROM bin_family WHERE id = 1", &result);
     failures += expect_binary_cell(
@@ -585,12 +586,16 @@ static int test_binary_predicates(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "predicates") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "predicates") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary predicates file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open binary predicates file"
+    );
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
@@ -706,13 +711,17 @@ static int test_binary_defaults(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "defaults") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "defaults") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary defaults file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open binary defaults file"
+    );
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
@@ -919,12 +928,12 @@ static int test_binary_defaults(void) {
     failures +=
         expect_statement_ok(database, "ALTER TABLE set_defaults ALTER COLUMN b DROP DEFAULT");
     failures += execute_ok(database, "SHOW CREATE TABLE set_defaults", &result);
-    failures += expect_contains(
+    failures += mylite_test_expect_contains(
         mylite_result_value_text(result, 0U, 1U),
         "`b` binary(2)",
         "ALTER DROP DEFAULT binary SHOW CREATE"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         strstr(mylite_result_value_text(result, 0U, 1U), "`b` binary(2) DEFAULT") == NULL,
         "ALTER DROP DEFAULT removes binary default rendering"
     );
@@ -946,7 +955,7 @@ static int test_binary_defaults(void) {
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read binary default preamble"
@@ -957,7 +966,11 @@ static int test_binary_defaults(void) {
         sizeof(expected_preamble),
         "binary defaults file preamble"
     );
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary defaults file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen binary defaults file"
+    );
     failures += expect_statement_ok(database, "USE app");
     failures += execute_ok(database, "SELECT b FROM defaults_clone WHERE id = 2", &result);
     failures += expect_binary_cell(
@@ -1048,9 +1061,9 @@ static int test_blob_expression_defaults(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "blob_defaults") != 0 ||
-        make_test_path(first_path, sizeof(first_path), "blob_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "blob_second") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "blob_defaults") != 0 ||
+        mylite_test_make_path(first_path, sizeof(first_path), "blob_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "blob_second") != 0) {
         return 1;
     }
     remove_related_files(path);
@@ -1058,7 +1071,8 @@ static int test_blob_expression_defaults(void) {
     remove_related_files(second_path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open blob defaults file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open blob defaults file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
@@ -1277,7 +1291,7 @@ static int test_blob_expression_defaults(void) {
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read BLOB default preamble"
@@ -1288,7 +1302,11 @@ static int test_blob_expression_defaults(void) {
         sizeof(expected_preamble),
         "BLOB defaults file preamble"
     );
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen BLOB defaults file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen BLOB defaults file"
+    );
     failures += expect_statement_ok(database, "USE app");
     failures += execute_ok(database, "SELECT b FROM blob_defaults WHERE id = 1", &result);
     failures += expect_binary_cell(
@@ -1303,8 +1321,16 @@ static int test_blob_expression_defaults(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first BLOB handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second BLOB handle");
+    failures += mylite_test_expect_int(
+        mylite_open(first_path, &first),
+        MYLITE_OK,
+        "open first BLOB handle"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(second_path, &second),
+        MYLITE_OK,
+        "open second BLOB handle"
+    );
     failures += expect_statement_ok(first, "CREATE DATABASE app");
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
@@ -1351,11 +1377,12 @@ static int test_binary_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary diagnostics");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open binary diagnostics");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += execute_error(
@@ -1493,15 +1520,23 @@ static int test_binary_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent-first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent-second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent-first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent-second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first binary file");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second binary file");
+    failures += mylite_test_expect_int(
+        mylite_open(first_path, &first),
+        MYLITE_OK,
+        "open first binary file"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(second_path, &second),
+        MYLITE_OK,
+        "open second binary file"
+    );
     failures += expect_statement_ok(first, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
     failures += expect_statement_ok(first, "CREATE TABLE t (id INT NOT NULL, b VARBINARY(1))");
@@ -1557,9 +1592,13 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, "error code");
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        "error message"
+    );
     mylite_result_free(result);
     return failures;
 }
@@ -1568,9 +1607,9 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 0U, sql);
-    failures += expect_size(mylite_result_row_count(result), 0U, sql);
-    failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -1591,10 +1630,12 @@ static int expect_dml_result(
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 0U, sql);
-    failures += expect_size(mylite_result_row_count(result), 0U, sql);
-    failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-    failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -1604,8 +1645,13 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     size_t value_count = query.column_count * query.row_count;
     int failures = execute_ok(database, query.sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t value_index = 0U; value_index < value_count; ++value_index) {
         size_t row = value_index / query.column_count;
         size_t column = value_index % query.column_count;
@@ -1629,12 +1675,12 @@ static int expect_binary_cell(
     int failures = 0;
 
     if (expected.is_null) {
-        failures += expect_true(actual == NULL, context);
-        failures += expect_size(actual_size, 0U, context);
+        failures += mylite_test_expect_true(actual == NULL, context);
+        failures += mylite_test_expect_size(actual_size, 0U, context);
         return failures;
     }
-    failures += expect_true(actual != NULL, context);
-    failures += expect_size(actual_size, expected.size, context);
+    failures += mylite_test_expect_true(actual != NULL, context);
+    failures += mylite_test_expect_size(actual_size, expected.size, context);
     if (actual != NULL && actual_size == expected.size) {
         failures += expect_bytes(actual, expected.bytes, expected.size, context);
     }
@@ -1651,29 +1697,9 @@ static int expect_result_value(
     const char *actual = mylite_result_value_text(result, row, column);
 
     if (expected == NULL) {
-        return expect_true(actual == NULL, context);
+        return mylite_test_expect_true(actual == NULL, context);
     }
-    return expect_text(actual, expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_binary_string_types_%d_%s.mylite",
-        current_process_id(),
-        name
-    );
-
-    return written < 0 || (size_t)written >= path_size ? 1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {
@@ -1706,72 +1732,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     bytes_read = fread(buffer, 1U, size, file);
     fclose(file);
     return bytes_read == size ? 0 : 1;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (condition) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected condition to be true\n", context);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected \"%s\", got \"%s\"\n",
-        context,
-        expected == NULL ? "(null)" : expected,
-        actual == NULL ? "(null)" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected \"%s\" to contain \"%s\"\n",
-        context,
-        actual == NULL ? "(null)" : actual,
-        needle == NULL ? "(null)" : needle
-    );
-    return 1;
 }
 
 static int expect_bytes(

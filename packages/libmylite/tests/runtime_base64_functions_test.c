@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "storage/mylite_file_format.h"
@@ -57,8 +59,6 @@ static int open_app_database(
     char *path,
     size_t path_size
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
@@ -69,11 +69,6 @@ static int expect_result_cell(
     struct expected_cell expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(const void *actual, const void *expected, size_t size, const char *context);
 
 int main(void) {
@@ -182,10 +177,13 @@ static int test_no_source_dual_and_do_base64(void) {
 
     failures += execute_ok(database, "DO TO_BASE64('abc'), FROM_BASE64('YWJj')", &result);
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "base64 do columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "base64 do rows");
-        failures += expect_int64(mylite_result_affected_rows(result), 0, "base64 do affected");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "base64 do warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 0U, "base64 do columns");
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, "base64 do rows");
+        failures +=
+            mylite_test_expect_int64(mylite_result_affected_rows(result), 0, "base64 do affected");
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, "base64 do warnings");
     }
     mylite_result_free(result);
 
@@ -264,7 +262,8 @@ static int test_table_backed_base64_and_reopen(void) {
     );
 
     mylite_close(database);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen base64 file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen base64 file");
     failures += execute_ok(database, "USE app", NULL);
     failures += expect_query(
         database,
@@ -408,9 +407,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -420,14 +419,17 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int failures = execute_ok(database, expected.sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             expected.column_count,
             expected.context
         );
-        failures +=
-            expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-        failures += expect_size(
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            expected.row_count,
+            expected.context
+        );
+        failures += mylite_test_expect_size(
             mylite_result_warning_count(result),
             expected.warning_count,
             expected.context
@@ -451,40 +453,17 @@ static int open_app_database(
     char *path,
     size_t path_size
 ) {
-    int failures = make_test_path(path, path_size, name);
+    int failures = mylite_test_make_path(path, path_size, name);
 
     if (failures != 0) {
         return failures;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, out_database), MYLITE_OK, "open test database");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, out_database), MYLITE_OK, "open test database");
     failures += execute_ok(*out_database, "CREATE DATABASE app", NULL);
     failures += execute_ok(*out_database, "USE app", NULL);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite-runtime-base64-%d-%s.mylite",
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -543,69 +522,11 @@ static int expect_result_cell(
         fprintf(stderr, "%s row %zu column %zu: expected non-NULL\n", context, row, column);
         return 1;
     }
-    failures += expect_size(actual_size, expected.size, context);
+    failures += mylite_test_expect_size(actual_size, expected.size, context);
     if (failures == 0 && expected.size != 0U) {
         failures += expect_bytes(actual, expected.bytes, expected.size, context);
     }
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected size %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "NULL" : actual,
-            needle
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_bytes(

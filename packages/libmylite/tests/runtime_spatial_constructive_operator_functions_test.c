@@ -57,10 +57,6 @@ static int expect_result_hex(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static void bytes_to_hex(const void *bytes, size_t byte_count, char *out_hex, size_t out_hex_size);
 
 int main(void) {
@@ -99,7 +95,8 @@ static int test_scalar_spatial_constructive_operator_functions(void) {
         "4326",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar database");
+    int failures =
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar database");
 
     failures += expect_strategy_query(database);
     failures += expect_query(
@@ -170,8 +167,11 @@ static int test_table_backed_spatial_constructive_operator_functions(void) {
         NULL,
     };
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open row database");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open row database"
+    );
 
     failures += execute_ok(database, "CREATE DATABASE spatial_constructive", NULL);
     failures += execute_ok(database, "USE spatial_constructive", NULL);
@@ -252,8 +252,12 @@ static int expect_strategy_query(mylite_db *database) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), strategy_column_count, "strategy");
-    failures += expect_size(mylite_result_row_count(result), 1U, "strategy");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        strategy_column_count,
+        "strategy"
+    );
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, "strategy");
     if (mylite_result_column_count(result) == strategy_column_count &&
         mylite_result_row_count(result) == 1U) {
         for (size_t column = 0U; column < strategy_column_count; ++column) {
@@ -272,8 +276,11 @@ static int expect_strategy_query(mylite_db *database) {
 
 static int test_spatial_constructive_operator_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_open_memory(&database), MYLITE_OK, "open diagnostics database");
+    int failures = mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open diagnostics database"
+    );
 
     failures += execute_error(
         database,
@@ -422,9 +429,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "%s: expected error, got success\n", sql);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
 }
 
@@ -436,9 +443,16 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     if (mylite_result_column_count(result) == expected.column_count &&
         mylite_result_row_count(result) == expected.row_count) {
         for (size_t index = 0U; index < value_count; ++index) {
@@ -462,7 +476,11 @@ static int expect_result_value(
     const char *expected,
     const char *context
 ) {
-    return expect_text(mylite_result_value_text(result, row, column), expected, context);
+    return mylite_test_expect_text(
+        mylite_result_value_text(result, row, column),
+        expected,
+        context
+    );
 }
 
 static int expect_result_hex(
@@ -477,57 +495,14 @@ static int expect_result_hex(
     size_t byte_count = mylite_result_value_size(result, row, column);
 
     if (expected == NULL) {
-        return expect_text(mylite_result_value_text(result, row, column), NULL, context);
+        return mylite_test_expect_text(
+            mylite_result_value_text(result, row, column),
+            NULL,
+            context
+        );
     }
     bytes_to_hex(bytes, byte_count, actual_hex, sizeof(actual_hex));
-    return expect_text(actual_hex, expected, context);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected %s, got %s\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
+    return mylite_test_expect_text(actual_hex, expected, context);
 }
 
 static void bytes_to_hex(const void *bytes, size_t byte_count, char *out_hex, size_t out_hex_size) {

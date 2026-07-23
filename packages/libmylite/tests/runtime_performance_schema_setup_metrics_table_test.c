@@ -55,11 +55,6 @@ static int expect_rowset_hash(
 static int expect_row_count_state(mylite_db *database, const char *context);
 static uint64_t fnv1a_update_text(uint64_t hash, const char *text);
 static uint64_t fnv1a_update_byte(uint64_t hash, unsigned char byte);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     return test_performance_schema_setup_metrics() == 0 ? 0 : 1;
@@ -416,7 +411,8 @@ static int test_performance_schema_setup_metrics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open database");
+    failures +=
+        mylite_test_expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open database");
     if (failures != 0) {
         return failures;
     }
@@ -634,10 +630,10 @@ static int execute_ok(mylite_db *database, const char *sql) {
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, sql);
     if (rc == MYLITE_OK) {
-        failures += expect_int(mylite_errcode(database), 0, sql);
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_int(mylite_errcode(database), 0, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -648,10 +644,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -661,16 +657,23 @@ static int expect_query(mylite_db *database, struct expected_query query) {
     int rc = mylite_execute(database, query.sql, strlen(query.sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, query.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, query.context);
     if (rc == MYLITE_OK) {
-        failures += expect_int(mylite_errcode(database), 0, query.context);
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_int(mylite_errcode(database), 0, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
         for (size_t column_index = 0U;
              column_index < query.column_count && column_index < mylite_result_column_count(result);
              ++column_index) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column_index),
                 query.column_names[column_index],
                 query.context
@@ -680,7 +683,7 @@ static int expect_query(mylite_db *database, struct expected_query query) {
             for (size_t row_index = 0U; row_index < query.row_count; ++row_index) {
                 for (size_t column_index = 0U; column_index < query.column_count; ++column_index) {
                     size_t value_index = (row_index * query.column_count) + column_index;
-                    failures += expect_text(
+                    failures += mylite_test_expect_text(
                         mylite_result_value_text(result, row_index, column_index),
                         query.values[value_index],
                         query.context
@@ -706,10 +709,15 @@ static int expect_rowset_hash(
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, context);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), hash_column_count, context);
-        failures += expect_size(mylite_result_row_count(result), setup_metrics_row_count, context);
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), hash_column_count, context);
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            setup_metrics_row_count,
+            context
+        );
         for (size_t row = 0U; row < mylite_result_row_count(result); ++row) {
             for (size_t column = 0U; column < mylite_result_column_count(result); ++column) {
                 const char *value = mylite_result_value_text(result, row, column);
@@ -721,7 +729,7 @@ static int expect_rowset_hash(
             }
             hash = fnv1a_update_byte(hash, '\n');
         }
-        failures += expect_uint64(hash, expected_hash, context);
+        failures += mylite_test_expect_uint64(hash, expected_hash, context);
     }
     mylite_result_free(result);
     return failures;
@@ -757,65 +765,4 @@ static uint64_t fnv1a_update_text(uint64_t hash, const char *text) {
 static uint64_t fnv1a_update_byte(uint64_t hash, unsigned char byte) {
     hash ^= byte;
     return hash * MYLITE_TEST_FNV1A_PRIME;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected 0x%016" PRIx64 ", got 0x%016" PRIx64 "\n",
-        context,
-        expected,
-        actual
-    );
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle
-    );
-    return 1;
 }

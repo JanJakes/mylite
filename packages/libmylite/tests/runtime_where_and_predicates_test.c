@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "storage/mylite_file_format.h"
@@ -53,16 +55,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -324,13 +319,14 @@ static int test_where_and_predicates(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "lifecycle") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "lifecycle") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open lifecycle database");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open lifecycle database");
     failures += seed_database(database);
     failures += reset_numbers(database);
 
@@ -2109,8 +2105,11 @@ static int test_where_and_predicates(void) {
         "CREATE TABLE copy_numbers SELECT id, i, n FROM numbers WHERE i = 1 AND n IS NOT NULL",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "create table select affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "create table select affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2131,7 +2130,7 @@ static int test_where_and_predicates(void) {
         "CREATE TABLE copy_or_numbers SELECT id, i, n FROM numbers WHERE i = 1 OR nn = 8",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         2,
         "create table select or affected rows"
@@ -2156,7 +2155,7 @@ static int test_where_and_predicates(void) {
         "CREATE TABLE copy_not_numbers SELECT id, i, n FROM numbers WHERE NOT i = 1",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "create table select not affected rows"
@@ -2181,7 +2180,7 @@ static int test_where_and_predicates(void) {
         "CREATE TABLE copy_between_numbers SELECT id, i, n FROM numbers WHERE i BETWEEN -2 AND 1",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "create table select between affected rows"
@@ -2206,7 +2205,7 @@ static int test_where_and_predicates(void) {
         "CREATE TABLE copy_in_numbers SELECT id, i, n FROM numbers WHERE i IN (-2, 1, 0)",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "create table select in affected rows"
@@ -2231,7 +2230,7 @@ static int test_where_and_predicates(void) {
         "CREATE TABLE copy_is_numbers SELECT id, i, n FROM numbers WHERE n IS UNKNOWN",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         2,
         "create table select is affected rows"
@@ -2264,7 +2263,11 @@ static int test_where_and_predicates(void) {
         "INSERT INTO inserted_numbers SELECT id, i FROM numbers WHERE i = 1 AND n IS NOT NULL",
         &result
     );
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "insert select affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "insert select affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2289,8 +2292,11 @@ static int test_where_and_predicates(void) {
         "INSERT INTO or_inserted_numbers SELECT id, i FROM numbers WHERE i = 1 OR nn = 8",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "insert select or affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "insert select or affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2315,8 +2321,11 @@ static int test_where_and_predicates(void) {
         "INSERT INTO not_inserted_numbers SELECT id, i FROM numbers WHERE NOT i = 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "insert select not affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "insert select not affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2345,8 +2354,11 @@ static int test_where_and_predicates(void) {
         "WHERE i BETWEEN -2 AND 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "insert select between affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "insert select between affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2371,8 +2383,11 @@ static int test_where_and_predicates(void) {
         "INSERT INTO in_inserted_numbers SELECT id, i FROM numbers WHERE i IN (-2, 1, 0)",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "insert select in affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "insert select in affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2397,8 +2412,11 @@ static int test_where_and_predicates(void) {
         "INSERT INTO is_inserted_numbers SELECT id, i FROM numbers WHERE i IS FALSE",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "insert select is affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "insert select is affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2423,8 +2441,11 @@ static int test_where_and_predicates(void) {
         "REPLACE INTO replaced_numbers SELECT id, i FROM numbers WHERE i = 1 AND n IS NOT NULL",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "replace select affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "replace select affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2449,8 +2470,11 @@ static int test_where_and_predicates(void) {
         "REPLACE INTO or_replaced_numbers SELECT id, i FROM numbers WHERE i = 1 OR nn = 8",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "replace select or affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "replace select or affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2475,8 +2499,11 @@ static int test_where_and_predicates(void) {
         "REPLACE INTO not_replaced_numbers SELECT id, i FROM numbers WHERE NOT i = 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "replace select not affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "replace select not affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2505,7 +2532,7 @@ static int test_where_and_predicates(void) {
         "WHERE i BETWEEN -2 AND 1",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "replace select between affected rows"
@@ -2534,8 +2561,11 @@ static int test_where_and_predicates(void) {
         "REPLACE INTO in_replaced_numbers SELECT id, i FROM numbers WHERE i IN (-2, 1, 0)",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "replace select in affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "replace select in affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2560,8 +2590,11 @@ static int test_where_and_predicates(void) {
         "REPLACE INTO is_replaced_numbers SELECT id, i FROM numbers WHERE n IS NOT UNKNOWN",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "replace select is affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "replace select is affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2579,7 +2612,11 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i = 1 AND nn = 6", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "update and affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update and affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2597,7 +2634,8 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i = 1 OR nn = 8", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 2, "update or affected rows");
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), 2, "update or affected rows");
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2614,8 +2652,11 @@ static int test_where_and_predicates(void) {
     );
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = NULL WHERE id = 1 OR nn = 6", &result);
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "update or changed affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update or changed affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2636,8 +2677,11 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = 99 WHERE id > 1 AND nn >= 6 ORDER BY id DESC LIMIT 2",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "update and limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "update and limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2658,8 +2702,11 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = 99 WHERE id = 1 OR nn >= 6 ORDER BY id DESC LIMIT 2",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "update or limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "update or limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2678,7 +2725,11 @@ static int test_where_and_predicates(void) {
     failures += reset_numbers(database);
     failures +=
         execute_ok(database, "UPDATE numbers SET n = 11 WHERE NOT (i = 1 OR nn = 8)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 2, "update not affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "update not affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2699,8 +2750,11 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = NULL WHERE NOT (n IS NULL) ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "update not limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update not limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2718,8 +2772,11 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i BETWEEN -2 AND 1", &result);
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "update between affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "update between affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2736,7 +2793,7 @@ static int test_where_and_predicates(void) {
     );
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 13 WHERE i IN (nn, 0)", &result);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         1,
         "update column in-list value affected rows"
@@ -2761,8 +2818,11 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = NULL WHERE i BETWEEN -2 AND 1 ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "update between limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update between limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2780,7 +2840,8 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i IN (-2, 1, 0)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 3, "update in affected rows");
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), 3, "update in affected rows");
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2801,8 +2862,11 @@ static int test_where_and_predicates(void) {
         "UPDATE predicate_values SET n = 10 WHERE n = CAST(n_text AS SIGNED)",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "update row-scalar value predicate");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "update row-scalar value predicate"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2823,8 +2887,11 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = NULL WHERE i IN (-2, 1, 0) ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "update in limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update in limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2842,7 +2909,8 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE n IS UNKNOWN", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 2, "update is affected rows");
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), 2, "update is affected rows");
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2863,8 +2931,11 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = 22 WHERE i IS TRUE ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "update is limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update is limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2882,7 +2953,11 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i > 1 AND n IS NULL", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "delete and affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete and affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2900,7 +2975,8 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i = 1 OR nn = 8", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 2, "delete or affected rows");
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), 2, "delete or affected rows");
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2921,8 +2997,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE id > 1 AND nn >= 6 ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "delete and limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete and limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2943,8 +3022,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE id = 1 OR nn >= 6 ORDER BY id DESC LIMIT 2",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "delete or limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "delete or limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2963,7 +3045,11 @@ static int test_where_and_predicates(void) {
     failures += reset_numbers(database);
     failures +=
         execute_ok(database, "DELETE FROM numbers WHERE NOT (n IS NULL OR nn = 6)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "delete not affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete not affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -2984,8 +3070,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE NOT (id = 1 OR nn >= 7) ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "delete not limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete not limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3003,8 +3092,11 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i BETWEEN -2 AND 1", &result);
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "delete between affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "delete between affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3022,7 +3114,7 @@ static int test_where_and_predicates(void) {
     failures += reset_numbers(database);
     failures +=
         execute_ok(database, "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1", &result);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "qualified delete between affected rows"
@@ -3044,7 +3136,7 @@ static int test_where_and_predicates(void) {
     failures += reset_numbers(database);
     failures +=
         execute_ok(database, "DELETE FROM numbers WHERE app.numbers.i BETWEEN -2 AND 1", &result);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "schema-qualified delete between affected rows"
@@ -3065,7 +3157,7 @@ static int test_where_and_predicates(void) {
     );
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i BETWEEN -2 AND nn", &result);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         3,
         "delete column between value affected rows"
@@ -3090,8 +3182,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE i BETWEEN -2 AND 1 ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "delete between limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete between limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3109,7 +3204,8 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i IN (-2, 1, 0)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 3, "delete in affected rows");
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), 3, "delete in affected rows");
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3126,8 +3222,11 @@ static int test_where_and_predicates(void) {
     );
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0)", &result);
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "qualified delete in affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "qualified delete in affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3148,8 +3247,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM predicate_values WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j)",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 2, "delete row-scalar value predicate");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "delete row-scalar value predicate"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3170,8 +3272,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE i IN (-2, 1, 0) ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "delete in limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete in limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3189,8 +3294,11 @@ static int test_where_and_predicates(void) {
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE numbers.i IS TRUE", &result);
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 3, "qualified delete is affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "qualified delete is affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3212,8 +3320,11 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE n IS NOT UNKNOWN ORDER BY id DESC LIMIT 1",
         &result
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 1, "delete is limit affected rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete is limit affected rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_result(
@@ -3370,7 +3481,7 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1 AND id = -999",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         0,
         "qualified delete between no-op affected rows"
@@ -3383,7 +3494,7 @@ static int test_where_and_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             0,
             "qualified update between predicate affected rows"
@@ -3494,7 +3605,7 @@ static int test_where_and_predicates(void) {
         "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0) AND id = -999",
         &result
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         0,
         "qualified delete in no-op affected rows"
@@ -3507,7 +3618,7 @@ static int test_where_and_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             0,
             "qualified update in predicate affected rows"
@@ -3568,7 +3679,7 @@ static int test_where_and_predicates(void) {
     );
     failures +=
         execute_ok(database, "DELETE FROM numbers WHERE numbers.i IS TRUE AND id = -999", &result);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         0,
         "qualified delete is no-op affected rows"
@@ -3581,7 +3692,7 @@ static int test_where_and_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             0,
             "qualified update is predicate affected rows"
@@ -3659,7 +3770,11 @@ static int test_where_and_predicates(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen lifecycle database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen lifecycle database"
+    );
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -3785,13 +3900,14 @@ static int test_where_xor_predicates(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "xor_lifecycle") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "xor_lifecycle") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open xor database");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open xor database");
     failures += seed_database(database);
 
     failures += execute_ok(
@@ -3800,16 +3916,21 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_size(mylite_result_column_count(result), 2U, "xor labels columns");
-        failures += expect_size(mylite_result_row_count(result), 2U, "xor labels rows");
-        failures += expect_text(mylite_result_column_name(result, 0U), "id", "xor label id");
-        failures += expect_text(mylite_result_column_name(result, 1U), "i", "xor label i");
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 2U, "xor labels columns");
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 2U, "xor labels rows");
+        failures +=
+            mylite_test_expect_text(mylite_result_column_name(result, 0U), "id", "xor label id");
+        failures +=
+            mylite_test_expect_text(mylite_result_column_name(result, 1U), "i", "xor label i");
         failures += expect_result_value(result, 0U, 0U, simple_rows[0], "xor row 1 id");
         failures += expect_result_value(result, 0U, 1U, simple_rows[1], "xor row 1 i");
         failures += expect_result_value(result, 1U, 0U, simple_rows[2], "xor row 2 id");
         failures += expect_result_value(result, 1U, 1U, simple_rows[3], "xor row 2 i");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "xor warning count");
-        failures += expect_int64(mylite_result_affected_rows(result), 0, "xor affected rows");
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, "xor warning count");
+        failures +=
+            mylite_test_expect_int64(mylite_result_affected_rows(result), 0, "xor affected rows");
     }
     mylite_result_free(result);
     result = NULL;
@@ -4015,7 +4136,11 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(mylite_result_affected_rows(result), 3, "xor ctas affected rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            3,
+            "xor ctas affected rows"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -4045,8 +4170,11 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures +=
-            expect_int64(mylite_result_affected_rows(result), 2, "xor insert select affected rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            2,
+            "xor insert select affected rows"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -4076,7 +4204,7 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             2,
             "xor replace select affected rows"
@@ -4101,10 +4229,15 @@ static int test_where_xor_predicates(void) {
     failures +=
         execute_ok(database, "UPDATE numbers SET n = 11 WHERE n IS NULL XOR i = 1", &result);
     if (result != NULL) {
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            3,
+            "xor update affected rows"
+        );
         failures +=
-            expect_int64(mylite_result_affected_rows(result), 3, "xor update affected rows");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "xor update warnings");
-        failures += expect_size(mylite_result_row_count(result), 0U, "xor update no rows");
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, "xor update warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "xor update no rows");
     }
     mylite_result_free(result);
     result = NULL;
@@ -4128,8 +4261,11 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures +=
-            expect_int64(mylite_result_affected_rows(result), 1, "xor update limit affected rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            1,
+            "xor update limit affected rows"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -4153,8 +4289,11 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures +=
-            expect_int64(mylite_result_affected_rows(result), 1, "xor delete limit affected rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            1,
+            "xor delete limit affected rows"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -4175,7 +4314,7 @@ static int test_where_xor_predicates(void) {
     failures +=
         execute_ok(database, "DELETE FROM numbers WHERE numbers.id = 1 XOR nn = 8", &result);
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             2,
             "qualified xor delete affected rows"
@@ -4229,7 +4368,7 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             0,
             "qualified delete xor no-op affected rows"
@@ -4243,7 +4382,7 @@ static int test_where_xor_predicates(void) {
         &result
     );
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             0,
             "qualified update xor predicate affected rows"
@@ -4277,7 +4416,7 @@ static int test_where_xor_predicates(void) {
     failures +=
         execute_ok(database, "UPDATE numbers SET nn = 33 WHERE n IS NULL XOR i = 1", &result);
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             3,
             "xor persisted update affected rows"
@@ -4300,7 +4439,8 @@ static int test_where_xor_predicates(void) {
         );
     }
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen xor database");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen xor database");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -4354,13 +4494,17 @@ static int test_where_scalar_literal_predicates(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "scalar_literals") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "scalar_literals") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open scalar literal database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open scalar literal database"
+    );
     failures += seed_database(database);
 
     failures += expect_result(
@@ -4866,14 +5010,21 @@ static int test_where_scalar_literal_predicates(void) {
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE 1 = i", &result);
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             1,
             "scalar literal update affected rows"
         );
-        failures +=
-            expect_size(mylite_result_warning_count(result), 0U, "scalar literal update warnings");
-        failures += expect_size(mylite_result_row_count(result), 0U, "scalar literal update rows");
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "scalar literal update warnings"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            0U,
+            "scalar literal update rows"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -4893,7 +5044,7 @@ static int test_where_scalar_literal_predicates(void) {
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE NULL <=> n", &result);
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             2,
             "scalar literal delete affected rows"
@@ -5025,7 +5176,7 @@ static int test_where_scalar_literal_predicates(void) {
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET nn = 33 WHERE NULL IS UNKNOWN", &result);
     if (result != NULL) {
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             4,
             "scalar literal persisted update affected rows"
@@ -5048,8 +5199,11 @@ static int test_where_scalar_literal_predicates(void) {
         );
     }
 
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen scalar literal database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen scalar literal database"
+    );
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -5085,7 +5239,7 @@ static int test_large_logical_predicate(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "large_logical_predicate") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "large_logical_predicate") != 0) {
         return 1;
     }
     sql = malloc(sql_length + 1U);
@@ -5104,8 +5258,11 @@ static int test_large_logical_predicate(void) {
     sql[sql_length] = '\0';
 
     remove_related_files(path);
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "open large predicate database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open large predicate database"
+    );
     failures += seed_database(database);
     failures += expect_result(
         database,
@@ -5136,15 +5293,20 @@ static int test_independent_where_and_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first database");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second database");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first database");
+    failures += mylite_test_expect_int(
+        mylite_open(second_path, &second),
+        MYLITE_OK,
+        "open second database"
+    );
     failures += seed_database(first);
     failures += seed_database(second);
     failures += execute_ok(first, "UPDATE numbers SET n = 31 WHERE id = 2 OR nn = 100", &result);
@@ -5426,9 +5588,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
 
     return failures;
@@ -5442,13 +5604,26 @@ static int expect_result(mylite_db *database, struct expected_result expected) {
         return failures;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures +=
-        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), expected.affected_rows, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        expected.warning_count,
+        expected.context
+    );
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        expected.affected_rows,
+        expected.context
+    );
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
             size_t index = (row * expected.column_count) + column;
@@ -5490,41 +5665,6 @@ static int expect_result_value(
     return 0;
 }
 
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_runtime_where_and_predicates_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
-}
-
 static void remove_related_files(const char *path) {
     remove(path);
     remove_with_suffix(path, "-journal");
@@ -5559,69 +5699,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     fclose(file);
     if (read_size != size) {
         fprintf(stderr, "%s: expected %zu bytes, read %zu\n", path, size, read_size);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected message containing [%s], got [%s]\n",
-            context,
-            needle,
-            actual == NULL ? "NULL" : actual
-        );
         return 1;
     }
 

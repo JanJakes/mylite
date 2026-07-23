@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdbool.h>
@@ -139,10 +141,6 @@ static int expect_values(
 );
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -165,8 +163,11 @@ static int test_values_show_and_scope(void) {
     int failures = 0;
     char sql[sql_buffer_capacity];
 
-    failures +=
-        expect_int(mylite_open_memory(&database), MYLITE_OK, "open InnoDB page/read/purge db");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open InnoDB page/read/purge db"
+    );
     for (size_t index = 0U; index < sizeof(innodb_page_read_purge_variables) /
                                         sizeof(innodb_page_read_purge_variables[0]);
          ++index) {
@@ -254,8 +255,11 @@ static int test_set_diagnostics(void) {
     int failures = 0;
     char sql[sql_buffer_capacity];
 
-    failures +=
-        expect_int(mylite_open_memory(&database), MYLITE_OK, "open InnoDB page/read/purge SET db");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open InnoDB page/read/purge SET db"
+    );
     for (size_t index = 0U; index < sizeof(innodb_page_read_purge_variables) /
                                         sizeof(innodb_page_read_purge_variables[0]);
          ++index) {
@@ -323,7 +327,7 @@ static int test_parallel_read_threads_session_mutation(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open_memory(&database),
         MYLITE_OK,
         "open InnoDB parallel read threads db"
@@ -436,7 +440,7 @@ static int test_user_variable_assignments(void) {
     int failures = 0;
     char sql[sql_buffer_capacity];
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open_memory(&database),
         MYLITE_OK,
         "open InnoDB page/read/purge user-var db"
@@ -546,11 +550,12 @@ static int expect_values(
         return 1;
     }
 
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
-    failures += expect_size(mylite_result_column_count(result), expected_count, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), expected_count, context);
     if (failures == 0) {
         for (size_t column = 0U; column < expected_count; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_value_text(result, 0U, column),
                 expected[column],
                 context
@@ -587,60 +592,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
 }

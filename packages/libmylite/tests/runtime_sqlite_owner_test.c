@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -8,8 +10,6 @@
 static int test_each_handle_owns_distinct_usable_sqlite_connection(void);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int table_exists(sqlite3 *connection, const char *table_name, int *out_exists);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_true(int condition, const char *context);
 
 int main(void) {
     return test_each_handle_owns_distinct_usable_sqlite_connection() == 0 ? 0 : 1;
@@ -29,14 +29,16 @@ static int test_each_handle_owns_distinct_usable_sqlite_connection(void) {
     int second_has_table = table_missing;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second handle");
+    failures += mylite_test_expect_int(mylite_open_memory(&first), MYLITE_OK, "open first handle");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&second), MYLITE_OK, "open second handle");
 
     first_sqlite = mylite_connection_sqlite_for_test(first);
     second_sqlite = mylite_connection_sqlite_for_test(second);
-    failures += expect_true(first_sqlite != NULL, "first SQLite connection exists");
-    failures += expect_true(second_sqlite != NULL, "second SQLite connection exists");
-    failures += expect_true(first_sqlite != second_sqlite, "SQLite connections are distinct");
+    failures += mylite_test_expect_true(first_sqlite != NULL, "first SQLite connection exists");
+    failures += mylite_test_expect_true(second_sqlite != NULL, "second SQLite connection exists");
+    failures +=
+        mylite_test_expect_true(first_sqlite != second_sqlite, "SQLite connections are distinct");
     if (first_sqlite == NULL || second_sqlite == NULL) {
         mylite_close(second);
         mylite_close(first);
@@ -46,12 +48,18 @@ static int test_each_handle_owns_distinct_usable_sqlite_connection(void) {
     failures += execute_sql(first_sqlite, "CREATE TABLE ownership_marker(value INTEGER)");
     failures += table_exists(first_sqlite, "ownership_marker", &first_has_table);
     failures += table_exists(second_sqlite, "ownership_marker", &second_has_table);
-    failures += expect_int(first_has_table, table_present, "first connection sees table");
-    failures += expect_int(second_has_table, table_missing, "second connection does not see table");
+    failures +=
+        mylite_test_expect_int(first_has_table, table_present, "first connection sees table");
+    failures += mylite_test_expect_int(
+        second_has_table,
+        table_missing,
+        "second connection does not see table"
+    );
 
     failures += execute_sql(second_sqlite, "CREATE TABLE ownership_marker(value INTEGER)");
     failures += table_exists(second_sqlite, "ownership_marker", &second_has_table);
-    failures += expect_int(second_has_table, table_present, "second connection remains usable");
+    failures +=
+        mylite_test_expect_int(second_has_table, table_present, "second connection remains usable");
 
     mylite_close(second);
     mylite_close(first);
@@ -120,24 +128,6 @@ static int table_exists(sqlite3 *connection, const char *table_name, int *out_ex
     rc = sqlite3_finalize(statement);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "finalize table existence query: SQLite error %d\n", rc);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
         return 1;
     }
 

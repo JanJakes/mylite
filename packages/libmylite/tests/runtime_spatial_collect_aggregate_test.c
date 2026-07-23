@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -51,12 +53,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 
 int main(void) {
@@ -180,14 +176,19 @@ static int test_spatial_collect_results(void) {
 
     failures += execute_ok(database, "SELECT ST_Collect(g) FROM shapes WHERE grp = 1", &result);
     if (result != NULL) {
-        failures += expect_size(mylite_result_column_count(result), 1U, "direct collect columns");
-        failures += expect_int(
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            1U,
+            "direct collect columns"
+        );
+        failures += mylite_test_expect_int(
             mylite_result_column_type(result, 0U),
             MYLITE_RESULT_COLUMN_TYPE_GEOMETRY,
             "direct collect column type"
         );
-        failures += expect_size(mylite_result_row_count(result), 1U, "direct collect rows");
-        failures += expect_int(
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 1U, "direct collect rows");
+        failures += mylite_test_expect_int(
             mylite_result_value_bytes(result, 0U, 0U) != NULL,
             1,
             "direct collect bytes"
@@ -230,11 +231,11 @@ static int open_app_database(
 ) {
     int failures = 0;
 
-    if (make_test_path(path, path_size, name) != 0) {
+    if (mylite_test_make_path(path, path_size, name) != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, out_database), MYLITE_OK, name);
+    failures += mylite_test_expect_int(mylite_open(path, out_database), MYLITE_OK, name);
     if (failures == 0) {
         failures += execute_discard(*out_database, "CREATE DATABASE app");
     }
@@ -309,9 +310,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -324,9 +325,13 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         mylite_result_free(result);
         return failures + 1;
     }
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.sql
+    );
     failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.sql);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.sql);
+        mylite_test_expect_size(mylite_result_row_count(result), expected.row_count, expected.sql);
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
             failures += expect_result_value(
@@ -369,70 +374,6 @@ static int expect_result_value(
         return 1;
     }
     return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected \"%s\", got \"%s\"\n",
-            context,
-            expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected \"%s\" to contain \"%s\"\n",
-            context,
-            actual == NULL ? "NULL" : actual,
-            needle
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite-spatial-collect-aggregate-%s-%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    return written < 0 || (size_t)written >= path_size ? 1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_catalog.h"
@@ -82,17 +84,9 @@ static int execute_error_with_length(
     struct expected_sql_error expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -156,13 +150,14 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     uint64_t sqlite_generation_before = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "success") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "success") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE target (id INT)");
@@ -173,12 +168,12 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     failures += execute_statement_ok(database, "CREATE TABLE drop_target (id INT)");
     failures += execute_statement_ok(database, "INSERT INTO target VALUES (1), (2)");
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read app schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "target", &before_table),
         MYLITE_OK,
         "read target table before alter"
@@ -202,23 +197,24 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             .context = "schema-qualified alter",
         }
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "target", &after_table),
         MYLITE_OK,
         "read target table after alter"
     );
-    failures += expect_int64(after_table.table_id, before_table.table_id, "table id unchanged");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_int64(after_table.table_id, before_table.table_id, "table id unchanged");
+    failures += mylite_test_expect_text(
         after_table.physical_name,
         before_table.physical_name,
         "physical name unchanged"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.descriptor_version,
         before_table.descriptor_version,
         "alter preserves table descriptor version"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.updated_catalog_generation,
         before_table.updated_catalog_generation,
         "alter preserves table updated generation"
@@ -226,14 +222,14 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before,
             "alter preserves catalog generation"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before,
             "alter preserves SQLite schema generation"
@@ -293,30 +289,34 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             .context = "legacy unicode collation",
         }
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "target", &after_table),
         MYLITE_OK,
         "read target table after collation change"
     );
-    failures += expect_text(after_table.default_charset, "utf8mb4", "alter stores table charset");
-    failures += expect_text(
+    failures += mylite_test_expect_text(
+        after_table.default_charset,
+        "utf8mb4",
+        "alter stores table charset"
+    );
+    failures += mylite_test_expect_text(
         after_table.default_collation,
         "utf8mb4_unicode_ci",
         "alter stores table collation"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.descriptor_version,
         before_table.descriptor_version + 1U,
         "alter bumps table descriptor version"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.updated_catalog_generation,
         catalog_generation_before + 1U,
         "alter updates table generation"
     );
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before + 1U,
             "alter updates catalog generation"
@@ -324,7 +324,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     }
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before,
             "collation alter preserves SQLite schema generation"
@@ -342,31 +342,34 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             .context = "charset-only alter resets default collation",
         }
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "target", &after_table),
         MYLITE_OK,
         "read target table after charset-only reset"
     );
-    failures +=
-        expect_text(after_table.default_charset, "utf8mb4", "charset-only alter keeps utf8mb4");
-    failures += expect_text(
+    failures += mylite_test_expect_text(
+        after_table.default_charset,
+        "utf8mb4",
+        "charset-only alter keeps utf8mb4"
+    );
+    failures += mylite_test_expect_text(
         after_table.default_collation,
         "utf8mb4_0900_ai_ci",
         "charset-only alter resets table collation"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.descriptor_version,
         before_table.descriptor_version + 1U,
         "charset-only alter reset bumps descriptor version"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.updated_catalog_generation,
         catalog_generation_before + 1U,
         "charset-only alter reset updates table generation"
     );
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before + 1U,
             "charset-only alter reset updates catalog generation"
@@ -374,7 +377,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     }
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before,
             "charset-only alter reset preserves SQLite schema generation"
@@ -450,7 +453,8 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
         "alter preserves preamble"
     );
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
     failures += execute_statement_ok(database, "USE app");
     failures += expect_show_create_single_int(
         database,
@@ -488,12 +492,13 @@ static int test_alter_table_default_charset_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_error(
         database,
@@ -656,15 +661,17 @@ static int test_independent_alter_table_default_charset_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent-first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent-second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent-first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent-second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
     failures += execute_statement_ok(first, "CREATE DATABASE app");
     failures += execute_statement_ok(first, "USE app");
     failures += execute_statement_ok(first, "CREATE TABLE target (id INT)");
@@ -733,10 +740,10 @@ static int expect_alter_ok(mylite_db *database, struct alter_form form) {
         return failures + 1;
     }
 
-    failures += expect_size(mylite_result_column_count(result), 0U, form.context);
-    failures += expect_size(mylite_result_row_count(result), 0U, form.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, form.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, form.context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, form.context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, form.context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, form.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, form.context);
 
     mylite_result_free(result);
     return failures;
@@ -785,8 +792,13 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
         return failures + 1;
     }
 
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t row = 0U; row < query.row_count; ++row) {
         for (size_t column = 0U; column < query.column_count; ++column) {
             failures += expect_result_value(
@@ -888,36 +900,13 @@ static int execute_error_with_length(
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, context);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, context);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, context);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, context);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, context);
+    failures +=
+        mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, context);
     mylite_result_free(result);
 
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_alter_table_default_charset_%s_%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path for %s\n", name);
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -952,66 +941,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     }
     fclose(file);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected text [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected text [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
 }
 
 static int expect_bytes(

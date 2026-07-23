@@ -29,10 +29,6 @@ static int test_ddl_key_type_surfaces(void);
 static int execute_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query_values(mylite_db *database, struct expected_query query);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_not_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
@@ -60,8 +56,11 @@ static int test_ddl_key_type_surfaces(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures +=
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open transient database"
+    );
     if (failures != 0) {
         return failures;
     }
@@ -93,7 +92,7 @@ static int test_ddl_key_type_surfaces(void) {
     failures += execute_ok(database, "CREATE TABLE keyed (a INT, KEY k_a (a) KEY_BLOCK_SIZE=1024)");
     failures += execute_ok(database, "CREATE INDEX k_a2 ON keyed (a) KEY_BLOCK_SIZE 512");
     failures += execute_ok(database, "ALTER TABLE keyed ADD KEY k_a3 (a) KEY_BLOCK_SIZE=256");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(
             database,
             "SHOW CREATE TABLE keyed",
@@ -106,14 +105,25 @@ static int test_ddl_key_type_surfaces(void) {
     if (result != NULL && mylite_result_row_count(result) == 1U) {
         const char *create_sql = mylite_result_value_text(result, 0U, 1U);
 
-        failures += expect_contains(create_sql, "KEY `k_a` (`a`)", "created key_block_size index");
-        failures +=
-            expect_contains(create_sql, "KEY `k_a2` (`a`)", "standalone key_block_size index");
-        failures += expect_contains(create_sql, "KEY `k_a3` (`a`)", "alter key_block_size index");
+        failures += mylite_test_expect_contains(
+            create_sql,
+            "KEY `k_a` (`a`)",
+            "created key_block_size index"
+        );
+        failures += mylite_test_expect_contains(
+            create_sql,
+            "KEY `k_a2` (`a`)",
+            "standalone key_block_size index"
+        );
+        failures += mylite_test_expect_contains(
+            create_sql,
+            "KEY `k_a3` (`a`)",
+            "alter key_block_size index"
+        );
         failures +=
             expect_not_contains(create_sql, "KEY_BLOCK_SIZE", "ignored index key_block_size");
     } else {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             result == NULL ? 0U : mylite_result_row_count(result),
             1U,
             "show create keyed row count"
@@ -224,13 +234,23 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, "error code");
+    failures +=
+        mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        "error message"
+    );
     if (result != NULL) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "failed result columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "failed result rows");
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            0U,
+            "failed result columns"
+        );
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "failed result rows");
     }
     mylite_result_free(result);
     return failures;
@@ -241,19 +261,24 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int rc = mylite_execute(database, query.sql, strlen(query.sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, query.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, query.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", query.sql, mylite_errmsg(database));
         mylite_result_free(result);
         return failures;
     }
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t row = 0U; row < query.row_count; ++row) {
         for (size_t column = 0U; column < query.column_count; ++column) {
             size_t index = (row * query.column_count) + column;
 
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_value_text(result, row, column),
                 query.values == NULL ? NULL : query.values[index],
                 query.context
@@ -262,53 +287,6 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     }
     mylite_result_free(result);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
 }
 
 static int expect_not_contains(const char *actual, const char *needle, const char *context) {

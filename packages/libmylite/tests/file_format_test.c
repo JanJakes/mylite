@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -11,7 +13,6 @@ static int test_legacy_preamble_is_committed(void);
 static int test_version_two_preamble_retains_lifecycle(void);
 static int test_preamble_validate_rejects_corruption(void);
 static int test_preamble_u16_is_big_endian(void);
-static int expect_int(int actual, int expected, const char *context);
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
@@ -47,7 +48,7 @@ static int test_preamble_init_sets_format_fields(void) {
         MYLITE_FILE_FORMAT_VERSION,
         "format version"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_COMMITTED,
         "committed lifecycle state"
@@ -58,7 +59,8 @@ static int test_preamble_init_sets_format_fields(void) {
         MYLITE_FILE_RESERVED_SIZE,
         "reserved bytes"
     );
-    failures += expect_int(mylite_file_preamble_validate(preamble), 1, "validate initialized");
+    failures +=
+        mylite_test_expect_int(mylite_file_preamble_validate(preamble), 1, "validate initialized");
 
     return failures;
 }
@@ -68,25 +70,32 @@ static int test_preamble_lifecycle_states(void) {
     int failures = 0;
 
     mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INITIALIZING,
         "initializing lifecycle state"
     );
-    failures += expect_int(mylite_file_preamble_validate(preamble), 0, "initializing not openable");
+    failures += mylite_test_expect_int(
+        mylite_file_preamble_validate(preamble),
+        0,
+        "initializing not openable"
+    );
 
     mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
         "recovery-required lifecycle state"
     );
-    failures +=
-        expect_int(mylite_file_preamble_validate(preamble), 0, "recovery-required not openable");
+    failures += mylite_test_expect_int(
+        mylite_file_preamble_validate(preamble),
+        0,
+        "recovery-required not openable"
+    );
 
     mylite_file_preamble_init(preamble);
     preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = invalid_lifecycle_state_byte;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INVALID,
         "invalid lifecycle state"
@@ -102,15 +111,19 @@ static int test_legacy_preamble_is_committed(void) {
     memset(preamble, 0, sizeof(preamble));
     memcpy(preamble, MYLITE_FILE_MAGIC_TEXT, MYLITE_FILE_MAGIC_SIZE);
     preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET + 1U] = MYLITE_FILE_LEGACY_FORMAT_VERSION;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_COMMITTED,
         "legacy lifecycle state"
     );
-    failures += expect_int(mylite_file_preamble_validate(preamble), 1, "legacy preamble validates");
+    failures += mylite_test_expect_int(
+        mylite_file_preamble_validate(preamble),
+        1,
+        "legacy preamble validates"
+    );
 
     preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = 1U;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INVALID,
         "legacy reserved bytes remain zero"
@@ -126,7 +139,7 @@ static int test_version_two_preamble_retains_lifecycle(void) {
     mylite_file_preamble_init(preamble);
     preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET] = 0U;
     preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET + 1U] = MYLITE_FILE_LIFECYCLE_FORMAT_VERSION;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_COMMITTED,
         "version two committed lifecycle"
@@ -138,7 +151,7 @@ static int test_version_two_preamble_retains_lifecycle(void) {
     );
 
     preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = MYLITE_FILE_LIFECYCLE_INITIALIZING;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INITIALIZING,
         "version two initializing lifecycle"
@@ -155,16 +168,22 @@ static int test_preamble_validate_rejects_corruption(void) {
 
     mylite_file_preamble_init(preamble);
     preamble[0] ^= invalid_magic_mask;
-    failures += expect_int(mylite_file_preamble_validate(preamble), 0, "reject invalid magic");
+    failures +=
+        mylite_test_expect_int(mylite_file_preamble_validate(preamble), 0, "reject invalid magic");
 
     mylite_file_preamble_init(preamble);
     preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET + 1U] =
         (unsigned char)(MYLITE_FILE_FORMAT_VERSION + 1);
-    failures += expect_int(mylite_file_preamble_validate(preamble), 0, "reject invalid version");
+    failures += mylite_test_expect_int(
+        mylite_file_preamble_validate(preamble),
+        0,
+        "reject invalid version"
+    );
 
     mylite_file_preamble_init(preamble);
     preamble[MYLITE_FILE_RESERVED_OFFSET] = 1U;
-    failures += expect_int(mylite_file_preamble_validate(preamble), 0, "reject reserved byte");
+    failures +=
+        mylite_test_expect_int(mylite_file_preamble_validate(preamble), 0, "reject reserved byte");
 
     return failures;
 }
@@ -184,15 +203,6 @@ static int test_preamble_u16_is_big_endian(void) {
         expect_u16(mylite_file_preamble_get_u16(bytes, 1U), expected_second_u16, "second u16");
 
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
 }
 
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context) {

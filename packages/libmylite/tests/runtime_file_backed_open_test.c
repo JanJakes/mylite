@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -63,8 +65,6 @@ static int path_is_symlink(const char *path);
 static int initialization_child_main(const struct initialization_child_paths *paths);
 static int wait_for_path(const char *path);
 static int path_exists(const char *path);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int write_file_bytes(const char *path, const void *bytes, size_t size);
@@ -77,11 +77,9 @@ static int execute_sql(sqlite3 *connection, const char *sql);
 static int query_single_int(sqlite3 *connection, const char *sql, int *out_value);
 static int query_single_text_equals(sqlite3 *connection, const char *sql, const char *expected);
 static int table_exists(sqlite3 *connection, const char *table_name, int *out_exists);
-static int expect_int(int actual, int expected, const char *context);
 static int expect_long(long actual, long expected, const char *context);
 static int expect_int64(sqlite3_int64 actual, sqlite3_int64 expected, const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
-static int expect_true(int condition, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -134,11 +132,17 @@ static int test_open_rejects_invalid_arguments(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open(NULL, &database), MYLITE_MISUSE, "reject NULL path");
-    failures += expect_true(database == NULL, "NULL path leaves output null");
-    failures += expect_int(mylite_open("", &database), MYLITE_MISUSE, "reject empty path");
-    failures += expect_true(database == NULL, "empty path leaves output null");
-    failures += expect_int(mylite_open("unused.mylite", NULL), MYLITE_MISUSE, "reject NULL output");
+    failures +=
+        mylite_test_expect_int(mylite_open(NULL, &database), MYLITE_MISUSE, "reject NULL path");
+    failures += mylite_test_expect_true(database == NULL, "NULL path leaves output null");
+    failures +=
+        mylite_test_expect_int(mylite_open("", &database), MYLITE_MISUSE, "reject empty path");
+    failures += mylite_test_expect_true(database == NULL, "empty path leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open("unused.mylite", NULL),
+        MYLITE_MISUSE,
+        "reject NULL output"
+    );
 
     return failures;
 }
@@ -153,14 +157,18 @@ static int test_create_new_file_with_preamble_and_shifted_payload(void) {
     unsigned char payload_header[sqlite_header_size];
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "create") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "create") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open new file-backed handle");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open new file-backed handle"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_true(sqlite != NULL, "file-backed SQLite connection exists");
+    failures += mylite_test_expect_true(sqlite != NULL, "file-backed SQLite connection exists");
     if (sqlite != NULL) {
         failures += execute_sql(
             sqlite,
@@ -171,8 +179,11 @@ static int test_create_new_file_with_preamble_and_shifted_payload(void) {
     mylite_close(database);
 
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
-    failures +=
-        expect_int(mylite_file_preamble_validate(preamble), 1, "created preamble validates");
+    failures += mylite_test_expect_int(
+        mylite_file_preamble_validate(preamble),
+        1,
+        "created preamble validates"
+    );
     failures += read_file_at(
         path,
         MYLITE_FILE_SQLITE_PAYLOAD_OFFSET,
@@ -196,12 +207,13 @@ static int test_reopen_existing_file_preserves_sqlite_payload(void) {
     int stored_value = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "reopen") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "reopen") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open file to populate");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open file to populate");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -213,18 +225,23 @@ static int test_reopen_existing_file_preserves_sqlite_payload(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen existing file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen existing file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_single_int(sqlite, "SELECT value FROM reopen_marker", &stored_value);
     }
-    failures += expect_int(stored_value, reopen_marker_value, "reopened payload preserves row");
+    failures +=
+        mylite_test_expect_int(stored_value, reopen_marker_value, "reopened payload preserves row");
     if (sqlite != NULL) {
         failures += execute_sql(sqlite, "UPDATE reopen_marker SET value = 74");
         failures += query_single_int(sqlite, "SELECT value FROM reopen_marker", &stored_value);
     }
-    failures +=
-        expect_int(stored_value, updated_reopen_marker_value, "reopened payload remains writable");
+    failures += mylite_test_expect_int(
+        stored_value,
+        updated_reopen_marker_value,
+        "reopened payload remains writable"
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -244,41 +261,47 @@ static int test_rejects_invalid_truncated_and_plain_sqlite_files(void) {
     long truncated_size = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "invalid") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "invalid") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(invalid_preamble);
     invalid_preamble[MYLITE_FILE_RESERVED_OFFSET] = 1U;
     failures += write_file_bytes(path, invalid_preamble, sizeof(invalid_preamble));
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject invalid preamble");
-    failures += expect_true(database == NULL, "invalid preamble leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject invalid preamble"
+    );
+    failures += mylite_test_expect_true(database == NULL, "invalid preamble leaves output null");
     failures += read_file_at(path, 0L, readback, sizeof(readback));
     failures +=
         expect_bytes(readback, invalid_preamble, sizeof(invalid_preamble), "invalid unchanged");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "truncated") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "truncated") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
     failures += write_file_bytes(path, truncated_bytes, sizeof(truncated_bytes));
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject truncated file");
-    failures += expect_true(database == NULL, "truncated preamble leaves output null");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject truncated file");
+    failures += mylite_test_expect_true(database == NULL, "truncated preamble leaves output null");
     failures += file_size(path, &truncated_size);
     failures +=
         expect_long(truncated_size, (long)sizeof(truncated_bytes), "truncated file unchanged");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "plain") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "plain") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
     failures += create_plain_sqlite_database(path);
     failures += read_file_at(path, 0L, plain_header, sizeof(plain_header));
     failures += expect_bytes(plain_header, sqlite_header, sizeof(sqlite_header), "plain SQLite");
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject plain SQLite");
-    failures += expect_true(database == NULL, "plain SQLite leaves output null");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject plain SQLite");
+    failures += mylite_test_expect_true(database == NULL, "plain SQLite leaves output null");
     failures += read_file_at(path, 0L, plain_header, sizeof(plain_header));
     failures +=
         expect_bytes(plain_header, sqlite_header, sizeof(sqlite_header), "plain SQLite unchanged");
@@ -305,26 +328,35 @@ static int test_independent_file_backed_handles_and_bootstrap_state(void) {
     int second_has_table = table_missing;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file handle");
+    failures += mylite_test_expect_int(
+        mylite_open(first_path, &first),
+        MYLITE_OK,
+        "open first file handle"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(second_path, &second),
+        MYLITE_OK,
+        "open second file handle"
+    );
 
     first_sqlite = mylite_connection_sqlite_for_test(first);
     second_sqlite = mylite_connection_sqlite_for_test(second);
     first_state = mylite_connection_sqlite_bootstrap_state_for_test(first);
     second_state = mylite_connection_sqlite_bootstrap_state_for_test(second);
 
-    failures += expect_true(first_sqlite != NULL, "first file SQLite exists");
-    failures += expect_true(second_sqlite != NULL, "second file SQLite exists");
-    failures += expect_true(first_sqlite != second_sqlite, "file SQLite handles are distinct");
-    failures += expect_true(first_state != NULL, "first bootstrap state exists");
-    failures += expect_true(second_state != NULL, "second bootstrap state exists");
+    failures += mylite_test_expect_true(first_sqlite != NULL, "first file SQLite exists");
+    failures += mylite_test_expect_true(second_sqlite != NULL, "second file SQLite exists");
+    failures +=
+        mylite_test_expect_true(first_sqlite != second_sqlite, "file SQLite handles are distinct");
+    failures += mylite_test_expect_true(first_state != NULL, "first bootstrap state exists");
+    failures += mylite_test_expect_true(second_state != NULL, "second bootstrap state exists");
     if (first_state != NULL) {
         failures += expect_bool(first_state->initialized, true, "first bootstrap initialized");
         failures +=
@@ -356,8 +388,10 @@ static int test_independent_file_backed_handles_and_bootstrap_state(void) {
         failures += table_exists(first_sqlite, "file_marker", &first_has_table);
         failures += table_exists(second_sqlite, "file_marker", &second_has_table);
     }
-    failures += expect_int(first_has_table, table_present, "first file has marker table");
-    failures += expect_int(second_has_table, table_missing, "second file lacks marker table");
+    failures +=
+        mylite_test_expect_int(first_has_table, table_present, "first file has marker table");
+    failures +=
+        mylite_test_expect_int(second_has_table, table_missing, "second file lacks marker table");
 
     mylite_close(second);
     mylite_close(first);
@@ -380,12 +414,16 @@ static int test_reopens_legacy_version_one_file(void) {
     int stored_value = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "legacy_v1") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "legacy_v1") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create legacy source file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "create legacy source file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -403,12 +441,14 @@ static int test_reopens_legacy_version_one_file(void) {
         legacy_version_and_state,
         sizeof(legacy_version_and_state)
     );
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen legacy v1 file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen legacy v1 file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_single_int(sqlite, "SELECT value FROM legacy_marker", &stored_value);
     }
-    failures += expect_int(stored_value, reopen_marker_value, "legacy v1 payload value");
+    failures +=
+        mylite_test_expect_int(stored_value, reopen_marker_value, "legacy v1 payload value");
 
     mylite_close(database);
     remove_related_files(path);
@@ -424,45 +464,61 @@ static int test_rejects_incomplete_lifecycle_files(void) {
     long stored_size = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "empty_existing") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "empty_existing") != 0) {
         return 1;
     }
     remove_related_files(path);
     failures += write_file_bytes(path, "", 0U);
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject empty existing file");
-    failures += expect_true(database == NULL, "empty existing file leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject empty existing file"
+    );
+    failures += mylite_test_expect_true(database == NULL, "empty existing file leaves output null");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "preamble_only") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "preamble_only") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(preamble);
     failures += write_file_bytes(path, preamble, sizeof(preamble));
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject preamble-only file");
-    failures += expect_true(database == NULL, "preamble-only file leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject preamble-only file"
+    );
+    failures += mylite_test_expect_true(database == NULL, "preamble-only file leaves output null");
     failures += file_size(path, &stored_size);
     failures +=
         expect_long(stored_size, MYLITE_FILE_PREAMBLE_SIZE, "preamble-only file remains unchanged");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "lifecycle") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "lifecycle") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create lifecycle file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "create lifecycle file");
     mylite_close(database);
     database = NULL;
 
     failures += write_file_at(path, MYLITE_FILE_LIFECYCLE_STATE_OFFSET, &state, sizeof(state));
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject initializing file");
-    failures += expect_true(database == NULL, "initializing file leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject initializing file"
+    );
+    failures += mylite_test_expect_true(database == NULL, "initializing file leaves output null");
     state = MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED;
     failures += write_file_at(path, MYLITE_FILE_LIFECYCLE_STATE_OFFSET, &state, sizeof(state));
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject recovery-required file"
+    );
     failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject recovery-required file");
-    failures += expect_true(database == NULL, "recovery-required file leaves output null");
+        mylite_test_expect_true(database == NULL, "recovery-required file leaves output null");
 
     remove_related_files(path);
     return failures;
@@ -475,23 +531,27 @@ static int test_rejects_second_opener_during_initialization(void) {
     sqlite3 *initializing = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "concurrent_initialization") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "concurrent_initialization") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_storage_open_sqlite_payload(path, &initializing),
         MYLITE_OK,
         "open initializing payload owner"
     );
-    failures +=
-        expect_int(mylite_open(path, &second), MYLITE_ERROR, "reject second initialization opener");
-    failures += expect_true(second == NULL, "second initialization opener stays null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &second),
+        MYLITE_ERROR,
+        "reject second initialization opener"
+    );
+    failures += mylite_test_expect_true(second == NULL, "second initialization opener stays null");
     mylite_storage_abort_sqlite_initialization(initializing);
-    failures += expect_int(sqlite3_close(initializing), SQLITE_OK, "close initializing owner");
+    failures +=
+        mylite_test_expect_int(sqlite3_close(initializing), SQLITE_OK, "close initializing owner");
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
         "aborted owner marks recovery required"
@@ -518,7 +578,7 @@ static int test_rejects_concurrent_process_opener(const char *executable_path) {
     (void)executable_path;
 #endif
 
-    if (make_test_path(path, sizeof(path), "concurrent_process_initialization") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "concurrent_process_initialization") != 0) {
         return 1;
     }
     written = snprintf(ready_path, sizeof(ready_path), "%s-ready", path);
@@ -560,29 +620,35 @@ static int test_rejects_concurrent_process_opener(const char *executable_path) {
     } else {
         failures += wait_for_path(ready_path);
         if (failures == 0) {
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 mylite_open(path, &second),
                 MYLITE_ERROR,
                 "reject concurrent process initialization opener"
             );
-            failures +=
-                expect_true(second == NULL, "concurrent process initialization opener stays null");
+            failures += mylite_test_expect_true(
+                second == NULL,
+                "concurrent process initialization opener stays null"
+            );
         }
         failures += write_file_bytes(release_path, "", 0U);
 #ifdef _WIN32
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             _cwait(&child_status, child, 0) != -1,
             "wait for concurrent initialization owner"
         );
-        failures += expect_int(child_status, 0, "concurrent initialization owner status");
+        failures +=
+            mylite_test_expect_int(child_status, 0, "concurrent initialization owner status");
 #else
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             waitpid(child, &child_status, 0) == child,
             "wait for concurrent initialization owner"
         );
         if (WIFEXITED(child_status)) {
-            failures +=
-                expect_int(WEXITSTATUS(child_status), 0, "concurrent initialization owner status");
+            failures += mylite_test_expect_int(
+                WEXITSTATUS(child_status),
+                0,
+                "concurrent initialization owner status"
+            );
         } else {
             failures += 1;
         }
@@ -605,28 +671,36 @@ static int test_vfs_fault_injection(void) {
     int close_rc = SQLITE_OK;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "vfs_faults") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "vfs_faults") != 0) {
         return 1;
     }
     remove_related_files(path);
 
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_CREATE, 1U);
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject create failure");
-    failures += expect_true(database == NULL, "create failure leaves output null");
     failures +=
-        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "create failpoint triggered");
-    failures += expect_int(path_exists(path), 0, "create failure leaves no file");
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject create failure");
+    failures += mylite_test_expect_true(database == NULL, "create failure leaves output null");
+    failures += mylite_test_expect_true(
+        mylite_storage_vfs_test_fault_was_triggered(),
+        "create failpoint triggered"
+    );
+    failures += mylite_test_expect_int(path_exists(path), 0, "create failure leaves no file");
     mylite_storage_vfs_test_clear_fault();
 
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_WRITE, 1U);
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject preamble write failure");
-    failures += expect_true(database == NULL, "write failure leaves output null");
-    failures +=
-        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "write failpoint triggered");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "inject preamble write failure"
+    );
+    failures += mylite_test_expect_true(database == NULL, "write failure leaves output null");
+    failures += mylite_test_expect_true(
+        mylite_storage_vfs_test_fault_was_triggered(),
+        "write failpoint triggered"
+    );
     mylite_storage_vfs_test_clear_fault();
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
         "write failure marks recovery required"
@@ -634,77 +708,91 @@ static int test_vfs_fault_injection(void) {
     remove_related_files(path);
 
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_SYNC, 1U);
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject preamble sync failure");
-    failures += expect_true(database == NULL, "sync failure leaves output null");
-    failures +=
-        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "sync failpoint triggered");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "inject preamble sync failure"
+    );
+    failures += mylite_test_expect_true(database == NULL, "sync failure leaves output null");
+    failures += mylite_test_expect_true(
+        mylite_storage_vfs_test_fault_was_triggered(),
+        "sync failpoint triggered"
+    );
     mylite_storage_vfs_test_clear_fault();
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
         "sync failure marks recovery required"
     );
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create VFS fault file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "create VFS fault file");
     mylite_close(database);
     database = NULL;
 
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_OPEN, 1U);
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "inject existing open failure");
-    failures += expect_true(database == NULL, "open failure leaves output null");
-    failures +=
-        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "open failpoint triggered");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "inject existing open failure"
+    );
+    failures += mylite_test_expect_true(database == NULL, "open failure leaves output null");
+    failures += mylite_test_expect_true(
+        mylite_storage_vfs_test_fault_was_triggered(),
+        "open failpoint triggered"
+    );
     mylite_storage_vfs_test_clear_fault();
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_storage_open_sqlite_payload(path, &sqlite),
         MYLITE_OK,
         "open payload for direct VFS faults"
     );
     if (sqlite != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&file),
             SQLITE_OK,
             "load direct VFS file"
         );
     }
     if (file != NULL) {
-        failures +=
-            expect_int(file->pMethods->xFileSize(file, &logical_size), SQLITE_OK, "VFS size");
+        failures += mylite_test_expect_int(
+            file->pMethods->xFileSize(file, &logical_size),
+            SQLITE_OK,
+            "VFS size"
+        );
 
         mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_WRITE, 1U);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             file->pMethods->xWrite(file, preamble, 1, 0),
             SQLITE_IOERR_WRITE,
             "inject VFS write failure"
         );
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             mylite_storage_vfs_test_fault_was_triggered(),
             "direct write failpoint triggered"
         );
 
         mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_SYNC, 1U);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             file->pMethods->xSync(file, SQLITE_SYNC_FULL),
             SQLITE_IOERR_FSYNC,
             "inject VFS sync failure"
         );
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             mylite_storage_vfs_test_fault_was_triggered(),
             "direct sync failpoint triggered"
         );
 
         mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_TRUNCATE, 1U);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             file->pMethods->xTruncate(file, logical_size),
             SQLITE_IOERR_TRUNCATE,
             "inject VFS truncate failure"
         );
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             mylite_storage_vfs_test_fault_was_triggered(),
             "truncate failpoint triggered"
         );
@@ -713,9 +801,11 @@ static int test_vfs_fault_injection(void) {
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_CLOSE, 1U);
     close_rc = sqlite3_close(sqlite);
     sqlite = NULL;
-    failures +=
-        expect_true(mylite_storage_vfs_test_fault_was_triggered(), "close failpoint triggered");
-    failures += expect_true(
+    failures += mylite_test_expect_true(
+        mylite_storage_vfs_test_fault_was_triggered(),
+        "close failpoint triggered"
+    );
+    failures += mylite_test_expect_true(
         close_rc == SQLITE_OK || close_rc == SQLITE_IOERR_CLOSE,
         "close injection returns a documented SQLite close status"
     );
@@ -731,22 +821,24 @@ static int test_vfs_fault_injection(void) {
         } else {
             failures += write_file_bytes(delete_path, "delete", sizeof("delete"));
             mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_DELETE, 1U);
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 vfs->xDelete(vfs, delete_path, 0),
                 SQLITE_IOERR_DELETE,
                 "inject VFS delete failure"
             );
-            failures += expect_true(
+            failures += mylite_test_expect_true(
                 mylite_storage_vfs_test_fault_was_triggered(),
                 "delete failpoint triggered"
             );
-            failures += expect_int(path_exists(delete_path), 1, "failed delete preserves file");
+            failures +=
+                mylite_test_expect_int(path_exists(delete_path), 1, "failed delete preserves file");
             mylite_storage_vfs_test_clear_fault();
             (void)remove(delete_path);
         }
     }
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen after VFS faults");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen after VFS faults");
     mylite_close(database);
     remove_related_files(path);
     return failures;
@@ -783,22 +875,23 @@ static int test_lock_byte_gap_mapping(void) {
     int failures = 0;
     size_t page_index = 0U;
 
-    if (make_test_path(path, sizeof(path), "lock_gap") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "lock_gap") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create lock-gap file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "create lock-gap file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&main_file),
             SQLITE_OK,
             "get lock-gap main file"
         );
     }
     if (main_file != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xFileControl(main_file, SQLITE_FCNTL_CHUNK_SIZE, &chunk_size),
             SQLITE_OK,
             "disable incompatible physical chunk sizing"
@@ -811,7 +904,7 @@ static int test_lock_byte_gap_mapping(void) {
             for (byte_index = 0; byte_index < page_size; ++byte_index) {
                 page[byte_index] = (unsigned char)(byte_index + page_size);
             }
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 main_file->pMethods->xWrite(
                     main_file,
                     page,
@@ -821,7 +914,7 @@ static int test_lock_byte_gap_mapping(void) {
                 SQLITE_OK,
                 "write supported page size across logical lock split"
             );
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 main_file->pMethods->xRead(
                     main_file,
                     page_readback,
@@ -838,7 +931,7 @@ static int test_lock_byte_gap_mapping(void) {
                 "supported page-size logical readback"
             );
         }
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xWrite(
                 main_file,
                 crossing_bytes,
@@ -848,7 +941,7 @@ static int test_lock_byte_gap_mapping(void) {
             SQLITE_OK,
             "write across logical lock split"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xRead(
                 main_file,
                 readback,
@@ -864,7 +957,7 @@ static int test_lock_byte_gap_mapping(void) {
             sizeof(crossing_bytes),
             "crossing logical readback"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xFileSize(main_file, &logical_size),
             SQLITE_OK,
             "read sparse logical size"
@@ -874,19 +967,19 @@ static int test_lock_byte_gap_mapping(void) {
             MYLITE_FILE_LOCK_GAP_LOGICAL_OFFSET + (maximum_page_size / 2),
             "sparse logical size"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xFileControl(main_file, SQLITE_FCNTL_MMAP_SIZE, &mmap_size),
             SQLITE_OK,
             "disable mapped I/O"
         );
         failures += expect_int64(mmap_size, 0, "mapped I/O size remains zero");
         characteristics = main_file->pMethods->xDeviceCharacteristics(main_file);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             characteristics & atomic_capabilities,
             0,
             "shifted VFS clears atomic-write capabilities"
         );
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             main_file->pMethods->xSectorSize(main_file) > 0 &&
                 MYLITE_FILE_SQLITE_PAYLOAD_OFFSET % main_file->pMethods->xSectorSize(main_file) ==
                     0,
@@ -928,33 +1021,35 @@ static int test_legacy_lock_boundary_containment(void) {
     sqlite3_file *main_file = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "legacy_lock_limit") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "legacy_lock_limit") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create legacy-limit file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "create legacy-limit file");
     mylite_close(database);
     database = NULL;
     failures +=
         write_file_at(path, MYLITE_FILE_FORMAT_VERSION_OFFSET, version_two, sizeof(version_two));
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open version-two file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open version-two file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, (void *)&main_file),
             SQLITE_OK,
             "get legacy main file"
         );
     }
     if (main_file != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xWrite(main_file, &marker, 1, MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE),
             SQLITE_FULL,
             "reject legacy write into physical lock range"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             main_file->pMethods->xTruncate(main_file, MYLITE_FILE_LEGACY_MAX_LOGICAL_SIZE + 1),
             SQLITE_FULL,
             "reject legacy truncate into physical lock range"
@@ -964,9 +1059,13 @@ static int test_legacy_lock_boundary_containment(void) {
     database = NULL;
 
     failures += write_file_at(path, MYLITE_FILE_PHYSICAL_LOCK_BYTE, &marker, sizeof(marker));
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject oversized version-two file"
+    );
     failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject oversized version-two file");
-    failures += expect_true(database == NULL, "oversized version-two output remains null");
+        mylite_test_expect_true(database == NULL, "oversized version-two output remains null");
 
     remove_related_files(path);
     return failures;
@@ -978,12 +1077,13 @@ static int test_journal_mode_policy(void) {
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "journal_policy") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "journal_policy") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open journal-policy file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open journal-policy file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_single_text_equals(sqlite, "PRAGMA journal_mode", "delete");
@@ -992,9 +1092,13 @@ static int test_journal_mode_policy(void) {
     }
 
     mylite_close(database);
-    failures += expect_int(file_exists_with_suffix(path, "-wal"), 0, "WAL file is not created");
     failures +=
-        expect_int(file_exists_with_suffix(path, "-shm"), 0, "shared-memory file is not created");
+        mylite_test_expect_int(file_exists_with_suffix(path, "-wal"), 0, "WAL file is not created");
+    failures += mylite_test_expect_int(
+        file_exists_with_suffix(path, "-shm"),
+        0,
+        "shared-memory file is not created"
+    );
 
     remove_related_files(path);
     return failures;
@@ -1009,7 +1113,7 @@ static int test_process_death_leaves_initializing_file_rejected(void) {
     int child_status = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "initialization_process_death") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "initialization_process_death") != 0) {
         return 1;
     }
     remove_related_files(path);
@@ -1030,25 +1134,28 @@ static int test_process_death_leaves_initializing_file_rejected(void) {
         fprintf(stderr, "wait for initialization owner failed\n");
         failures += 1;
     } else {
-        failures += expect_true(WIFEXITED(child_status), "initialization owner exited");
+        failures += mylite_test_expect_true(WIFEXITED(child_status), "initialization owner exited");
         if (WIFEXITED(child_status)) {
-            failures +=
-                expect_int(WEXITSTATUS(child_status), 0, "initialization owner opened payload");
+            failures += mylite_test_expect_int(
+                WEXITSTATUS(child_status),
+                0,
+                "initialization owner opened payload"
+            );
         }
     }
 
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_INITIALIZING,
         "process death preserves initializing state"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open(path, &database),
         MYLITE_ERROR,
         "reject initializer process-death file"
     );
-    failures += expect_true(database == NULL, "process-death file leaves output null");
+    failures += mylite_test_expect_true(database == NULL, "process-death file leaves output null");
 
     remove_related_files(path);
     return failures;
@@ -1065,7 +1172,7 @@ static int test_abort_marks_opened_identity_recovery_required(void) {
     int failures = 0;
     int written = 0;
 
-    if (make_test_path(path, sizeof(path), "identity_replacement") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "identity_replacement") != 0) {
         return 1;
     }
     written = snprintf(owned_path, sizeof(owned_path), "%s-owned", path);
@@ -1075,15 +1182,19 @@ static int test_abort_marks_opened_identity_recovery_required(void) {
     remove_related_files(path);
     remove_related_files(owned_path);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_storage_open_sqlite_payload(path, &initializing),
         MYLITE_OK,
         "open identity owner"
     );
-    failures += expect_int(rename(path, owned_path), 0, "rename opened identity");
+    failures += mylite_test_expect_int(rename(path, owned_path), 0, "rename opened identity");
     failures += write_file_bytes(path, replacement, sizeof(replacement));
     mylite_storage_abort_sqlite_initialization(initializing);
-    failures += expect_int(sqlite3_close(initializing), SQLITE_OK, "close renamed identity owner");
+    failures += mylite_test_expect_int(
+        sqlite3_close(initializing),
+        SQLITE_OK,
+        "close renamed identity owner"
+    );
 
     failures += read_file_at(path, 0L, replacement_readback, sizeof(replacement_readback));
     failures += expect_bytes(
@@ -1093,7 +1204,7 @@ static int test_abort_marks_opened_identity_recovery_required(void) {
         "replacement path remains unchanged"
     );
     failures += read_file_at(owned_path, 0L, owned_preamble, sizeof(owned_preamble));
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(owned_preamble),
         MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
         "opened identity receives recovery state"
@@ -1116,7 +1227,7 @@ static int test_symlink_failure_preserves_path_identity(void) {
     int symlink_rc = 0;
     int written = 0;
 
-    if (make_test_path(link_path, sizeof(link_path), "symlink_identity") != 0) {
+    if (mylite_test_make_path(link_path, sizeof(link_path), "symlink_identity") != 0) {
         return 1;
     }
     written = snprintf(target_path, sizeof(target_path), "%s-target", link_path);
@@ -1132,17 +1243,21 @@ static int test_symlink_failure_preserves_path_identity(void) {
         remove_related_files(target_path);
         return failures;
     }
-    failures += expect_int(symlink_rc, 0, "create database symlink");
+    failures += mylite_test_expect_int(symlink_rc, 0, "create database symlink");
     if (symlink_rc != 0) {
         remove_related_files(link_path);
         remove_related_files(target_path);
         return failures;
     }
 
+    failures += mylite_test_expect_int(
+        mylite_open(link_path, &database),
+        MYLITE_ERROR,
+        "reject symlink target"
+    );
+    failures += mylite_test_expect_true(database == NULL, "symlink failure leaves output null");
     failures +=
-        expect_int(mylite_open(link_path, &database), MYLITE_ERROR, "reject symlink target");
-    failures += expect_true(database == NULL, "symlink failure leaves output null");
-    failures += expect_int(path_is_symlink(link_path), 1, "failed open preserves symlink");
+        mylite_test_expect_int(path_is_symlink(link_path), 1, "failed open preserves symlink");
     failures += read_file_at(target_path, 0L, readback, sizeof(readback));
     failures += expect_bytes(
         readback,
@@ -1193,12 +1308,13 @@ static int test_hot_journal_recovery_after_process_death(void) {
     int changed_rows = -1;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "hot_journal") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "hot_journal") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "create recovery file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "create recovery file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -1242,18 +1358,23 @@ static int test_hot_journal_recovery_after_process_death(void) {
         fprintf(stderr, "wait for recovery writer failed\n");
         failures += 1;
     } else {
-        failures += expect_true(WIFEXITED(child_status), "recovery writer exited");
+        failures += mylite_test_expect_true(WIFEXITED(child_status), "recovery writer exited");
         if (WIFEXITED(child_status)) {
-            failures += expect_int(WEXITSTATUS(child_status), 0, "recovery writer updated rows");
+            failures += mylite_test_expect_int(
+                WEXITSTATUS(child_status),
+                0,
+                "recovery writer updated rows"
+            );
         }
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         file_exists_with_suffix(path, "-journal"),
         1,
         "interrupted transaction leaves rollback journal"
     );
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "recover hot journal");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "recover hot journal");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_single_int(
@@ -1262,9 +1383,10 @@ static int test_hot_journal_recovery_after_process_death(void) {
             &changed_rows
         );
     }
-    failures += expect_int(changed_rows, 0, "hot-journal rollback restores committed rows");
+    failures +=
+        mylite_test_expect_int(changed_rows, 0, "hot-journal rollback restores committed rows");
     mylite_close(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         file_exists_with_suffix(path, "-journal"),
         0,
         "hot rollback journal removed after recovery"
@@ -1317,41 +1439,6 @@ static int path_exists(const char *path) {
     }
     (void)fclose(file);
     return 1;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_file_backed_open_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return (int)getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -1644,15 +1731,6 @@ static int table_exists(sqlite3 *connection, const char *table_name, int *out_ex
     return 0;
 }
 
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
 static int expect_long(long actual, long expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %ld, got %ld\n", context, expected, actual);
@@ -1680,15 +1758,6 @@ static int expect_int64(sqlite3_int64 actual, sqlite3_int64 expected, const char
 static int expect_bool(bool actual, bool expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %d, got %d\n", context, (int)expected, (int)actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
         return 1;
     }
 

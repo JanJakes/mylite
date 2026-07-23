@@ -42,10 +42,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -61,7 +57,11 @@ static int test_executable_ddl_aliases(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open alias database");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open alias database"
+    );
     if (failures != 0) {
         return failures;
     }
@@ -129,8 +129,11 @@ static int test_ddl_residual_runtime(void) {
     };
     int failures = 0;
 
-    failures +=
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open residual database");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open residual database"
+    );
     if (failures != 0) {
         return failures;
     }
@@ -196,8 +199,11 @@ static int test_duplicate_column_defaults(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures +=
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open defaults database");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open defaults database"
+    );
     if (failures != 0) {
         return failures;
     }
@@ -223,7 +229,7 @@ static int execute_statement_ok(mylite_db *database, const char *sql) {
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, sql);
     if (rc != MYLITE_OK) {
         fprintf(
             stderr,
@@ -233,8 +239,9 @@ static int execute_statement_ok(mylite_db *database, const char *sql) {
             mylite_errmsg(database)
         );
     }
-    failures += expect_size(mylite_result_column_count(result), 0U, "statement columns");
-    failures += expect_size(mylite_result_row_count(result), 0U, "statement rows");
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), 0U, "statement columns");
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, "statement rows");
     mylite_result_free(result);
     return failures;
 }
@@ -244,13 +251,23 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, "error code");
+    failures +=
+        mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        "error message"
+    );
     if (result != NULL) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "failed result columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "failed result rows");
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            0U,
+            "failed result columns"
+        );
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "failed result rows");
     }
     mylite_result_free(result);
     return failures;
@@ -274,10 +291,14 @@ static int expect_alias_column_types(mylite_db *database) {
     int rc = mylite_execute(database, query, sizeof(query) - 1U, &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, "alias column type query");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, "alias column type query");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        alias_column_count,
+        "alias columns"
+    );
     failures +=
-        expect_size(mylite_result_column_count(result), alias_column_count, "alias columns");
-    failures += expect_size(mylite_result_row_count(result), alias_row_count, "alias rows");
+        mylite_test_expect_size(mylite_result_row_count(result), alias_row_count, "alias rows");
     for (size_t row = 0U; row < sizeof(expected) / sizeof(expected[0]); ++row) {
         failures += expect_result_value(result, row, 0U, expected[row], "alias column type");
     }
@@ -296,9 +317,14 @@ static int expect_duplicate_default_metadata(mylite_db *database) {
     int rc = mylite_execute(database, query, sizeof(query) - 1U, &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, "duplicate default metadata query");
-    failures += expect_size(mylite_result_column_count(result), 2U, "duplicate default columns");
-    failures += expect_size(mylite_result_row_count(result), 4U, "duplicate default rows");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, "duplicate default metadata query");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "duplicate default columns"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 4U, "duplicate default rows");
     for (size_t row = 0U; row < sizeof(expected_names) / sizeof(expected_names[0]); ++row) {
         failures +=
             expect_result_value(result, row, 0U, expected_names[row], "duplicate default name");
@@ -329,9 +355,9 @@ static int expect_query_single_value(
     int rc = mylite_execute(database, expected->sql, strlen(expected->sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, expected->context);
-    failures += expect_size(mylite_result_column_count(result), 1U, expected->context);
-    failures += expect_size(mylite_result_row_count(result), 1U, expected->context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected->context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 1U, expected->context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, expected->context);
     failures += expect_result_value(result, 0U, 0U, expected->value, expected->context);
     mylite_result_free(result);
     return failures;
@@ -345,52 +371,5 @@ static int expect_result_value(
     const char *context
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
-    return expect_text(actual, expected, context);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
+    return mylite_test_expect_text(actual, expected, context);
 }

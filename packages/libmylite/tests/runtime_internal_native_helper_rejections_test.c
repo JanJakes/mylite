@@ -25,9 +25,6 @@ static int test_rejected_names(mylite_db *database);
 static int test_rejected_contexts(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, struct expected_sql_error expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     return test_internal_native_helper_rejections() == 0 ? 0 : 1;
@@ -49,7 +46,11 @@ static int test_internal_native_helper_rejections(void) {
 static int open_app_database(mylite_db **out_database) {
     int failures = 0;
 
-    failures += expect_int(mylite_test_open_temporary(out_database), MYLITE_OK, "open database");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(out_database),
+        MYLITE_OK,
+        "open database"
+    );
     if (failures == 0) {
         failures += execute_ok(*out_database, "CREATE DATABASE app");
     }
@@ -235,45 +236,14 @@ static int execute_error(mylite_db *database, struct expected_sql_error expected
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, expected.context);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, expected.context);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, expected.context);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, expected.context);
+    failures +=
+        mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, expected.context);
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        expected.context
+    );
     mylite_result_free(result);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected text [%s], got [%s]\n",
-        context,
-        expected == NULL ? "(null)" : expected,
-        actual == NULL ? "(null)" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected text [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "(null)" : actual,
-        needle == NULL ? "(null)" : needle
-    );
-    return 1;
 }

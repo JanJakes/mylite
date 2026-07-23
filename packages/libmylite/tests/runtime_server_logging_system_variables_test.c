@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdbool.h>
@@ -47,11 +49,6 @@ static int expect_values(
 static int expect_show_value(mylite_db *database, struct expected_show_value expected);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-
 static const char log_slave_updates_warning[] =
     "'@@log_slave_updates' is deprecated and will be removed in a future release. "
     "Please use log_replica_updates instead.";
@@ -120,7 +117,7 @@ static int test_logging_values_show_and_scope(void) {
     char sql[sql_capacity];
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open logging db");
+    failures += mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open logging db");
     for (size_t index = 0U; index < sizeof(logging_variables) / sizeof(logging_variables[0]);
          ++index) {
         const struct logging_variable *variable = &logging_variables[index];
@@ -236,7 +233,8 @@ static int test_logging_set_and_diagnostics(void) {
     char sql[sql_capacity];
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open logging SET db");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open logging SET db");
     for (size_t index = 0U; index < sizeof(logging_variables) / sizeof(logging_variables[0]);
          ++index) {
         const struct logging_variable *variable = &logging_variables[index];
@@ -293,7 +291,8 @@ static int test_long_query_time_session_state(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open long_query_time db");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open long_query_time db");
     failures += expect_values(
         database,
         "SELECT @@long_query_time, @@SESSION.long_query_time, @@GLOBAL.long_query_time",
@@ -400,11 +399,15 @@ static int expect_values(
         );
         return 1;
     }
-    failures += expect_size(mylite_result_column_count(result), expected_count, context);
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), expected_count, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
     for (size_t column = 0U; column < expected_count; ++column) {
-        failures +=
-            expect_text(mylite_result_value_text(result, 0U, column), expected[column], context);
+        failures += mylite_test_expect_text(
+            mylite_result_value_text(result, 0U, column),
+            expected[column],
+            context
+        );
     }
     mylite_result_free(result);
     return failures;
@@ -444,52 +447,8 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "NULL" : actual,
-            needle == NULL ? "NULL" : needle
-        );
-        return 1;
-    }
-    return 0;
 }

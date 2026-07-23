@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdbool.h>
@@ -44,11 +46,6 @@ static int expect_values(
 static int expect_show_value(mylite_db *database, struct expected_show_value expected);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-
 static const char binlog_format_warning[] =
     "'@@binlog_format' is deprecated and will be removed in a future release.";
 static const char binlog_max_flush_queue_time_warning[] =
@@ -100,7 +97,8 @@ static int test_binary_log_values_show_and_scope(void) {
     char sql[sql_capacity];
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open binary-log db");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open binary-log db");
     for (size_t index = 0U; index < sizeof(binary_log_variables) / sizeof(binary_log_variables[0]);
          ++index) {
         const struct binary_log_variable *variable = &binary_log_variables[index];
@@ -181,7 +179,8 @@ static int test_binary_log_set_and_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open binary-log SET db");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open binary-log SET db");
 
     failures += execute_error(database, "SET binlog_cache_size = DEFAULT", global_only_set);
     failures += execute_statement_ok(database, "SET GLOBAL binlog_cache_size = DEFAULT");
@@ -232,7 +231,11 @@ static int test_binary_log_deprecation_warnings(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open binary-log warning db");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open binary-log warning db"
+    );
     failures += expect_values(
         database,
         "SELECT @@binlog_format, @@warning_count",
@@ -296,11 +299,15 @@ static int expect_values(
         );
         return 1;
     }
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
-    failures += expect_size(mylite_result_column_count(result), expected_count, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), expected_count, context);
     for (size_t column = 0U; column < expected_count; ++column) {
-        failures +=
-            expect_text(mylite_result_value_text(result, 0U, column), expected[column], context);
+        failures += mylite_test_expect_text(
+            mylite_result_value_text(result, 0U, column),
+            expected[column],
+            context
+        );
     }
     mylite_result_free(result);
     return failures;
@@ -322,12 +329,18 @@ static int expect_show_value(mylite_db *database, struct expected_show_value exp
         );
         return 1;
     }
-    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
-    failures += expect_size(mylite_result_column_count(result), 2U, expected.context);
-    failures +=
-        expect_text(mylite_result_value_text(result, 0U, 0U), expected.name, expected.context);
-    failures +=
-        expect_text(mylite_result_value_text(result, 0U, 1U), expected.value, expected.context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, expected.context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 2U, expected.context);
+    failures += mylite_test_expect_text(
+        mylite_result_value_text(result, 0U, 0U),
+        expected.name,
+        expected.context
+    );
+    failures += mylite_test_expect_text(
+        mylite_result_value_text(result, 0U, 1U),
+        expected.value,
+        expected.context
+    );
     mylite_result_free(result);
     return failures;
 }
@@ -355,53 +368,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "(null)" : expected,
-        actual == NULL ? "(null)" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "(null)" : actual,
-        needle == NULL ? "(null)" : needle
-    );
-    return 1;
 }

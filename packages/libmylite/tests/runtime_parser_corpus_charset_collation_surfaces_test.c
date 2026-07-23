@@ -23,9 +23,6 @@ static int expect_query_cells(
     const struct expected_cell *cells,
     size_t cell_count
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 
 int main(void) {
     return test_charset_collation_surfaces() == 0 ? 0 : 1;
@@ -71,8 +68,11 @@ static int test_charset_collation_surfaces(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures +=
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open transient database"
+    );
     if (failures != 0) {
         return failures;
     }
@@ -226,10 +226,10 @@ static int expect_query_cells(
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_size(mylite_result_row_count(result), expected_rows, sql);
-    failures += expect_size(mylite_result_column_count(result), expected_columns, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), expected_rows, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), expected_columns, sql);
     for (size_t index = 0U; index < cell_count; ++index) {
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_value_text(result, cells[index].row, cells[index].column),
             cells[index].expected,
             cells[index].context
@@ -237,34 +237,4 @@ static int expect_query_cells(
     }
     mylite_result_free(result);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
 }

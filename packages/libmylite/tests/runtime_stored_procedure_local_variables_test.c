@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -46,12 +48,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 
@@ -78,12 +74,13 @@ static int test_local_variable_procedure_calls(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "procedure_local_variables") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "procedure_local_variables") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open local variable db");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open local variable db");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(
@@ -106,7 +103,7 @@ static int test_local_variable_procedure_calls(void) {
     failures += execute_ok(database, "SHOW CREATE PROCEDURE p_defaults", &result);
     if (result != NULL && mylite_result_row_count(result) == 1U &&
         mylite_result_column_count(result) >= 3U) {
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(result, 0U, 2U),
             "DECLARE a INT",
             "show create local declarations"
@@ -179,12 +176,13 @@ static int test_local_variable_procedure_errors(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "procedure_local_variable_errors") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "procedure_local_variable_errors") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open local errors db");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open local errors db");
     failures += execute_error(
         database,
         "CREATE PROCEDURE p_no_db() BEGIN DECLARE a INT; SELECT a; END",
@@ -262,9 +260,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "%s: expected error, got success\n", sql);
         failures += 1;
     } else {
-        failures += expect_int(mylite_errcode(database), expected.code, sql);
-        failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-        failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+        failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+        failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+        failures +=
+            mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -276,12 +275,19 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int failures = execute_ok(database, query.sql, &result);
 
     if (failures == 0) {
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
     }
     for (size_t column = 0U; failures == 0 && column < query.column_count; ++column) {
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_column_name(result, column),
             query.column_names[column],
             query.context
@@ -315,61 +321,7 @@ static int expect_result_value(
         fprintf(stderr, "%s: expected [%s], got [%s]\n", context, expected, actual);
         return 1;
     }
-    return expect_text(actual, expected, context);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected [%s], got [%s]\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected [%s] to contain [%s]\n", context, actual, needle);
-    return 1;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(path, path_size, "/tmp/mylite_%s_%d.mylite", name, current_process_id());
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path for %s\n", name);
-        return -1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {

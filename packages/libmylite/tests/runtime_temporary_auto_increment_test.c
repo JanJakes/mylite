@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "storage/mylite_file_format.h"
@@ -66,16 +68,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -196,13 +191,14 @@ static int test_temporary_auto_increment_metadata_dml_and_persistence(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "metadata_dml") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "metadata_dml") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open metadata file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open metadata file");
     failures += seed_app_schema(database);
     failures += expect_statement(
         database,
@@ -554,7 +550,7 @@ static int test_temporary_auto_increment_metadata_dml_and_persistence(void) {
             .context = "temporary INSERT SELECT auto increment rows",
         }
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0, actual_preamble, sizeof(actual_preamble)),
         0,
         "read metadata preamble"
@@ -583,12 +579,13 @@ static int test_temporary_auto_increment_like_update_and_transaction(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "like_update_tx") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "like_update_tx") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open like/update file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open like/update file");
     failures += seed_app_schema(database);
     failures += expect_statement(
         database,
@@ -789,14 +786,14 @@ static int test_temporary_auto_increment_independent_handles(void) {
     mylite_db *reopened = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "independent") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "independent") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &first), MYLITE_OK, "open first handle");
+    failures += mylite_test_expect_int(mylite_open(path, &first), MYLITE_OK, "open first handle");
     failures += seed_app_schema(first);
-    failures += expect_int(mylite_open(path, &second), MYLITE_OK, "open second handle");
+    failures += mylite_test_expect_int(mylite_open(path, &second), MYLITE_OK, "open second handle");
     failures += expect_statement(second, "USE app", (struct expected_statement){0, 0U});
     failures += expect_statement(
         first,
@@ -841,7 +838,8 @@ static int test_temporary_auto_increment_independent_handles(void) {
 
     mylite_close(first);
     mylite_close(second);
-    failures += expect_int(mylite_open(path, &reopened), MYLITE_OK, "reopen independent file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &reopened), MYLITE_OK, "reopen independent file");
     failures += expect_statement(reopened, "USE app", (struct expected_statement){0, 0U});
     failures += expect_error(reopened, "SELECT * FROM temp_ai", mysql_error_table_does_not_exist);
 
@@ -856,12 +854,13 @@ static int test_temporary_auto_increment_diagnostics_and_boundaries(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += seed_app_schema(database);
     failures += expect_error(
         database,
@@ -926,12 +925,21 @@ static int expect_statement(
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, sql);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "statement columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "statement rows");
-        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 0U, "statement columns");
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, "statement rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            sql
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            expected.warning_count,
+            sql
+        );
     } else {
         fprintf(stderr, "%s failed: %s\n", sql, mylite_errmsg(database));
     }
@@ -944,11 +952,18 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int failures = 0;
     int rc = mylite_execute(database, query.sql, strlen(query.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, query.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, query.context);
     if (rc == MYLITE_OK) {
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
         for (size_t row = 0U; row < query.row_count; ++row) {
             for (size_t column = 0U; column < query.column_count; ++column) {
                 size_t index = (row * query.column_count) + column;
@@ -981,11 +996,11 @@ static int expect_query_contains(
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, context);
     if (rc == MYLITE_OK) {
         const char *value = mylite_result_value_text(result, row, column);
 
-        failures += expect_contains(value, needle, context);
+        failures += mylite_test_expect_contains(value, needle, context);
     } else {
         fprintf(stderr, "%s failed: %s\n", sql, mylite_errmsg(database));
     }
@@ -998,8 +1013,8 @@ static int expect_error(mylite_db *database, const char *sql, int expected_code)
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected_code, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected_code, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -1021,30 +1036,7 @@ static int expect_result_value(
         return 1;
     }
 
-    return expect_text(actual, expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_temporary_auto_increment_%d_%s.mylite",
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {
@@ -1078,64 +1070,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     bytes_read = fread(buffer, 1U, size, file);
     fclose(file);
     return bytes_read == size ? 0 : -1;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected '%s', got '%s'\n",
-        context,
-        expected,
-        actual == NULL ? "(null)" : actual
-    );
-    return 1;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected '%s' to contain '%s'\n",
-        context,
-        actual == NULL ? "(null)" : actual,
-        needle
-    );
-    return 1;
 }
 
 static int expect_bytes(

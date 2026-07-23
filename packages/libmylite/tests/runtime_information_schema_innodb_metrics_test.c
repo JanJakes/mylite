@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdint.h>
@@ -85,14 +87,8 @@ static int expect_statement_ok(mylite_db *database, struct expected_statement ex
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_columns_metadata(mylite_db *database);
 static int expect_row_count_status(mylite_db *database, const char *context);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -151,12 +147,12 @@ static int test_information_schema_innodb_metrics_queries(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "queries") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "queries") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open metrics db");
+    failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open metrics db");
     failures += expect_query(
         database,
         (struct expected_query){
@@ -294,9 +290,10 @@ static int expect_statement_ok(mylite_db *database, struct expected_statement ex
     int failures = 0;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     } else {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
     }
@@ -309,7 +306,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int failures = 0;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
         mylite_result_free(result);
@@ -320,13 +317,20 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return failures + 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     for (size_t column = 0U; column < expected.column_count; ++column) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column),
             expected.column_names[column],
             expected.context
@@ -336,7 +340,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
             size_t value_index = (row * expected.column_count) + column;
 
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row, column),
                 expected.values[value_index],
                 expected.context
@@ -386,7 +390,7 @@ static int expect_columns_metadata(mylite_db *database) {
     }
 
     rc = mylite_execute(database, sql, strlen(sql), &result);
-    failures += expect_int(rc, MYLITE_OK, "metrics columns metadata");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, "metrics columns metadata");
     if (rc != MYLITE_OK) {
         fprintf(stderr, "metrics columns metadata: %s\n", mylite_errmsg(database));
         mylite_result_free(result);
@@ -397,21 +401,29 @@ static int expect_columns_metadata(mylite_db *database) {
         return failures + 1;
     }
 
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         ARRAY_COUNT(metadata_column_names),
         "metrics columns metadata"
     );
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_row_count(result),
         ARRAY_COUNT(metrics_columns),
         "metrics columns metadata"
     );
-    failures += expect_int64(mylite_result_affected_rows(result), 0, "metrics columns metadata");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "metrics columns metadata");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "metrics columns metadata"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "metrics columns metadata"
+    );
 
     for (size_t column = 0U; column < ARRAY_COUNT(metadata_column_names); ++column) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column),
             metadata_column_names[column],
             "metrics columns metadata"
@@ -428,77 +440,77 @@ static int expect_columns_metadata(mylite_db *database) {
             continue;
         }
 
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, 0U),
             "INNODB_METRICS",
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, 1U),
             expected->name,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, 2U),
             ordinal_text,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, 3U),
             "",
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, 4U),
             expected->is_nullable,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_data_type_column),
             expected->data_type,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_character_maximum_length_column),
             expected->character_maximum_length,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_character_octet_length_column),
             expected->character_octet_length,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_numeric_precision_column),
             NULL,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_numeric_scale_column),
             NULL,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_datetime_precision_column),
             NULL,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_character_set_name_column),
             expected->character_set_name,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_collation_name_column),
             expected->collation_name,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_column_type_column),
             expected->column_type,
             "metrics columns metadata"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, row, metadata_privileges_column),
             "select",
             "metrics columns metadata"
@@ -526,27 +538,6 @@ static int expect_row_count_status(mylite_db *database, const char *context) {
     );
 }
 
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_information_schema_innodb_metrics_%d_%s.mylite",
-        P_tmpdir,
-        current_process_id(),
-        name
-    );
-
-    return written < 0 || (size_t)written >= path_size ? 1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
-}
-
 static void remove_related_files(const char *path) {
     remove(path);
     remove_with_suffix(path, "-journal");
@@ -561,51 +552,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written > 0 && (size_t)written < sizeof(buffer)) {
         remove(buffer);
     }
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
 }

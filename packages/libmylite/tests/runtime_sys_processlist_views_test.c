@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdint.h>
@@ -76,15 +78,8 @@ static int expect_current_processlist_row(
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_query_contains(mylite_db *database, struct expected_query_contains expected);
-static int make_test_path(char *path, size_t path_size);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_text_contains(const char *actual, const char *needle, const char *context);
 static int expect_decimal_text(const char *actual, const char *context);
 
 static const char *const processlist_row_columns[processlist_row_column_count] = {
@@ -217,13 +212,14 @@ static int test_sys_processlist_views(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += make_test_path(path, sizeof(path));
+    failures += mylite_test_make_default_path(path, sizeof(path));
     if (failures != 0) {
         return failures;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open sys processlist db");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open sys processlist db");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += read_connection_id(database, connection_id, sizeof(connection_id));
@@ -378,13 +374,14 @@ static int read_connection_id(mylite_db *database, char *buffer, size_t buffer_s
     mylite_result *result = NULL;
     const char *connection_id = NULL;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, "read connection id");
+    int failures = mylite_test_expect_int(rc, MYLITE_OK, "read connection id");
 
     if (rc != MYLITE_OK) {
         fprintf(stderr, "read connection id: %s\n", mylite_errmsg(database));
         return failures + 1;
     }
-    failures += expect_size(mylite_result_row_count(result), 1, "connection id row count");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1, "connection id row count");
     connection_id = mylite_result_value_text(result, 0, 0);
     failures += expect_decimal_text(connection_id, "connection id");
     if (failures == 0) {
@@ -433,19 +430,19 @@ static int expect_current_processlist_row(
     int failures = 0;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
         return failures + 1;
     }
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         processlist_row_column_count,
         expected.context
     );
-    failures += expect_size(mylite_result_row_count(result), 1, expected.context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1, expected.context);
     for (size_t column_index = 0U; column_index < processlist_row_column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             processlist_row_columns[column_index],
             expected.context
@@ -457,38 +454,38 @@ static int expect_current_processlist_row(
 
         failures += expect_decimal_text(thd_id, "thd_id");
         failures += expect_decimal_text(conn_id, "conn_id");
-        failures += expect_text_or_null(thd_id, conn_id, "thread id placeholder");
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(thd_id, conn_id, "thread id placeholder");
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_user_column),
             "root@%",
             "user"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_db_column),
             "app",
             "db"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_command_column),
             "Query",
             "command"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_state_column),
             "executing",
             "state"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_time_column),
             "0",
             "time"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_current_statement_column),
             expected.sql,
             "current statement"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_execution_engine_column),
             "PRIMARY",
             "execution engine"
@@ -496,34 +493,34 @@ static int expect_current_processlist_row(
         for (size_t column_index = processlist_counter_first_column;
              column_index <= processlist_counter_last_column;
              ++column_index) {
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, 0, column_index),
                 "0",
                 "counter"
             );
         }
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_full_scan_column),
             "NO",
             "full scan"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_trx_state_column),
             "ACTIVE",
             "trx state"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_trx_autocommit_column),
             "YES",
             "trx autocommit"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0, processlist_pid_column),
             NULL,
             "pid"
         );
     }
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.context);
     mylite_result_free(result);
     return failures;
 }
@@ -531,7 +528,7 @@ static int expect_current_processlist_row(
 static int expect_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, sql);
+    int failures = mylite_test_expect_int(rc, MYLITE_OK, sql);
 
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", sql, mylite_errmsg(database));
@@ -547,16 +544,23 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int failures = 0;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
         return failures + 1;
     }
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
@@ -565,7 +569,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     for (size_t row_index = 0U; row_index < expected.row_count; ++row_index) {
         for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
             const size_t value_index = (row_index * expected.column_count) + column_index;
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row_index, column_index),
                 expected.values[value_index],
                 expected.context
@@ -581,51 +585,35 @@ static int expect_query_contains(mylite_db *database, struct expected_query_cont
     int failures = 0;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
         return failures + 1;
     }
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
         );
     }
-    failures += expect_text_contains(
+    failures += mylite_test_expect_contains(
         mylite_result_value_text(result, expected.row_index, expected.column_index),
         expected.needle,
         expected.context
     );
     mylite_result_free(result);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_sys_processlist_views_%d.mylite",
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build sys processlist test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -642,71 +630,6 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written >= 0 && (size_t)written < sizeof(buffer)) {
         remove(buffer);
     }
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL) {
-        if (actual != expected) {
-            fprintf(
-                stderr,
-                "%s: expected %s, got %s\n",
-                context,
-                expected == NULL ? "(null)" : expected,
-                actual == NULL ? "(null)" : actual
-            );
-            return 1;
-        }
-        return 0;
-    }
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected [%s], got [%s]\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected text to contain [%s], got [%s]\n",
-            context,
-            needle,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_decimal_text(const char *actual, const char *context) {

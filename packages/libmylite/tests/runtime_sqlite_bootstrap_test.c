@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -32,9 +34,7 @@ static int reverse_compare(
     int right_size,
     const void *right
 );
-static int expect_int(int actual, int expected, const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
-static int expect_true(int condition, const char *context);
 static int expect_pointer(const void *actual, const void *expected, const char *context);
 
 int main(void) {
@@ -64,17 +64,19 @@ static int test_bootstrap_policy_on_independent_handles(void) {
     int second_busy_timeout = -1;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second handle");
+    failures += mylite_test_expect_int(mylite_open_memory(&first), MYLITE_OK, "open first handle");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&second), MYLITE_OK, "open second handle");
 
     first_sqlite = mylite_connection_sqlite_for_test(first);
     second_sqlite = mylite_connection_sqlite_for_test(second);
     first_state = mylite_connection_sqlite_bootstrap_state_for_test(first);
     second_state = mylite_connection_sqlite_bootstrap_state_for_test(second);
 
-    failures += expect_true(first_state != NULL, "first bootstrap state exists");
-    failures += expect_true(second_state != NULL, "second bootstrap state exists");
-    failures += expect_true(first_state != second_state, "bootstrap state is connection-local");
+    failures += mylite_test_expect_true(first_state != NULL, "first bootstrap state exists");
+    failures += mylite_test_expect_true(second_state != NULL, "second bootstrap state exists");
+    failures +=
+        mylite_test_expect_true(first_state != second_state, "bootstrap state is connection-local");
     if (first_state != NULL) {
         failures += expect_bool(first_state->initialized, true, "first bootstrap initialized");
         failures += expect_bool(
@@ -161,15 +163,24 @@ static int test_bootstrap_policy_on_independent_handles(void) {
         query_db_config_bool(first_sqlite, SQLITE_DBCONFIG_ENABLE_FKEY, &first_foreign_keys);
     failures +=
         query_db_config_bool(second_sqlite, SQLITE_DBCONFIG_ENABLE_FKEY, &second_foreign_keys);
-    failures += expect_int(first_trusted_schema, 0, "first SQLite trusted-schema setting");
-    failures += expect_int(second_trusted_schema, 0, "second SQLite trusted-schema setting");
-    failures += expect_int(first_foreign_keys, 0, "first SQLite foreign-key setting");
-    failures += expect_int(second_foreign_keys, 0, "second SQLite foreign-key setting");
+    failures +=
+        mylite_test_expect_int(first_trusted_schema, 0, "first SQLite trusted-schema setting");
+    failures +=
+        mylite_test_expect_int(second_trusted_schema, 0, "second SQLite trusted-schema setting");
+    failures += mylite_test_expect_int(first_foreign_keys, 0, "first SQLite foreign-key setting");
+    failures += mylite_test_expect_int(second_foreign_keys, 0, "second SQLite foreign-key setting");
     failures += query_single_int(first_sqlite, "PRAGMA busy_timeout", &first_busy_timeout);
     failures += query_single_int(second_sqlite, "PRAGMA busy_timeout", &second_busy_timeout);
-    failures += expect_int(first_busy_timeout, sqlite_busy_timeout_ms, "first SQLite busy timeout");
-    failures +=
-        expect_int(second_busy_timeout, sqlite_busy_timeout_ms, "second SQLite busy timeout");
+    failures += mylite_test_expect_int(
+        first_busy_timeout,
+        sqlite_busy_timeout_ms,
+        "first SQLite busy timeout"
+    );
+    failures += mylite_test_expect_int(
+        second_busy_timeout,
+        sqlite_busy_timeout_ms,
+        "second SQLite busy timeout"
+    );
 
     mylite_close(second);
     mylite_close(first);
@@ -183,9 +194,10 @@ static int test_callback_owner_lookup_from_scalar_function(void) {
     int callback_result = 0;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open callback handle");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open callback handle");
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(
             sqlite,
             &(struct mylite_sqlite_function_registration){
@@ -207,7 +219,7 @@ static int test_callback_owner_lookup_from_scalar_function(void) {
         "register owner callback"
     );
     failures += query_single_int(sqlite, "SELECT mylite_test_owner_matches()", &callback_result);
-    failures += expect_int(callback_result, 1, "callback sees owning MyLite handle");
+    failures += mylite_test_expect_int(callback_result, 1, "callback sees owning MyLite handle");
 
     mylite_close(database);
 
@@ -249,25 +261,26 @@ static int test_function_registration_surface(void) {
     int window_result = 0;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open function handle");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open function handle");
     sqlite = mylite_connection_sqlite_for_test(database);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(sqlite, NULL, 0U),
         MYLITE_OK,
         "register empty function list"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(NULL, NULL, 0U),
         MYLITE_MISUSE,
         "function registration rejects NULL SQLite"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(sqlite, NULL, 1U),
         MYLITE_MISUSE,
         "function registration rejects missing descriptors"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(
             sqlite,
             &(struct mylite_sqlite_function_registration){
@@ -288,7 +301,7 @@ static int test_function_registration_surface(void) {
         MYLITE_MISUSE,
         "function registration rejects invalid scalar descriptor"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(
             sqlite,
             &(struct mylite_sqlite_function_registration){
@@ -309,17 +322,17 @@ static int test_function_registration_surface(void) {
         MYLITE_MISUSE,
         "function registration rejects missing base encoding"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(sqlite, partial_registration, 2U),
         MYLITE_MISUSE,
         "function registration prevalidates descriptor list"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         prepare_sql_status(sqlite, "SELECT mylite_test_partial_scalar()"),
         SQLITE_ERROR,
         "invalid function list leaves earlier descriptor unregistered"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(
             sqlite,
             &(struct mylite_sqlite_function_registration){
@@ -342,9 +355,9 @@ static int test_function_registration_surface(void) {
     );
     failures +=
         query_single_int(sqlite, "SELECT mylite_test_constant_aggregate(1)", &aggregate_result);
-    failures += expect_int(aggregate_result, 1, "aggregate function result");
+    failures += mylite_test_expect_int(aggregate_result, 1, "aggregate function result");
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_functions(
             sqlite,
             &(struct mylite_sqlite_function_registration){
@@ -367,7 +380,7 @@ static int test_function_registration_surface(void) {
     );
     failures +=
         query_single_int(sqlite, "SELECT mylite_test_constant_window(1) OVER ()", &window_result);
-    failures += expect_int(window_result, 1, "window function result");
+    failures += mylite_test_expect_int(window_result, 1, "window function result");
 
     mylite_close(database);
 
@@ -396,25 +409,26 @@ static int test_collation_registration_surface(void) {
     int collation_result = 0;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open collation handle");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open collation handle");
     sqlite = mylite_connection_sqlite_for_test(database);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(sqlite, NULL, 0U),
         MYLITE_OK,
         "register empty collation list"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(NULL, NULL, 0U),
         MYLITE_MISUSE,
         "collation registration rejects NULL SQLite"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(sqlite, NULL, 1U),
         MYLITE_MISUSE,
         "collation registration rejects missing descriptors"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(
             sqlite,
             &(struct mylite_sqlite_collation_registration){
@@ -429,7 +443,7 @@ static int test_collation_registration_surface(void) {
         MYLITE_MISUSE,
         "collation registration rejects empty name"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(
             sqlite,
             &(struct mylite_sqlite_collation_registration){
@@ -444,17 +458,17 @@ static int test_collation_registration_surface(void) {
         MYLITE_MISUSE,
         "collation registration rejects function flags"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(sqlite, partial_registration, 2U),
         MYLITE_MISUSE,
         "collation registration prevalidates descriptor list"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         prepare_sql_status(sqlite, "SELECT 'a' COLLATE mylite_test_partial_collation = 'a'"),
         SQLITE_ERROR,
         "invalid collation list leaves earlier descriptor unregistered"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_sqlite_register_collations(
             sqlite,
             &(struct mylite_sqlite_collation_registration){
@@ -475,7 +489,7 @@ static int test_collation_registration_surface(void) {
         "'b' COLLATE mylite_test_reverse THEN 1 ELSE 0 END",
         &collation_result
     );
-    failures += expect_int(collation_result, 1, "test collation affects comparison");
+    failures += mylite_test_expect_int(collation_result, 1, "test collation affects comparison");
 
     mylite_close(database);
 
@@ -642,27 +656,9 @@ static int reverse_compare(
     return 0;
 }
 
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
 static int expect_bool(bool actual, bool expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %d, got %d\n", context, (int)expected, (int)actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
         return 1;
     }
 

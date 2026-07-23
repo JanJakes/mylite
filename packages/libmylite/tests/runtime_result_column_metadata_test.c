@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_execution_text_internal.h"
@@ -105,17 +107,9 @@ static int expect_column_metadata(
     struct expected_column_metadata expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_uint16(uint16_t actual, uint16_t expected, const char *context);
-static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -138,10 +132,11 @@ static int test_source_span_copy_bounds(void) {
     static const char source[] = "x";
     mylite_db *database = NULL;
     char *text = (char *)source;
-    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open span bounds");
+    int failures =
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open span bounds");
 
     if (database != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execution_copy_source_span_text(
                 database,
                 &(struct mylite_sql_source_span){
@@ -155,7 +150,7 @@ static int test_source_span_copy_bounds(void) {
             MYLITE_ERROR,
             "reject out-of-bounds source span copy"
         );
-        failures += expect_int(text == NULL, 1, "clear rejected source span output");
+        failures += mylite_test_expect_int(text == NULL, 1, "clear rejected source span output");
     }
     mylite_close(database);
     return failures;
@@ -545,13 +540,14 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "descriptor") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "descriptor") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open descriptor metadata");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open descriptor metadata");
     failures += setup_metadata_schema(database);
     failures += execute_ok(
         database,
@@ -560,13 +556,15 @@ static int test_descriptor_result_column_metadata(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             sizeof(selected_columns) / sizeof(selected_columns[0]),
             "selected column count"
         );
-        failures += expect_size(mylite_result_row_count(result), 0U, "metadata row count");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "metadata warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "metadata row count");
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, "metadata warnings");
         for (size_t index = 0U; index < sizeof(selected_columns) / sizeof(selected_columns[0]);
              ++index) {
             failures += expect_column_metadata(result, index, selected_columns[index], "selected");
@@ -637,14 +635,21 @@ static int test_descriptor_result_column_metadata(void) {
             table_rand_column_count = 2,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             table_rand_column_count,
             "table RAND metadata column count"
         );
-        failures += expect_size(mylite_result_row_count(result), 0U, "table RAND metadata rows");
-        failures +=
-            expect_size(mylite_result_warning_count(result), 0U, "table RAND metadata warnings");
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            0U,
+            "table RAND metadata rows"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "table RAND metadata warnings"
+        );
         failures += expect_column_metadata(
             result,
             0U,
@@ -722,7 +727,7 @@ static int test_descriptor_result_column_metadata(void) {
 
     failures += execute_ok(database, "SELECT sys.format_bytes(1024)", &result);
     if (failures == 0) {
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_column_name(result, 0U),
             "sys.format_bytes(1024)",
             "qualified sys function keeps source label"
@@ -733,12 +738,12 @@ static int test_descriptor_result_column_metadata(void) {
 
     failures += execute_ok(database, "SELECT /*!80000 1 */ + 2", &result);
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             1U,
             "executable comment expression column count"
         );
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_value_text(result, 0U, 0U),
             "3",
             "executable comment expression value"
@@ -761,7 +766,7 @@ static int test_descriptor_result_column_metadata(void) {
             date_interval_row_column_count = 5,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             date_interval_row_column_count,
             "row DATE interval metadata column count"
@@ -858,7 +863,7 @@ static int test_descriptor_result_column_metadata(void) {
             timestampadd_row_column_count = 4,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             timestampadd_row_column_count,
             "row TIMESTAMPADD metadata column count"
@@ -937,7 +942,11 @@ static int test_descriptor_result_column_metadata(void) {
         "metadata file preamble"
     );
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen descriptor metadata");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen descriptor metadata"
+    );
     failures += expect_statement_ok(database, "USE app");
     failures += execute_ok(database, "SELECT id AS ident FROM meta LIMIT 0", &result);
     if (failures == 0) {
@@ -974,11 +983,12 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "scalar") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "scalar") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open scalar metadata");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open scalar metadata");
     failures += execute_ok(
         database,
         "SELECT 1 AS one, TRUE AS truthy, NULL AS nil, 'abc' AS str FROM DUAL",
@@ -993,9 +1003,12 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
         };
 
-        failures += expect_size(mylite_result_column_count(result), 4U, "scalar column count");
-        failures += expect_size(mylite_result_row_count(result), 1U, "scalar row count");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "scalar warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 4U, "scalar column count");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 1U, "scalar row count");
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, "scalar warnings");
         failures += expect_column_metadata(
             result,
             0U,
@@ -1091,7 +1104,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
             date_interval_scalar_column_count = 2,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             date_interval_scalar_column_count,
             "date interval scalar column count"
@@ -1146,10 +1159,18 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
         };
 
-        failures += expect_size(mylite_result_column_count(result), 3U, "integer boundary columns");
-        failures += expect_size(mylite_result_row_count(result), 1U, "integer boundary rows");
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            3U,
+            "integer boundary columns"
+        );
         failures +=
-            expect_size(mylite_result_warning_count(result), 0U, "integer boundary warnings");
+            mylite_test_expect_size(mylite_result_row_count(result), 1U, "integer boundary rows");
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "integer boundary warnings"
+        );
         failures += expect_column_metadata(
             result,
             0U,
@@ -1219,9 +1240,18 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
 
         static const char *const labels[] = {"big", "neg_big"};
 
-        failures += expect_size(mylite_result_column_count(result), 2U, "large integer columns");
-        failures += expect_size(mylite_result_row_count(result), 1U, "large integer rows");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "large integer warnings");
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            2U,
+            "large integer columns"
+        );
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 1U, "large integer rows");
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "large integer warnings"
+        );
         for (size_t index = 0U; index < 2U; ++index) {
             failures += expect_column_metadata(
                 result,
@@ -1264,7 +1294,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             mysql_session_scalar_column_count,
             "session column count"
@@ -1469,7 +1499,7 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             mysql_json_scalar_column_count,
             "json scalar columns"
@@ -1640,12 +1670,16 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
                 MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
         };
 
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             mysql_row_scalar_column_count,
             "row-scalar columns"
         );
-        failures += expect_size(mylite_result_row_count(result), 0U, "row-scalar metadata rows");
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            0U,
+            "row-scalar metadata rows"
+        );
         failures += expect_column_metadata(
             result,
             0U,
@@ -1779,65 +1813,110 @@ static int test_result_column_metadata_scalar_defaults_and_misuse(void) {
 
     failures += execute_ok(database, "DO 1", &result);
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "do column count");
         failures +=
-            expect_text(mylite_result_column_schema_name(result, 0U), NULL, "invalid schema name");
-        failures +=
-            expect_text(mylite_result_column_table_name(result, 0U), NULL, "invalid table name");
-        failures += expect_text(
+            mylite_test_expect_size(mylite_result_column_count(result), 0U, "do column count");
+        failures += mylite_test_expect_text(
+            mylite_result_column_schema_name(result, 0U),
+            NULL,
+            "invalid schema name"
+        );
+        failures += mylite_test_expect_text(
+            mylite_result_column_table_name(result, 0U),
+            NULL,
+            "invalid table name"
+        );
+        failures += mylite_test_expect_text(
             mylite_result_column_origin_schema_name(result, 0U),
             NULL,
             "invalid origin schema"
         );
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_column_origin_table_name(result, 0U),
             NULL,
             "invalid origin table"
         );
-        failures +=
-            expect_text(mylite_result_column_origin_name(result, 0U), NULL, "invalid origin name");
-        failures += expect_int(
+        failures += mylite_test_expect_text(
+            mylite_result_column_origin_name(result, 0U),
+            NULL,
+            "invalid origin name"
+        );
+        failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 0U),
             MYLITE_RESULT_COLUMN_TYPE_UNKNOWN,
             "invalid column type"
         );
-        failures += expect_uint32(mylite_result_column_flags(result, 0U), 0U, "invalid flags");
         failures +=
-            expect_uint32(mylite_result_column_charset_id(result, 0U), 0U, "invalid charset");
-        failures +=
-            expect_uint32(mylite_result_column_collation_id(result, 0U), 0U, "invalid collation");
-        failures += expect_uint64(
+            mylite_test_expect_uint32(mylite_result_column_flags(result, 0U), 0U, "invalid flags");
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_charset_id(result, 0U),
+            0U,
+            "invalid charset"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_collation_id(result, 0U),
+            0U,
+            "invalid collation"
+        );
+        failures += mylite_test_expect_uint64(
             mylite_result_column_display_length(result, 0U),
             0U,
             "invalid display length"
         );
-        failures +=
-            expect_uint16(mylite_result_column_decimals(result, 0U), 0U, "invalid decimals");
-        failures += expect_int(mylite_result_column_nullable(result, 0U), 0, "invalid nullable");
+        failures += mylite_test_expect_uint16(
+            mylite_result_column_decimals(result, 0U),
+            0U,
+            "invalid decimals"
+        );
+        failures += mylite_test_expect_int(
+            mylite_result_column_nullable(result, 0U),
+            0,
+            "invalid nullable"
+        );
     }
     mylite_result_free(result);
     mylite_close(database);
     remove_related_files(path);
 
-    failures += expect_text(mylite_result_column_schema_name(NULL, 0U), NULL, "NULL schema");
-    failures += expect_text(mylite_result_column_table_name(NULL, 0U), NULL, "NULL table");
     failures +=
-        expect_text(mylite_result_column_origin_schema_name(NULL, 0U), NULL, "NULL origin schema");
+        mylite_test_expect_text(mylite_result_column_schema_name(NULL, 0U), NULL, "NULL schema");
     failures +=
-        expect_text(mylite_result_column_origin_table_name(NULL, 0U), NULL, "NULL origin table");
-    failures += expect_text(mylite_result_column_origin_name(NULL, 0U), NULL, "NULL origin name");
-    failures += expect_int(
+        mylite_test_expect_text(mylite_result_column_table_name(NULL, 0U), NULL, "NULL table");
+    failures += mylite_test_expect_text(
+        mylite_result_column_origin_schema_name(NULL, 0U),
+        NULL,
+        "NULL origin schema"
+    );
+    failures += mylite_test_expect_text(
+        mylite_result_column_origin_table_name(NULL, 0U),
+        NULL,
+        "NULL origin table"
+    );
+    failures += mylite_test_expect_text(
+        mylite_result_column_origin_name(NULL, 0U),
+        NULL,
+        "NULL origin name"
+    );
+    failures += mylite_test_expect_int(
         (int)mylite_result_column_type(NULL, 0U),
         MYLITE_RESULT_COLUMN_TYPE_UNKNOWN,
         "NULL type"
     );
-    failures += expect_uint32(mylite_result_column_flags(NULL, 0U), 0U, "NULL flags");
-    failures += expect_uint32(mylite_result_column_charset_id(NULL, 0U), 0U, "NULL charset");
-    failures += expect_uint32(mylite_result_column_collation_id(NULL, 0U), 0U, "NULL collation");
+    failures += mylite_test_expect_uint32(mylite_result_column_flags(NULL, 0U), 0U, "NULL flags");
     failures +=
-        expect_uint64(mylite_result_column_display_length(NULL, 0U), 0U, "NULL display length");
-    failures += expect_uint16(mylite_result_column_decimals(NULL, 0U), 0U, "NULL decimals");
-    failures += expect_int(mylite_result_column_nullable(NULL, 0U), 0, "NULL nullable");
+        mylite_test_expect_uint32(mylite_result_column_charset_id(NULL, 0U), 0U, "NULL charset");
+    failures += mylite_test_expect_uint32(
+        mylite_result_column_collation_id(NULL, 0U),
+        0U,
+        "NULL collation"
+    );
+    failures += mylite_test_expect_uint64(
+        mylite_result_column_display_length(NULL, 0U),
+        0U,
+        "NULL display length"
+    );
+    failures +=
+        mylite_test_expect_uint16(mylite_result_column_decimals(NULL, 0U), 0U, "NULL decimals");
+    failures += mylite_test_expect_int(mylite_result_column_nullable(NULL, 0U), 0, "NULL nullable");
     return failures;
 }
 
@@ -1860,11 +1939,12 @@ static int test_show_result_column_metadata(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "show") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "show") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open SHOW metadata");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open SHOW metadata");
     failures += setup_metadata_schema(database);
     failures += expect_show_column_metadata(
         database,
@@ -2134,9 +2214,9 @@ static int expect_statement_warning_count(mylite_db *database, const char *sql, 
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_size(mylite_result_warning_count(result), warnings, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_warning_count(result), warnings, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -2150,83 +2230,72 @@ static int expect_column_metadata(
 ) {
     int failures = 0;
 
-    failures +=
-        expect_text(mylite_result_column_name(result, column_index), expected.label, context);
-    failures += expect_text(
+    failures += mylite_test_expect_text(
+        mylite_result_column_name(result, column_index),
+        expected.label,
+        context
+    );
+    failures += mylite_test_expect_text(
         mylite_result_column_schema_name(result, column_index),
         expected.schema_name == NULL ? "" : expected.schema_name,
         context
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_table_name(result, column_index),
         expected.table_name == NULL ? "" : expected.table_name,
         context
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_origin_schema_name(result, column_index),
         expected.origin_schema_name == NULL ? "" : expected.origin_schema_name,
         context
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_origin_table_name(result, column_index),
         expected.origin_table_name == NULL ? "" : expected.origin_table_name,
         context
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_origin_name(result, column_index),
         expected.origin_column_name == NULL ? "" : expected.origin_column_name,
         context
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_result_column_type(result, column_index),
         (int)expected.type,
         context
     );
-    failures +=
-        expect_uint32(mylite_result_column_flags(result, column_index), expected.flags, context);
-    failures += expect_uint32(
+    failures += mylite_test_expect_uint32(
+        mylite_result_column_flags(result, column_index),
+        expected.flags,
+        context
+    );
+    failures += mylite_test_expect_uint32(
         mylite_result_column_charset_id(result, column_index),
         expected.charset_id,
         context
     );
-    failures += expect_uint32(
+    failures += mylite_test_expect_uint32(
         mylite_result_column_collation_id(result, column_index),
         expected.collation_id,
         context
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         mylite_result_column_display_length(result, column_index),
         expected.display_length,
         context
     );
-    failures += expect_uint16(
+    failures += mylite_test_expect_uint16(
         mylite_result_column_decimals(result, column_index),
         expected.decimals,
         context
     );
-    failures +=
-        expect_int(mylite_result_column_nullable(result, column_index), expected.nullable, context);
-    return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite-result-column-metadata-%s-%d.mylite",
-        name,
-        current_process_id()
+    failures += mylite_test_expect_int(
+        mylite_result_column_nullable(result, column_index),
+        expected.nullable,
+        context
     );
-
-    return written < 0 || (size_t)written >= path_size ? 1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return failures;
 }
 
 static void remove_related_files(const char *path) {
@@ -2263,67 +2332,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     fclose(file);
     if (read_count != size) {
         fprintf(stderr, "%s: expected %zu bytes, got %zu\n", path, size, read_count);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint16(uint16_t actual, uint16_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu16 ", got %" PRIu16 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu32 ", got %" PRIu32 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL) {
-        if (actual != expected) {
-            fprintf(
-                stderr,
-                "%s: expected %s, got %s\n",
-                context,
-                expected == NULL ? "(null)" : expected,
-                actual == NULL ? "(null)" : actual
-            );
-            return 1;
-        }
-        return 0;
-    }
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
         return 1;
     }
     return 0;

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdint.h>
@@ -51,8 +53,6 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_dml_ok(mylite_db *database, const char *sql, struct expected_dml_result expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int expect_result_value(
@@ -62,11 +62,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -208,15 +203,21 @@ static int test_literal_json_set_values(void) {
 
     failures += execute_ok(database, "SELECT JSON_SET('{}', '$.a', 1) AS changed", &result);
     if (failures == 0) {
-        failures +=
-            expect_size(mylite_result_column_count(result), 1U, "json_set metadata columns");
-        failures += expect_int(
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            1U,
+            "json_set metadata columns"
+        );
+        failures += mylite_test_expect_int(
             mylite_result_column_type(result, 0U),
             MYLITE_RESULT_COLUMN_TYPE_JSON,
             "json_set metadata type"
         );
-        failures +=
-            expect_int(mylite_result_column_nullable(result, 0U), 1, "json_set metadata nullable");
+        failures += mylite_test_expect_int(
+            mylite_result_column_nullable(result, 0U),
+            1,
+            "json_set metadata nullable"
+        );
         failures +=
             expect_result_value(result, 0U, 0U, values_metadata[0], "json_set metadata value");
     }
@@ -267,10 +268,20 @@ static int test_dual_do_and_status(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "json_set do columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "json_set do rows");
-        failures += expect_int64(mylite_result_affected_rows(result), 0, "json_set do affected");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "json_set do warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 0U, "json_set do columns");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "json_set do rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "json_set do affected"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "json_set do warnings"
+        );
     }
     mylite_result_free(result);
     failures += expect_query(
@@ -350,7 +361,7 @@ static int test_table_backed_json_set_values(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "table") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "table") != 0) {
         return 1;
     }
     remove_related_files(path);
@@ -435,7 +446,7 @@ static int test_table_backed_json_set_values(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen json_set");
+    failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen json_set");
     failures += execute_ok(database, "USE app", NULL);
     failures += expect_query(
         database,
@@ -459,7 +470,7 @@ static int test_json_set_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
@@ -610,9 +621,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "%s: expected error, got success\n", sql);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
 }
 
@@ -626,10 +637,18 @@ static int expect_dml_ok(
 
     failures += execute_ok(database, sql, &result);
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, sql);
-        failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+        failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            sql
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            expected.warning_count,
+            sql
+        );
     }
     mylite_result_free(result);
     return failures;
@@ -641,16 +660,20 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
 
     failures += execute_ok(database, expected.sql, &result);
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             expected.column_count,
             expected.context
         );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            expected.row_count,
+            expected.context
+        );
         failures +=
-            expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-        failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
         for (size_t column = 0U; column < expected.column_count; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column),
                 expected.columns[column],
                 expected.context
@@ -672,30 +695,6 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     }
     mylite_result_free(result);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite-runtime-json-set-%s-%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build json_set test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -746,65 +745,6 @@ static int expect_result_value(
             column,
             expected,
             actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if ((actual == NULL && expected != NULL) || (actual != NULL && expected == NULL) ||
-        (actual != NULL && expected != NULL && strcmp(actual, expected) != 0)) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "NULL" : actual,
-            needle == NULL ? "NULL" : needle
         );
         return 1;
     }

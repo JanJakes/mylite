@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 COMPATIBILITY = ROOT / "COMPATIBILITY.md"
 CLAIMS = ROOT / "docs/compatibility/claims.tsv"
 ALL_MYSQL = ROOT / "tools/mysql-runtime-expectations-all.txt"
+NATIVE_TESTS = ROOT / "packages/libmylite/tests/native-tests.txt"
 CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
 EXPECTED_FIELDS = [
     "claim_id",
@@ -87,6 +88,24 @@ def read_manifest_paths(path):
     return entries
 
 
+def read_native_test_paths():
+    entries = set()
+
+    for line_number, line in enumerate(
+        NATIVE_TESTS.read_text(encoding="utf-8").splitlines(),
+        1,
+    ):
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("|")
+        if len(fields) != 3 or not fields[0].startswith("tests/"):
+            raise ValueError(
+                "invalid native-test manifest entry at line {}".format(line_number)
+            )
+        entries.add("packages/libmylite/{}".format(fields[0]))
+    return entries
+
+
 def evidence_mentions_named_function(path, function_name):
     pattern = re.compile(
         r"(?<![A-Za-z0-9_]){}\s*\(".format(re.escape(function_name)),
@@ -95,7 +114,7 @@ def evidence_mentions_named_function(path, function_name):
     return pattern.search((ROOT / path).read_text(encoding="utf-8", errors="replace")) is not None
 
 
-def validate_claim_files(claim, feature, all_mysql, cmake_text, ci_text):
+def validate_claim_files(claim, feature, all_mysql, native_tests, ci_text):
     errors = []
     claim_id = claim["claim_id"]
     fingerprint = claim["row_fingerprint"]
@@ -150,8 +169,13 @@ def validate_claim_files(claim, feature, all_mysql, cmake_text, ci_text):
         native_path = ROOT / native_test
         if not native_path.is_file():
             errors.append("{} references missing native test {}".format(claim_id, native_test))
-        elif native_path.name not in cmake_text:
-            errors.append("{} native test is not registered by CMake: {}".format(claim_id, native_test))
+        elif native_test not in native_tests:
+            errors.append(
+                "{} native test is not registered in the manifest: {}".format(
+                    claim_id,
+                    native_test,
+                )
+            )
     function_match = re.match(r"`([A-Za-z][A-Za-z0-9_]*)\(\)", feature)
     if claim["kind"] == "mysql" and function_match is not None:
         function_name = function_match.group(1)
@@ -174,6 +198,7 @@ def main():
     try:
         green_claims = parse_green_claims()
         manifest_claims = read_claim_manifest()
+        native_tests = read_native_test_paths()
     except (OSError, ValueError) as error:
         return fail(str(error))
 
@@ -195,10 +220,6 @@ def main():
 
     claim_ids = set()
     manifest_by_fingerprint = {}
-    cmake_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (ROOT / "packages/libmylite/cmake").glob("*.cmake")
-    )
     ci_text = CI_WORKFLOW.read_text(encoding="utf-8")
     for claim in manifest_claims:
         claim_id = claim["claim_id"]
@@ -211,7 +232,7 @@ def main():
         manifest_by_fingerprint[fingerprint] = claim
         feature = green_by_fingerprint.get(fingerprint, ("", "", 0))[1]
         errors.extend(
-            validate_claim_files(claim, feature, set(all_mysql_entries), cmake_text, ci_text)
+            validate_claim_files(claim, feature, set(all_mysql_entries), native_tests, ci_text)
         )
 
     if len(green_by_fingerprint) != len(green_claims):

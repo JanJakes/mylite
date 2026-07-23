@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -47,14 +49,8 @@ static int expect_absent_performance_schema_table_error(
     struct absent_performance_schema_table_error expected
 );
 static int expect_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *text, const char *needle, const char *context);
 
 int main(void) {
     return test_performance_schema_optional_absence() == 0 ? 0 : 1;
@@ -108,12 +104,12 @@ static int test_performance_schema_optional_absence(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "performance-schema-optional-absence") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "performance-schema-optional-absence") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open file");
+    failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
 
@@ -357,11 +353,18 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
@@ -371,7 +374,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
             size_t value_index = (row_index * expected.column_count) + column_index;
 
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row_index, column_index),
                 expected.values[value_index],
                 expected.context
@@ -419,30 +422,12 @@ static int expect_error(mylite_db *database, const char *sql, struct expected_sq
         fprintf(stderr, "execute '%s': expected MYLITE_ERROR, got %d\n", sql, rc);
         failures += 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
 
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(path, path_size, "/tmp/mylite-%s-%d.mylite", name, current_process_id());
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path buffer too small\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -458,51 +443,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written > 0 && (size_t)written < sizeof(buffer)) {
         remove(buffer);
     }
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected %s, got %s\n",
-            context,
-            expected == NULL ? "<null>" : expected,
-            actual == NULL ? "<null>" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *text, const char *needle, const char *context) {
-    if (text == NULL || needle == NULL || strstr(text, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            text == NULL ? "<null>" : text,
-            needle == NULL ? "<null>" : needle
-        );
-        return 1;
-    }
-    return 0;
 }

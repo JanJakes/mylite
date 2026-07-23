@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_catalog.h"
@@ -99,8 +101,6 @@ static int expect_physical_index_sql_contains(
     struct physical_index_sql_needle needle,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
@@ -111,13 +111,6 @@ static int rename_physical_column(
     const char *old_name,
     const char *new_name
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -251,13 +244,14 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     uint64_t noop_sqlite_generation = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "success") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "success") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open rename-column file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open rename-column file");
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -278,12 +272,12 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read app schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &before_table),
         MYLITE_OK,
         "read numbers table before rename"
@@ -301,18 +295,19 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     failures += expect_ddl_result(result, "rename column result");
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &after_table),
         MYLITE_OK,
         "read numbers table after rename"
     );
-    failures += expect_int64(after_table.table_id, before_table.table_id, "table id unchanged");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_int64(after_table.table_id, before_table.table_id, "table id unchanged");
+    failures += mylite_test_expect_text(
         after_table.physical_name,
         before_table.physical_name,
         "physical name unchanged"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.descriptor_version,
         before_table.descriptor_version + 1U,
         "rename bumps table descriptor version"
@@ -320,14 +315,14 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before + 1U,
             "rename bumps catalog generation"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before + 1U,
             "rename bumps SQLite schema generation"
@@ -399,7 +394,7 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
         }
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(
             database,
             schema.schema_id,
@@ -421,12 +416,12 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     failures += expect_ddl_result(result, "same-name rename result");
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &noop_after_table),
         MYLITE_OK,
         "read numbers table after no-op rename"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         noop_after_table.descriptor_version,
         noop_before_table.descriptor_version,
         "same-name rename leaves table descriptor version"
@@ -434,14 +429,14 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             noop_catalog_generation,
             "same-name rename leaves catalog generation"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             noop_sqlite_generation,
             "same-name rename leaves SQLite schema generation"
@@ -482,11 +477,19 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
         }
     );
     failures += execute_ok(database, "INSERT INTO numbers VALUES (3, 31, 40)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "insert after rename rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "insert after rename rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "UPDATE numbers SET N = -5 WHERE id = 3", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "update after rename rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update after rename rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_query_values(
@@ -511,7 +514,7 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
         execute_ok(database, "INSERT INTO edge_rename VALUES (1, 2, 3), (4, 5, 6)", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "edge_rename", &edge_table),
         MYLITE_OK,
         "read edge_rename table"
@@ -588,7 +591,11 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "DELETE FROM cleanup WHERE renamed = 10", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "delete after rename rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete after rename rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_query_values(
@@ -612,7 +619,11 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen rename-column file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen rename-column file"
+    );
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -679,12 +690,13 @@ static int test_rename_column_keyed_dependencies(void) {
     struct mylite_catalog_table_descriptor keyed_table = {0};
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "keyed") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "keyed") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open keyed rename file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open keyed rename file");
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -715,12 +727,12 @@ static int test_rename_column_keyed_dependencies(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read keyed rename schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "keyed_rename", &keyed_table),
         MYLITE_OK,
         "read keyed rename table"
@@ -854,19 +866,22 @@ static int test_rename_column_keyed_dependencies(void) {
     if (failures == 0) {
         const char *show_create = mylite_result_value_text(result, 0U, 1U);
 
-        failures +=
-            expect_contains(show_create, "PRIMARY KEY (`pk_id`)", "show create primary rename");
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
+            show_create,
+            "PRIMARY KEY (`pk_id`)",
+            "show create primary rename"
+        );
+        failures += mylite_test_expect_contains(
             show_create,
             "UNIQUE KEY `uk_k` (`key_name`)",
             "show create unique rename"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             show_create,
             "KEY `pref_k` (`key_name`(10))",
             "show create prefix rename"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             show_create,
             "FULLTEXT KEY `ft_body` (`content`)",
             "show create fulltext rename"
@@ -932,12 +947,12 @@ static int test_rename_column_keyed_dependencies(void) {
     if (failures == 0) {
         const char *show_create = mylite_result_value_text(result, 0U, 1U);
 
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             show_create,
             "KEY `p_idx` (`pid`)",
             "show create foreign-key child index rename"
         );
-        failures += expect_contains(
+        failures += mylite_test_expect_contains(
             show_create,
             "CONSTRAINT `fk_parent` FOREIGN KEY (`pid`) REFERENCES `parent_rename` (`parent_pk`) "
             "ON DELETE CASCADE ON UPDATE CASCADE",
@@ -982,7 +997,8 @@ static int test_rename_column_keyed_dependencies(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen keyed rename file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen keyed rename file");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1018,12 +1034,16 @@ static int test_rename_column_diagnostics(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open diagnostics database"
+    );
     failures += execute_error(
         database,
         "ALTER TABLE missing RENAME COLUMN old_col TO new_col",
@@ -1210,12 +1230,16 @@ static int test_rename_column_physical_failure_preserves_catalog(void) {
     uint64_t sqlite_generation_before_failure = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "physical_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "physical_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open physical failure file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open physical failure file"
+    );
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1232,12 +1256,12 @@ static int test_rename_column_physical_failure_preserves_catalog(void) {
     failures += execute_ok(database, "INSERT INTO broken VALUES (1, 10, 20)", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read failure schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "broken", &before_table),
         MYLITE_OK,
         "read failure table before"
@@ -1272,25 +1296,25 @@ static int test_rename_column_physical_failure_preserves_catalog(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             generation_before_failure,
             "physical failure leaves catalog generation unchanged"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before_failure,
             "physical failure leaves SQLite schema generation unchanged"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "broken", &after_table),
         MYLITE_OK,
         "read failure table after"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.descriptor_version,
         before_table.descriptor_version,
         "physical failure leaves table descriptor version unchanged"
@@ -1326,15 +1350,17 @@ static int test_rename_column_independent_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
     failures += execute_ok(first, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1434,7 +1460,8 @@ static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_
     int failures = execute_ok(database, sql, &result);
 
     if (result != NULL) {
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+        failures +=
+            mylite_test_expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -1450,11 +1477,11 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "expected error for %s, got rc=%d\n", sql, rc);
         failures += 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
     message = mylite_errmsg(database);
     if (expected.message_part != NULL) {
-        failures += expect_contains(message, expected.message_part, sql);
+        failures += mylite_test_expect_contains(message, expected.message_part, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -1463,10 +1490,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 static int expect_ddl_result(const mylite_result *result, const char *context) {
     int failures = 0;
 
-    failures += expect_size(mylite_result_column_count(result), 0U, context);
-    failures += expect_size(mylite_result_row_count(result), 0U, context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, context);
     return failures;
 }
 
@@ -1475,8 +1502,13 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     size_t value_count = query.row_count * query.column_count;
     int failures = execute_ok(database, query.sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t index = 0U; index < value_count; ++index) {
         failures += expect_result_value(
             result,
@@ -1514,7 +1546,7 @@ static int expect_result_value(
         return 0;
     }
 
-    return expect_text(actual, expected, context);
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static int expect_column_descriptor(
@@ -1527,17 +1559,17 @@ static int expect_column_descriptor(
     const char *context
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int failures = expect_int(
+    int failures = mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table_id, name, &column),
         MYLITE_OK,
         context
     );
 
-    failures += expect_int64(column.ordinal_position, ordinal_position, context);
-    failures += expect_text(column.name, name, context);
-    failures += expect_text(column.logical_type, logical_type, context);
-    failures += expect_text(column.physical_type, "INTEGER", context);
-    failures += expect_true(column.is_nullable == is_nullable, context);
+    failures += mylite_test_expect_int64(column.ordinal_position, ordinal_position, context);
+    failures += mylite_test_expect_text(column.name, name, context);
+    failures += mylite_test_expect_text(column.logical_type, logical_type, context);
+    failures += mylite_test_expect_text(column.physical_type, "INTEGER", context);
+    failures += mylite_test_expect_true(column.is_nullable == is_nullable, context);
     return failures;
 }
 
@@ -1549,7 +1581,7 @@ static int expect_missing_column_descriptor(
 ) {
     struct mylite_catalog_column_descriptor column = {0};
 
-    return expect_int(
+    return mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table_id, name, &column),
         MYLITE_ERROR,
         context
@@ -1598,7 +1630,7 @@ static int expect_physical_index_count(
         fprintf(stderr, "%s: physical index query failed: %d\n", context, rc);
         return 1;
     }
-    return expect_int(actual_count, expected_count, context);
+    return mylite_test_expect_int(actual_count, expected_count, context);
 }
 
 static int expect_physical_index_sql_contains(
@@ -1671,30 +1703,6 @@ static int expect_physical_index_sql_contains(
         return 1;
     }
     return 0;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "test-runtime-alter-table-rename-column-%s-%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path for %s\n", name);
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -1770,86 +1778,6 @@ static int rename_physical_column(
         return 1;
     }
     return execute_sql(connection, sql);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %llu, got %llu\n",
-            context,
-            (unsigned long long)expected,
-            (unsigned long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected '%s', got '%s'\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected '%s' to contain '%s'\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_bytes(

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -41,10 +43,6 @@ static int test_sys_wait_views(void);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_query_contains(mylite_db *database, struct expected_query_contains expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-
 static const char *const count_column[count_column_count] = {
     "COUNT(*)",
 };
@@ -313,7 +311,8 @@ static int test_sys_wait_views(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open memory database");
     failures += expect_query(
         database,
         (struct expected_query){
@@ -582,7 +581,7 @@ static int test_sys_wait_views(void) {
 static int expect_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, sql);
+    int failures = mylite_test_expect_int(rc, MYLITE_OK, sql);
 
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", sql, mylite_errmsg(database));
@@ -594,7 +593,7 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
 static int expect_query(mylite_db *database, struct expected_query expected) {
     mylite_result *result = NULL;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, expected.context);
+    int failures = mylite_test_expect_int(rc, MYLITE_OK, expected.context);
 
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
@@ -602,21 +601,28 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return failures + 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
     for (size_t column_index = 0; column_index < expected.column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
         );
     }
 
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     for (size_t row_index = 0; row_index < expected.row_count; ++row_index) {
         for (size_t column_index = 0; column_index < expected.column_count; ++column_index) {
             const size_t value_index = (row_index * expected.column_count) + column_index;
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row_index, column_index),
                 expected.values[value_index],
                 expected.context
@@ -632,23 +638,30 @@ static int expect_query_contains(mylite_db *database, struct expected_query_cont
     mylite_result *result = NULL;
     const char *value = NULL;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, expected.context);
+    int failures = mylite_test_expect_int(rc, MYLITE_OK, expected.context);
 
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.context, mylite_errmsg(database));
         mylite_result_free(result);
         return failures + 1;
     }
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
     for (size_t column_index = 0; column_index < expected.column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.context
         );
     }
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
 
     value = mylite_result_value_text(result, expected.row_index, expected.column_index);
     if (value == NULL || strstr(value, expected.needle) == NULL) {
@@ -664,37 +677,4 @@ static int expect_query_contains(mylite_db *database, struct expected_query_cont
 
     mylite_result_free(result);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "<NULL>" : expected,
-            actual == NULL ? "<NULL>" : actual
-        );
-        return 1;
-    }
-    return 0;
 }

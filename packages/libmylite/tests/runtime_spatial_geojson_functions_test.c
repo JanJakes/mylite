@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_spatial.h"
@@ -67,13 +69,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 
@@ -141,7 +136,8 @@ static int test_scalar_spatial_geojson_functions(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open GeoJSON database");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open GeoJSON database");
     failures += expect_query(
         database,
         (struct expected_query){
@@ -267,11 +263,12 @@ static int test_table_backed_spatial_geojson_functions(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "table") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "table") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open GeoJSON table db");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open GeoJSON table db");
     failures += execute_ok(database, "CREATE DATABASE spatial_geojson", NULL);
     failures += execute_ok(database, "USE spatial_geojson", NULL);
     failures += execute_ok(
@@ -324,11 +321,15 @@ static int test_spatial_geojson_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open GeoJSON diagnostics db");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open GeoJSON diagnostics db"
+    );
     {
         struct mylite_spatial_argument arguments[] = {
             {.bytes = point_1_2_internal, .byte_count = sizeof(point_1_2_internal)},
@@ -338,7 +339,7 @@ static int test_spatial_geojson_diagnostics(void) {
         struct mylite_spatial_result result = {0};
         struct mylite_spatial_error error = {0};
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_spatial_evaluate(
                 MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON,
                 arguments,
@@ -349,14 +350,17 @@ static int test_spatial_geojson_diagnostics(void) {
             -1,
             "direct ST_AsGeoJSON fractional option"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             error.code,
             mysql_error_incorrect_type_for_argument,
             "direct ST_AsGeoJSON fractional option code"
         );
-        failures +=
-            expect_text(error.sqlstate, "HY000", "direct ST_AsGeoJSON fractional option sqlstate");
-        failures += expect_contains(
+        failures += mylite_test_expect_text(
+            error.sqlstate,
+            "HY000",
+            "direct ST_AsGeoJSON fractional option sqlstate"
+        );
+        failures += mylite_test_expect_contains(
             error.message,
             "Incorrect type for argument options in function st_asgeojson",
             "direct ST_AsGeoJSON fractional option message"
@@ -518,9 +522,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -534,8 +538,16 @@ static int expect_dml_ok(
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
-        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            sql
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            expected.warning_count,
+            sql
+        );
     }
     mylite_result_free(result);
     return failures;
@@ -546,13 +558,16 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int failures = execute_ok(database, expected.sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             expected.column_count,
             expected.context
         );
-        failures +=
-            expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            expected.row_count,
+            expected.context
+        );
     }
     for (size_t row = 0U; failures == 0 && row < expected.row_count; ++row) {
         for (size_t column = 0U; failures == 0 && column < expected.column_count; ++column) {
@@ -602,84 +617,6 @@ static int expect_result_value(
         return 1;
     }
     return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected %s, got %s\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected message containing %s, got %s\n",
-            context,
-            needle == NULL ? "NULL" : needle,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_spatial_geojson_%s_%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    return written < 0 || (size_t)written >= path_size ? -1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {

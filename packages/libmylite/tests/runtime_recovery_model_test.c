@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -88,9 +90,6 @@ static int execute_transaction(
 );
 static int query_single_int(sqlite3 *sqlite, const char *sql, int *out_value);
 static int query_single_text(sqlite3 *sqlite, const char *sql, const char *expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_true(bool condition, const char *context);
 
 int main(void) {
@@ -134,7 +133,8 @@ static int test_dml_model_and_reopen(void) {
     if (failures != 0) {
         return failures;
     }
-    failures += expect_int(open_model_database(path, &database), MYLITE_OK, "open DML model");
+    failures +=
+        mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, "open DML model");
     failures += execute_ok(
         database,
         "CREATE TABLE model_rows(id INT NOT NULL PRIMARY KEY, value INT NOT NULL)"
@@ -190,7 +190,8 @@ static int test_ddl_model_and_reopen(void) {
     if (failures != 0) {
         return failures;
     }
-    failures += expect_int(open_model_database(path, &database), MYLITE_OK, "open DDL model");
+    failures +=
+        mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, "open DDL model");
     failures += execute_ok(database, "CREATE TABLE ddl_model(id INT NOT NULL PRIMARY KEY)");
     failures += assert_schema_model(database, &model);
 
@@ -227,7 +228,7 @@ static int test_ddl_model_and_reopen(void) {
 
     failures += execute_ok(database, "DROP TABLE ddl_model_renamed");
     failures += reopen_database(path, &database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(
             database,
             "SHOW TABLES LIKE 'ddl_model_renamed'",
@@ -238,7 +239,8 @@ static int test_ddl_model_and_reopen(void) {
         "query dropped modeled table"
     );
     if (result != NULL) {
-        failures += expect_size(mylite_result_row_count(result), 0U, "modeled table is absent");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "modeled table is absent");
     }
     mylite_result_free(result);
     mylite_close(database);
@@ -256,7 +258,8 @@ static int test_crash_commit_visibility(void) {
     if (failures != 0) {
         return failures;
     }
-    failures += expect_int(open_model_database(path, &database), MYLITE_OK, "open crash model");
+    failures +=
+        mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, "open crash model");
     failures += execute_ok(
         database,
         "CREATE TABLE model_rows(id INT NOT NULL PRIMARY KEY, value INT NOT NULL)"
@@ -279,8 +282,11 @@ static int test_crash_commit_visibility(void) {
         if (commit) {
             rows[round] = (struct model_row){.present = true, .value = round * crash_value_scale};
         }
-        failures +=
-            expect_int(open_model_database(path, &database), MYLITE_OK, "reopen crash model");
+        failures += mylite_test_expect_int(
+            open_model_database(path, &database),
+            MYLITE_OK,
+            "reopen crash model"
+        );
         failures += assert_row_model(database, rows, "crash commit visibility");
         mylite_close(database);
         database = NULL;
@@ -322,7 +328,8 @@ static int wait_for_crash_child(pid_t child) {
     }
     failures += expect_true(WIFEXITED(child_status), "crash model child exited");
     if (WIFEXITED(child_status)) {
-        failures += expect_int(WEXITSTATUS(child_status), 0, "crash model child status");
+        failures +=
+            mylite_test_expect_int(WEXITSTATUS(child_status), 0, "crash model child status");
     }
     return failures;
 }
@@ -400,7 +407,7 @@ static int assert_row_model(
     for (size_t id = 0U; id < model_row_capacity; ++id) {
         expected_row_count += rows[id].present ? 1U : 0U;
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(
             database,
             "SELECT id, value FROM model_rows ORDER BY id",
@@ -413,7 +420,8 @@ static int assert_row_model(
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_row_count(result), expected_row_count, context);
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), expected_row_count, context);
     for (size_t id = 0U; id < model_row_capacity && result_row < mylite_result_row_count(result);
          ++id) {
         char expected_id[integer_text_capacity];
@@ -424,10 +432,16 @@ static int assert_row_model(
         }
         (void)snprintf(expected_id, sizeof(expected_id), "%zu", id);
         (void)snprintf(expected_value, sizeof(expected_value), "%d", rows[id].value);
-        failures +=
-            expect_text(mylite_result_value_text(result, result_row, 0U), expected_id, context);
-        failures +=
-            expect_text(mylite_result_value_text(result, result_row, 1U), expected_value, context);
+        failures += mylite_test_expect_text(
+            mylite_result_value_text(result, result_row, 0U),
+            expected_id,
+            context
+        );
+        failures += mylite_test_expect_text(
+            mylite_result_value_text(result, result_row, 1U),
+            expected_value,
+            context
+        );
         ++result_row;
     }
     mylite_result_free(result);
@@ -444,16 +458,23 @@ static int assert_schema_model(mylite_db *database, const struct schema_model *m
     if (written < 0 || (size_t)written >= sizeof(sql)) {
         return 1;
     }
-    failures += expect_int(mylite_execute(database, sql, (size_t)written, &result), MYLITE_OK, sql);
+    failures += mylite_test_expect_int(
+        mylite_execute(database, sql, (size_t)written, &result),
+        MYLITE_OK,
+        sql
+    );
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_row_count(result), model->column_count, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), model->column_count, sql);
     for (size_t column = 0U;
          column < model->column_count && column < mylite_result_row_count(result);
          ++column) {
-        failures +=
-            expect_text(mylite_result_value_text(result, column, 0U), model->columns[column], sql);
+        failures += mylite_test_expect_text(
+            mylite_result_value_text(result, column, 0U),
+            model->columns[column],
+            sql
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -462,7 +483,11 @@ static int assert_schema_model(mylite_db *database, const struct schema_model *m
     if (written < 0 || (size_t)written >= sizeof(sql)) {
         return failures + 1;
     }
-    failures += expect_int(mylite_execute(database, sql, (size_t)written, &result), MYLITE_OK, sql);
+    failures += mylite_test_expect_int(
+        mylite_execute(database, sql, (size_t)written, &result),
+        MYLITE_OK,
+        sql
+    );
     if (result == NULL) {
         return failures + 1;
     }
@@ -470,12 +495,15 @@ static int assert_schema_model(mylite_db *database, const struct schema_model *m
         const char *index_name = mylite_result_value_text(result, row, 2U);
 
         if (index_name != NULL && strcmp(index_name, "PRIMARY") != 0) {
-            failures += expect_text(index_name, model->secondary_index_name, sql);
+            failures += mylite_test_expect_text(index_name, model->secondary_index_name, sql);
             ++secondary_index_count;
         }
     }
-    failures +=
-        expect_size(secondary_index_count, model->secondary_index_name == NULL ? 0U : 1U, sql);
+    failures += mylite_test_expect_size(
+        secondary_index_count,
+        model->secondary_index_name == NULL ? 0U : 1U,
+        sql
+    );
     mylite_result_free(result);
     return failures;
 }
@@ -497,9 +525,10 @@ static int run_ddl_fault_matrix(
         mylite_db *database = NULL;
         mylite_result *result = NULL;
 
-        failures += expect_int(open_model_database(path, &database), MYLITE_OK, operation_name);
+        failures +=
+            mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, operation_name);
         mylite_storage_vfs_test_set_fault(operation, SIZE_MAX);
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execute(
                 database,
                 "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT)",
@@ -529,7 +558,8 @@ static int run_ddl_fault_matrix(
         int physical_table_count = -1;
 
         remove_related_files(path);
-        failures += expect_int(open_model_database(path, &database), MYLITE_OK, operation_name);
+        failures +=
+            mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, operation_name);
         mylite_storage_vfs_test_set_fault(operation, fail_on_call);
         (void)mylite_execute(
             database,
@@ -543,8 +573,11 @@ static int run_ddl_fault_matrix(
         mylite_close(database);
         database = NULL;
 
-        failures +=
-            expect_int(open_model_database(path, &database), MYLITE_OK, "reopen DDL fault file");
+        failures += mylite_test_expect_int(
+            open_model_database(path, &database),
+            MYLITE_OK,
+            "reopen DDL fault file"
+        );
         sqlite = mylite_connection_sqlite_for_test(database);
         if (sqlite == NULL) {
             failures += 1;
@@ -566,7 +599,7 @@ static int run_ddl_fault_matrix(
             catalog_table_count == 0 || catalog_table_count == 1,
             "faulted DDL catalog state is pre or post"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             physical_table_count,
             catalog_table_count,
             "faulted DDL physical/catalog atomicity"
@@ -658,8 +691,11 @@ static int reopen_database(const char *path, mylite_db **database) {
         mylite_close(*database);
         *database = NULL;
     }
-    failures +=
-        expect_int(open_model_database(path, database), MYLITE_OK, "reopen modeled database");
+    failures += mylite_test_expect_int(
+        open_model_database(path, database),
+        MYLITE_OK,
+        "reopen modeled database"
+    );
     failures += expect_true(*database != NULL, "reopen returns modeled database");
     return failures;
 }
@@ -726,46 +762,13 @@ static int query_single_text(sqlite3 *sqlite, const char *sql, const char *expec
     if (rc == SQLITE_OK && sqlite3_step(statement) == SQLITE_ROW) {
         const char *actual = (const char *)sqlite3_column_text(statement, 0);
 
-        failures += expect_text(actual, expected, sql);
+        failures += mylite_test_expect_text(actual, expected, sql);
     } else {
         fprintf(stderr, "%s: SQLite query failed: %s\n", sql, sqlite3_errmsg(sqlite));
         failures += 1;
     }
     sqlite3_finalize(statement);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected '%s', got '%s'\n",
-        context,
-        expected == NULL ? "(null)" : expected,
-        actual == NULL ? "(null)" : actual
-    );
-    return 1;
 }
 
 static int expect_true(bool condition, const char *context) {

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_test_allocator.h"
@@ -12,9 +14,7 @@ enum { allocation_sweep_limit = 512 };
 static int test_open_failure_is_scoped_and_recoverable(void);
 static int test_execute_failure_preserves_handle(void);
 static int test_cursor_failure_completes_and_resets(void);
-static int expect_int(int actual, int expected, const char *context);
 static int expect_true(bool actual, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -38,7 +38,7 @@ static int test_open_failure_is_scoped_and_recoverable(void) {
         mylite_test_allocator_fail_after(allocation_index);
         rc = mylite_open_memory(&database);
         if (!mylite_test_allocator_was_triggered()) {
-            failures += expect_int(rc, MYLITE_OK, "completed open allocation sweep");
+            failures += mylite_test_expect_int(rc, MYLITE_OK, "completed open allocation sweep");
             failures += expect_true(database != NULL, "completed open returns handle");
             mylite_close(database);
             completed_sweep = true;
@@ -46,10 +46,11 @@ static int test_open_failure_is_scoped_and_recoverable(void) {
             break;
         }
 
-        failures += expect_int(rc, MYLITE_NOMEM, "injected open allocation failure");
+        failures += mylite_test_expect_int(rc, MYLITE_NOMEM, "injected open allocation failure");
         failures += expect_true(database == NULL, "failed open leaves output null");
         mylite_test_allocator_clear();
-        failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open recovery");
+        failures +=
+            mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open recovery");
         failures += expect_true(database != NULL, "recovered open returns handle");
         mylite_close(database);
     }
@@ -66,22 +67,26 @@ static int test_cursor_failure_completes_and_resets(void) {
     int failures = 0;
     bool completed_sweep = false;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open cursor sweep handle");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open cursor sweep handle"
+    );
+    failures += mylite_test_expect_int(
         mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
         MYLITE_OK,
         "create cursor sweep schema"
     );
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(database, "USE app", strlen("USE app"), &result),
         MYLITE_OK,
         "select cursor sweep schema"
     );
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(
             database,
             "CREATE TABLE items (id INT NOT NULL, value VARCHAR(20))",
@@ -93,7 +98,7 @@ static int test_cursor_failure_completes_and_resets(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(
             database,
             "INSERT INTO items VALUES (1, 'first'), (2, 'second')",
@@ -110,7 +115,7 @@ static int test_cursor_failure_completes_and_resets(void) {
         mylite_stmt *stmt = NULL;
         int rc = MYLITE_OK;
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_prepare(database, query, strlen(query), &stmt),
             MYLITE_OK,
             "prepare cursor allocation sweep"
@@ -118,41 +123,51 @@ static int test_cursor_failure_completes_and_resets(void) {
         mylite_test_allocator_fail_after(allocation_index);
         rc = mylite_stmt_step(stmt);
         if (!mylite_test_allocator_was_triggered()) {
-            failures += expect_int(rc, MYLITE_ROW, "completed cursor allocation sweep");
-            failures += expect_text(
+            failures += mylite_test_expect_int(rc, MYLITE_ROW, "completed cursor allocation sweep");
+            failures += mylite_test_expect_text(
                 mylite_stmt_value_text(stmt, 0U),
                 "first",
                 "completed cursor retains first row"
             );
             completed_sweep = true;
             mylite_test_allocator_clear();
-            failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cursor sweep");
+            failures += mylite_test_expect_int(
+                mylite_stmt_finalize(stmt),
+                MYLITE_OK,
+                "finalize cursor sweep"
+            );
             break;
         }
 
         mylite_test_allocator_clear();
         if (rc == MYLITE_ROW) {
-            failures += expect_int(
+            failures += mylite_test_expect_int(
                 mylite_stmt_finalize(stmt),
                 MYLITE_OK,
                 "finalize tolerated cursor allocation failure"
             );
             continue;
         }
-        failures += expect_int(rc, MYLITE_NOMEM, "injected cursor allocation failure");
-        failures += expect_int(
+        failures += mylite_test_expect_int(rc, MYLITE_NOMEM, "injected cursor allocation failure");
+        failures += mylite_test_expect_int(
             mylite_stmt_step(stmt),
             MYLITE_DONE,
             "failed cursor is completed instead of skipping a row"
         );
-        failures += expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset failed cursor");
-        failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecute failed cursor");
-        failures += expect_text(
+        failures +=
+            mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset failed cursor");
+        failures +=
+            mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecute failed cursor");
+        failures += mylite_test_expect_text(
             mylite_stmt_value_text(stmt, 0U),
             "first",
             "reset cursor restarts at first row"
         );
-        failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize recovered cursor");
+        failures += mylite_test_expect_int(
+            mylite_stmt_finalize(stmt),
+            MYLITE_OK,
+            "finalize recovered cursor"
+        );
     }
 
     failures += expect_true(completed_sweep, "cursor allocation sweep reached success");
@@ -167,7 +182,8 @@ static int test_execute_failure_preserves_handle(void) {
     int failures = 0;
     bool completed_sweep = false;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open execute handle");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open execute handle");
     if (database == NULL) {
         return failures;
     }
@@ -180,7 +196,7 @@ static int test_execute_failure_preserves_handle(void) {
         mylite_test_allocator_fail_after(allocation_index);
         rc = mylite_execute(database, query, strlen(query), &result);
         if (!mylite_test_allocator_was_triggered()) {
-            failures += expect_int(rc, MYLITE_OK, "completed execute allocation sweep");
+            failures += mylite_test_expect_int(rc, MYLITE_OK, "completed execute allocation sweep");
             failures += expect_true(result != NULL, "completed execute returns result");
             mylite_result_free(result);
             completed_sweep = true;
@@ -195,10 +211,10 @@ static int test_execute_failure_preserves_handle(void) {
             continue;
         }
 
-        failures += expect_int(rc, MYLITE_NOMEM, "fatal execute allocation failure");
+        failures += mylite_test_expect_int(rc, MYLITE_NOMEM, "fatal execute allocation failure");
         failures += expect_true(result == NULL, "fatal execute failure leaves result null");
         mylite_test_allocator_clear();
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execute(database, query, strlen(query), &result),
             MYLITE_OK,
             "execute recovery"
@@ -213,31 +229,9 @@ static int test_execute_failure_preserves_handle(void) {
     return failures;
 }
 
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
 static int expect_true(bool actual, const char *context) {
     if (!actual) {
         fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected %s, got %s\n",
-            context,
-            expected,
-            actual == NULL ? "<null>" : actual
-        );
         return 1;
     }
     return 0;

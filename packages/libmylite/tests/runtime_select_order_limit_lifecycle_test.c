@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_catalog.h"
@@ -73,19 +75,11 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int drop_physical_table(sqlite3 *connection, const char *physical_name);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -115,12 +109,13 @@ static int test_table_select_synchronizes_catalog_once(void) {
     sqlite3_stmt *commit_statement = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "single_catalog_sync") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "single_catalog_sync") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog sync file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog sync file");
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
@@ -130,7 +125,7 @@ static int test_table_select_synchronizes_catalog_once(void) {
     result = NULL;
 
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_trace_v2(sqlite, SQLITE_TRACE_STMT, count_catalog_sync_statement, &trace),
         SQLITE_OK,
         "install catalog sync trace"
@@ -138,34 +133,39 @@ static int test_table_select_synchronizes_catalog_once(void) {
     failures += execute_ok(database, "SELECT id FROM items", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_size(trace.data_version_count, 1U, "table SELECT catalog sync count");
+    failures +=
+        mylite_test_expect_size(trace.data_version_count, 1U, "table SELECT catalog sync count");
     begin_statement = find_cached_statement_equal(sqlite, "BEGIN");
     commit_statement = find_cached_statement_equal(sqlite, "COMMIT");
-    failures += expect_true(begin_statement != NULL, "cached SELECT BEGIN statement");
-    failures += expect_true(commit_statement != NULL, "cached SELECT COMMIT statement");
+    failures += mylite_test_expect_true(begin_statement != NULL, "cached SELECT BEGIN statement");
+    failures += mylite_test_expect_true(commit_statement != NULL, "cached SELECT COMMIT statement");
 
     trace.data_version_count = 0U;
     failures += execute_ok(database, "SELECT id FROM items", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_size(trace.data_version_count, 1U, "second table SELECT catalog sync count");
-    failures += expect_true(
+    failures += mylite_test_expect_size(
+        trace.data_version_count,
+        1U,
+        "second table SELECT catalog sync count"
+    );
+    failures += mylite_test_expect_true(
         find_cached_statement_equal(sqlite, "BEGIN") == begin_statement,
         "reuse cached SELECT BEGIN statement"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         find_cached_statement_equal(sqlite, "COMMIT") == commit_statement,
         "reuse cached SELECT COMMIT statement"
     );
     if (begin_statement != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             sqlite3_stmt_status(begin_statement, SQLITE_STMTSTATUS_RUN, 0),
             2,
             "cached SELECT BEGIN execution count"
         );
     }
     if (commit_statement != NULL) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             sqlite3_stmt_status(commit_statement, SQLITE_STMTSTATUS_RUN, 0),
             2,
             "cached SELECT COMMIT execution count"
@@ -176,8 +176,12 @@ static int test_table_select_synchronizes_catalog_once(void) {
     failures += execute_ok(database, "SELECT 1", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_size(trace.data_version_count, 1U, "tableless SELECT catalog sync count");
-    failures += expect_int(
+    failures += mylite_test_expect_size(
+        trace.data_version_count,
+        1U,
+        "tableless SELECT catalog sync count"
+    );
+    failures += mylite_test_expect_int(
         sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
         SQLITE_OK,
         "remove catalog sync trace"
@@ -215,12 +219,13 @@ static int test_cached_literal_limit_does_not_reprepare(void) {
     const char *sqlite_sql = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "cached_literal_limit") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "cached_literal_limit") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cached limit file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open cached limit file");
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
@@ -233,20 +238,25 @@ static int test_cached_literal_limit_does_not_reprepare(void) {
             "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1 OFFSET 1",
             &result
         );
-        failures += expect_size(mylite_result_row_count(result), 1U, "cached limit row count");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 1U, "cached limit row count");
         mylite_result_free(result);
         result = NULL;
     }
 
     sqlite = mylite_connection_sqlite_for_test(database);
     statement = find_cached_statement_containing(sqlite, " LIMIT 1 OFFSET 1");
-    failures += expect_true(statement != NULL, "cached literal limit statement");
+    failures += mylite_test_expect_true(statement != NULL, "cached literal limit statement");
     if (statement != NULL) {
         sqlite_sql = sqlite3_sql(statement);
-        failures += expect_contains(sqlite_sql, " LIMIT 1 OFFSET 1", "literal limit SQL");
         failures +=
-            expect_int(sqlite3_bind_parameter_count(statement), 0, "literal limit parameter count");
-        failures += expect_int(
+            mylite_test_expect_contains(sqlite_sql, " LIMIT 1 OFFSET 1", "literal limit SQL");
+        failures += mylite_test_expect_int(
+            sqlite3_bind_parameter_count(statement),
+            0,
+            "literal limit parameter count"
+        );
+        failures += mylite_test_expect_int(
             sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 0),
             0,
             "literal limit reprepare count"
@@ -357,13 +367,14 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     uint64_t sqlite_generation_before_select = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "success") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "success") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
@@ -836,15 +847,21 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     );
 
     failures += execute_ok(database, "SELECT * FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         ordered_numbers_column_count,
         "ordered star column count"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "ordered star row count");
-    failures += expect_text(mylite_result_column_name(result, 0U), "id", "ordered star id name");
-    failures += expect_text(mylite_result_column_name(result, 1U), "i", "ordered star i name");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "ordered star row count");
+    failures += mylite_test_expect_text(
+        mylite_result_column_name(result, 0U),
+        "id",
+        "ordered star id name"
+    );
+    failures +=
+        mylite_test_expect_text(mylite_result_column_name(result, 1U), "i", "ordered star i name");
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, ordered_numbers_not_null_column_index),
         "nn",
         "ordered star nn name"
@@ -858,21 +875,30 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
         NULL,
         "ordered star null value"
     );
-    failures += expect_int64(mylite_result_affected_rows(result), 0, "ordered star affected rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "ordered star warnings");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "ordered star affected rows"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), 0U, "ordered star warnings");
     mylite_result_free(result);
     result = NULL;
 
     failures +=
         execute_ok(database, "SELECT ALL * FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         ordered_numbers_column_count,
         "all ordered star column count"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "all ordered star row count");
     failures +=
-        expect_text(mylite_result_column_name(result, 0U), "id", "all ordered star id name");
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "all ordered star row count");
+    failures += mylite_test_expect_text(
+        mylite_result_column_name(result, 0U),
+        "id",
+        "all ordered star id name"
+    );
     failures += expect_result_value(result, 0U, 0U, "1", "all ordered star id value");
     failures += expect_result_value(
         result,
@@ -881,22 +907,36 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
         NULL,
         "all ordered star null value"
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 0, "all ordered star affected rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "all ordered star warnings");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "all ordered star affected rows"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "all ordered star warnings"
+    );
     mylite_result_free(result);
     result = NULL;
 
     failures +=
         execute_ok(database, "SELECT * FROM ordered_numbers AS nums ORDER BY nn LIMIT 1", &result);
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         ordered_numbers_column_count,
         "aliased ordered star column count"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "aliased ordered star row count");
-    failures +=
-        expect_text(mylite_result_column_name(result, 0U), "id", "aliased ordered star id name");
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        1U,
+        "aliased ordered star row count"
+    );
+    failures += mylite_test_expect_text(
+        mylite_result_column_name(result, 0U),
+        "id",
+        "aliased ordered star id name"
+    );
     failures += expect_result_value(result, 0U, 0U, "1", "aliased ordered star id value");
     failures += expect_result_value(
         result,
@@ -905,48 +945,96 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
         NULL,
         "aliased ordered star null value"
     );
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 0, "aliased ordered star affected rows");
-    failures +=
-        expect_size(mylite_result_warning_count(result), 0U, "aliased ordered star warnings");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "aliased ordered star affected rows"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "aliased ordered star warnings"
+    );
     mylite_result_free(result);
     result = NULL;
 
     failures +=
         execute_ok(database, "SELECT i, i FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
-    failures += expect_size(mylite_result_column_count(result), 2U, "duplicate ordered columns");
-    failures += expect_text(mylite_result_column_name(result, 0U), "i", "duplicate ordered col 1");
-    failures += expect_text(mylite_result_column_name(result, 1U), "i", "duplicate ordered col 2");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "duplicate ordered columns"
+    );
+    failures += mylite_test_expect_text(
+        mylite_result_column_name(result, 0U),
+        "i",
+        "duplicate ordered col 1"
+    );
+    failures += mylite_test_expect_text(
+        mylite_result_column_name(result, 1U),
+        "i",
+        "duplicate ordered col 2"
+    );
     failures += expect_result_value(result, 0U, 0U, "-2", "duplicate ordered value 1");
     failures += expect_result_value(result, 0U, 1U, "-2", "duplicate ordered value 2");
     mylite_result_free(result);
     result = NULL;
 
     failures += execute_ok(database, "SELECT id FROM ordered_numbers ORDER BY id LIMIT 0", &result);
-    failures += expect_size(mylite_result_column_count(result), 1U, "limit zero column count");
-    failures += expect_size(mylite_result_row_count(result), 0U, "limit zero row count");
-    failures += expect_int64(mylite_result_affected_rows(result), 0, "limit zero affected rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "limit zero warnings");
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), 1U, "limit zero column count");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 0U, "limit zero row count");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "limit zero affected rows"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), 0U, "limit zero warnings");
     mylite_result_free(result);
     result = NULL;
 
     failures +=
         execute_ok(database, "SELECT DISTINCT n FROM ordered_numbers ORDER BY n LIMIT 0", &result);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        1U,
+        "distinct limit zero column count"
+    );
     failures +=
-        expect_size(mylite_result_column_count(result), 1U, "distinct limit zero column count");
-    failures += expect_text(mylite_result_column_name(result, 0U), "n", "distinct column name");
-    failures += expect_size(mylite_result_row_count(result), 0U, "distinct limit zero row count");
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), 0, "distinct limit zero affected rows");
-    failures +=
-        expect_size(mylite_result_warning_count(result), 0U, "distinct limit zero warnings");
+        mylite_test_expect_text(mylite_result_column_name(result, 0U), "n", "distinct column name");
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        0U,
+        "distinct limit zero row count"
+    );
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "distinct limit zero affected rows"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "distinct limit zero warnings"
+    );
     mylite_result_free(result);
     result = NULL;
 
     failures += execute_ok(database, "SELECT DISTINCT n FROM ordered_numbers ORDER BY n", &result);
-    failures += expect_size(mylite_result_column_count(result), 1U, "distinct row count column");
-    failures += expect_size(mylite_result_row_count(result), 2U, "distinct row count rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "distinct select warnings");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        1U,
+        "distinct row count column"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 2U, "distinct row count rows");
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "distinct select warnings"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "SELECT ROW_COUNT()", &result);
@@ -1093,7 +1181,7 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             (size_t)catalog->generation,
             (size_t)catalog_generation_before_select,
             "ordered select leaves catalog generation"
@@ -1101,7 +1189,7 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     }
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             (size_t)session->sqlite_schema_generation,
             (size_t)sqlite_generation_before_select,
             "ordered select leaves SQLite schema generation"
@@ -1191,7 +1279,8 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
         "ordered select preserves preamble"
     );
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1401,12 +1490,13 @@ static int test_order_limit_diagnostics(void) {
     struct mylite_catalog_table_descriptor table = {0};
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += seed_schema(database, "app");
 
     failures += execute_error(
@@ -1912,12 +2002,14 @@ static int test_order_limit_diagnostics(void) {
     );
     failures +=
         execute_ok(database, "SELECT id FROM ordered_numbers ORDER BY id, nn LIMIT 1", &result);
-    failures += expect_size(mylite_result_row_count(result), 1U, "multi-key limit row count");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "multi-key limit row count");
     failures += expect_result_value(result, 0U, 0U, "1", "multi-key limit first row");
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "SELECT id FROM ordered_numbers ORDER BY 1 LIMIT 1", &result);
-    failures += expect_size(mylite_result_row_count(result), 1U, "ordinal limit row count");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "ordinal limit row count");
     failures += expect_result_value(result, 0U, 0U, "1", "ordinal limit first row");
     mylite_result_free(result);
     result = NULL;
@@ -1977,12 +2069,12 @@ static int test_order_limit_diagnostics(void) {
         }
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read diagnostics schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "ordered_numbers", &table),
         MYLITE_OK,
         "read diagnostics table"
@@ -2035,15 +2127,17 @@ static int test_independent_order_limit_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
     failures += seed_schema(first, "app");
     failures += seed_schema(second, "app");
     failures += execute_ok(first, "USE app", &result);
@@ -2148,7 +2242,7 @@ static int test_independent_order_limit_handles(void) {
 static int seed_schema(mylite_db *database, const char *name) {
     struct mylite_catalog_schema_descriptor schema = {0};
 
-    return expect_int(
+    return mylite_test_expect_int(
         mylite_catalog_create_schema(database, name, &schema),
         MYLITE_OK,
         "seed schema"
@@ -2236,10 +2330,14 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "execute '%s': expected MYLITE_ERROR, got %d\n", sql, rc);
         failures += 1;
     }
-    failures += expect_true(result == NULL, "failed execute leaves result null");
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += mylite_test_expect_true(result == NULL, "failed execute leaves result null");
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, "error code");
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        "error message"
+    );
     mylite_result_free(result);
 
     return failures;
@@ -2249,13 +2347,14 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     mylite_result *result = NULL;
     int failures = execute_ok(database, query.sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 1U, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.value_count, query.context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 1U, query.context);
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.value_count, query.context);
     for (size_t index = 0U; index < query.value_count; ++index) {
         failures += expect_result_value(result, index, 0U, query.values[index], query.context);
     }
-    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, query.context);
     mylite_result_free(result);
 
     return failures;
@@ -2271,45 +2370,10 @@ static int expect_result_value(
     const char *actual = mylite_result_value_text(result, row, column);
 
     if (expected == NULL) {
-        return expect_true(actual == NULL, context);
+        return mylite_test_expect_true(actual == NULL, context);
     }
 
-    return expect_text(actual, expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_select_order_limit_lifecycle_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {
@@ -2376,81 +2440,6 @@ static int drop_physical_table(sqlite3 *connection, const char *physical_name) {
     }
 
     return execute_sql(connection, sql);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected '%s', got '%s'\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected '%s' to contain '%s'\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-
-    return 0;
 }
 
 static int expect_bytes(

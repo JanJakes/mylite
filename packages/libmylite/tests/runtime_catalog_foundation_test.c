@@ -86,8 +86,6 @@ static int tamper_physical_column_type(sqlite3 *sqlite);
 static int tamper_physical_column_nullability(sqlite3 *sqlite);
 static int tamper_physical_generated_expression(sqlite3 *sqlite);
 static int tamper_remove_physical_check_constraint(sqlite3 *sqlite);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
@@ -100,12 +98,7 @@ static int query_single_text(
     char *destination,
     size_t destination_size
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -143,40 +136,46 @@ static int test_catalog_string_pool_deduplicates_and_grows(void) {
     int failures = 0;
 
     mylite_catalog_string_pool_init(&pool);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_string_pool_intern_c_string(&pool, NULL, &empty),
         MYLITE_OK,
         "intern empty catalog string"
     );
-    failures += expect_text(empty, "", "empty catalog string value");
+    failures += mylite_test_expect_text(empty, "", "empty catalog string value");
     for (size_t index = 0U; index < string_count; ++index) {
         int written = snprintf(text, sizeof(text), "catalog-string-%zu", index);
 
-        failures +=
-            expect_true(written > 0 && (size_t)written < sizeof(text), "format catalog string");
-        failures += expect_int(
+        failures += mylite_test_expect_true(
+            written > 0 && (size_t)written < sizeof(text),
+            "format catalog string"
+        );
+        failures += mylite_test_expect_int(
             mylite_catalog_string_pool_intern_c_string(&pool, text, &strings[index]),
             MYLITE_OK,
             "intern catalog string"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_string_pool_intern_c_string(&pool, "catalog-string-117", &duplicate),
         MYLITE_OK,
         "re-intern catalog string"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         duplicate == strings[catalog_string_duplicate_index],
         "catalog string pointer deduplication"
     );
     for (size_t index = 0U; index < string_count; ++index) {
         int written = snprintf(text, sizeof(text), "catalog-string-%zu", index);
 
+        failures += mylite_test_expect_true(
+            written > 0 && (size_t)written < sizeof(text),
+            "reformat catalog string"
+        );
         failures +=
-            expect_true(written > 0 && (size_t)written < sizeof(text), "reformat catalog string");
-        failures += expect_text(strings[index], text, "catalog string survives pool growth");
+            mylite_test_expect_text(strings[index], text, "catalog string survives pool growth");
     }
-    failures += expect_int((int)pool.count, string_count + 1, "unique catalog string count");
+    failures +=
+        mylite_test_expect_int((int)pool.count, string_count + 1, "unique catalog string count");
     mylite_catalog_string_pool_deinit(&pool);
 
     return failures;
@@ -192,12 +191,12 @@ static int test_catalog_string_pool_reclaims_retired_generations(void) {
 
     mylite_catalog_string_pool_init(&pool);
     mylite_catalog_string_pool_set_generation(&pool, catalog_string_test_generation);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_string_pool_intern_c_string(&pool, "old-generation", &old_text),
         MYLITE_OK,
         "intern old catalog generation"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_string_pool_reference_acquire(
             &pool,
             catalog_string_test_generation,
@@ -209,41 +208,45 @@ static int test_catalog_string_pool_reclaims_retired_generations(void) {
     old_generation_bytes = mylite_catalog_string_pool_byte_count(&pool);
 
     mylite_catalog_string_pool_set_generation(&pool, catalog_string_test_next_generation);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_string_pool_intern_c_string(&pool, "new-generation", &new_text),
         MYLITE_OK,
         "intern new catalog generation"
     );
-    failures += expect_text(old_text, "old-generation", "pinned old catalog string remains valid");
-    failures += expect_text(new_text, "new-generation", "new catalog string value");
-    failures += expect_int(
+    failures += mylite_test_expect_text(
+        old_text,
+        "old-generation",
+        "pinned old catalog string remains valid"
+    );
+    failures += mylite_test_expect_text(new_text, "new-generation", "new catalog string value");
+    failures += mylite_test_expect_int(
         (int)mylite_catalog_string_pool_generation_count(&pool),
         2,
         "pinned retired catalog generation retained"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         mylite_catalog_string_pool_byte_count(&pool) > old_generation_bytes,
         "pinned generations contribute to pool bytes"
     );
 
     mylite_catalog_string_pool_reference_release(&reference);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_catalog_string_pool_generation_count(&pool),
         1,
         "last pin reclaims retired catalog generation"
     );
-    failures += expect_true(
+    failures += mylite_test_expect_true(
         mylite_catalog_string_pool_byte_count(&pool) < old_generation_bytes * 2U,
         "retired catalog string bytes reclaimed"
     );
 
     mylite_catalog_string_pool_set_generation(&pool, catalog_string_test_final_generation);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_catalog_string_pool_generation_count(&pool),
         0,
         "unpinned current generation reclaimed on advance"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_catalog_string_pool_byte_count(&pool),
         0,
         "empty catalog pool has no retained allocation"
@@ -261,11 +264,12 @@ static int test_catalog_string_memory_stays_bounded_across_ddl_generations(void)
     size_t peak_bytes = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "catalog_string_generations") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "catalog_string_generations") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog string file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog string file");
     failures += execute_mylite_statement(database, "CREATE DATABASE app");
     failures += execute_mylite_statement(database, "USE app");
     failures += execute_mylite_statement(
@@ -283,7 +287,7 @@ static int test_catalog_string_memory_stays_bounded_across_ddl_generations(void)
         );
         size_t retained_bytes = 0U;
 
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             written > 0 && (size_t)written < sizeof(sql),
             "format catalog generation DDL"
         );
@@ -296,17 +300,18 @@ static int test_catalog_string_memory_stays_bounded_across_ddl_generations(void)
         if (retained_bytes > peak_bytes) {
             peak_bytes = retained_bytes;
         }
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             retained_bytes <= MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_BYTE_LIMIT,
             "catalog cache budget includes cold string storage"
         );
-        failures += expect_true(
+        failures += mylite_test_expect_true(
             mylite_catalog_string_pool_generation_count(&database->catalog_strings) <= 1U,
             "completed DDL generations do not retain cold strings"
         );
     }
-    failures += expect_true(peak_bytes > 0U, "catalog generation test populated cold strings");
-    failures += expect_true(
+    failures +=
+        mylite_test_expect_true(peak_bytes > 0U, "catalog generation test populated cold strings");
+    failures += mylite_test_expect_true(
         mylite_catalog_string_pool_byte_count(&database->catalog_strings) <
             catalog_string_retained_byte_limit,
         "repeated DDL leaves only the current compact string generation"
@@ -326,18 +331,19 @@ static int test_pinned_column_descriptors_keep_retired_strings_alive(void) {
     const char *next_generation_text = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "catalog_string_pin") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "catalog_string_pin") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog pin file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog pin file");
     failures += execute_mylite_statement(database, "CREATE DATABASE app");
     failures += execute_mylite_statement(database, "USE app");
     failures += execute_mylite_statement(
         database,
         "CREATE TABLE pinned_items (id INT, value VARCHAR(32) COMMENT 'pinned-comment')"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_prepare(
             database,
             "SELECT value FROM pinned_items",
@@ -353,7 +359,10 @@ static int test_pinned_column_descriptors_keep_retired_strings_alive(void) {
             break;
         }
     }
-    failures += expect_true(pinned_entry != NULL, "prepared cursor pins column descriptor cache");
+    failures += mylite_test_expect_true(
+        pinned_entry != NULL,
+        "prepared cursor pins column descriptor cache"
+    );
     if (pinned_entry != NULL) {
         for (size_t index = 0U; index < pinned_entry->column_count; ++index) {
             if (strcmp(pinned_entry->columns[index].name, "value") == 0) {
@@ -362,9 +371,10 @@ static int test_pinned_column_descriptors_keep_retired_strings_alive(void) {
             }
         }
     }
-    failures += expect_true(pinned_comment != NULL, "find pinned descriptor comment");
+    failures += mylite_test_expect_true(pinned_comment != NULL, "find pinned descriptor comment");
     if (pinned_comment != NULL) {
-        failures += expect_text(pinned_comment, "pinned-comment", "pinned descriptor comment");
+        failures +=
+            mylite_test_expect_text(pinned_comment, "pinned-comment", "pinned descriptor comment");
     }
 
     mylite_execution_table_columns_cache_invalidate(database);
@@ -373,7 +383,7 @@ static int test_pinned_column_descriptors_keep_retired_strings_alive(void) {
         &database->catalog_strings,
         database->session.catalog_generation + 1U
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_string_pool_intern_c_string(
             &database->catalog_strings,
             "next-generation",
@@ -383,20 +393,21 @@ static int test_pinned_column_descriptors_keep_retired_strings_alive(void) {
         "create next catalog string generation"
     );
     if (pinned_comment != NULL) {
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             pinned_comment,
             "pinned-comment",
             "retired descriptor string remains valid while pinned"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_catalog_string_pool_generation_count(&database->catalog_strings),
         2,
         "pinned descriptor retains retired generation"
     );
-    failures += expect_int(mylite_stmt_finalize(statement), MYLITE_OK, "release pinned cursor");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(statement), MYLITE_OK, "release pinned cursor");
     statement = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         (int)mylite_catalog_string_pool_generation_count(&database->catalog_strings),
         1,
         "cursor release reclaims retired descriptor strings"
@@ -424,27 +435,29 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
     int parent_foreign_key_indexes = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "create") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "create") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open new catalog file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open new catalog file");
     sqlite = mylite_connection_sqlite_for_test(database);
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
 
-    failures += expect_true(sqlite != NULL, "catalog SQLite connection exists");
-    failures += expect_true(catalog != NULL, "catalog state exists");
+    failures += mylite_test_expect_true(sqlite != NULL, "catalog SQLite connection exists");
+    failures += mylite_test_expect_true(catalog != NULL, "catalog state exists");
     if (catalog != NULL) {
         failures += expect_bool(catalog->initialized, true, "catalog initialized");
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->schema_version,
             MYLITE_CATALOG_SCHEMA_VERSION,
             "catalog schema version"
         );
-        failures += expect_uint64(catalog->generation, 1U, "initial catalog generation");
+        failures +=
+            mylite_test_expect_uint64(catalog->generation, 1U, "initial catalog generation");
         failures += expect_bool(
             catalog->descriptor_cache_is_valid,
             false,
@@ -452,7 +465,11 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(session->catalog_generation, 1U, "session catalog generation");
+        failures += mylite_test_expect_uint64(
+            session->catalog_generation,
+            1U,
+            "session catalog generation"
+        );
     }
     if (sqlite != NULL) {
         failures += query_catalog_table_count(sqlite, &catalog_tables);
@@ -467,10 +484,12 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
             &parent_foreign_key_indexes
         );
     }
-    failures += expect_int(catalog_tables, expected_catalog_table_count, "catalog table count");
-    failures += expect_int(state_rows, 1, "catalog state singleton row");
-    failures += expect_int(schema_rows, 0, "initial schema row count");
-    failures += expect_int(parent_foreign_key_indexes, 1, "foreign-key parent lookup index");
+    failures +=
+        mylite_test_expect_int(catalog_tables, expected_catalog_table_count, "catalog table count");
+    failures += mylite_test_expect_int(state_rows, 1, "catalog state singleton row");
+    failures += mylite_test_expect_int(schema_rows, 0, "initial schema row count");
+    failures +=
+        mylite_test_expect_int(parent_foreign_key_indexes, 1, "foreign-key parent lookup index");
 
     mylite_close(database);
 
@@ -505,20 +524,25 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "reopen") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "reopen") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog file");
-    failures += expect_int(
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog file");
+    failures += mylite_test_expect_int(
         mylite_catalog_create_schema(database, "app", &schema),
         MYLITE_OK,
         "create schema descriptor"
     );
-    failures += expect_int64(schema.schema_id > 0 ? 1 : 0, 1, "schema id is positive");
-    failures += expect_uint64(schema.created_catalog_generation, 2U, "schema create generation");
-    failures += expect_int(
+    failures += mylite_test_expect_int64(schema.schema_id > 0 ? 1 : 0, 1, "schema id is positive");
+    failures += mylite_test_expect_uint64(
+        schema.created_catalog_generation,
+        2U,
+        "schema create generation"
+    );
+    failures += mylite_test_expect_int(
         mylite_catalog_create_table(
             database,
             schema.schema_id,
@@ -535,7 +559,7 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
         MYLITE_OK,
         "create table descriptor"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -564,14 +588,14 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     if (sqlite != NULL) {
         failures += execute_sql(sqlite, "CREATE TABLE phys_items (id INTEGER NOT NULL)");
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_update_table_name(database, table.table_id, "renamed_items"),
         MYLITE_OK,
         "update table descriptor"
     );
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_catalog_generation_after_mutations,
             "catalog generation after mutations"
@@ -580,76 +604,78 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen catalog file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen catalog file");
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_catalog_generation_after_mutations,
             "reopened catalog generation"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read reopened schema"
     );
-    failures += expect_text(schema.name, "app", "reopened schema name");
-    failures += expect_int(
+    failures += mylite_test_expect_text(schema.name, "app", "reopened schema name");
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "renamed_items", &table),
         MYLITE_OK,
         "read renamed table"
     );
-    failures += expect_text(table.name, "renamed_items", "reopened table name");
-    failures += expect_text(table.physical_name, "phys_items", "reopened physical table name");
-    failures += expect_text(table.comment, "items comment", "reopened table comment");
-    failures += expect_int64(
+    failures += mylite_test_expect_text(table.name, "renamed_items", "reopened table name");
+    failures +=
+        mylite_test_expect_text(table.physical_name, "phys_items", "reopened physical table name");
+    failures += mylite_test_expect_text(table.comment, "items comment", "reopened table comment");
+    failures += mylite_test_expect_int64(
         table.created_time_utc_epoch,
         catalog_test_timestamp_epoch,
         "table created timestamp"
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         table.updated_time_utc_epoch,
         catalog_test_timestamp_epoch,
         "table updated timestamp"
     );
-    failures += expect_uint64(table.descriptor_version, 2U, "table descriptor version");
-    failures += expect_int(
+    failures += mylite_test_expect_uint64(table.descriptor_version, 2U, "table descriptor version");
+    failures += mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table.table_id, "id", &column),
         MYLITE_OK,
         "read reopened column"
     );
-    failures += expect_text(column.logical_type, "BIGINT", "reopened logical type");
-    failures += expect_text(column.physical_type, "INTEGER", "reopened physical type");
+    failures += mylite_test_expect_text(column.logical_type, "BIGINT", "reopened logical type");
+    failures += mylite_test_expect_text(column.physical_type, "INTEGER", "reopened physical type");
     failures += expect_bool(column.is_nullable, false, "reopened nullability");
     failures += expect_bool(column.is_visible, true, "reopened visibility");
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_delete_column(database, column.column_id),
         MYLITE_OK,
         "delete column descriptor"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table.table_id, "id", &column),
         MYLITE_ERROR,
         "deleted column is not readable"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_delete_table(database, table.table_id),
         MYLITE_OK,
         "delete table descriptor"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "renamed_items", &table),
         MYLITE_ERROR,
         "deleted table is not readable"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_delete_schema(database, schema.schema_id),
         MYLITE_OK,
         "delete schema descriptor"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_ERROR,
         "deleted schema is not readable"
@@ -670,21 +696,29 @@ static int test_idempotent_catalog_initialization_across_repeated_opens(void) {
     int state_rows = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "idempotent") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "idempotent") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open idempotent file");
-    mylite_close(database);
-    database = NULL;
-
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "first reopen idempotent file");
-    mylite_close(database);
-    database = NULL;
-
     failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "second reopen idempotent file");
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open idempotent file");
+    mylite_close(database);
+    database = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "first reopen idempotent file"
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "second reopen idempotent file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
     catalog = mylite_connection_catalog_for_test(database);
     if (sqlite != NULL) {
@@ -693,10 +727,14 @@ static int test_idempotent_catalog_initialization_across_repeated_opens(void) {
             query_single_int(sqlite, "SELECT count(*) FROM _mylite_catalog_state", &state_rows);
     }
     if (catalog != NULL) {
-        failures += expect_uint64(catalog->generation, 1U, "idempotent generation");
+        failures += mylite_test_expect_uint64(catalog->generation, 1U, "idempotent generation");
     }
-    failures += expect_int(catalog_tables, expected_catalog_table_count, "idempotent table count");
-    failures += expect_int(state_rows, 1, "idempotent state row count");
+    failures += mylite_test_expect_int(
+        catalog_tables,
+        expected_catalog_table_count,
+        "idempotent table count"
+    );
+    failures += mylite_test_expect_int(state_rows, 1, "idempotent state row count");
 
     mylite_close(database);
     remove_related_files(path);
@@ -714,22 +752,29 @@ static int test_independent_file_backed_handles_have_independent_catalog_state(v
     const struct mylite_catalog *second_catalog = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first catalog file");
-    failures +=
-        expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second catalog file");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
+        mylite_open(first_path, &first),
+        MYLITE_OK,
+        "open first catalog file"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(second_path, &second),
+        MYLITE_OK,
+        "open second catalog file"
+    );
+    failures += mylite_test_expect_int(
         mylite_catalog_create_schema(first, "first_app", &schema),
         MYLITE_OK,
         "create schema in first file"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(second, "first_app", &schema),
         MYLITE_ERROR,
         "second file does not see first catalog row"
@@ -738,10 +783,12 @@ static int test_independent_file_backed_handles_have_independent_catalog_state(v
     first_catalog = mylite_connection_catalog_for_test(first);
     second_catalog = mylite_connection_catalog_for_test(second);
     if (first_catalog != NULL) {
-        failures += expect_uint64(first_catalog->generation, 2U, "first catalog generation");
+        failures +=
+            mylite_test_expect_uint64(first_catalog->generation, 2U, "first catalog generation");
     }
     if (second_catalog != NULL) {
-        failures += expect_uint64(second_catalog->generation, 1U, "second catalog generation");
+        failures +=
+            mylite_test_expect_uint64(second_catalog->generation, 1U, "second catalog generation");
     }
 
     mylite_close(second);
@@ -757,15 +804,18 @@ static int test_catalog_default_text_validation(void) {
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor column = {0};
-    int failures =
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open default-text catalog");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open default-text catalog"
+    );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_schema(database, "app", &schema),
         MYLITE_OK,
         "create default-text schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_table(
             database,
             schema.schema_id,
@@ -782,7 +832,7 @@ static int test_catalog_default_text_validation(void) {
         MYLITE_OK,
         "create default-text table"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -807,8 +857,8 @@ static int test_catalog_default_text_validation(void) {
         MYLITE_OK,
         "catalog accepts empty string defaults for VARCHAR"
     );
-    failures += expect_text(column.default_text, "", "empty VARCHAR catalog default");
-    failures += expect_int(
+    failures += mylite_test_expect_text(column.default_text, "", "empty VARCHAR catalog default");
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -833,7 +883,7 @@ static int test_catalog_default_text_validation(void) {
         MYLITE_OK,
         "catalog accepts nonempty temporal text defaults"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -858,7 +908,7 @@ static int test_catalog_default_text_validation(void) {
         MYLITE_OK,
         "catalog accepts nonempty decimal text defaults"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -883,7 +933,7 @@ static int test_catalog_default_text_validation(void) {
         MYLITE_MISUSE,
         "catalog rejects empty decimal text defaults"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -908,7 +958,7 @@ static int test_catalog_default_text_validation(void) {
         MYLITE_MISUSE,
         "catalog rejects empty temporal text defaults"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
             table.table_id,
@@ -946,12 +996,13 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "bad_version") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "bad_version") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-version file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-version file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         snprintf(
@@ -964,30 +1015,32 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open_with_diagnostic(path, &database, &diagnostic),
         MYLITE_ERROR,
         "reject bad version"
     );
-    failures += expect_true(database == NULL, "bad version leaves output null");
-    failures += expect_int(
+    failures += mylite_test_expect_true(database == NULL, "bad version leaves output null");
+    failures += mylite_test_expect_int(
         diagnostic.error_code,
         mysql_error_unknown,
         "bad version preserves open error code"
     );
-    failures += expect_text(diagnostic.sqlstate, "HY000", "bad version preserves SQLSTATE");
-    failures += expect_true(
+    failures +=
+        mylite_test_expect_text(diagnostic.sqlstate, "HY000", "bad version preserves SQLSTATE");
+    failures += mylite_test_expect_true(
         strstr(diagnostic.message, "catalog is incompatible or corrupt") != NULL,
         "bad version preserves open diagnostic message"
     );
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "v36_migration") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "v36_migration") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open v36 migration file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open v36 migration file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -998,7 +1051,8 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "migrate v36 catalog");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "migrate v36 catalog");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         int version = 0;
@@ -1011,8 +1065,12 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
             "SELECT minimum_reader_schema_version FROM _mylite_catalog_state",
             &minimum_reader
         );
-        failures += expect_int(version, MYLITE_CATALOG_SCHEMA_VERSION, "migrated catalog version");
-        failures += expect_int(
+        failures += mylite_test_expect_int(
+            version,
+            MYLITE_CATALOG_SCHEMA_VERSION,
+            "migrated catalog version"
+        );
+        failures += mylite_test_expect_int(
             minimum_reader,
             MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION,
             "migrated minimum reader"
@@ -1022,12 +1080,16 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     database = NULL;
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "legacy_file_format_provenance") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "legacy_file_format_provenance") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open legacy provenance file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open legacy provenance file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -1037,18 +1099,22 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "accept legacy file-format provenance");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "accept legacy file-format provenance"
+    );
     mylite_close(database);
     database = NULL;
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "bad_file_format_provenance") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "bad_file_format_provenance") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad provenance file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open bad provenance file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -1058,16 +1124,24 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject invalid provenance");
-    failures += expect_true(database == NULL, "invalid provenance leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject invalid provenance"
+    );
+    failures += mylite_test_expect_true(database == NULL, "invalid provenance leaves output null");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "future_file_format_provenance") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "future_file_format_provenance") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open future provenance file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open future provenance file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         snprintf(
@@ -1080,16 +1154,21 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject future provenance");
-    failures += expect_true(database == NULL, "future provenance leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject future provenance"
+    );
+    failures += mylite_test_expect_true(database == NULL, "future provenance leaves output null");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "bad_state_type") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "bad_state_type") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-state-type file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-state-type file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -1107,17 +1186,24 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject bad catalog state type");
-    failures += expect_true(database == NULL, "bad state type leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject bad catalog state type"
+    );
+    failures += mylite_test_expect_true(database == NULL, "bad state type leaves output null");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "extra_state_row") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "extra_state_row") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open extra-state-row file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open extra-state-row file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -1136,17 +1222,24 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject extra catalog state row");
-    failures += expect_true(database == NULL, "extra state row leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject extra catalog state row"
+    );
+    failures += mylite_test_expect_true(database == NULL, "extra state row leaves output null");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "bad_schema_shape") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "bad_schema_shape") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-schema-shape file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open bad-schema-shape file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(
@@ -1157,28 +1250,34 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open(path, &database),
         MYLITE_ERROR,
         "reject malformed schema descriptor table"
     );
-    failures += expect_true(database == NULL, "malformed descriptor table leaves output null");
+    failures +=
+        mylite_test_expect_true(database == NULL, "malformed descriptor table leaves output null");
     remove_related_files(path);
 
-    if (make_test_path(path, sizeof(path), "incomplete") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "incomplete") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open incomplete file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open incomplete file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_columns");
     }
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject incomplete catalog");
-    failures += expect_true(database == NULL, "incomplete catalog leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject incomplete catalog"
+    );
+    failures += mylite_test_expect_true(database == NULL, "incomplete catalog leaves output null");
     remove_related_files(path);
 
     return failures;
@@ -1381,11 +1480,12 @@ static int expect_catalog_tamper_rejected(
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), name) != 0) {
+    if (mylite_test_make_path(path, sizeof(path), name) != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog tamper file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog tamper file");
     for (size_t index = 0U; failures == 0 && index < setup_count; ++index) {
         failures += execute_mylite_statement(database, setup_sql[index]);
     }
@@ -1396,8 +1496,11 @@ static int expect_catalog_tamper_rejected(
     mylite_close(database);
     database = NULL;
     if (failures == 0) {
-        failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, context);
-        failures += expect_true(database == NULL, "catalog integrity rejection leaves output null");
+        failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_ERROR, context);
+        failures += mylite_test_expect_true(
+            database == NULL,
+            "catalog integrity rejection leaves output null"
+        );
     }
     mylite_close(database);
     remove_related_files(path);
@@ -1693,7 +1796,7 @@ static int test_zero_initialized_catalog_cleanup(void) {
     mylite_catalog_deinit(NULL);
     mylite_catalog_deinit(&catalog);
     failures += expect_bool(catalog.initialized, false, "zero catalog initialized flag");
-    failures += expect_uint64(catalog.generation, 0U, "zero catalog generation");
+    failures += mylite_test_expect_uint64(catalog.generation, 0U, "zero catalog generation");
     failures +=
         expect_bool(catalog.descriptor_cache_is_valid, false, "zero catalog cache validity");
     failures += expect_bool(
@@ -1706,48 +1809,13 @@ static int test_zero_initialized_catalog_cleanup(void) {
         false,
         "ordinary name is not reserved"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_create_schema(NULL, "app", NULL),
         MYLITE_MISUSE,
         "schema creation rejects NULL database"
     );
 
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_catalog_foundation_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return (int)getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -1898,54 +1966,9 @@ static int query_single_text(
     return 0;
 }
 
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
 static int expect_bool(bool actual, bool expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %d, got %d\n", context, (int)expected, (int)actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
         return 1;
     }
 

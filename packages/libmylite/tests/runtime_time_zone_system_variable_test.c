@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -60,16 +62,9 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -110,12 +105,21 @@ static int test_time_zone_defaults_and_assignments(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open defaults memory");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open defaults memory");
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_text(session->time_zone, "SYSTEM", "initial time_zone text");
-        failures += expect_int(session->time_zone_offset_minutes, 0, "initial time_zone offset");
-        failures += expect_int((int)session->time_zone_is_placeholder, 0, "initial placeholder");
+        failures += mylite_test_expect_text(session->time_zone, "SYSTEM", "initial time_zone text");
+        failures += mylite_test_expect_int(
+            session->time_zone_offset_minutes,
+            0,
+            "initial time_zone offset"
+        );
+        failures += mylite_test_expect_int(
+            (int)session->time_zone_is_placeholder,
+            0,
+            "initial placeholder"
+        );
     }
 
     failures += expect_query_values(
@@ -231,13 +235,14 @@ static int test_time_zone_current_time_and_file_persistence(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "lifecycle") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "lifecycle") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open time zone file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open time zone file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "SET timestamp = 1700000000");
@@ -305,12 +310,12 @@ static int test_time_zone_current_time_and_file_persistence(void) {
     failures += expect_statement_ok(database, "SET time_zone = '-06:00'");
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->catalog_generation,
             catalog_generation,
             "time_zone does not mutate catalog generation"
         );
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_schema_generation,
             "time_zone does not mutate SQLite schema generation"
@@ -327,7 +332,8 @@ static int test_time_zone_current_time_and_file_persistence(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen time zone file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen time zone file");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -379,8 +385,16 @@ static int test_time_zone_diagnostics_and_independent_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first time zone handle");
-    failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second time zone handle");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&first),
+        MYLITE_OK,
+        "open first time zone handle"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&second),
+        MYLITE_OK,
+        "open second time zone handle"
+    );
     failures += expect_statement_ok(first, "SET time_zone = '+02:30'");
     failures += expect_query_values(
         first,
@@ -494,8 +508,9 @@ static int expect_assignment(mylite_db *database, struct expected_assignment ass
     failures += expect_statement_ok(database, assignment.sql);
     session = mylite_connection_session_state(database);
     if (session != NULL) {
-        failures += expect_text(session->time_zone, assignment.text, assignment.context);
-        failures += expect_int(
+        failures +=
+            mylite_test_expect_text(session->time_zone, assignment.text, assignment.context);
+        failures += mylite_test_expect_int(
             session->time_zone_offset_minutes,
             assignment.offset_minutes,
             assignment.context
@@ -523,10 +538,15 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t index = 0U; index < value_count; ++index) {
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_value_text(
                 result,
                 index / query.column_count,
@@ -547,8 +567,8 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 0U, sql);
-    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -580,35 +600,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_time_zone_system_variable_%d_%s.mylite",
-        P_tmpdir,
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -645,58 +640,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
         return 1;
     }
     fclose(file);
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected \"%s\", got \"%s\"\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected \"%s\" to contain \"%s\"\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
     return 0;
 }
 

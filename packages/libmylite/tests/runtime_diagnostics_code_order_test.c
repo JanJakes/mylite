@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -57,14 +59,8 @@ static int expect_scalar_counts(
     const char *row_count,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_text_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -155,21 +151,26 @@ static int test_warning_codes_count_and_order(void) {
         "CREATE TABLE strings (id INT NOT NULL, v VARCHAR(3), n VARCHAR(3) NOT NULL, z VARCHAR(0))"
     );
     failures += execute_ok(database, "INSERT INTO strings VALUES (9, 'abc ', 'abc ', '')", &result);
-    failures += expect_size(mylite_result_warning_count(result), 2U, "insert note count");
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), 2U, "insert note count");
     mylite_result_free(result);
     result = NULL;
 
     failures += execute_ok(database, "SHOW WARNINGS", &result);
-    failures +=
-        expect_size(mylite_result_column_count(result), diagnostics_column_count, "columns");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        diagnostics_column_count,
+        "columns"
+    );
     for (size_t index = 0U; index < diagnostics_column_count; ++index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, index),
             diagnostic_columns[index],
             "diagnostic column name"
         );
     }
-    failures += expect_size(mylite_result_row_count(result), 2U, "show warnings row count");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 2U, "show warnings row count");
     failures += expect_show_warning_row(
         result,
         0U,
@@ -198,11 +199,16 @@ static int test_warning_codes_count_and_order(void) {
     failures += expect_show_count_warnings(database, "0", "scalar counts clear diagnostics");
 
     failures += execute_ok(database, "SHOW PROCESSLIST", &result);
-    failures += expect_size(mylite_result_warning_count(result), 1U, "processlist warning count");
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        1U,
+        "processlist warning count"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "SHOW WARNINGS", &result);
-    failures += expect_size(mylite_result_row_count(result), 1U, "processlist warning rows");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "processlist warning rows");
     failures += expect_show_warning_row(
         result,
         0U,
@@ -223,11 +229,12 @@ static int test_warning_codes_count_and_order(void) {
 static int open_test_database(mylite_db **out_database, char *path, size_t path_size) {
     int failures = 0;
 
-    if (make_test_path(path, path_size) != 0) {
+    if (mylite_test_make_default_path(path, path_size) != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, out_database), MYLITE_OK, "open diagnostics file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, out_database), MYLITE_OK, "open diagnostics file");
 
     return failures;
 }
@@ -244,9 +251,10 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), out_result);
 
-    failures += expect_int(rc, MYLITE_OK, sql);
-    failures += expect_int(mylite_errcode(database), MYLITE_OK, "public error code");
-    failures += expect_text_or_null(mylite_sqlstate(database), "00000", "public SQLSTATE");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), MYLITE_OK, "public error code");
+    failures +=
+        mylite_test_expect_text_or_null(mylite_sqlstate(database), "00000", "public SQLSTATE");
 
     return failures;
 }
@@ -256,10 +264,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_text_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
 
     return failures;
@@ -273,17 +281,17 @@ static int expect_show_warning_row(
 ) {
     int failures = 0;
 
-    failures += expect_text_or_null(
+    failures += mylite_test_expect_text_or_null(
         mylite_result_value_text(result, row_index, 0U),
         expected.level,
         context
     );
-    failures += expect_text_or_null(
+    failures += mylite_test_expect_text_or_null(
         mylite_result_value_text(result, row_index, 1U),
         expected.code,
         context
     );
-    failures += expect_text_contains(
+    failures += mylite_test_expect_contains(
         mylite_result_value_text(result, row_index, 2U),
         expected.message_part,
         context
@@ -300,9 +308,13 @@ static int expect_show_count_warnings(
     mylite_result *result = NULL;
     int failures = execute_ok(database, "SHOW COUNT(*) WARNINGS", &result);
 
-    failures += expect_size(mylite_result_column_count(result), 1U, context);
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
-    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), expected, context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 1U, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
+    failures += mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        expected,
+        context
+    );
     mylite_result_free(result);
 
     return failures;
@@ -319,34 +331,30 @@ static int expect_scalar_counts(
     int failures =
         execute_ok(database, "SELECT @@warning_count, @@error_count, ROW_COUNT()", &result);
 
-    failures += expect_size(mylite_result_column_count(result), scalar_count_column_count, context);
-    failures += expect_size(mylite_result_row_count(result), 1U, context);
-    failures +=
-        expect_text_or_null(mylite_result_value_text(result, 0U, 0U), warning_count, context);
-    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 1U), error_count, context);
-    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 2U), row_count, context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        scalar_count_column_count,
+        context
+    );
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, context);
+    failures += mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        warning_count,
+        context
+    );
+    failures += mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, 0U, 1U),
+        error_count,
+        context
+    );
+    failures += mylite_test_expect_text_or_null(
+        mylite_result_value_text(result, 0U, 2U),
+        row_count,
+        context
+    );
     mylite_result_free(result);
 
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_runtime_diagnostics_code_order_%d.mylite",
-        current_process_id()
-    );
-
-    return written < 0 || (size_t)written >= path_size ? -1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -364,55 +372,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     }
 
     (void)remove(buffer);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual != NULL && expected != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s], got [%s]\n",
-        context,
-        expected == NULL ? "NULL" : expected,
-        actual == NULL ? "NULL" : actual
-    );
-    return 1;
-}
-
-static int expect_text_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected [%s] to contain [%s]\n",
-        context,
-        actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
-    );
-    return 1;
 }

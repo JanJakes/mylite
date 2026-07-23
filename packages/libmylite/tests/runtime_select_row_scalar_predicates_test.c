@@ -26,9 +26,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 
 int main(void) {
     return test_select_row_scalar_predicates() == 0 ? 0 : 1;
@@ -746,7 +743,7 @@ static int open_app_database(mylite_db **out_database) {
     int rc = mylite_test_open_temporary(out_database);
 
     if (rc != MYLITE_OK) {
-        return expect_int(rc, MYLITE_OK, "open temporary database");
+        return mylite_test_expect_int(rc, MYLITE_OK, "open temporary database");
     }
     return expect_statement_ok(*out_database, "CREATE DATABASE app") +
            expect_statement_ok(*out_database, "USE app");
@@ -785,9 +782,16 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int failures = execute_ok(database, query.sql, &result);
 
     if (failures == 0) {
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
         for (size_t index = 0U; index < expected_value_count; ++index) {
             failures += expect_result_value(
                 result,
@@ -811,35 +815,5 @@ static int expect_result_value(
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
 
-    return expect_text(actual, expected, context);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
+    return mylite_test_expect_text(actual, expected, context);
 }

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -407,11 +409,6 @@ static int append_sql(char **cursor, size_t *remaining, const char *text);
 static int expect_empty_variables_result(mylite_db *database, struct variable_absence_query query);
 static int expect_unknown_system_variable(mylite_db *database, struct unknown_variable_query query);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_text_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     return test_optional_system_variable_absence() == 0 ? 0 : 1;
@@ -425,7 +422,8 @@ static int test_optional_system_variable_absence(void) {
         "SHOW GLOBAL VARIABLES",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    int failures =
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open memory database");
 
     if (database == NULL) {
         return failures + 1;
@@ -522,18 +520,21 @@ static int expect_empty_variables_result(mylite_db *database, struct variable_ab
         return failures + 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), variable_column_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        variable_column_count,
+        query.context
+    );
     for (size_t column = 0U; column < variable_column_count; ++column) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column),
             variable_columns[column],
             query.context
         );
     }
-    failures += expect_size(mylite_result_row_count(result), 0U, query.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, query.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, query.context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, query.context);
 
     mylite_result_free(result);
     return failures;
@@ -555,14 +556,19 @@ static int expect_unknown_system_variable(
     }
 
     const struct mylite_diagnostics *diagnostics = mylite_connection_diagnostics(database);
-    int failures = expect_int(
+    int failures = mylite_test_expect_int(
         mylite_diagnostics_errcode(diagnostics),
         mysql_unknown_system_variable_error,
         query.sql
     );
 
-    failures += expect_text_or_null(mylite_diagnostics_sqlstate(diagnostics), "HY000", query.sql);
-    failures += expect_text_contains(mylite_diagnostics_errmsg(diagnostics), query.name, query.sql);
+    failures += mylite_test_expect_text_or_null(
+        mylite_diagnostics_sqlstate(diagnostics),
+        "HY000",
+        query.sql
+    );
+    failures +=
+        mylite_test_expect_contains(mylite_diagnostics_errmsg(diagnostics), query.name, query.sql);
     return failures;
 }
 
@@ -579,72 +585,6 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
             mylite_diagnostics_errcode(diagnostics),
             mylite_diagnostics_sqlstate(diagnostics),
             mylite_diagnostics_errmsg(diagnostics)
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected text [%s], got [%s]\n",
-            context,
-            expected != NULL ? expected : "(null)",
-            actual != NULL ? actual : "(null)"
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected text containing [%s], got [%s]\n",
-            context,
-            needle,
-            actual != NULL ? actual : "(null)"
         );
         return 1;
     }

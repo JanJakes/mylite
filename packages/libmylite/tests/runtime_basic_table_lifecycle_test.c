@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_catalog.h"
@@ -49,22 +51,13 @@ static int test_independent_file_backed_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int table_exists(sqlite3 *connection, const char *table_name, int *out_exists);
 static int expect_empty_result(const mylite_result *result, const char *context);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -92,34 +85,41 @@ static int test_public_api_and_result_cleanup(void) {
     int failures = 0;
 
     mylite_result_free(NULL);
-    failures += expect_size(mylite_result_column_count(NULL), 0U, "NULL result column count");
-    failures += expect_size(mylite_result_row_count(NULL), 0U, "NULL result row count");
-    failures += expect_true(mylite_result_column_name(NULL, 0U) == NULL, "NULL column name");
-    failures += expect_true(mylite_result_value_text(NULL, 0U, 0U) == NULL, "NULL value text");
-    failures += expect_int64(mylite_result_affected_rows(NULL), 0, "NULL affected rows");
-    failures += expect_size(mylite_result_warning_count(NULL), 0U, "NULL warning count");
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(NULL), 0U, "NULL result column count");
+    failures += mylite_test_expect_size(mylite_result_row_count(NULL), 0U, "NULL result row count");
+    failures +=
+        mylite_test_expect_true(mylite_result_column_name(NULL, 0U) == NULL, "NULL column name");
+    failures +=
+        mylite_test_expect_true(mylite_result_value_text(NULL, 0U, 0U) == NULL, "NULL value text");
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(NULL), 0, "NULL affected rows");
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(NULL), 0U, "NULL warning count");
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(NULL, "", 0U, &result),
         MYLITE_MISUSE,
         "execute rejects NULL database"
     );
-    failures += expect_true(result == NULL, "NULL database leaves result null");
+    failures += mylite_test_expect_true(result == NULL, "NULL database leaves result null");
 
-    if (make_test_path(path, sizeof(path), "api") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "api") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open API test file");
-    failures += expect_int(
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open API test file");
+    failures += mylite_test_expect_int(
         mylite_execute(database, NULL, 0U, &result),
         MYLITE_MISUSE,
         "execute rejects NULL SQL"
     );
-    failures += expect_true(result == NULL, "NULL SQL leaves result null");
-    failures += expect_int(mylite_errcode(database), MYLITE_MISUSE, "NULL SQL diagnostic");
-    failures += expect_int(
+    failures += mylite_test_expect_true(result == NULL, "NULL SQL leaves result null");
+    failures +=
+        mylite_test_expect_int(mylite_errcode(database), MYLITE_MISUSE, "NULL SQL diagnostic");
+    failures += mylite_test_expect_int(
         mylite_execute(database, "", 0U, NULL),
         MYLITE_MISUSE,
         "execute rejects NULL output"
@@ -149,13 +149,14 @@ static int test_create_show_drop_and_reopen(void) {
     int has_physical_table = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "create_drop") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "create_drop") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open lifecycle file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open lifecycle file");
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
     failures += expect_empty_result(result, "USE result");
@@ -174,74 +175,82 @@ static int test_create_show_drop_and_reopen(void) {
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_generation_after_create,
             "generation after create"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read lifecycle schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "simple_lifecycle", &table),
         MYLITE_OK,
         "read created table"
     );
-    failures += expect_text(table.name, "simple_lifecycle", "created table logical name");
-    failures += expect_text(table.physical_name, "_mylite_user_table_1", "created physical name");
-    failures += expect_uint64(table.descriptor_version, 1U, "table descriptor version");
-    failures += expect_uint64(
+    failures +=
+        mylite_test_expect_text(table.name, "simple_lifecycle", "created table logical name");
+    failures += mylite_test_expect_text(
+        table.physical_name,
+        "_mylite_user_table_1",
+        "created physical name"
+    );
+    failures += mylite_test_expect_uint64(table.descriptor_version, 1U, "table descriptor version");
+    failures += mylite_test_expect_uint64(
         table.created_catalog_generation,
         expected_generation_after_create,
         "table created generation"
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table.table_id, "id", &column),
         MYLITE_OK,
         "read id column"
     );
-    failures += expect_text(column.logical_type, "INT", "id logical type");
-    failures += expect_text(column.physical_type, "INTEGER", "id physical type");
+    failures += mylite_test_expect_text(column.logical_type, "INT", "id logical type");
+    failures += mylite_test_expect_text(column.physical_type, "INTEGER", "id physical type");
     failures += expect_bool(column.is_nullable, true, "id nullable");
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         column.created_catalog_generation,
         expected_generation_after_create,
         "id created generation"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table.table_id, "amount", &column),
         MYLITE_OK,
         "read amount column"
     );
-    failures += expect_text(column.logical_type, "BIGINT", "amount logical type");
+    failures += mylite_test_expect_text(column.logical_type, "BIGINT", "amount logical type");
     failures += expect_bool(column.is_nullable, false, "amount not null");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table.table_id, "flags", &column),
         MYLITE_OK,
         "read flags column"
     );
-    failures += expect_text(column.logical_type, "INT UNSIGNED", "flags logical type");
+    failures += mylite_test_expect_text(column.logical_type, "INT UNSIGNED", "flags logical type");
     failures += expect_bool(column.is_nullable, true, "flags nullable");
 
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += table_exists(sqlite, table.physical_name, &has_physical_table);
     }
-    failures += expect_int(has_physical_table, 1, "created physical SQLite table exists");
+    failures +=
+        mylite_test_expect_int(has_physical_table, 1, "created physical SQLite table exists");
 
     failures += execute_ok(database, "SHOW TABLES", &result);
-    failures += expect_size(mylite_result_column_count(result), 1U, "SHOW TABLES column count");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), 1U, "SHOW TABLES column count");
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 0U),
         "Tables_in_app",
         "SHOW TABLES column name"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "SHOW TABLES row count");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "SHOW TABLES row count");
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 0U),
         "simple_lifecycle",
         "SHOW TABLES table name"
@@ -250,15 +259,19 @@ static int test_create_show_drop_and_reopen(void) {
     result = NULL;
 
     failures += execute_ok(database, "SHOW TABLES FROM app", &result);
-    failures +=
-        expect_size(mylite_result_column_count(result), 1U, "SHOW TABLES FROM column count");
-    failures += expect_text(
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        1U,
+        "SHOW TABLES FROM column count"
+    );
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 0U),
         "Tables_in_app",
         "SHOW TABLES FROM column name"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "SHOW TABLES FROM row count");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "SHOW TABLES FROM row count");
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 0U),
         "simple_lifecycle",
         "SHOW TABLES FROM table name"
@@ -267,14 +280,19 @@ static int test_create_show_drop_and_reopen(void) {
     result = NULL;
 
     failures += execute_ok(database, "SHOW TABLES IN app", &result);
-    failures += expect_size(mylite_result_column_count(result), 1U, "SHOW TABLES IN column count");
-    failures += expect_text(
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        1U,
+        "SHOW TABLES IN column count"
+    );
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 0U),
         "Tables_in_app",
         "SHOW TABLES IN column name"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "SHOW TABLES IN row count");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "SHOW TABLES IN row count");
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 0U),
         "simple_lifecycle",
         "SHOW TABLES IN table name"
@@ -283,58 +301,73 @@ static int test_create_show_drop_and_reopen(void) {
     result = NULL;
 
     failures += execute_ok(database, "SHOW FULL TABLES", &result);
-    failures +=
-        expect_size(mylite_result_column_count(result), 2U, "SHOW FULL TABLES column count");
-    failures += expect_text(
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "SHOW FULL TABLES column count"
+    );
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 0U),
         "Tables_in_app",
         "SHOW FULL TABLES table column name"
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 1U),
         "Table_type",
         "SHOW FULL TABLES type column name"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "SHOW FULL TABLES row count");
-    failures += expect_text(
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "SHOW FULL TABLES row count");
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 0U),
         "simple_lifecycle",
         "SHOW FULL TABLES table name"
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 1U),
         "BASE TABLE",
         "SHOW FULL TABLES table type"
     );
-    failures += expect_size(mylite_result_warning_count(result), 0U, "SHOW FULL TABLES warnings");
-    failures += expect_int64(mylite_result_affected_rows(result), 0, "SHOW FULL TABLES affected");
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "SHOW FULL TABLES warnings"
+    );
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "SHOW FULL TABLES affected"
+    );
     mylite_result_free(result);
     result = NULL;
 
     failures += execute_ok(database, "SHOW FULL TABLES FROM app LIKE 'simple%'", &result);
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         2U,
         "SHOW FULL TABLES FROM LIKE column count"
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 0U),
         "Tables_in_app (simple%)",
         "SHOW FULL TABLES FROM LIKE table column name"
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_column_name(result, 1U),
         "Table_type",
         "SHOW FULL TABLES FROM LIKE type column name"
     );
-    failures +=
-        expect_size(mylite_result_row_count(result), 1U, "SHOW FULL TABLES FROM LIKE row count");
-    failures += expect_text(
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        1U,
+        "SHOW FULL TABLES FROM LIKE row count"
+    );
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 0U),
         "simple_lifecycle",
         "SHOW FULL TABLES FROM LIKE table name"
     );
-    failures += expect_text(
+    failures += mylite_test_expect_text(
         mylite_result_value_text(result, 0U, 1U),
         "BASE TABLE",
         "SHOW FULL TABLES FROM LIKE table type"
@@ -343,10 +376,16 @@ static int test_create_show_drop_and_reopen(void) {
     result = NULL;
 
     failures += execute_ok(database, "SHOW FULL TABLES LIKE 'SIMPLE%'", &result);
-    failures +=
-        expect_size(mylite_result_column_count(result), 2U, "SHOW FULL TABLES no match columns");
-    failures +=
-        expect_size(mylite_result_row_count(result), 0U, "SHOW FULL TABLES no match row count");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "SHOW FULL TABLES no match columns"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        0U,
+        "SHOW FULL TABLES no match row count"
+    );
     mylite_result_free(result);
     result = NULL;
 
@@ -361,13 +400,14 @@ static int test_create_show_drop_and_reopen(void) {
         "lifecycle preserves preamble"
     );
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen lifecycle file");
-    failures += expect_int(
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen lifecycle file");
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read reopened schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "simple_lifecycle", &table),
         MYLITE_OK,
         "read reopened table"
@@ -377,7 +417,7 @@ static int test_create_show_drop_and_reopen(void) {
     if (sqlite != NULL) {
         failures += table_exists(sqlite, table.physical_name, &has_physical_table);
     }
-    failures += expect_int(has_physical_table, 1, "reopened physical table exists");
+    failures += mylite_test_expect_int(has_physical_table, 1, "reopened physical table exists");
 
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
@@ -388,13 +428,13 @@ static int test_create_show_drop_and_reopen(void) {
     result = NULL;
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_generation_after_drop,
             "generation after drop"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "simple_lifecycle", &table),
         MYLITE_ERROR,
         "dropped table descriptor removed"
@@ -403,18 +443,25 @@ static int test_create_show_drop_and_reopen(void) {
     if (sqlite != NULL) {
         failures += table_exists(sqlite, "_mylite_user_table_1", &has_physical_table);
     }
-    failures += expect_int(has_physical_table, 0, "dropped physical table removed");
+    failures += mylite_test_expect_int(has_physical_table, 0, "dropped physical table removed");
 
     failures += execute_ok(database, "SHOW TABLES", &result);
-    failures += expect_size(mylite_result_row_count(result), 0U, "SHOW TABLES after drop");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 0U, "SHOW TABLES after drop");
     mylite_result_free(result);
     result = NULL;
 
     failures += execute_ok(database, "SHOW FULL TABLES", &result);
-    failures +=
-        expect_size(mylite_result_column_count(result), 2U, "SHOW FULL TABLES after drop columns");
-    failures +=
-        expect_size(mylite_result_row_count(result), 0U, "SHOW FULL TABLES after drop rows");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "SHOW FULL TABLES after drop columns"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        0U,
+        "SHOW FULL TABLES after drop rows"
+    );
     mylite_result_free(result);
 
     mylite_close(database);
@@ -432,12 +479,13 @@ static int test_failure_diagnostics_and_unwinding(void) {
     const struct mylite_catalog *catalog = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "failures") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "failures") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open failure test file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open failure test file");
     failures += seed_schema(database, "app");
 
     failures += execute_error(
@@ -575,19 +623,22 @@ static int test_failure_diagnostics_and_unwinding(void) {
         }
     );
     failures += execute_ok(database, "DROP TABLE IF EXISTS missing_table", &result);
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_column_count(result),
         0U,
         "DROP TABLE IF EXISTS missing column count"
     );
-    failures +=
-        expect_size(mylite_result_row_count(result), 0U, "DROP TABLE IF EXISTS missing row count");
-    failures += expect_int64(
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        0U,
+        "DROP TABLE IF EXISTS missing row count"
+    );
+    failures += mylite_test_expect_int64(
         mylite_result_affected_rows(result),
         0,
         "DROP TABLE IF EXISTS missing affected rows"
     );
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_result_warning_count(result),
         1U,
         "DROP TABLE IF EXISTS missing warning count"
@@ -597,18 +648,18 @@ static int test_failure_diagnostics_and_unwinding(void) {
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_generation_after_create,
             "failed statements do not advance generation"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read schema after failures"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "reserved_target", &table),
         MYLITE_ERROR,
         "reserved-column failure has no table descriptor"
@@ -634,12 +685,13 @@ static int test_physical_create_failure_rolls_back_catalog(void) {
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "create_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "create_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open create-failure file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open create-failure file");
     failures += seed_schema(database, "app");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
@@ -654,19 +706,19 @@ static int test_physical_create_failure_rolls_back_catalog(void) {
             .message_part = "internal SQLite schema operation failed",
         }
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read schema after create physical failure"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "conflicted", &table),
         MYLITE_ERROR,
         "failed physical create rolls back catalog table"
     );
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_generation_after_schema,
             "physical create failure leaves generation"
@@ -689,12 +741,13 @@ static int test_physical_drop_failure_rolls_back_catalog(void) {
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "drop_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "drop_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open drop-failure file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open drop-failure file");
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
@@ -703,12 +756,12 @@ static int test_physical_drop_failure_rolls_back_catalog(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read drop-failure schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(
             database,
             schema.schema_id,
@@ -738,7 +791,7 @@ static int test_physical_drop_failure_rolls_back_catalog(void) {
             .message_part = "internal SQLite schema operation failed",
         }
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(
             database,
             schema.schema_id,
@@ -750,7 +803,7 @@ static int test_physical_drop_failure_rolls_back_catalog(void) {
     );
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             expected_generation_after_create,
             "physical drop failure leaves generation"
@@ -773,15 +826,20 @@ static int test_independent_file_backed_handles(void) {
     struct mylite_catalog_table_descriptor table = {0};
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first lifecycle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second lifecycle");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first lifecycle");
+    failures += mylite_test_expect_int(
+        mylite_open(second_path, &second),
+        MYLITE_OK,
+        "open second lifecycle"
+    );
     failures += seed_schema(first, "app");
     failures += seed_schema(second, "app");
 
@@ -796,34 +854,41 @@ static int test_independent_file_backed_handles(void) {
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(second, "SHOW TABLES", &result);
-    failures += expect_size(mylite_result_row_count(result), 0U, "second handle has no tables");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 0U, "second handle has no tables");
     mylite_result_free(result);
     result = NULL;
 
     failures += execute_ok(second, "SHOW FULL TABLES", &result);
-    failures +=
-        expect_size(mylite_result_column_count(result), 2U, "second handle full tables columns");
-    failures +=
-        expect_size(mylite_result_row_count(result), 0U, "second handle has no full table rows");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "second handle full tables columns"
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        0U,
+        "second handle has no full table rows"
+    );
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(first, "app", &schema),
         MYLITE_OK,
         "read first schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(first, schema.schema_id, "only_first", &table),
         MYLITE_OK,
         "first has table"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(second, "app", &schema),
         MYLITE_OK,
         "read second schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(second, schema.schema_id, "only_first", &table),
         MYLITE_ERROR,
         "second lacks first table"
@@ -840,7 +905,7 @@ static int test_independent_file_backed_handles(void) {
 static int seed_schema(mylite_db *database, const char *name) {
     struct mylite_catalog_schema_descriptor schema = {0};
 
-    return expect_int(
+    return mylite_test_expect_int(
         mylite_catalog_create_schema(database, name, &schema),
         MYLITE_OK,
         "seed schema"
@@ -875,48 +940,17 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "execute '%s': expected MYLITE_ERROR, got %d\n", sql, rc);
         failures += 1;
     }
-    failures += expect_true(result == NULL, "failed execute leaves result null");
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += mylite_test_expect_true(result == NULL, "failed execute leaves result null");
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, "error code");
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        "error message"
+    );
     mylite_result_free(result);
 
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_basic_table_lifecycle_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -1008,60 +1042,12 @@ static int table_exists(sqlite3 *connection, const char *table_name, int *out_ex
 static int expect_empty_result(const mylite_result *result, const char *context) {
     int failures = 0;
 
-    failures += expect_size(mylite_result_column_count(result), 0U, context);
-    failures += expect_size(mylite_result_row_count(result), 0U, context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, context);
 
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %llu, got %llu\n",
-            context,
-            (unsigned long long)expected,
-            (unsigned long long)actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
 }
 
 static int expect_bool(bool actual, bool expected, const char *context) {
@@ -1076,33 +1062,6 @@ static int expect_bool(bool actual, bool expected, const char *context) {
             actual_value = 1;
         }
         fprintf(stderr, "%s: expected %d, got %d\n", context, expected_value, actual_value);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected '%s', got '%s'\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context, actual, needle);
         return 1;
     }
 

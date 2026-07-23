@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -86,15 +88,8 @@ static int expect_stmt_metadata(
     const char *context
 );
 static int expect_error(mylite_db *database, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -225,11 +220,11 @@ static int test_information_schema_result_metadata(void) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     mylite_stmt *stmt = NULL;
-    int failures = make_test_path(path, sizeof(path), "metadata");
+    int failures = mylite_test_make_path(path, sizeof(path), "metadata");
 
     remove_related_files(path);
     if (failures == 0) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_open(path, &database),
             MYLITE_OK,
             "open information schema metadata database"
@@ -237,7 +232,7 @@ static int test_information_schema_result_metadata(void) {
     }
 
     if (failures == 0) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execute(database, table_sql, strlen(table_sql), &result),
             MYLITE_OK,
             "execute information schema result metadata"
@@ -255,7 +250,7 @@ static int test_information_schema_result_metadata(void) {
     result = NULL;
 
     if (failures == 0) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_prepare(database, table_sql, strlen(table_sql), &stmt),
             MYLITE_OK,
             "prepare information schema cursor metadata"
@@ -268,12 +263,12 @@ static int test_information_schema_result_metadata(void) {
             sizeof(table_metadata) / sizeof(table_metadata[0]),
             "information schema cursor metadata"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_step(stmt),
             MYLITE_DONE,
             "step empty information schema metadata cursor"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_finalize(stmt),
             MYLITE_OK,
             "finalize information schema metadata cursor"
@@ -285,7 +280,7 @@ static int test_information_schema_result_metadata(void) {
         static const char count_sql[] =
             "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES LIMIT 0";
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execute(database, count_sql, strlen(count_sql), &result),
             MYLITE_OK,
             "execute information schema count metadata"
@@ -305,7 +300,7 @@ static int test_information_schema_result_metadata(void) {
     if (failures == 0) {
         static const char thread_sql[] = "SELECT THREAD_ID FROM performance_schema.threads LIMIT 0";
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execute(database, thread_sql, strlen(thread_sql), &result),
             MYLITE_OK,
             "execute performance schema result metadata"
@@ -325,7 +320,7 @@ static int test_information_schema_result_metadata(void) {
     if (failures == 0) {
         static const char sys_sql[] = "SELECT thd_id FROM sys.processlist LIMIT 0";
 
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_execute(database, sys_sql, strlen(sys_sql), &result),
             MYLITE_OK,
             "execute sys result metadata"
@@ -713,12 +708,16 @@ static int test_information_schema_core_queries(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "core") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "core") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open information schema db");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open information schema db"
+    );
     failures += seed_database(database);
     failures += expect_query(
         database,
@@ -1242,7 +1241,11 @@ static int test_information_schema_core_queries(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen information schema db");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen information schema db"
+    );
     failures += expect_statement_ok(database, "USE app", -1);
     failures += expect_statement_ok(database, "RENAME TABLE t TO renamed", -1);
     failures += expect_query(
@@ -1286,101 +1289,101 @@ static int expect_drupal_prepared_table_exists_query(mylite_db *database) {
     mylite_stmt *stmt = NULL;
     int failures = expect_statement_ok(database, "SET sql_mode = 'ANSI,TRADITIONAL'", -1);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_prepare(database, sql, strlen(sql), &stmt),
         MYLITE_OK,
         "prepare Drupal information schema table existence query"
     );
     if (stmt != NULL) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_stmt_parameter_count(stmt),
             3U,
             "Drupal information schema parameter count"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_bind_text(stmt, 0U, "app", strlen("app")),
             MYLITE_OK,
             "bind Drupal information schema name"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_bind_text(stmt, 1U, "t", strlen("t")),
             MYLITE_OK,
             "bind Drupal information schema table"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_bind_text(stmt, 2U, "BASE TABLE", strlen("BASE TABLE")),
             MYLITE_OK,
             "bind Drupal information schema table type"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_step(stmt),
             MYLITE_ROW,
             "step Drupal information schema table existence row"
         );
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_stmt_column_count(stmt),
             1U,
             "Drupal information schema column count"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_value_text(stmt, 0U),
             "1",
             "Drupal information schema table existence value"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_step(stmt),
             MYLITE_DONE,
             "finish Drupal information schema table existence query"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_finalize(stmt),
             MYLITE_OK,
             "finalize Drupal information schema table existence query"
         );
     }
     stmt = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_prepare(database, like_sql, strlen(like_sql), &stmt),
         MYLITE_OK,
         "prepare Drupal information schema table pattern query"
     );
     if (stmt != NULL) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_stmt_parameter_count(stmt),
             3U,
             "Drupal information schema pattern parameter count"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_bind_text(stmt, 0U, "app", strlen("app")),
             MYLITE_OK,
             "bind Drupal information schema pattern name"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_bind_text(stmt, 1U, "t%", strlen("t%")),
             MYLITE_OK,
             "bind Drupal information schema table pattern"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_bind_text(stmt, 2U, "BASE TABLE", strlen("BASE TABLE")),
             MYLITE_OK,
             "bind Drupal information schema pattern table type"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_step(stmt),
             MYLITE_ROW,
             "step Drupal information schema table pattern row"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_value_text(stmt, 0U),
             "t",
             "Drupal information schema table pattern value"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_step(stmt),
             MYLITE_DONE,
             "finish Drupal information schema table pattern query"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_stmt_finalize(stmt),
             MYLITE_OK,
             "finalize Drupal information schema table pattern query"
@@ -1526,12 +1529,13 @@ static int test_information_schema_wordpress_bridge_queries(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "wordpress_bridges") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "wordpress_bridges") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open wordpress bridge db");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open wordpress bridge db");
     failures += expect_statement_ok(database, "CREATE DATABASE app", -1);
     failures += expect_statement_ok(database, "USE app", -1);
     failures += expect_statement_ok(database, "CREATE TABLE t (id INT, db_name TEXT)", -1);
@@ -1678,12 +1682,13 @@ static int test_information_schema_doctrine_bridge_queries(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "doctrine_bridge") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "doctrine_bridge") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open doctrine bridge db");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open doctrine bridge db");
     failures += expect_statement_ok(database, "CREATE DATABASE app", -1);
     failures += expect_statement_ok(database, "USE app", -1);
     failures += expect_statement_ok(
@@ -1759,7 +1764,7 @@ static int expect_doctrine_prepared_columns_query(mylite_db *database) {
     mylite_stmt *stmt = NULL;
     int failures = 0;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_prepare(database, sql, strlen(sql), &stmt),
         MYLITE_OK,
         "prepare Doctrine COLUMNS/TABLES information schema bridge"
@@ -1767,48 +1772,54 @@ static int expect_doctrine_prepared_columns_query(mylite_db *database) {
     if (stmt == NULL) {
         return failures;
     }
-    failures += expect_size(
+    failures += mylite_test_expect_size(
         mylite_stmt_parameter_count(stmt),
         3U,
         "Doctrine information schema parameter count"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_stmt_bind_text(stmt, 0U, "app", strlen("app")),
         MYLITE_OK,
         "bind Doctrine columns schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_stmt_bind_text(stmt, 1U, "app", strlen("app")),
         MYLITE_OK,
         "bind Doctrine tables schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_stmt_bind_text(stmt, 2U, "doctrine_users", strlen("doctrine_users")),
         MYLITE_OK,
         "bind Doctrine table name"
     );
     for (size_t row = 0U; row < sizeof(expected_fields) / sizeof(expected_fields[0]); ++row) {
-        failures +=
-            expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "step Doctrine information schema row");
-        failures += expect_size(
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_ROW,
+            "step Doctrine information schema row"
+        );
+        failures += mylite_test_expect_size(
             mylite_stmt_column_count(stmt),
             doctrine_information_schema_column_count,
             "Doctrine information schema column count"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_value_text(stmt, 0U),
             "doctrine_users",
             "Doctrine information schema table name"
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_value_text(stmt, 1U),
             expected_fields[row],
             "Doctrine information schema field name"
         );
     }
-    failures +=
-        expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "finish Doctrine information schema query");
-    failures += expect_int(
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "finish Doctrine information schema query"
+    );
+    failures += mylite_test_expect_int(
         mylite_stmt_finalize(stmt),
         MYLITE_OK,
         "finalize Doctrine information schema query"
@@ -1834,12 +1845,13 @@ static int expect_statement_ok(mylite_db *database, const char *sql, int64_t aff
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 0U, sql);
-    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
     if (affected_rows >= 0) {
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+        failures +=
+            mylite_test_expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
     }
-    failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -1863,13 +1875,20 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     for (size_t column = 0U; column < expected.column_count; ++column) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column),
             expected.column_names[column],
             expected.context
@@ -1879,7 +1898,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
             size_t value_index = (row * expected.column_count) + column;
 
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row, column),
                 expected.values[value_index],
                 expected.context
@@ -1914,13 +1933,13 @@ static int expect_query_columns(
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_size(mylite_result_column_count(result), column_count, context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), column_count, context);
     if (mylite_result_row_count(result) == 0U) {
         fprintf(stderr, "%s: expected at least one row\n", context);
         ++failures;
     }
     for (size_t column = 0U; column < column_count; ++column) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column),
             columns[column],
             context
@@ -1965,65 +1984,66 @@ static int expect_result_metadata(
     size_t column_count,
     const char *context
 ) {
-    int failures = expect_size(mylite_result_column_count(result), column_count, context);
+    int failures =
+        mylite_test_expect_size(mylite_result_column_count(result), column_count, context);
 
     for (size_t index = 0U; index < column_count; ++index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, index),
             expected[index].label,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_schema_name(result, index),
             expected[index].schema_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_table_name(result, index),
             expected[index].table_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_origin_schema_name(result, index),
             expected[index].origin_schema_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_origin_table_name(result, index),
             expected[index].origin_table_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_origin_name(result, index),
             expected[index].origin_column_name,
             context
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, index),
             (int)expected[index].type,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)(mylite_result_column_flags(result, index) & expected[index].flag_mask),
             (int64_t)expected[index].flags,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)mylite_result_column_charset_id(result, index),
             (int64_t)expected[index].charset_id,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)mylite_result_column_collation_id(result, index),
             (int64_t)expected[index].collation_id,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)mylite_result_column_display_length(result, index),
             (int64_t)expected[index].display_length,
             context
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             mylite_result_column_nullable(result, index),
             expected[index].nullable,
             context
@@ -2038,66 +2058,69 @@ static int expect_stmt_metadata(
     size_t column_count,
     const char *context
 ) {
-    int failures = expect_size(mylite_stmt_column_count(stmt), column_count, context);
+    int failures = mylite_test_expect_size(mylite_stmt_column_count(stmt), column_count, context);
 
     for (size_t index = 0U; index < column_count; ++index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_column_name(stmt, index),
             expected[index].label,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_column_schema_name(stmt, index),
             expected[index].schema_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_column_table_name(stmt, index),
             expected[index].table_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_column_origin_schema_name(stmt, index),
             expected[index].origin_schema_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_column_origin_table_name(stmt, index),
             expected[index].origin_table_name,
             context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_stmt_column_origin_name(stmt, index),
             expected[index].origin_column_name,
             context
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             (int)mylite_stmt_column_type(stmt, index),
             (int)expected[index].type,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)(mylite_stmt_column_flags(stmt, index) & expected[index].flag_mask),
             (int64_t)expected[index].flags,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)mylite_stmt_column_charset_id(stmt, index),
             (int64_t)expected[index].charset_id,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)mylite_stmt_column_collation_id(stmt, index),
             (int64_t)expected[index].collation_id,
             context
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             (int64_t)mylite_stmt_column_display_length(stmt, index),
             (int64_t)expected[index].display_length,
             context
         );
-        failures +=
-            expect_int(mylite_stmt_column_nullable(stmt, index), expected[index].nullable, context);
+        failures += mylite_test_expect_int(
+            mylite_stmt_column_nullable(stmt, index),
+            expected[index].nullable,
+            context
+        );
     }
     return failures;
 }
@@ -2111,45 +2134,14 @@ static int expect_error(mylite_db *database, struct expected_sql_error expected)
         fprintf(stderr, "%s: expected error, got %d\n", expected.sql, rc);
         failures += 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, expected.sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, expected.sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, expected.sql);
-    failures += expect_size(mylite_result_column_count(result), 0U, expected.sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, expected.sql);
+    failures +=
+        mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, expected.sql);
+    failures +=
+        mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, expected.sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, expected.sql);
     mylite_result_free(result);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_information_schema_core_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -2167,57 +2159,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
         return;
     }
     (void)remove(related_path);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL) {
-        if (actual != expected) {
-            fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
-            return 1;
-        }
-        return 0;
-    }
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected '%s', got '%s'\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context, actual, needle);
-        return 1;
-    }
-    return 0;
 }

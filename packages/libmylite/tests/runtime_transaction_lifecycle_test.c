@@ -157,15 +157,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *expected, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
@@ -211,28 +205,32 @@ static int test_failed_catalog_rollback_poisons_connection(void) {
     int failures = 0;
     int rc = MYLITE_OK;
 
-    if (make_test_path(path, sizeof(path), "catalog_rollback_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "catalog_rollback_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_catalog_mutation_init(&mutation);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog rollback file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open catalog rollback file"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_begin_mutation(database, &mutation),
         MYLITE_OK,
         "begin catalog mutation"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, deny_catalog_transaction_rollback, &fault),
         SQLITE_OK,
         "install catalog rollback authorizer"
     );
     rc = mylite_catalog_rollback_mutation(database, &mutation, MYLITE_ERROR);
-    failures += expect_int(rc, MYLITE_ERROR, "failed catalog rollback status");
-    failures += expect_int(fault.rollback_denied ? 1 : 0, 1, "catalog rollback denied");
-    failures += expect_int(
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, "failed catalog rollback status");
+    failures += mylite_test_expect_int(fault.rollback_denied ? 1 : 0, 1, "catalog rollback denied");
+    failures += mylite_test_expect_int(
         database->transaction_state_uncertain ? 1 : 0,
         1,
         "catalog rollback poisons connection"
@@ -242,18 +240,18 @@ static int test_failed_catalog_rollback_poisons_connection(void) {
         "catalog transaction cleanup failed during ROLLBACK",
         "catalog rollback diagnostic"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_execute(database, "SELECT 1", strlen("SELECT 1"), &result),
         MYLITE_ERROR,
         "poisoned catalog connection rejects SQL"
     );
     mylite_result_free(result);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, NULL, NULL),
         SQLITE_OK,
         "remove catalog rollback authorizer"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL),
         SQLITE_OK,
         "clean up denied catalog rollback"
@@ -271,16 +269,17 @@ static int test_checked_close_reports_cursor_cleanup_failure(void) {
     sqlite3 *sqlite = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "checked_close_cursor_cleanup") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "checked_close_cursor_cleanup") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open checked close file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open checked close file");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE close_cursor_t (id INT PRIMARY KEY)", 0);
     failures += expect_nonquery(database, "INSERT INTO close_cursor_t VALUES (1), (2)", 2);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_prepare(
             database,
             "SELECT id FROM close_cursor_t ORDER BY id",
@@ -290,21 +289,26 @@ static int test_checked_close_reports_cursor_cleanup_failure(void) {
         MYLITE_OK,
         "prepare checked close cursor"
     );
-    failures += expect_int(mylite_stmt_step(statement), MYLITE_ROW, "start checked close cursor");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(statement),
+        MYLITE_ROW,
+        "start checked close cursor"
+    );
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, deny_catalog_transaction_rollback, &fault),
         SQLITE_OK,
         "install checked close rollback authorizer"
     );
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_close_checked(database),
         MYLITE_ERROR,
         "checked close reports cursor rollback failure"
     );
-    failures += expect_int(fault.rollback_denied ? 1 : 0, 1, "checked close rollback denied");
-    failures += expect_int(
+    failures +=
+        mylite_test_expect_int(fault.rollback_denied ? 1 : 0, 1, "checked close rollback denied");
+    failures += mylite_test_expect_int(
         database->transaction_state_uncertain ? 1 : 0,
         1,
         "checked close poisons uncertain connection"
@@ -314,30 +318,33 @@ static int test_checked_close_reports_cursor_cleanup_failure(void) {
         "transaction cleanup failed during ROLLBACK",
         "checked close cleanup diagnostic"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_stmt_step(statement),
         MYLITE_MISUSE,
         "checked close detaches cursor after failure"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_stmt_finalize(statement),
         MYLITE_OK,
         "finalize cursor detached by checked close"
     );
     statement = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, NULL, NULL),
         SQLITE_OK,
         "remove checked close rollback authorizer"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL),
         SQLITE_OK,
         "clean up checked close rollback"
     );
-    failures +=
-        expect_int(mylite_close_checked(database), MYLITE_OK, "retry checked close after cleanup");
+    failures += mylite_test_expect_int(
+        mylite_close_checked(database),
+        MYLITE_OK,
+        "retry checked close after cleanup"
+    );
     database = NULL;
 
     remove_related_files(path);
@@ -376,17 +383,21 @@ static int test_failed_statement_rollback_poisons_connection(void) {
     int failures = 0;
     int rc = MYLITE_OK;
 
-    if (make_test_path(path, sizeof(path), "rollback_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "rollback_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open rollback failure file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open rollback failure file"
+    );
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE rollback_t (id INT PRIMARY KEY)", 0);
     failures += expect_nonquery(database, "START TRANSACTION", 0);
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, deny_statement_savepoint_rollback, &fault),
         SQLITE_OK,
         "install rollback authorizer"
@@ -398,10 +409,11 @@ static int test_failed_statement_rollback_poisons_connection(void) {
         strlen("INSERT INTO rollback_t VALUES (1), (1)"),
         &result
     );
-    failures += expect_int(rc, MYLITE_ERROR, "failing multi-row insert");
-    failures += expect_size((size_t)(result != NULL), 0U, "rollback failure result");
-    failures += expect_int(fault.rollback_denied ? 1 : 0, 1, "statement rollback denied");
-    failures += expect_int(
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, "failing multi-row insert");
+    failures += mylite_test_expect_size((size_t)(result != NULL), 0U, "rollback failure result");
+    failures +=
+        mylite_test_expect_int(fault.rollback_denied ? 1 : 0, 1, "statement rollback denied");
+    failures += mylite_test_expect_int(
         database->transaction_state_uncertain ? 1 : 0,
         1,
         "connection transaction state poisoned"
@@ -411,12 +423,12 @@ static int test_failed_statement_rollback_poisons_connection(void) {
         "transaction cleanup failed during ROLLBACK TO SAVEPOINT",
         "rollback failure diagnostic context"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_get_autocommit(sqlite),
         1,
         "emergency rollback restores SQLite autocommit"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, NULL, NULL),
         SQLITE_OK,
         "remove rollback authorizer"
@@ -428,8 +440,12 @@ static int test_failed_statement_rollback_poisons_connection(void) {
         strlen("SELECT COUNT(*) FROM rollback_t"),
         &result
     );
-    failures += expect_int(rc, MYLITE_ERROR, "poisoned connection rejects SQL");
-    failures += expect_int(mylite_errcode(database), mysql_error_unknown, "poisoned error code");
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, "poisoned connection rejects SQL");
+    failures += mylite_test_expect_int(
+        mylite_errcode(database),
+        mysql_error_unknown,
+        "poisoned error code"
+    );
     failures += expect_contains(
         mylite_errmsg(database),
         "close and reopen",
@@ -440,7 +456,11 @@ static int test_failed_statement_rollback_poisons_connection(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen rollback failure file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen rollback failure file"
+    );
     failures += expect_nonquery(database, "USE app", 0);
     failures += expect_query_values(
         database,
@@ -499,17 +519,18 @@ static int test_failed_statement_commit_poisons_connection(void) {
     int failures = 0;
     int rc = MYLITE_OK;
 
-    if (make_test_path(path, sizeof(path), "commit_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "commit_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open commit failure file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open commit failure file");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE commit_t (id INT PRIMARY KEY)", 0);
     failures += expect_nonquery(database, "START TRANSACTION", 0);
     sqlite = mylite_connection_sqlite_for_test(database);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, deny_statement_savepoint_release, &fault),
         SQLITE_OK,
         "install commit authorizer"
@@ -521,10 +542,10 @@ static int test_failed_statement_commit_poisons_connection(void) {
         strlen("INSERT INTO commit_t VALUES (1)"),
         &result
     );
-    failures += expect_int(rc, MYLITE_ERROR, "failing statement commit");
-    failures += expect_size((size_t)(result != NULL), 0U, "commit failure result");
-    failures += expect_int(fault.release_denied ? 1 : 0, 1, "statement release denied");
-    failures += expect_int(
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, "failing statement commit");
+    failures += mylite_test_expect_size((size_t)(result != NULL), 0U, "commit failure result");
+    failures += mylite_test_expect_int(fault.release_denied ? 1 : 0, 1, "statement release denied");
+    failures += mylite_test_expect_int(
         database->transaction_state_uncertain ? 1 : 0,
         1,
         "commit failure poisons connection"
@@ -534,12 +555,12 @@ static int test_failed_statement_commit_poisons_connection(void) {
         "transaction completion failed during RELEASE SAVEPOINT",
         "commit failure diagnostic context"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_get_autocommit(sqlite),
         1,
         "commit emergency rollback restores SQLite autocommit"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         sqlite3_set_authorizer(sqlite, NULL, NULL),
         SQLITE_OK,
         "remove commit authorizer"
@@ -547,7 +568,11 @@ static int test_failed_statement_commit_poisons_connection(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen commit failure file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen commit failure file"
+    );
     failures += expect_nonquery(database, "USE app", 0);
     failures += expect_query_values(
         database,
@@ -607,12 +632,13 @@ static int test_transaction_control_and_dml(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "control") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "control") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open control file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open control file");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
 
@@ -813,13 +839,16 @@ static int test_public_transaction_control_api(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "public_transaction_control") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "public_transaction_control") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "open public transaction control file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open public transaction control file"
+    );
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE api_t (id INT PRIMARY KEY, v INT)", 0);
 
@@ -899,13 +928,17 @@ static int test_set_transaction_lifecycle(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "set_transaction") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "set_transaction") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open set transaction file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open set transaction file"
+    );
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
@@ -1090,7 +1123,11 @@ static int test_set_transaction_lifecycle(void) {
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen set transaction file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen set transaction file"
+    );
     failures += expect_nonquery(database, "USE app", 0);
     failures += expect_query_values(
         database,
@@ -1104,7 +1141,7 @@ static int test_set_transaction_lifecycle(void) {
     );
     mylite_close(database);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read set transaction preamble"
@@ -1167,13 +1204,17 @@ static int test_transaction_system_variable_readback(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "system_variables") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "system_variables") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open transaction vars file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open transaction vars file"
+    );
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
@@ -1242,12 +1283,12 @@ static int test_transaction_system_variable_readback(void) {
     );
 
     session = mylite_connection_session_state(database);
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         (int64_t)session->catalog_generation,
         (int64_t)catalog_generation,
         "transaction variables leave catalog generation"
     );
-    failures += expect_int64(
+    failures += mylite_test_expect_int64(
         (int64_t)session->sqlite_schema_generation,
         (int64_t)sqlite_schema_generation,
         "transaction variables leave SQLite schema generation"
@@ -1256,7 +1297,7 @@ static int test_transaction_system_variable_readback(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read transaction vars preamble"
@@ -1268,7 +1309,11 @@ static int test_transaction_system_variable_readback(void) {
         "transaction variables preserve MyLite preamble"
     );
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen transaction vars file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen transaction vars file"
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -1307,8 +1352,11 @@ static int test_transaction_system_variable_assignments(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures +=
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transaction vars");
+    failures += mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open transaction vars"
+    );
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
@@ -1499,13 +1547,13 @@ static int test_start_transaction_characteristics_lifecycle(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "start_transaction_characteristics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "start_transaction_characteristics") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open(path, &database),
         MYLITE_OK,
         "open start transaction characteristics file"
@@ -1652,7 +1700,7 @@ static int test_start_transaction_characteristics_lifecycle(void) {
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_open(path, &database),
         MYLITE_OK,
         "reopen start transaction characteristics file"
@@ -1670,7 +1718,7 @@ static int test_start_transaction_characteristics_lifecycle(void) {
     );
     mylite_close(database);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read start transaction characteristics preamble"
@@ -1693,12 +1741,16 @@ static int test_transaction_after_buffered_result_lifecycle(void) {
     int failures = 0;
     int rc = MYLITE_OK;
 
-    if (make_test_path(path, sizeof(path), "buffered_result_transaction") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "buffered_result_transaction") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open buffered result file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open buffered result file"
+    );
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
     failures += expect_nonquery(database, "INSERT INTO t VALUES (1)", 1);
@@ -1709,7 +1761,7 @@ static int test_transaction_after_buffered_result_lifecycle(void) {
         strlen("SELECT COUNT(*) FROM t"),
         &held_result
     );
-    failures += expect_int(rc, MYLITE_OK, "buffered result select");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, "buffered result select");
     failures += expect_result_value(held_result, 0U, 0U, "1", "buffered result count");
 
     failures += expect_nonquery(database, "START TRANSACTION", 0);
@@ -1753,12 +1805,13 @@ static int test_savepoint_lifecycle(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "savepoint") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "savepoint") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open savepoint file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open savepoint file");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
 
@@ -1938,7 +1991,8 @@ static int test_savepoint_lifecycle(void) {
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen savepoint file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen savepoint file");
     failures += expect_nonquery(database, "USE app", 0);
     failures += expect_query_values(
         database,
@@ -1965,15 +2019,17 @@ static int test_independent_savepoint_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "savepoint_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "savepoint_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "savepoint_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "savepoint_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
     failures += seed_schema(first);
     failures += seed_schema(second);
     failures += expect_nonquery(first, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
@@ -2031,16 +2087,25 @@ static int test_independent_transaction_characteristic_handles(void) {
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "transaction_characteristics_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "transaction_characteristics_second") !=
-            0) {
+    if (mylite_test_make_path(
+            first_path,
+            sizeof(first_path),
+            "transaction_characteristics_first"
+        ) != 0 ||
+        mylite_test_make_path(
+            second_path,
+            sizeof(second_path),
+            "transaction_characteristics_second"
+        ) != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
     failures += seed_schema(first);
     failures += seed_schema(second);
     failures += expect_nonquery(first, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
@@ -2093,16 +2158,18 @@ static int test_read_only_transaction_does_not_reserve_writer_lock(void) {
     mylite_db *writer = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "read_only_writer_concurrency") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "read_only_writer_concurrency") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &reader), MYLITE_OK, "open read-only reader");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &reader), MYLITE_OK, "open read-only reader");
     failures += seed_schema(reader);
     failures += expect_nonquery(reader, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(reader, "INSERT INTO t VALUES (1, 10)", 1);
-    failures += expect_int(mylite_open(path, &writer), MYLITE_OK, "open concurrent writer");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &writer), MYLITE_OK, "open concurrent writer");
     failures += expect_nonquery(writer, "USE app", 0);
 
     failures += expect_nonquery(reader, "START TRANSACTION READ ONLY", 0);
@@ -2139,23 +2206,26 @@ static int test_writer_waits_for_active_read_cursor(void) {
     int thread_was_created = 0;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "writer_busy_wait") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "writer_busy_wait") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &reader), MYLITE_OK, "open busy-wait reader");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &reader), MYLITE_OK, "open busy-wait reader");
     failures += seed_schema(reader);
     failures += expect_nonquery(reader, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(reader, "INSERT INTO t VALUES (1, 10), (2, 20)", 2);
-    failures += expect_int(mylite_open(path, &writer), MYLITE_OK, "open busy-wait writer");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &writer), MYLITE_OK, "open busy-wait writer");
     failures += expect_nonquery(writer, "USE app", 0);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_prepare(reader, query, strlen(query), &cursor),
         MYLITE_OK,
         "prepare active read cursor"
     );
-    failures += expect_int(mylite_stmt_step(cursor), MYLITE_ROW, "step active read cursor");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(cursor), MYLITE_ROW, "step active read cursor");
 
     write.database = writer;
     if (failures == 0 && pthread_mutex_init(&busy_wait.mutex, NULL) == 0) {
@@ -2188,7 +2258,11 @@ static int test_writer_waits_for_active_read_cursor(void) {
         failures++;
     }
 
-    failures += expect_int(mylite_stmt_finalize(cursor), MYLITE_OK, "release active read cursor");
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(cursor),
+        MYLITE_OK,
+        "release active read cursor"
+    );
     cursor = NULL;
     if (synchronization_initialized) {
         (void)pthread_mutex_lock(&busy_wait.mutex);
@@ -2197,9 +2271,12 @@ static int test_writer_waits_for_active_read_cursor(void) {
         (void)pthread_mutex_unlock(&busy_wait.mutex);
     }
     if (thread_was_created) {
-        failures += expect_int(pthread_join(writer_thread, NULL), 0, "join busy-wait writer");
-        failures += expect_int(write.rc, MYLITE_OK, "concurrent write waits for reader");
-        failures += expect_int64(write.affected_rows, 1, "concurrent write affected rows");
+        failures +=
+            mylite_test_expect_int(pthread_join(writer_thread, NULL), 0, "join busy-wait writer");
+        failures +=
+            mylite_test_expect_int(write.rc, MYLITE_OK, "concurrent write waits for reader");
+        failures +=
+            mylite_test_expect_int64(write.affected_rows, 1, "concurrent write affected rows");
     }
     if (synchronization_initialized) {
         sqlite3_busy_handler(mylite_connection_sqlite_for_test(writer), NULL, NULL);
@@ -2249,12 +2326,13 @@ static int test_drop_table_missing_implicitly_commits_transaction(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "drop_missing_commit") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "drop_missing_commit") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open drop-missing file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open drop-missing file");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "START TRANSACTION", 0);
@@ -2304,13 +2382,13 @@ static int test_file_close_rolls_back_transaction(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "close_rollback") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "close_rollback") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open file");
+    failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open file");
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE persisted (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "INSERT INTO persisted VALUES (1, 10)", 1);
@@ -2320,7 +2398,7 @@ static int test_file_close_rolls_back_transaction(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen file");
+    failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen file");
     failures += expect_nonquery(database, "USE app", 0);
     failures += expect_query_values(
         database,
@@ -2338,7 +2416,11 @@ static int test_file_close_rolls_back_transaction(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen begin immediate file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen begin immediate file"
+    );
     failures += expect_nonquery(database, "USE app", 0);
     failures += expect_query_values(
         database,
@@ -2352,7 +2434,7 @@ static int test_file_close_rolls_back_transaction(void) {
     );
     mylite_close(database);
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
         "read preamble"
@@ -2392,16 +2474,18 @@ static int expect_transaction_control(
     int failures = 0;
     int rc = mylite_execute_transaction_control(database, expected.statement, &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), 0U, expected.context);
-        failures += expect_size(mylite_result_row_count(result), 0U, expected.context);
-        failures += expect_int64(
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 0U, expected.context);
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, expected.context);
+        failures += mylite_test_expect_int64(
             mylite_result_affected_rows(result),
             expected.affected_rows,
             expected.context
         );
-        failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     } else {
         fprintf(stderr, "%s failed: %s\n", expected.context, mylite_errmsg(database));
     }
@@ -2418,12 +2502,21 @@ static int expect_nonquery_with_warnings(
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, sql);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, sql);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "nonquery column count");
-        failures += expect_size(mylite_result_row_count(result), 0U, "nonquery row count");
-        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-        failures += expect_size(
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            0U,
+            "nonquery column count"
+        );
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "nonquery row count");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            sql
+        );
+        failures += mylite_test_expect_size(
             mylite_result_warning_count(result),
             expected.warning_count,
             "nonquery warning count"
@@ -2450,16 +2543,23 @@ static int expect_error_details(
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected_code, "diagnostic code");
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected_code, "diagnostic code");
     if (expected_sqlstate != NULL) {
-        failures +=
-            expect_text(mylite_sqlstate(database), expected_sqlstate, "diagnostic SQLSTATE");
+        failures += mylite_test_expect_text(
+            mylite_sqlstate(database),
+            expected_sqlstate,
+            "diagnostic SQLSTATE"
+        );
     }
     if (expected_message != NULL) {
-        failures += expect_text(mylite_errmsg(database), expected_message, "diagnostic message");
+        failures += mylite_test_expect_text(
+            mylite_errmsg(database),
+            expected_message,
+            "diagnostic message"
+        );
     }
-    failures += expect_size((size_t)(result != NULL), 0U, "error result");
+    failures += mylite_test_expect_size((size_t)(result != NULL), 0U, "error result");
     mylite_result_free(result);
     return failures;
 }
@@ -2469,11 +2569,18 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     int failures = 0;
     int rc = mylite_execute(database, query.sql, strlen(query.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, query.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, query.context);
     if (rc == MYLITE_OK) {
-        failures +=
-            expect_size(mylite_result_column_count(result), query.column_count, query.context);
-        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            query.column_count,
+            query.context
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            query.row_count,
+            query.context
+        );
         for (size_t row = 0U; row < query.row_count; ++row) {
             for (size_t column = 0U; column < query.column_count; ++column) {
                 const size_t value_index = (row * query.column_count) + column;
@@ -2519,33 +2626,9 @@ static int expect_result_value(
     const char *actual = mylite_result_value_text(result, row, column);
 
     if (expected == NULL) {
-        return expect_size((size_t)(actual != NULL), 0U, context);
+        return mylite_test_expect_size((size_t)(actual != NULL), 0U, context);
     }
-    return expect_text(actual, expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_transaction_lifecycle_%d_%s.mylite",
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path truncated\n");
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {
@@ -2579,48 +2662,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     bytes_read = fread(buffer, 1U, size, file);
     fclose(file);
     return bytes_read == size ? 0 : 1;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual != NULL && strcmp(actual, expected) == 0) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
-    return 1;
 }
 
 static int expect_contains(const char *actual, const char *expected, const char *context) {

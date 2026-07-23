@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -57,14 +59,8 @@ static int expect_show_warning_rows(mylite_db *database, struct expected_warning
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_text_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -111,7 +107,8 @@ static int test_values_and_assignment(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open max error count");
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open max error count");
     failures += execute_ok(
         database,
         "SELECT @@max_error_count, @@session.max_error_count, @@local.max_error_count, "
@@ -275,17 +272,22 @@ static int test_warning_cap_and_sql_notes(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "cap") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "cap") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cap diagnostics");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open cap diagnostics");
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
 
     failures += execute_statement_ok(database, "SET max_error_count = 1");
     failures += execute_ok(database, "DROP TABLE IF EXISTS a, b, c", &result);
-    failures += expect_size(mylite_result_warning_count(result), 3U, "capped drop warning count");
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        3U,
+        "capped drop warning count"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_single_value(
@@ -317,7 +319,11 @@ static int test_warning_cap_and_sql_notes(void) {
 
     failures += execute_statement_ok(database, "SET max_error_count = 0");
     failures += execute_ok(database, "DROP TABLE IF EXISTS a, b, c", &result);
-    failures += expect_size(mylite_result_warning_count(result), 3U, "zero-cap drop warning count");
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        3U,
+        "zero-cap drop warning count"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_single_value(
@@ -378,7 +384,11 @@ static int test_warning_cap_and_sql_notes(void) {
     failures += execute_statement_ok(database, "SET max_error_count = 5");
     failures += execute_statement_ok(database, "SET sql_notes = 0");
     failures += execute_ok(database, "DROP TABLE IF EXISTS suppressed_note", &result);
-    failures += expect_size(mylite_result_warning_count(result), 0U, "sql_notes suppressed count");
+    failures += mylite_test_expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "sql_notes suppressed count"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_single_value(
@@ -427,8 +437,16 @@ static int test_independent_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first max error handle");
-    failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second max error handle");
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&first),
+        MYLITE_OK,
+        "open first max error handle"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&second),
+        MYLITE_OK,
+        "open second max error handle"
+    );
     failures += execute_statement_ok(first, "SET max_error_count = 7");
 
     failures += execute_ok(first, "SELECT @@max_error_count, @@warning_count", &result);
@@ -469,16 +487,20 @@ static int expect_result(const mylite_result *result, struct expected_result exp
         return 1;
     }
 
-    failures += expect_size(mylite_result_column_count(result), expected.count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     for (size_t index = 0U; index < expected.count; ++index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, index),
             expected.columns[index],
             expected.context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0U, index),
             expected.values[index],
             expected.context
@@ -492,14 +514,14 @@ static int expect_single_value(mylite_db *database, struct expected_single_value
     mylite_result *result = NULL;
     int failures = execute_ok(database, expected.sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 1U, expected.context);
-    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
-    failures += expect_text_or_null(
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 1U, expected.context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, expected.context);
+    failures += mylite_test_expect_text_or_null(
         mylite_result_value_text(result, 0U, 0U),
         expected.value,
         expected.context
     );
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     mylite_result_free(result);
     return failures;
 }
@@ -508,21 +530,25 @@ static int expect_show_warning_rows(mylite_db *database, struct expected_warning
     mylite_result *result = NULL;
     int failures = execute_ok(database, "SHOW WARNINGS", &result);
 
-    failures += expect_size(mylite_result_column_count(result), 3U, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 3U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     if (expected.row_count > 0U) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0U, 0U),
             expected.level,
             expected.context
         );
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_value_text(result, 0U, 1U),
             expected.code,
             expected.context
         );
-        failures += expect_text_contains(
+        failures += mylite_test_expect_contains(
             mylite_result_value_text(result, 0U, 2U),
             expected.message_part,
             expected.context
@@ -570,36 +596,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_text_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_max_error_count_system_variable_%d_%s.mylite",
-        P_tmpdir,
-        current_process_id(),
-        name
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long\n");
-        return 1;
-    }
-
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -617,51 +617,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
         return;
     }
     (void)remove(buffer);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-    return 0;
 }

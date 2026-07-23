@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include "mylite_benchmark_csv.h"
 
 #include <stdio.h>
@@ -11,7 +13,6 @@ static int expect_parse(
     struct mylite_benchmark_owned_query_list *out_queries,
     const char *context
 );
-static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_query(
     const struct mylite_benchmark_owned_query_list *queries,
     size_t index,
@@ -36,7 +37,7 @@ static int test_doubled_quote_fields(void) {
     struct mylite_benchmark_owned_query_list queries = {0};
     int failures = expect_parse(csv, &queries, "doubled quote parse");
 
-    failures += expect_size(queries.count, 2U, "doubled quote query count");
+    failures += mylite_test_expect_size(queries.count, 2U, "doubled quote query count");
     failures += expect_query(
         &queries,
         0U,
@@ -63,7 +64,7 @@ static int test_backslash_quote_fields(void) {
     struct mylite_benchmark_owned_query_list queries = {0};
     int failures = expect_parse(csv, &queries, "backslash quote parse");
 
-    failures += expect_size(queries.count, 2U, "backslash quote query count");
+    failures += mylite_test_expect_size(queries.count, 2U, "backslash quote query count");
     failures += expect_query(
         &queries,
         0U,
@@ -88,7 +89,7 @@ static int test_plain_and_blank_rows(void) {
     struct mylite_benchmark_owned_query_list queries = {0};
     int failures = expect_parse(csv, &queries, "plain row parse");
 
-    failures += expect_size(queries.count, 2U, "plain row query count");
+    failures += mylite_test_expect_size(queries.count, 2U, "plain row query count");
     failures += expect_query(&queries, 0U, "SELECT 1", "plain row");
     failures += expect_query(&queries, 1U, "SELECT 2", "quoted row");
     mylite_benchmark_owned_query_list_deinit(&queries);
@@ -104,14 +105,6 @@ static int expect_parse(
 
     if (rc != 0) {
         fprintf(stderr, "%s: expected parse success, got %d\n", context, rc);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
         return 1;
     }
     return 0;
@@ -137,5 +130,5 @@ static int expect_query(
         );
         return 1;
     }
-    return expect_size(queries->items[index].length, strlen(expected), context);
+    return mylite_test_expect_size(queries->items[index].length, strlen(expected), context);
 }

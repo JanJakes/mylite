@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include "runtime/mylite_result_metadata.h"
 
 #include <inttypes.h>
@@ -8,19 +10,12 @@
 
 static int test_result_metadata_constructs_and_deinitializes_one_column(void);
 static int test_result_metadata_misuse_and_overflow_paths(void);
-static int expect_int(int actual, int expected, const char *context);
 static int expect_logical_type(
     enum mylite_result_logical_type actual,
     enum mylite_result_logical_type expected,
     const char *context
 );
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_uint16(uint16_t actual, uint16_t expected, const char *context);
-static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_bool(bool actual, bool expected, const char *context);
-static int expect_true(int condition, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -63,39 +58,57 @@ static int test_result_metadata_constructs_and_deinitializes_one_column(void) {
     mylite_result_metadata_deinit(&zero_metadata);
 
     mylite_result_metadata_init(&metadata);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_metadata_append(&metadata, &descriptor),
         MYLITE_OK,
         "append column"
     );
-    failures += expect_size(mylite_result_metadata_column_count(&metadata), 1U, "column count");
+    failures +=
+        mylite_test_expect_size(mylite_result_metadata_column_count(&metadata), 1U, "column count");
 
     column = mylite_result_metadata_column_at(&metadata, 0U);
-    failures += expect_true(column != NULL, "column exists");
+    failures += mylite_test_expect_true(column != NULL, "column exists");
     if (column != NULL) {
-        failures += expect_text(column->label, "answer", "label");
-        failures += expect_text(column->schema_name, "test_schema", "schema name");
-        failures += expect_text(column->table_name, "test_table", "table name");
-        failures += expect_text(column->origin_schema_name, "origin_schema", "origin schema name");
-        failures += expect_text(column->origin_table_name, "origin_table", "origin table name");
-        failures += expect_text(column->origin_column_name, "answer_column", "origin column name");
+        failures += mylite_test_expect_text(column->label, "answer", "label");
+        failures += mylite_test_expect_text(column->schema_name, "test_schema", "schema name");
+        failures += mylite_test_expect_text(column->table_name, "test_table", "table name");
+        failures += mylite_test_expect_text(
+            column->origin_schema_name,
+            "origin_schema",
+            "origin schema name"
+        );
+        failures +=
+            mylite_test_expect_text(column->origin_table_name, "origin_table", "origin table name");
+        failures += mylite_test_expect_text(
+            column->origin_column_name,
+            "answer_column",
+            "origin column name"
+        );
         failures += expect_logical_type(
             column->logical_type,
             MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
             "logical type"
         );
-        failures += expect_uint32(column->flags, synthetic_flags, "flags");
-        failures += expect_uint32(column->charset_id, synthetic_charset_id, "charset id");
-        failures += expect_uint32(column->collation_id, synthetic_collation_id, "collation id");
+        failures += mylite_test_expect_uint32(column->flags, synthetic_flags, "flags");
         failures +=
-            expect_uint64(column->display_length, synthetic_display_length, "display length");
-        failures += expect_uint16(column->decimals, synthetic_decimals, "decimals");
+            mylite_test_expect_uint32(column->charset_id, synthetic_charset_id, "charset id");
+        failures +=
+            mylite_test_expect_uint32(column->collation_id, synthetic_collation_id, "collation id");
+        failures += mylite_test_expect_uint64(
+            column->display_length,
+            synthetic_display_length,
+            "display length"
+        );
+        failures += mylite_test_expect_uint16(column->decimals, synthetic_decimals, "decimals");
         failures += expect_bool(column->nullable, false, "nullability");
     }
 
     mylite_result_metadata_deinit(&metadata);
-    failures +=
-        expect_size(mylite_result_metadata_column_count(&metadata), 0U, "deinit column count");
+    failures += mylite_test_expect_size(
+        mylite_result_metadata_column_count(&metadata),
+        0U,
+        "deinit column count"
+    );
 
     return failures;
 }
@@ -119,20 +132,20 @@ static int test_result_metadata_misuse_and_overflow_paths(void) {
     };
     int failures = 0;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_metadata_append(NULL, &descriptor),
         MYLITE_MISUSE,
         "append rejects NULL metadata"
     );
 
     mylite_result_metadata_init(&metadata);
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_metadata_append(&metadata, NULL),
         MYLITE_MISUSE,
         "append rejects NULL descriptor"
     );
     metadata.column_count = SIZE_MAX;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_metadata_append(&metadata, &descriptor),
         MYLITE_NOMEM,
         "append rejects count overflow"
@@ -141,15 +154,6 @@ static int test_result_metadata_misuse_and_overflow_paths(void) {
     mylite_result_metadata_deinit(&metadata);
 
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
 }
 
 static int expect_logical_type(
@@ -165,63 +169,9 @@ static int expect_logical_type(
     return 0;
 }
 
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_uint16(uint16_t actual, uint16_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu16 ", got %" PRIu16 "\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu32 ", got %" PRIu32 "\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
-        return 1;
-    }
-
-    return 0;
-}
-
 static int expect_bool(bool actual, bool expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %d, got %d\n", context, (int)expected, (int)actual);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
         return 1;
     }
 

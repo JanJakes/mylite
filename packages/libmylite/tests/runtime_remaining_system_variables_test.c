@@ -65,11 +65,6 @@ static int expect_pseudo_thread_id_matches_connection_id(mylite_db *database);
 static int expect_rand_seed_sequence(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_text_contains(const char *actual, const char *needle, const char *context);
 static int expect_uint64_greater_than(uint64_t actual, uint64_t minimum, const char *context);
 
 int main(void) {
@@ -109,7 +104,8 @@ static int test_remaining_system_variable_readback_and_show(void) {
         "8161",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open readback");
+    int failures =
+        mylite_test_expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open readback");
 
     failures += expect_query_result(
         database,
@@ -174,7 +170,8 @@ static int test_insert_id_auto_increment_allocation(void) {
         "Truncated incorrect insert_id value: '-1'",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open insert_id");
+    int failures =
+        mylite_test_expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open insert_id");
 
     failures += expect_nonquery_result(
         database,
@@ -301,7 +298,11 @@ static int test_pseudo_thread_id_and_rand_seed_state(void) {
         "Truncated incorrect rand_seed1 value: '-1'",
     };
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open pseudo/rand");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open pseudo/rand"
+    );
 
     failures += expect_pseudo_thread_id_matches_connection_id(database);
     failures += expect_nonquery_result(
@@ -425,7 +426,8 @@ static int test_pseudo_thread_id_and_rand_seed_state(void) {
 
 static int test_statement_id_and_scope_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open statement");
+    int failures =
+        mylite_test_expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open statement");
 
     failures += expect_statement_id_increases(database);
     failures += execute_error(
@@ -520,7 +522,8 @@ static int test_temptable_global_placeholder(void) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     uint64_t default_value = 0U;
-    int failures = expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open temptable");
+    int failures =
+        mylite_test_expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open temptable");
 
     failures += execute_ok(database, "SELECT @@GLOBAL.temptable_max_ram", &result);
     if (result != NULL) {
@@ -580,8 +583,11 @@ static int test_temptable_global_placeholder(void) {
         const uint64_t reset_value =
             strtoull(mylite_result_value_text(result, 0U, 0U), NULL, decimal_radix);
 
-        failures +=
-            expect_int64(reset_value == default_value ? 1 : 0, 1, "temptable default reset");
+        failures += mylite_test_expect_int64(
+            reset_value == default_value ? 1 : 0,
+            1,
+            "temptable default reset"
+        );
     } else {
         failures += 1;
     }
@@ -602,9 +608,11 @@ static int test_remaining_system_variable_independent_handles(void) {
     static const char *const second_values[] = {"0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
-    int failures = expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first");
+    int failures =
+        mylite_test_expect_int(mylite_test_open_temporary(&first), MYLITE_OK, "open first");
 
-    failures += expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second");
+    failures +=
+        mylite_test_expect_int(mylite_test_open_temporary(&second), MYLITE_OK, "open second");
     failures += expect_nonquery_result(
         first,
         "SET insert_id = 17",
@@ -669,21 +677,28 @@ static int expect_result(const mylite_result *result, struct expected_result exp
         return 1;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.context);
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
             const size_t index = (row * expected.column_count) + column;
 
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_column_name(result, column),
                 expected.columns[column],
                 expected.context
             );
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row, column),
                 expected.values[index],
                 expected.context
@@ -706,10 +721,12 @@ static int expect_nonquery_result(
         fprintf(stderr, "%s: expected result, got NULL\n", sql);
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 0U, sql);
-    failures += expect_size(mylite_result_row_count(result), 0U, sql);
-    failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
-    failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
+    failures +=
+        mylite_test_expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -723,8 +740,10 @@ static int expect_statement_id_increases(mylite_db *database) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 1U, "statement_id columns");
-    failures += expect_size(mylite_result_row_count(result), 1U, "statement_id first row");
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), 1U, "statement_id columns");
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "statement_id first row");
     first = strtoull(mylite_result_value_text(result, 0U, 0U), NULL, decimal_radix);
     mylite_result_free(result);
     result = NULL;
@@ -733,8 +752,13 @@ static int expect_statement_id_increases(mylite_db *database) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 1U, "statement_id second columns");
-    failures += expect_size(mylite_result_row_count(result), 1U, "statement_id second row");
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        1U,
+        "statement_id second columns"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), 1U, "statement_id second row");
     second = strtoull(mylite_result_value_text(result, 0U, 0U), NULL, decimal_radix);
     failures += expect_uint64_greater_than(second, first, "statement_id monotonic");
     mylite_result_free(result);
@@ -750,12 +774,16 @@ static int expect_pseudo_thread_id_matches_connection_id(mylite_db *database) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 2U, "pseudo default columns");
-    failures += expect_size(mylite_result_row_count(result), 1U, "pseudo default row");
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), 2U, "pseudo default columns");
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, "pseudo default row");
     pseudo_thread_id = strtoull(mylite_result_value_text(result, 0U, 0U), NULL, decimal_radix);
     connection_id = strtoull(mylite_result_value_text(result, 0U, 1U), NULL, decimal_radix);
-    failures +=
-        expect_int64(pseudo_thread_id == connection_id ? 1 : 0, 1, "pseudo default connection id");
+    failures += mylite_test_expect_int64(
+        pseudo_thread_id == connection_id ? 1 : 0,
+        1,
+        "pseudo default connection id"
+    );
     failures += expect_uint64_greater_than(pseudo_thread_id, 0U, "pseudo default nonzero");
     mylite_result_free(result);
     return failures;
@@ -768,19 +796,20 @@ static int expect_rand_seed_sequence(mylite_db *database) {
     if (result == NULL) {
         return failures + 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 2U, "rand sequence columns");
-    failures += expect_size(mylite_result_row_count(result), 1U, "rand sequence row");
+    failures +=
+        mylite_test_expect_size(mylite_result_column_count(result), 2U, "rand sequence columns");
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 1U, "rand sequence row");
     if (result != NULL && mylite_result_column_count(result) == 2U &&
         mylite_result_row_count(result) == 1U) {
         const double first = strtod(mylite_result_value_text(result, 0U, 0U), NULL);
         const double second = strtod(mylite_result_value_text(result, 0U, 1U), NULL);
 
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             first > rand_seed_first_lower_bound && first < rand_seed_first_upper_bound ? 1 : 0,
             1,
             "rand first seeded value"
         );
-        failures += expect_int64(
+        failures += mylite_test_expect_int64(
             second > rand_seed_second_lower_bound && second < rand_seed_second_upper_bound ? 1 : 0,
             1,
             "rand second seeded value"
@@ -820,76 +849,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         return 1;
     }
 
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_text_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
-    return 1;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-
-    fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL && expected == NULL) {
-        return 0;
-    }
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-
-    return 0;
-}
-
-static int expect_text_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "NULL" : actual,
-            needle == NULL ? "NULL" : needle
-        );
-        return 1;
-    }
-
-    return 0;
 }
 
 static int expect_uint64_greater_than(uint64_t actual, uint64_t minimum, const char *context) {

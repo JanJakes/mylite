@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -35,15 +37,8 @@ struct expected_sql_error {
 static int test_information_schema_keywords(void);
 static int expect_query(mylite_db *database, struct expected_query expected);
 static int expect_error(mylite_db *database, struct expected_sql_error expected);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text_or_null(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     return test_information_schema_keywords() == 0 ? 0 : 1;
@@ -169,14 +164,14 @@ static int test_information_schema_keywords(void) {
     int failures = 0;
     int rc = MYLITE_OK;
 
-    if (make_test_path(path, sizeof(path), "keywords") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "keywords") != 0) {
         return 1;
     }
     remove_related_files(path);
 
     rc = mylite_open(path, &database);
 
-    failures += expect_int(rc, MYLITE_OK, "open file database");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, "open file database");
     if (rc != MYLITE_OK) {
         return failures + 1;
     }
@@ -338,7 +333,7 @@ static int test_information_schema_keywords(void) {
     mylite_close(database);
 
     rc = mylite_open(path, &database);
-    failures += expect_int(rc, MYLITE_OK, "reopen file database");
+    failures += mylite_test_expect_int(rc, MYLITE_OK, "reopen file database");
     if (rc == MYLITE_OK) {
         failures += expect_query(
             database,
@@ -363,7 +358,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int failures = 0;
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc != MYLITE_OK) {
         fprintf(
             stderr,
@@ -377,14 +372,18 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         return failures + 1;
     }
 
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.sql
+    );
     failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.sql);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.sql);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.sql);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.sql);
+        mylite_test_expect_size(mylite_result_row_count(result), expected.row_count, expected.sql);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, expected.sql);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, expected.sql);
 
     for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
-        failures += expect_text_or_null(
+        failures += mylite_test_expect_text_or_null(
             mylite_result_column_name(result, column_index),
             expected.column_names[column_index],
             expected.sql
@@ -394,7 +393,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         for (size_t column_index = 0U; column_index < expected.column_count; ++column_index) {
             size_t value_index = (row_index * expected.column_count) + column_index;
 
-            failures += expect_text_or_null(
+            failures += mylite_test_expect_text_or_null(
                 mylite_result_value_text(result, row_index, column_index),
                 expected.values[value_index],
                 expected.sql
@@ -415,45 +414,14 @@ static int expect_error(mylite_db *database, struct expected_sql_error expected)
         fprintf(stderr, "%s: expected error, got %d\n", expected.sql, rc);
         failures += 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, expected.sql);
-    failures += expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, expected.sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, expected.sql);
-    failures += expect_size(mylite_result_column_count(result), 0U, expected.sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, expected.sql);
+    failures +=
+        mylite_test_expect_text_or_null(mylite_sqlstate(database), expected.sqlstate, expected.sql);
+    failures +=
+        mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, expected.sql);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, expected.sql);
     mylite_result_free(result);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    const char *directory = getenv("TMPDIR");
-    int written = 0;
-
-    if (directory == NULL || directory[0] == '\0') {
-        directory = getenv("TEMP");
-    }
-    if (directory == NULL || directory[0] == '\0') {
-        directory = ".";
-    }
-    written = snprintf(
-        path,
-        path_size,
-        "%s/mylite_information_schema_keywords_%d_%s.mylite",
-        directory,
-        current_process_id(),
-        name
-    );
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "test path is too long for %s\n", name);
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -471,63 +439,4 @@ static void remove_with_suffix(const char *path, const char *suffix) {
         return;
     }
     (void)remove(related_path);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text_or_null(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL) {
-        if (actual != expected) {
-            fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
-            return 1;
-        }
-        return 0;
-    }
-    if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected '%s', got '%s'\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected message containing '%s', got '%s'\n",
-            context,
-            needle,
-            actual
-        );
-        return 1;
-    }
-    return 0;
 }

@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_catalog.h"
@@ -75,20 +77,11 @@ static int expect_column_descriptor(
     bool is_nullable,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int drop_physical_table(sqlite3 *connection, const char *physical_name);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_true(int condition, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -170,13 +163,14 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     uint64_t sqlite_generation_before = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "success") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "success") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open add-column file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open add-column file");
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -201,12 +195,12 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read app schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &before_table),
         MYLITE_OK,
         "read numbers table before add"
@@ -224,18 +218,22 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     failures += expect_ddl_result(result, "nullable add result");
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &after_nullable),
         MYLITE_OK,
         "read numbers table after nullable add"
     );
-    failures += expect_int64(after_nullable.table_id, before_table.table_id, "table id unchanged");
-    failures += expect_text(
+    failures += mylite_test_expect_int64(
+        after_nullable.table_id,
+        before_table.table_id,
+        "table id unchanged"
+    );
+    failures += mylite_test_expect_text(
         after_nullable.physical_name,
         before_table.physical_name,
         "physical name unchanged"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_nullable.descriptor_version,
         before_table.descriptor_version + 1U,
         "nullable add bumps table descriptor version"
@@ -243,14 +241,14 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before + 1U,
             "nullable add bumps catalog generation"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before + 1U,
             "nullable add bumps SQLite schema generation"
@@ -271,12 +269,12 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     failures += expect_ddl_result(result, "not-null add result");
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &after_not_null),
         MYLITE_OK,
         "read numbers table after not-null add"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_not_null.descriptor_version,
         after_nullable.descriptor_version + 1U,
         "not-null add bumps table descriptor version"
@@ -344,7 +342,11 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
         }
     );
     failures += execute_ok(database, "UPDATE numbers SET n = -5 WHERE id = 3", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "update added column rows");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update added column rows"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_query_values(
@@ -396,13 +398,23 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "INSERT INTO cleanup VALUES (1, 1), (2, NULL)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 2, "insert cleanup after add");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "insert cleanup warnings");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "insert cleanup after add"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), 0U, "insert cleanup warnings");
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "DELETE FROM cleanup WHERE added = 1", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "delete cleanup after add");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "delete cleanup warnings");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "delete cleanup after add"
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_warning_count(result), 0U, "delete cleanup warnings");
     mylite_result_free(result);
     result = NULL;
     failures += expect_query_values(
@@ -436,7 +448,8 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen add-column file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen add-column file");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -490,12 +503,13 @@ static int test_add_column_table_column_cache_invalidation(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "column_cache_invalidation") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "column_cache_invalidation") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open column cache file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open column cache file");
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -615,12 +629,16 @@ static int test_add_column_positioning(void) {
     uint64_t sqlite_generation_before = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "positioning") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "positioning") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open positioning database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open positioning database"
+    );
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -635,12 +653,12 @@ static int test_add_column_positioning(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read positioning schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "positioned", &before_table),
         MYLITE_OK,
         "read positioned table before add"
@@ -662,12 +680,12 @@ static int test_add_column_positioning(void) {
     failures += expect_ddl_result(result, "first-position add result");
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "positioned", &after_first),
         MYLITE_OK,
         "read positioned table after first add"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_first.descriptor_version,
         before_table.descriptor_version + 1U,
         "first-position add bumps table descriptor version"
@@ -675,7 +693,7 @@ static int test_add_column_positioning(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before + 1U,
             "first-position add bumps catalog generation"
@@ -683,7 +701,7 @@ static int test_add_column_positioning(void) {
         catalog_generation_before = catalog->generation;
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before + 1U,
             "first-position add bumps SQLite schema generation"
@@ -724,7 +742,7 @@ static int test_add_column_positioning(void) {
     failures += expect_ddl_result(result, "after-position add result");
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(
             database,
             schema.schema_id,
@@ -734,7 +752,7 @@ static int test_add_column_positioning(void) {
         MYLITE_OK,
         "read positioned table after after add"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_positioned.descriptor_version,
         after_first.descriptor_version + 1U,
         "after-position add bumps table descriptor version"
@@ -742,14 +760,14 @@ static int test_add_column_positioning(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             catalog_generation_before + 1U,
             "after-position add bumps catalog generation"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before + 1U,
             "after-position add bumps SQLite schema generation"
@@ -817,11 +835,19 @@ static int test_add_column_positioning(void) {
     );
 
     failures += execute_ok(database, "UPDATE positioned SET after_id = 5 WHERE id = 1", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "update positioned column");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update positioned column"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "INSERT INTO positioned VALUES (8, 3, 9, 30)", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "insert positioned row value");
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "insert positioned row value"
+    );
     mylite_result_free(result);
     result = NULL;
     failures += expect_query_values(
@@ -861,7 +887,11 @@ static int test_add_column_positioning(void) {
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen positioning database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen positioning database"
+    );
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -900,12 +930,16 @@ static int test_add_column_diagnostics(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics database");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open diagnostics database"
+    );
     failures += execute_error(
         database,
         "ALTER TABLE missing ADD COLUMN added INT",
@@ -1079,12 +1113,16 @@ static int test_add_column_physical_failure_preserves_catalog(void) {
     uint64_t sqlite_generation_before_failure = 0U;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "physical_failure") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "physical_failure") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open physical failure file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open physical failure file"
+    );
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1094,12 +1132,12 @@ static int test_add_column_physical_failure_preserves_catalog(void) {
     failures += execute_ok(database, "CREATE TABLE broken (id INT NOT NULL)", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
         "read failure schema"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "broken", &before_table),
         MYLITE_OK,
         "read failure table before"
@@ -1129,30 +1167,30 @@ static int test_add_column_physical_failure_preserves_catalog(void) {
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     if (catalog != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             catalog->generation,
             generation_before_failure,
             "physical failure leaves catalog generation unchanged"
         );
     }
     if (session != NULL) {
-        failures += expect_uint64(
+        failures += mylite_test_expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before_failure,
             "physical failure leaves SQLite schema generation unchanged"
         );
     }
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "broken", &after_table),
         MYLITE_OK,
         "read failure table after"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         after_table.descriptor_version,
         before_table.descriptor_version,
         "physical failure leaves table descriptor version unchanged"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, before_table.table_id, "added", &column),
         MYLITE_ERROR,
         "physical failure does not add column descriptor"
@@ -1181,15 +1219,17 @@ static int test_add_column_independent_handles(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (mylite_test_make_path(first_path, sizeof(first_path), "independent_first") != 0 ||
+        mylite_test_make_path(second_path, sizeof(second_path), "independent_second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures +=
+        mylite_test_expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
     failures += execute_ok(first, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1275,11 +1315,11 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         fprintf(stderr, "expected error for %s, got rc=%d\n", sql, rc);
         failures += 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
     message = mylite_errmsg(database);
     if (expected.message_part != NULL) {
-        failures += expect_contains(message, expected.message_part, sql);
+        failures += mylite_test_expect_contains(message, expected.message_part, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -1288,10 +1328,10 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 static int expect_ddl_result(const mylite_result *result, const char *context) {
     int failures = 0;
 
-    failures += expect_size(mylite_result_column_count(result), 0U, context);
-    failures += expect_size(mylite_result_row_count(result), 0U, context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, context);
+    failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, context);
+    failures += mylite_test_expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += mylite_test_expect_size(mylite_result_warning_count(result), 0U, context);
     return failures;
 }
 
@@ -1300,8 +1340,13 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     size_t value_count = query.row_count * query.column_count;
     int failures = execute_ok(database, query.sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
-    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        query.column_count,
+        query.context
+    );
+    failures +=
+        mylite_test_expect_size(mylite_result_row_count(result), query.row_count, query.context);
     for (size_t index = 0U; index < value_count; ++index) {
         failures += expect_result_value(
             result,
@@ -1339,7 +1384,7 @@ static int expect_result_value(
         return 0;
     }
 
-    return expect_text(actual, expected, context);
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static int expect_column_descriptor(
@@ -1352,42 +1397,18 @@ static int expect_column_descriptor(
     const char *context
 ) {
     struct mylite_catalog_column_descriptor column = {0};
-    int failures = expect_int(
+    int failures = mylite_test_expect_int(
         mylite_catalog_read_column_by_name(database, table_id, name, &column),
         MYLITE_OK,
         context
     );
 
-    failures += expect_int64(column.ordinal_position, ordinal_position, context);
-    failures += expect_text(column.name, name, context);
-    failures += expect_text(column.logical_type, logical_type, context);
-    failures += expect_text(column.physical_type, "INTEGER", context);
-    failures += expect_true(column.is_nullable == is_nullable, context);
+    failures += mylite_test_expect_int64(column.ordinal_position, ordinal_position, context);
+    failures += mylite_test_expect_text(column.name, name, context);
+    failures += mylite_test_expect_text(column.logical_type, logical_type, context);
+    failures += mylite_test_expect_text(column.physical_type, "INTEGER", context);
+    failures += mylite_test_expect_true(column.is_nullable == is_nullable, context);
     return failures;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "test-runtime-alter-table-add-column-%s-%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        fprintf(stderr, "failed to build test path for %s\n", name);
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return (int)getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {
@@ -1451,86 +1472,6 @@ static int drop_physical_table(sqlite3 *connection, const char *physical_name) {
         return 1;
     }
     return execute_sql(connection, sql);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %llu, got %llu\n",
-            context,
-            (unsigned long long)expected,
-            (unsigned long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_true(int condition, const char *context) {
-    if (!condition) {
-        fprintf(stderr, "%s: expected true\n", context);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected '%s', got '%s'\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected '%s' to contain '%s'\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_bytes(

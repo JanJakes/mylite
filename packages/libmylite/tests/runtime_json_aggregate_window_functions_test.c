@@ -44,10 +44,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     int failures = 0;
@@ -166,8 +162,11 @@ static int test_json_aggregate_window_results(void) {
         "[\"alpha\", \"beta\", null, \"carrot\", null]",
     };
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open transient database"
+    );
 
     if (failures == 0) {
         failures += seed_json_values(database);
@@ -284,15 +283,18 @@ static int test_json_aggregate_window_metadata(void) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
-    int failures =
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open transient database"
+    );
 
     if (failures == 0) {
         failures += seed_json_values(database);
     }
     if (failures == 0) {
         rc = mylite_execute(database, metadata_sql, strlen(metadata_sql), &result);
-        failures += expect_int(rc, MYLITE_OK, "JSON aggregate window metadata query");
+        failures += mylite_test_expect_int(rc, MYLITE_OK, "JSON aggregate window metadata query");
         if (rc != MYLITE_OK) {
             fprintf(stderr, "metadata query: %s\n", mylite_errmsg(database));
         }
@@ -303,24 +305,27 @@ static int test_json_aggregate_window_metadata(void) {
         return failures;
     }
 
-    failures +=
-        expect_size(mylite_result_column_count(result), metadata_column_count, "metadata count");
-    failures += expect_int(
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        metadata_column_count,
+        "metadata count"
+    );
+    failures += mylite_test_expect_int(
         mylite_result_column_type(result, metadata_array_column),
         MYLITE_RESULT_COLUMN_TYPE_JSON,
         "JSON_ARRAYAGG metadata type"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_column_nullable(result, metadata_array_column),
         1,
         "JSON_ARRAYAGG nullable"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_column_type(result, metadata_object_column),
         MYLITE_RESULT_COLUMN_TYPE_JSON,
         "JSON_OBJECTAGG metadata type"
     );
-    failures += expect_int(
+    failures += mylite_test_expect_int(
         mylite_result_column_nullable(result, metadata_object_column),
         1,
         "JSON_OBJECTAGG nullable"
@@ -333,8 +338,11 @@ static int test_json_aggregate_window_metadata(void) {
 
 static int test_json_aggregate_window_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open transient database");
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open transient database"
+    );
 
     if (failures == 0) {
         failures += seed_json_values(database);
@@ -411,10 +419,15 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int rc = mylite_execute(database, sql, strlen(sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += mylite_test_expect_int(rc, MYLITE_ERROR, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, "error code");
+    failures +=
+        mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        expected.message_part,
+        "error message"
+    );
     mylite_result_free(result);
     return failures;
 }
@@ -424,17 +437,24 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
     int failures = 0;
 
-    failures += expect_int(rc, MYLITE_OK, expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
     if (rc != MYLITE_OK) {
         fprintf(stderr, "%s: %s\n", expected.sql, mylite_errmsg(database));
         mylite_result_free(result);
         return failures;
     }
-    failures +=
-        expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
-    failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+    failures += mylite_test_expect_size(
+        mylite_result_column_count(result),
+        expected.column_count,
+        expected.context
+    );
+    failures += mylite_test_expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        expected.context
+    );
     for (size_t column = 0U; column < expected.column_count; ++column) {
-        failures += expect_text(
+        failures += mylite_test_expect_text(
             mylite_result_column_name(result, column),
             expected.columns[column],
             expected.context
@@ -462,50 +482,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 ) {
-    return expect_text(mylite_result_value_text(result, row, column), expected, context);
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if ((actual == NULL && expected != NULL) || (actual != NULL && expected == NULL) ||
-        (actual != NULL && expected != NULL && strcmp(actual, expected) != 0)) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-    return 0;
+    return mylite_test_expect_text(
+        mylite_result_value_text(result, row, column),
+        expected,
+        context
+    );
 }

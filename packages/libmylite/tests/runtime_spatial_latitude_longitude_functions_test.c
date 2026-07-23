@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -54,12 +56,6 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int expect_int(int actual, int expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 
@@ -77,7 +73,8 @@ int main(void) {
 static int test_scalar_spatial_latitude_longitude_functions(void) {
     static const char *const values[] = {"45", "90", "-90", "180", NULL, NULL};
     mylite_db *database = NULL;
-    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar database");
+    int failures =
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar database");
 
     failures += expect_query(
         database,
@@ -151,7 +148,8 @@ static int test_table_backed_spatial_latitude_longitude_functions(void) {
 static int test_spatial_latitude_longitude_metadata(void) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
-    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open metadata database");
+    int failures =
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open metadata database");
 
     failures += execute_ok(
         database,
@@ -160,12 +158,12 @@ static int test_spatial_latitude_longitude_metadata(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 0U),
             MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
             "ST_Latitude metadata type"
         );
-        failures += expect_int(
+        failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 1U),
             MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
             "ST_Longitude metadata type"
@@ -178,8 +176,11 @@ static int test_spatial_latitude_longitude_metadata(void) {
 
 static int test_spatial_latitude_longitude_diagnostics(void) {
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_open_memory(&database), MYLITE_OK, "open diagnostics database");
+    int failures = mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open diagnostics database"
+    );
 
     failures += execute_error(
         database,
@@ -307,9 +308,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, sql);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, sql);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -319,13 +320,16 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     int failures = execute_ok(database, expected.sql, &result);
 
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             expected.column_count,
             expected.context
         );
-        failures +=
-            expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            expected.row_count,
+            expected.context
+        );
     }
     for (size_t row = 0U; failures == 0 && row < expected.row_count; ++row) {
         for (size_t column = 0U; failures == 0 && column < expected.column_count; ++column) {
@@ -347,11 +351,11 @@ static int open_app_database(
 ) {
     int failures = 0;
 
-    if (make_test_path(path, path_size, name) != 0) {
+    if (mylite_test_make_path(path, path_size, name) != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, out_database), MYLITE_OK, name);
+    failures += mylite_test_expect_int(mylite_open(path, out_database), MYLITE_OK, name);
     if (failures == 0) {
         failures += execute_ok(*out_database, "CREATE DATABASE app", NULL);
     }
@@ -397,70 +401,6 @@ static int expect_result_value(
         return 1;
     }
     return 0;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected %s, got %s\n",
-            context,
-            expected == NULL ? "NULL" : expected,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected message containing %s, got %s\n",
-            context,
-            needle == NULL ? "NULL" : needle,
-            actual == NULL ? "NULL" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite_spatial_latitude_longitude_%s_%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    return written < 0 || (size_t)written >= path_size ? -1 : 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
 }
 
 static void remove_related_files(const char *path) {

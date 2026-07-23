@@ -1,3 +1,5 @@
+#include "mylite_test_support.h"
+
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
@@ -59,17 +61,9 @@ static int expect_result_value(
     const char *expected,
     const char *context
 );
-static int make_test_path(char *path, size_t path_size, const char *name);
-static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
-static int expect_size(size_t actual, size_t expected, const char *context);
-static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -140,13 +134,17 @@ static int test_timediff_values_and_file_safety(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "values") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "values") != 0) {
         return 1;
     }
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open TIMEDIFF values file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open TIMEDIFF values file"
+    );
     if (failures != 0) {
         remove_related_files(path);
         return failures;
@@ -208,10 +206,20 @@ static int test_timediff_values_and_file_safety(void) {
     failures +=
         execute_ok(database, "DO TIMEDIFF('01:02:03','00:00:01'), TIMEDIFF(NULL,'bad')", &result);
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "timediff do columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "timediff do rows");
-        failures += expect_int64(mylite_result_affected_rows(result), 0, "timediff do affected");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "timediff do warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), 0U, "timediff do columns");
+        failures +=
+            mylite_test_expect_size(mylite_result_row_count(result), 0U, "timediff do rows");
+        failures += mylite_test_expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "timediff do affected"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "timediff do warnings"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -233,7 +241,11 @@ static int test_timediff_values_and_file_safety(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(mylite_result_warning_count(result), 2U, "timediff clamp warnings");
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            2U,
+            "timediff clamp warnings"
+        );
         failures += expect_result_value(result, 0U, 0U, clamp_values[0], "positive clamp");
         failures += expect_result_value(result, 0U, 1U, clamp_values[1], "negative clamp");
     }
@@ -251,18 +263,21 @@ static int test_timediff_values_and_file_safety(void) {
         }
     );
 
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         session->catalog_generation,
         catalog_generation,
         "TIMEDIFF catalog generation"
     );
-    failures += expect_uint64(
+    failures += mylite_test_expect_uint64(
         session->sqlite_schema_generation,
         sqlite_schema_generation,
         "TIMEDIFF sqlite schema generation"
     );
-    failures +=
-        expect_int(read_file_at(path, 0, actual_preamble, sizeof(actual_preamble)), 0, "preamble");
+    failures += mylite_test_expect_int(
+        read_file_at(path, 0, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "preamble"
+    );
     failures += expect_bytes(
         actual_preamble,
         expected_preamble,
@@ -325,12 +340,13 @@ static int test_timediff_table_backed_and_reopen(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "table") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "table") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open TIMEDIFF table file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open TIMEDIFF table file");
     if (failures != 0) {
         remove_related_files(path);
         return failures;
@@ -363,12 +379,16 @@ static int test_timediff_table_backed_and_reopen(void) {
         &result
     );
     if (failures == 0) {
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            table_column_count,
+            "table columns"
+        );
+        failures += mylite_test_expect_size(mylite_result_row_count(result), 2U, "table rows");
         failures +=
-            expect_size(mylite_result_column_count(result), table_column_count, "table columns");
-        failures += expect_size(mylite_result_row_count(result), 2U, "table rows");
-        failures += expect_size(mylite_result_warning_count(result), 0U, "table warnings");
+            mylite_test_expect_size(mylite_result_warning_count(result), 0U, "table warnings");
         for (size_t column = 0U; column < table_column_count; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column),
                 table_columns[column],
                 "table column"
@@ -408,16 +428,23 @@ static int test_timediff_table_backed_and_reopen(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             sizeof(invalid_columns) / sizeof(invalid_columns[0]),
             "table invalid timediff columns"
         );
-        failures += expect_size(mylite_result_row_count(result), 2U, "table invalid timediff rows");
-        failures +=
-            expect_size(mylite_result_warning_count(result), 1U, "table invalid timediff warnings");
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            2U,
+            "table invalid timediff rows"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            1U,
+            "table invalid timediff warnings"
+        );
         for (size_t column = 0U; column < 2U; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column),
                 invalid_columns[column],
                 "table invalid timediff column"
@@ -455,16 +482,23 @@ static int test_timediff_table_backed_and_reopen(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             sizeof(clamp_columns) / sizeof(clamp_columns[0]),
             "table clamped timediff columns"
         );
-        failures += expect_size(mylite_result_row_count(result), 1U, "table clamped timediff rows");
-        failures +=
-            expect_size(mylite_result_warning_count(result), 1U, "table clamped timediff warnings");
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            1U,
+            "table clamped timediff rows"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            1U,
+            "table clamped timediff warnings"
+        );
         for (size_t column = 0U; column < 2U; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column),
                 clamp_columns[column],
                 "table clamped timediff column"
@@ -493,7 +527,8 @@ static int test_timediff_table_backed_and_reopen(void) {
     );
 
     mylite_close(database);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen TIMEDIFF file");
+    failures +=
+        mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "reopen TIMEDIFF file");
     failures += execute_ok(database, "USE app", NULL);
     failures += expect_query(
         database,
@@ -532,11 +567,15 @@ static int test_timediff_sql_modes_and_errors(void) {
     mylite_result *result = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "errors") != 0) {
+    if (mylite_test_make_path(path, sizeof(path), "errors") != 0) {
         return 1;
     }
     remove_related_files(path);
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open TIMEDIFF errors file");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open TIMEDIFF errors file"
+    );
     if (failures != 0) {
         remove_related_files(path);
         return failures;
@@ -589,7 +628,8 @@ static int test_timediff_sql_modes_and_errors(void) {
         &result
     );
     if (failures == 0) {
-        failures += expect_size(mylite_result_warning_count(result), 2U, "invalid warnings");
+        failures +=
+            mylite_test_expect_size(mylite_result_warning_count(result), 2U, "invalid warnings");
         failures += expect_result_value(result, 0U, 0U, invalid_values[0], "invalid left");
         failures += expect_result_value(result, 0U, 1U, invalid_values[1], "invalid right");
     }
@@ -723,9 +763,10 @@ static int execute_error_bytes(
         mylite_result_free(result);
         return 1;
     }
-    failures += expect_int(mylite_errcode(database), expected.code, context);
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, context);
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, context);
+    failures += mylite_test_expect_int(mylite_errcode(database), expected.code, context);
+    failures += mylite_test_expect_text(mylite_sqlstate(database), expected.sqlstate, context);
+    failures +=
+        mylite_test_expect_contains(mylite_errmsg(database), expected.message_part, context);
     mylite_result_free(result);
     return failures;
 }
@@ -736,15 +777,18 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
 
     failures += execute_ok(database, expected.sql, &result);
     if (failures == 0) {
-        failures += expect_size(
+        failures += mylite_test_expect_size(
             mylite_result_column_count(result),
             expected.column_count,
             expected.context
         );
-        failures +=
-            expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
+        failures += mylite_test_expect_size(
+            mylite_result_row_count(result),
+            expected.row_count,
+            expected.context
+        );
         for (size_t column = 0U; column < expected.column_count; ++column) {
-            failures += expect_text(
+            failures += mylite_test_expect_text(
                 mylite_result_column_name(result, column),
                 expected.columns[column],
                 expected.context
@@ -793,30 +837,7 @@ static int expect_result_value(
         fprintf(stderr, "%s: expected [%s] at %zu,%zu, got NULL\n", context, expected, row, column);
         return 1;
     }
-    return expect_text(actual, expected, context);
-}
-
-static int make_test_path(char *path, size_t path_size, const char *name) {
-    int written = snprintf(
-        path,
-        path_size,
-        "/tmp/mylite-timediff-function-%s-%d.mylite",
-        name,
-        current_process_id()
-    );
-
-    if (written < 0 || (size_t)written >= path_size) {
-        return 1;
-    }
-    return 0;
-}
-
-static int current_process_id(void) {
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
+    return mylite_test_expect_text(actual, expected, context);
 }
 
 static void remove_related_files(const char *path) {
@@ -852,78 +873,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     read_count = fread(buffer, 1U, size, file);
     fclose(file);
     return read_count == size ? 0 : 1;
-}
-
-static int expect_int(int actual, int expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %llu, got %llu\n",
-            context,
-            (unsigned long long)expected,
-            (unsigned long long)actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_size(size_t actual, size_t expected, const char *context) {
-    if (actual != expected) {
-        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(
-            stderr,
-            "%s: expected [%s], got [%s]\n",
-            context,
-            expected == NULL ? "(null)" : expected,
-            actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
-        );
-        return 1;
-    }
-    return 0;
 }
 
 static int expect_bytes(

@@ -284,11 +284,16 @@ expect_output \
         'events_stages_summary_global_by_event_name\tPERFORMANCE_SCHEMA\tDynamic\t175\tNULL\tutf8mb4_0900_ai_ci\n' \
         'events_waits_summary_by_account_by_event_name\tPERFORMANCE_SCHEMA\tDynamic\t88832\tNULL\tutf8mb4_0900_ai_ci\n' \
         'events_waits_summary_by_host_by_event_name\tPERFORMANCE_SCHEMA\tDynamic\t88832\tNULL\tutf8mb4_0900_ai_ci\n' \
-        'events_waits_summary_by_instance\tPERFORMANCE_SCHEMA\tDynamic\t10752\tNULL\tutf8mb4_0900_ai_ci\n' \
+        'events_waits_summary_by_instance\tPERFORMANCE_SCHEMA\tDynamic\tpositive\tNULL\tutf8mb4_0900_ai_ci\n' \
         'events_waits_summary_by_thread_by_event_name\tPERFORMANCE_SCHEMA\tDynamic\t177664\tNULL\tutf8mb4_0900_ai_ci\n' \
         'events_waits_summary_by_user_by_event_name\tPERFORMANCE_SCHEMA\tDynamic\t88832\tNULL\tutf8mb4_0900_ai_ci\n' \
         'events_waits_summary_global_by_event_name\tPERFORMANCE_SCHEMA\tDynamic\t694\tNULL\tutf8mb4_0900_ai_ci')" \
-    "SELECT TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_ROWS,
+    "SELECT TABLE_NAME, ENGINE, ROW_FORMAT,
+            CASE
+                WHEN TABLE_NAME = 'events_waits_summary_by_instance'
+                    THEN IF(TABLE_ROWS > 0, 'positive', 'not-positive')
+                ELSE CAST(TABLE_ROWS AS CHAR)
+            END,
             COALESCE(AUTO_INCREMENT, 'NULL'), TABLE_COLLATION
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'performance_schema'

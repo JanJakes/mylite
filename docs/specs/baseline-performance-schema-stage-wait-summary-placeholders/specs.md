@@ -57,6 +57,9 @@ MyLite implements these tables as metadata placeholders:
 - `INFORMATION_SCHEMA.COLUMNS`, `STATISTICS`, `TABLE_CONSTRAINTS`,
   `KEY_COLUMN_USAGE`, `TABLE_CONSTRAINTS_EXTENSIONS`, and `TABLES` include the
   observed metadata rows.
+- MySQL's `events_waits_summary_by_instance` row estimate varies with the
+  runtime's instrument capacity. The expectation probe requires a positive
+  estimate; MyLite reports the canonical observed value `10752`.
 - `SHOW TABLE STATUS` exposes the same engine, row format, row estimate,
   auto-increment, and collation metadata as MySQL 8.4.9 for the covered fields.
 - Schema, table, index, rename, truncate, and single-table DML writes targeting

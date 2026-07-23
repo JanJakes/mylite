@@ -50,6 +50,10 @@ Runtime probes against `mysql:8.4.9` showed these defaults and scopes:
 | `innodb_purge_batch_size` | `300` | `300` | global | dynamic global |
 | `innodb_purge_rseg_truncate_frequency` | `128` | `128` | global | dynamic global |
 | `innodb_purge_threads` | `4` | `4` | global | read-only |
+
+MySQL adjusts the read-only `innodb_purge_threads` startup value from `4` to
+`1` on CPU-constrained hosts. MyLite exposes the canonical unconstrained value
+`4` because its compatibility placeholder does not allocate purge workers.
 | `innodb_random_read_ahead` | `0` | `OFF` | global | dynamic global |
 | `innodb_read_ahead_threshold` | `56` | `56` | global | dynamic global |
 | `innodb_read_io_threads` | `9` | `9` | global | read-only |

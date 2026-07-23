@@ -36,6 +36,14 @@ verify_mysql_runtime() {
     esac
 }
 
+run_expectation_fixture() {
+    script_path=$1
+    case "$(sed -n '1p' "$script_path")" in
+        *bash) bash "$script_path" ;;
+        *) sh "$script_path" ;;
+    esac
+}
+
 validate_shard_configuration() {
     if [ -z "$SHARD_INDEX" ] && [ -z "$SHARD_COUNT" ]; then
         return
@@ -87,7 +95,7 @@ run_expectation_script() {
         failures=$((failures + 1))
         return
     fi
-    if MYLITE_MYSQL_CONTAINER="$MYSQL_CONTAINER" sh "$script_path"; then
+    if MYLITE_MYSQL_CONTAINER="$MYSQL_CONTAINER" run_expectation_fixture "$script_path"; then
         end_seconds=$(date +%s)
         printf '%s\n' "ok $script ($((end_seconds - start_seconds))s)"
     else

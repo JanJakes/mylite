@@ -89,6 +89,14 @@ exit 23
 EOF
 chmod +x "$TEMP_DIR/failing-expectation.sh"
 
+cat >"$TEMP_DIR/bash-expectation.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -n "${MYLITE_EXPECTATION_TEST_LOG}" ]]
+printf '%s\n' "$(basename "$0")" >>"$MYLITE_EXPECTATION_TEST_LOG"
+EOF
+chmod +x "$TEMP_DIR/bash-expectation.sh"
+
 {
     printf '%s\n' '# test manifest' ''
     for script_number in 0 1 2 3 4; do
@@ -127,6 +135,15 @@ expect_shard() {
 expect_shard 0 "$(printf '%s\n' reset:1 expectation-0.sh reset:2 expectation-3.sh)"
 expect_shard 1 "$(printf '%s\n' reset:1 expectation-1.sh reset:2 expectation-4.sh)"
 expect_shard 2 "$(printf '%s\n' reset:1 expectation-2.sh)"
+
+: >"$EVENT_LOG"
+rm -f "$RESET_STATE"
+run_expectations "$TEMP_DIR/bash-expectation.sh" >/dev/null
+actual=$(cat "$EVENT_LOG")
+expected=$(printf '%s\n' reset:1 bash-expectation.sh)
+if [ "$actual" != "$expected" ]; then
+    fail "expectation runner did not honor the Bash shebang: [$actual]"
+fi
 
 if PATH="$TEMP_DIR:$PATH" \
     MYLITE_EXPECTATION_RESET_STATE="$RESET_STATE" \

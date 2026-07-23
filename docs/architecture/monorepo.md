@@ -122,6 +122,17 @@ LIKE decoding, matching, and result-column naming live behind
 share one matcher instead of carrying file-local wildcard helpers. These headers
 may provide short inline adapters for legacy `.inc` fragments, but new C modules
 should call the `mylite_execution_*` names directly.
+Session mutation policy lives in `mylite_execution_set.c`: SET statement
+execution, user-variable mutation, system-variable overrides, SQL-mode parsing,
+and connection character-set changes share one typed internal API. SQL
+PREPARE/EXECUTE/DEALLOCATE and session-scoped stored-procedure lifecycle live
+in `mylite_execution_session_programs.c`; that module reaches statement
+orchestration only through the callbacks declared in its support header.
+Transaction control, table maintenance, and VALUES execution remain separate
+modules because each owns a distinct statement lifecycle. Keep these boundaries
+behavioral: do not create a translation unit merely to move an `.inc` directive,
+and do not move query or DDL fragments until their ownership can be expressed
+through a smaller typed API than the private namespace they replace.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments. Large declaration hubs may fan out into
 numbered same-directory subfragments when that keeps declaration groups

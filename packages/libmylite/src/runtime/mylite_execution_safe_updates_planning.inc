@@ -1,5 +1,5 @@
 static bool sql_safe_updates_is_enabled(const struct mylite_db *database) {
-    const char *value = session_system_variable_override_value(
+    const char *value = mylite_execution_set_session_system_variable_override_value(
         database,
         MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES
     );

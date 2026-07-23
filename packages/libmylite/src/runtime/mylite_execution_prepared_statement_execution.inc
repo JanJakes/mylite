@@ -10,7 +10,8 @@ static int execute_prepare_statement(
     size_t source_sql_size = 0U;
     size_t parameter_count = 0U;
     size_t existing_index = 0U;
-    unsigned int lexer_modes = lexer_modes_for_session_sql_mode(&database->session);
+    unsigned int lexer_modes =
+        mylite_execution_lexer_modes_for_session_sql_mode(&database->session);
     int rc = MYLITE_OK;
 
     rc = copy_prepared_statement_name(database, child_at(statement, 0U), name, sizeof(name));
@@ -236,17 +237,18 @@ static int bind_execute_user_variable(
 ) {
     char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
     struct mylite_session_user_variable *value = NULL;
-    int rc = copy_user_variable_name(database, variable, name, sizeof(name), true);
+    int rc =
+        mylite_execution_set_copy_user_variable_name(database, variable, name, sizeof(name), true);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    value = find_session_user_variable(&database->session, name);
+    value = mylite_execution_set_find_session_user_variable(&database->session, name);
     if (value == NULL || value->is_null || value->value == NULL) {
         return mylite_stmt_bind_null(statement, parameter_index);
     }
     if (value->value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER &&
-        text_is_decimal_integer_literal(value->value, value->value_size)) {
+        mylite_execution_set_text_is_decimal_integer_literal(value->value, value->value_size)) {
         return bind_execute_integer_user_variable(statement, parameter_index, value);
     }
     return mylite_stmt_bind_text(statement, parameter_index, value->value, value->value_size);
@@ -343,8 +345,9 @@ static int execute_expanded_prepared_statement_sql(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = sql_size,
-            .modes = prepared == NULL ? lexer_modes_for_session_sql_mode(&database->session)
-                                      : prepared->lexer_modes,
+            .modes = prepared == NULL
+                         ? mylite_execution_lexer_modes_for_session_sql_mode(&database->session)
+                         : prepared->lexer_modes,
         },
         &parse_result
     ));

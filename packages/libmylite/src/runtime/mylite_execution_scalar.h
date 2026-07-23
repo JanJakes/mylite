@@ -617,6 +617,11 @@ int mylite_execution_session_user_variable_value(
     const struct mylite_sql_ast_node *node,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_session_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 bool mylite_execution_text_value_is_supported_string_key(const char *text, size_t text_length);
 const char *mylite_execution_scalar_pi_text(void);
 

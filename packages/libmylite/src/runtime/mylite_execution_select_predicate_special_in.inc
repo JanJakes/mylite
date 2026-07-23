@@ -105,7 +105,7 @@ static bool sql_auto_is_null_lookup_applies(
         return false;
     }
 
-    value = session_system_variable_override_value(
+    value = mylite_execution_set_session_system_variable_override_value(
         database,
         MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL
     );

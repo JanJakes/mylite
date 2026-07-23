@@ -153,6 +153,8 @@ add_library(mylite
   src/runtime/mylite_execution_information_schema_values.c
   src/runtime/mylite_execution_select_order_plan.c
   src/runtime/mylite_execution_session_system_variables.c
+  src/runtime/mylite_execution_session_programs.c
+  src/runtime/mylite_execution_set.c
   src/runtime/mylite_execution_show_filter.c
   src/runtime/mylite_execution_sql_lowering.c
   src/runtime/mylite_execution_sqlite_internal.c

@@ -1655,6 +1655,17 @@ static void move_session_scalar_cell(
 );
 static void session_scalar_cell_deinit(struct session_scalar_cell *cell);
 static void session_scalar_cell_array_deinit(struct session_scalar_cell *cells, size_t cell_count);
+static int user_variable_assignment_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int copy_user_variable_assignment_result_cell(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell,
+    const struct session_scalar_cell *value
+);
+static int append_user_variable_assignment_deprecation_warning(struct mylite_db *database);
 static bool if_scalar_condition_is_true(const struct session_scalar_cell *cell);
 static int normalize_decimal_integer_literal(
     struct mylite_db *database,
@@ -1705,22 +1716,9 @@ static int format_session_scalar_uint64_value(
     uint64_t value,
     struct session_scalar_cell *out_cell
 );
-static uint64_t timeout_system_variable_default_value_for_kind(
-    enum mylite_execution_system_variable_kind kind
-);
-static uint64_t timeout_system_variable_min_value_for_kind(
-    enum mylite_execution_system_variable_kind kind
-);
-static uint64_t timeout_system_variable_max_value_for_kind(
-    enum mylite_execution_system_variable_kind kind
-);
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    enum mylite_execution_system_variable_kind *out_kind
-);
-static bool resolve_system_variable_kind(
-    const struct system_variable_component *name,
     enum mylite_execution_system_variable_kind *out_kind
 );
 static int show_system_variable_value(

@@ -1,3 +1,5 @@
+#if !defined(MYLITE_EXECUTION_SET_MODULE) && !defined(MYLITE_EXECUTION_SESSION_PROGRAM_MODULE)
+
 static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -110,12 +112,6 @@ static int execute_unsupported_stored_program_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int try_execute_stored_procedure_local_variables_placeholder_statement(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    mylite_result **out_result,
-    bool *out_handled
-);
 static int execute_utility_noop_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_unsupported_utility_statement(struct mylite_db *database);
 static bool set_statement_is_persist_noop(const struct mylite_sql_ast_node *statement);
@@ -124,21 +120,10 @@ static bool span_starts_with_ascii_case_insensitive(
     const struct mylite_sql_source_span *span,
     const char *prefix
 );
-static int execute_prepare_statement(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    mylite_result **out_result
-);
-static int execute_execute_statement(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    mylite_result **out_result
-);
-static int execute_deallocate_prepare_statement(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    mylite_result **out_result
-);
+#endif
+
+#if defined(MYLITE_EXECUTION_SET_MODULE)
+
 static int execute_set_connection_character_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -219,17 +204,6 @@ static int session_user_variable_value_kind(
     const struct mylite_sql_ast_node *node,
     enum mylite_session_user_variable_value_kind *out_value_kind
 );
-static int user_variable_assignment_expression_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-);
-static int copy_user_variable_assignment_result_cell(
-    struct mylite_db *database,
-    struct session_scalar_cell *out_cell,
-    const struct session_scalar_cell *value
-);
-static int append_user_variable_assignment_deprecation_warning(struct mylite_db *database);
 static int copy_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -333,6 +307,27 @@ static struct mylite_session_system_variable_override *find_session_system_varia
     enum mylite_execution_system_variable_kind kind
 );
 static int ensure_session_system_variable_override_capacity(struct mylite_db *database);
+
+#endif
+
+#if defined(MYLITE_EXECUTION_SESSION_PROGRAM_MODULE)
+
+static int execute_prepare_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_execute_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_deallocate_prepare_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+
 static int prepare_statement_source_sql(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source,
@@ -428,6 +423,18 @@ static int execute_call_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int try_execute_stored_procedure_local_variables_placeholder_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result,
+    bool *out_handled
+);
+static int execute_show_create_procedure_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int append_show_create_definer(struct mylite_dynamic_string *string, const char *identity);
 static struct mylite_session_stored_procedure *find_session_stored_procedure(
     struct mylite_session_state *session,
     const char *schema_name,
@@ -448,6 +455,11 @@ static void set_unknown_prepared_statement_error(
     const char *command_name
 );
 static void set_prepared_statement_command_unsupported_error(struct mylite_db *database);
+
+#endif
+
+#if defined(MYLITE_EXECUTION_SET_MODULE)
+
 static int copy_set_session_snapshot(
     struct mylite_db *database,
     struct set_session_snapshot *out_snapshot
@@ -2167,7 +2179,4 @@ static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
 static unsigned int lexer_modes_for_statement(const struct mylite_db *database);
-static bool foreign_key_checks_system_variable_value(
-    const struct mylite_db *database,
-    bool global_scope
-);
+#endif

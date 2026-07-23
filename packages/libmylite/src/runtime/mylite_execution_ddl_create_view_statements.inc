@@ -896,7 +896,7 @@ static int build_create_view_show_create_sql(
         rc = mylite_dynamic_string_append(&string, " DEFINER=");
     }
     if (rc == MYLITE_OK) {
-        rc = append_show_create_definer(&string, plan->definer);
+        rc = mylite_execution_append_show_create_definer(&string, plan->definer);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " SQL SECURITY ");

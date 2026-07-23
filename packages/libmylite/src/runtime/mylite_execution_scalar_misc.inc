@@ -1405,7 +1405,11 @@ static int generic_json_schema_argument_value(
     }
 
     if (unwrapped->kind == MYLITE_SQL_AST_USER_VARIABLE) {
-        rc = session_user_variable_value_kind(database, unwrapped, &variable_kind);
+        rc = mylite_execution_set_session_user_variable_value_kind(
+            database,
+            unwrapped,
+            &variable_kind
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -1416,7 +1420,11 @@ static int generic_json_schema_argument_value(
         if (variable_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
             return set_json_schema_invalid_data_type_error(database, function_name, argument_index);
         }
-        rc = session_user_variable_value(database, unwrapped, &out_argument->cell);
+        rc = mylite_execution_set_session_user_variable_value(
+            database,
+            unwrapped,
+            &out_argument->cell
+        );
         if (rc == MYLITE_OK) {
             out_argument->text = out_argument->cell.value;
             out_argument->text_length = out_argument->cell.has_value_size

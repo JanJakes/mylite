@@ -412,7 +412,7 @@ static int apply_set_server_identity_binary_log_system_variable_assignment(
         if (rc != MYLITE_OK) {
             return rc;
         }
-        return append_system_variable_read_warning(database, target->kind);
+        return mylite_execution_session_append_system_variable_read_warning(database, target->kind);
     }
 
     return MYLITE_OK;
@@ -424,7 +424,8 @@ static int apply_set_system_variable_user_variable_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 ) {
-    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(value_node);
+    const struct mylite_sql_ast_node *unwrapped =
+        mylite_execution_unwrap_parenthesized_expression(value_node);
     struct session_scalar_cell value = {0};
     enum mylite_session_user_variable_value_kind value_kind =
         MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
@@ -445,7 +446,7 @@ static int apply_set_system_variable_user_variable_assignment(
     if (rc == MYLITE_OK) {
         rc = apply_set_system_variable_cell_value(database, target, &value, value_kind);
     }
-    session_scalar_cell_deinit(&value);
+    mylite_execution_session_scalar_cell_deinit(&value);
     return rc;
 }
 

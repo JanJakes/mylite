@@ -1643,11 +1643,6 @@ static int execute_show_create_view_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int execute_show_create_procedure_statement(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    mylite_result **out_result
-);
 static int execute_show_create_function_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

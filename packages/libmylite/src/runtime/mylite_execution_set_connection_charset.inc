@@ -60,22 +60,21 @@ static int apply_set_connection_character_set_statement(
     }
 
     target = child_at(statement, 0U);
-    charset_descriptor = character_set_by_name(MYLITE_CATALOG_DEFAULT_TABLE_CHARSET);
+    charset_descriptor =
+        mylite_execution_catalog_character_set_by_name(MYLITE_CATALOG_DEFAULT_TABLE_CHARSET);
     if (target != NULL && target->kind != MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET) {
-        rc = copy_table_option_name_text(
+        rc = mylite_execution_set_copy_table_option_name_text(
             database,
             target,
             charset_name,
             sizeof(charset_name),
-            (struct table_option_name_policy){
-                .identifier_kind = "character set",
-                .nul_message = "SET character set names do not support NUL bytes",
-            }
+            "character set",
+            "SET character set names do not support NUL bytes"
         );
         if (rc != MYLITE_OK) {
             return rc;
         }
-        charset_descriptor = character_set_by_name(charset_name);
+        charset_descriptor = mylite_execution_catalog_character_set_by_name(charset_name);
         if (charset_descriptor == NULL) {
             set_unknown_character_set_error(database, charset_name);
             return MYLITE_ERROR;
@@ -87,20 +86,18 @@ static int apply_set_connection_character_set_statement(
     }
 
     if (collation != NULL) {
-        rc = copy_table_option_name_text(
+        rc = mylite_execution_set_copy_table_option_name_text(
             database,
             collation,
             collation_name,
             sizeof(collation_name),
-            (struct table_option_name_policy){
-                .identifier_kind = "collation",
-                .nul_message = "SET collation names do not support NUL bytes",
-            }
+            "collation",
+            "SET collation names do not support NUL bytes"
         );
         if (rc != MYLITE_OK) {
             return rc;
         }
-        collation_descriptor = collation_by_name(collation_name);
+        collation_descriptor = mylite_execution_catalog_collation_by_name(collation_name);
         if (collation_descriptor == NULL) {
             set_unknown_collation_error(database, collation_name);
             return MYLITE_ERROR;
@@ -114,7 +111,8 @@ static int apply_set_connection_character_set_statement(
             return MYLITE_ERROR;
         }
     } else {
-        collation_descriptor = collation_by_name(charset_descriptor->default_collation);
+        collation_descriptor =
+            mylite_execution_catalog_collation_by_name(charset_descriptor->default_collation);
     }
     if (collation_descriptor == NULL) {
         set_runtime_error(database, "invalid default connection collation");
@@ -227,20 +225,18 @@ static int validate_set_connection_character_set_target(
         return MYLITE_OK;
     }
 
-    rc = copy_table_option_name_text(
+    rc = mylite_execution_set_copy_table_option_name_text(
         database,
         target,
         charset_name,
         sizeof(charset_name),
-        (struct table_option_name_policy){
-            .identifier_kind = "character set",
-            .nul_message = "SET character set names do not support NUL bytes",
-        }
+        "character set",
+        "SET character set names do not support NUL bytes"
     );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (character_set_by_name(charset_name) == NULL) {
+    if (mylite_execution_catalog_character_set_by_name(charset_name) == NULL) {
         set_unknown_character_set_error(database, charset_name);
         return MYLITE_ERROR;
     }
@@ -253,21 +249,19 @@ static int validate_set_names_collation_target(
     const struct mylite_sql_ast_node *target
 ) {
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    int rc = copy_table_option_name_text(
+    int rc = mylite_execution_set_copy_table_option_name_text(
         database,
         target,
         collation_name,
         sizeof(collation_name),
-        (struct table_option_name_policy){
-            .identifier_kind = "collation",
-            .nul_message = "SET collation names do not support NUL bytes",
-        }
+        "collation",
+        "SET collation names do not support NUL bytes"
     );
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (collation_by_name(collation_name) == NULL) {
+    if (mylite_execution_catalog_collation_by_name(collation_name) == NULL) {
         set_unknown_collation_error(database, collation_name);
         return MYLITE_ERROR;
     }

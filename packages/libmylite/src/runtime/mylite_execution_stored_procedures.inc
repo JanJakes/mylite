@@ -681,7 +681,7 @@ static int lex_stored_procedure_placeholder_statement(
         (struct mylite_sql_lexer_config){
             .input = statement->span.text,
             .length = statement->span.length,
-            .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .modes = mylite_execution_lexer_modes_for_session_sql_mode(&database->session),
         }
     );
 
@@ -1726,7 +1726,7 @@ static int execute_sys_table_exists_procedure(
         output.value = exists_value;
         output.value_size = strlen(exists_value);
         output.has_value_size = true;
-        rc = set_session_user_variable(
+        rc = mylite_execution_set_session_user_variable(
             database,
             out_argument,
             &output,
@@ -2737,7 +2737,7 @@ static int append_stored_procedure_quoted_string_literal(
 
     rc = append_execute_string_literal(
         string,
-        lexer_modes_for_session_sql_mode(&database->session),
+        mylite_execution_lexer_modes_for_session_sql_mode(&database->session),
         text == NULL ? "" : text,
         text_size
     );

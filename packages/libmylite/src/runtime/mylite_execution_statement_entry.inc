@@ -196,11 +196,15 @@ static int execute_parsed_statement(
 
     switch (statement->kind) {
     case MYLITE_SQL_AST_PREPARE_STATEMENT:
-        return execute_prepare_statement(database, statement, out_result);
+        return mylite_execution_execute_prepare_statement(database, statement, out_result);
     case MYLITE_SQL_AST_EXECUTE_STATEMENT:
-        return execute_execute_statement(database, statement, out_result);
+        return mylite_execution_execute_prepared_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
-        return execute_deallocate_prepare_statement(database, statement, out_result);
+        return mylite_execution_execute_deallocate_prepare_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
     case MYLITE_SQL_AST_VALUES_STATEMENT:
@@ -393,7 +397,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
         return execute_alter_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT:
-        return execute_create_procedure_statement(database, statement, out_result);
+        return mylite_execution_execute_create_procedure_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
@@ -433,7 +437,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
         return execute_drop_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_PROCEDURE_STATEMENT:
-        return execute_drop_procedure_statement(database, statement, out_result);
+        return mylite_execution_execute_drop_procedure_statement(database, statement, out_result);
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
         return execute_truncate_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
@@ -533,7 +537,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
         return execute_explain_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CALL_STATEMENT:
-        return execute_call_statement(database, statement, out_result);
+        return mylite_execution_execute_call_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT: {
         int rc = select_statement_into_list(statement) == NULL
                      ? execute_select_statement(database, context, statement, true, out_result)
@@ -615,7 +619,11 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
         return execute_show_create_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT:
-        return execute_show_create_procedure_statement(database, statement, out_result);
+        return mylite_execution_execute_show_create_procedure_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_SHOW_CREATE_FUNCTION_STATEMENT:
         return execute_show_create_function_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_TRIGGER_STATEMENT:

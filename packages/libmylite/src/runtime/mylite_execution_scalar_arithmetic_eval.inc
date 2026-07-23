@@ -514,7 +514,7 @@ static int evaluate_scalar_arithmetic_operand(
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
-        rc = session_user_variable_value(database, expression, &cell);
+        rc = mylite_execution_set_session_user_variable_value(database, expression, &cell);
         if (rc == MYLITE_OK) {
             rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
         }

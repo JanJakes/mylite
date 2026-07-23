@@ -349,7 +349,11 @@ static int plan_row_scalar_json_schema_argument(
         );
     }
     if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
-        int rc = session_user_variable_value_kind(database, expression, &variable_kind);
+        int rc = mylite_execution_set_session_user_variable_value_kind(
+            database,
+            expression,
+            &variable_kind
+        );
 
         if (rc != MYLITE_OK) {
             return rc;

@@ -49,8 +49,12 @@
 #include "mylite_execution_select_analysis.h"
 #include "mylite_execution_select_order_plan.h"
 #include "mylite_execution_select_order_support.h"
+#include "mylite_execution_session_programs.h"
+#include "mylite_execution_session_programs_support.h"
 #include "mylite_execution_session_system_variables.h"
 #include "mylite_execution_session_system_variables_support.h"
+#include "mylite_execution_set.h"
+#include "mylite_execution_set_support.h"
 #include "mylite_execution_show_filter.h"
 #include "mylite_execution_sql_lowering_support.h"
 #include "mylite_execution_sql_normalization.h"
@@ -245,7 +249,7 @@ int mylite_execute(
         (struct mylite_sql_parse_config){
             .input = normalized_sql.sql,
             .length = normalized_sql.sql_size,
-            .modes = lexer_modes_for_session_sql_mode(&database->session),
+            .modes = mylite_execution_lexer_modes_for_session_sql_mode(&database->session),
         },
         &parse_result
     ));
@@ -1476,7 +1480,7 @@ static int prepare_cursor_select_statement(
 #ifdef MYLITE_ENABLE_PROFILING
     profile_phase_started_ns = mylite_profile_now_ns();
 #endif
-    stmt->parse_modes = lexer_modes_for_session_sql_mode(&database->session);
+    stmt->parse_modes = mylite_execution_lexer_modes_for_session_sql_mode(&database->session);
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = stmt->normalized_sql.sql,
@@ -1573,7 +1577,7 @@ static bool prepared_statement_kind_is_supported(const struct mylite_sql_ast_nod
     if (statement == NULL) {
         return false;
     }
-    if (prepared_statement_disallows_statement(statement)) {
+    if (mylite_execution_prepared_statement_disallows_statement(statement)) {
         return false;
     }
     return statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
@@ -2129,7 +2133,7 @@ static struct mylite_select_analysis_session_key current_select_analysis_session
     if (database == NULL) {
         return (struct mylite_select_analysis_session_key){0};
     }
-    sql_auto_is_null = session_system_variable_override_value(
+    sql_auto_is_null = mylite_execution_session_system_variable_override_value(
         database,
         MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL
     );
@@ -3615,7 +3619,15 @@ int mylite_execution_session_user_variable_value(
     const struct mylite_sql_ast_node *node,
     struct session_scalar_cell *out_cell
 ) {
-    return session_user_variable_value(database, node, out_cell);
+    return mylite_execution_set_session_user_variable_value(database, node, out_cell);
+}
+
+int mylite_execution_session_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return session_scalar_value(database, expression, out_cell);
 }
 
 int mylite_execution_set_unknown_column_reference_error(
@@ -3745,6 +3757,148 @@ int mylite_execution_transaction_collect_identifier_parts(
     return collect_identifier_parts(node, parts, capacity, out_part_count, database);
 }
 
+int mylite_execution_set_copy_table_option_name_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size,
+    const char *identifier_kind,
+    const char *nul_message
+) {
+    return copy_table_option_name_text(
+        database,
+        node,
+        destination,
+        destination_size,
+        (struct table_option_name_policy){
+            .identifier_kind = identifier_kind,
+            .nul_message = nul_message,
+        }
+    );
+}
+
+int mylite_execution_session_program_start_cursor_execution(mylite_stmt *statement) {
+    return start_cursor_execution(statement);
+}
+
+int mylite_execution_session_program_finish_parse_failure(
+    struct mylite_db *database,
+    const struct mylite_sql_parse_result *parse_result,
+    int parse_rc
+) {
+    return finish_parse_failure(database, parse_result, parse_rc);
+}
+
+int mylite_execution_session_program_execute_empty_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    return execute_empty_statement(database, out_result);
+}
+
+int mylite_execution_session_program_validate_alter_table_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    return validate_alter_table_algorithm_lock_options(database, statement);
+}
+
+int mylite_execution_session_program_execute_non_prepared_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_non_prepared_statement(database, context, statement, out_result);
+}
+
+bool mylite_execution_session_program_statement_result_is_select(
+    const struct mylite_sql_ast_node *statement,
+    const mylite_result *result
+) {
+    return statement_result_is_select(statement, result);
+}
+
+int mylite_execution_session_program_finish_failed_statement(
+    struct mylite_db *database,
+    struct mylite_statement_completion *completion,
+    int rc,
+    mylite_result **out_result
+) {
+    return finish_failed_statement(database, completion, rc, out_result);
+}
+
+int mylite_execution_session_program_finish_completed_statement(
+    struct mylite_db *database,
+    struct mylite_statement_completion *completion,
+    bool completed_statement_is_select,
+    int64_t completed_row_count,
+    bool preserve_diagnostics_snapshot,
+    mylite_result **out_result
+) {
+    return finish_completed_statement(
+        database,
+        completion,
+        completed_statement_is_select,
+        completed_row_count,
+        preserve_diagnostics_snapshot,
+        out_result
+    );
+}
+
+int mylite_execution_session_program_resolve_selected_schema(
+    struct mylite_db *database,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    return resolve_selected_schema(database, out_schema);
+}
+
+int mylite_execution_session_program_collect_identifier_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t capacity,
+    size_t *out_part_count
+) {
+    return collect_identifier_parts(node, parts, capacity, out_part_count, database);
+}
+
+int mylite_execution_session_program_resolve_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+) {
+    return resolve_table_name(database, node, out_resolution);
+}
+
+int mylite_execution_set_decode_table_option_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char **out_name,
+    size_t *out_name_length,
+    const char *identifier_kind,
+    const char *nul_message
+) {
+    return decode_table_option_string_literal(
+        database,
+        node,
+        out_name,
+        out_name_length,
+        (struct table_option_name_policy){
+            .identifier_kind = identifier_kind,
+            .nul_message = nul_message,
+        }
+    );
+}
+
+int mylite_execution_set_append_utf8_alias_warning(struct mylite_db *database) {
+    return append_utf8_alias_warning(database);
+}
+
+int mylite_execution_set_append_utf8mb3_deprecation_warning(struct mylite_db *database) {
+    return append_utf8mb3_deprecation_warning(database);
+}
+
 int mylite_execution_transaction_execute_physical_create_table(
     struct mylite_db *database,
     const struct planned_create_table *plan,
@@ -3816,7 +3970,7 @@ void mylite_execution_transaction_set_system_variable_value_error(
     const char *variable_name,
     const char *value
 ) {
-    set_system_variable_cant_be_set_value_error(database, variable_name, value);
+    mylite_execution_set_system_variable_value_error(database, variable_name, value);
 }
 
 void mylite_execution_set_illegal_mix_of_collations_error(
@@ -3918,24 +4072,6 @@ static int format_session_scalar_uint64_value(
     return mylite_execution_session_format_scalar_uint64_value(database, value, out_cell);
 }
 
-static uint64_t timeout_system_variable_default_value_for_kind(
-    enum mylite_execution_system_variable_kind kind
-) {
-    return mylite_execution_session_timeout_default_value(kind);
-}
-
-static uint64_t timeout_system_variable_min_value_for_kind(
-    enum mylite_execution_system_variable_kind kind
-) {
-    return mylite_execution_session_timeout_min_value(kind);
-}
-
-static uint64_t timeout_system_variable_max_value_for_kind(
-    enum mylite_execution_system_variable_kind kind
-) {
-    return mylite_execution_session_timeout_max_value(kind);
-}
-
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -3951,43 +4087,19 @@ static bool foreign_key_checks_system_variable_value(
     return mylite_execution_session_foreign_key_checks_value(database, global_scope);
 }
 
+static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode) {
+    return mylite_execution_session_sql_mode_has(session, mode);
+}
+
+static unsigned int lexer_modes_for_statement(const struct mylite_db *database) {
+    return mylite_execution_lexer_modes_for_statement(database);
+}
+
 static int append_system_variable_read_warning(
     struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 ) {
     return mylite_execution_session_append_system_variable_read_warning(database, kind);
-}
-
-static bool resolve_system_variable_kind(
-    const struct system_variable_component *name,
-    enum mylite_execution_system_variable_kind *out_kind
-) {
-    return mylite_execution_session_resolve_system_variable_kind(name, out_kind);
-}
-
-static int parse_system_variable_component(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    size_t *offset,
-    struct system_variable_component *out_component
-) {
-    return mylite_execution_session_parse_system_variable_component(
-        database,
-        span,
-        offset,
-        out_component
-    );
-}
-
-static bool system_variable_component_equals(
-    const struct system_variable_component *component,
-    const char *expected
-) {
-    return mylite_execution_session_system_variable_component_equals(component, expected);
-}
-
-static bool system_variable_component_is_empty(const struct system_variable_component *component) {
-    return mylite_execution_session_system_variable_component_is_empty(component);
 }
 
 static int show_system_variable_value(
@@ -4012,7 +4124,7 @@ const char *mylite_execution_session_system_variable_override_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 ) {
-    return session_system_variable_override_value(database, kind);
+    return mylite_execution_set_session_system_variable_override_value(database, kind);
 }
 
 int mylite_execution_session_previous_diagnostics_condition_count(
@@ -4041,13 +4153,13 @@ const char *mylite_execution_session_system_variable_override_show_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 ) {
-    return session_system_variable_override_show_value(database, kind);
+    return mylite_execution_set_session_system_variable_override_show_value(database, kind);
 }
 
 const char *mylite_execution_session_myisam_stats_method_text(
     enum mylite_session_myisam_stats_method value
 ) {
-    return myisam_stats_method_text(value);
+    return mylite_execution_myisam_stats_method_text(value);
 }
 
 const char *mylite_execution_session_transaction_isolation_text(
@@ -4073,7 +4185,7 @@ bool mylite_execution_session_sql_mode_token_matches(
     size_t length,
     const char *expected
 ) {
-    return sql_mode_token_matches(text, length, expected);
+    return mylite_execution_set_sql_mode_token_matches(text, length, expected);
 }
 
 #include "mylite_execution_statement_entry.inc"
@@ -4082,61 +4194,7 @@ bool mylite_execution_session_sql_mode_token_matches(
 
 #include "mylite_execution_statement_session_handlers.inc"
 
-#include "mylite_execution_prepared_statement_execution.inc"
-
-#include "mylite_execution_set_connection_charset.inc"
-
-#include "mylite_execution_set_assignments.inc"
-
 #include "mylite_execution_admin_placeholders.inc"
-
-#include "mylite_execution_prepared_statement_support.inc"
-
-#include "mylite_execution_stored_procedures.inc"
-
-#include "mylite_execution_set_session_snapshot.inc"
-
-#include "mylite_execution_set_system_variable_dispatch.inc"
-
-#include "mylite_execution_set_boolean_variables.inc"
-
-#include "mylite_execution_set_numeric_transaction_variables.inc"
-
-#include "mylite_execution_set_limit_size_expiry_variables.inc"
-
-#include "mylite_execution_set_m_session_limit_system_variables.inc"
-
-#include "mylite_execution_set_o_optimizer_system_variables.inc"
-
-#include "mylite_execution_set_timeout_variables.inc"
-
-#include "mylite_execution_set_last_insert_id_variables.inc"
-
-#include "mylite_execution_set_remaining_system_variables.inc"
-
-#include "mylite_execution_set_jl_system_variables.inc"
-
-#include "mylite_execution_set_myisam_system_variables.inc"
-
-#include "mylite_execution_set_innodb_core_system_variables.inc"
-
-#include "mylite_execution_set_innodb_storage_system_variables.inc"
-
-#include "mylite_execution_set_connection_system_variables.inc"
-
-#include "mylite_execution_set_binary_log_system_variables.inc"
-
-#include "mylite_execution_set_replication_global_system_variables.inc"
-
-#include "mylite_execution_set_bootstrap_system_variables.inc"
-
-#include "mylite_execution_set_compatibility_system_variables.inc"
-
-#include "mylite_execution_set_internal_session_system_variables.inc"
-
-#include "mylite_execution_set_resource_tuning_system_variables.inc"
-
-#include "mylite_execution_set_sql_mode_timestamp_time_zone.inc"
 
 #include "mylite_execution_ddl_create_table_statements.inc"
 

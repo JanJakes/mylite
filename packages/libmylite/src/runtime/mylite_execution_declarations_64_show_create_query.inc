@@ -279,17 +279,6 @@ static int append_system_variable_read_warning(
     struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 );
-static int parse_system_variable_component(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    size_t *offset,
-    struct system_variable_component *out_component
-);
-static bool system_variable_component_equals(
-    const struct system_variable_component *component,
-    const char *expected
-);
-static bool system_variable_component_is_empty(const struct system_variable_component *component);
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
     const struct mylite_sql_ast_node *expression
 );

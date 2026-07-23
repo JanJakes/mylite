@@ -28,7 +28,7 @@ static int execute_unsupported_stored_program_statement(
     mylite_result **out_result
 ) {
     bool handled = false;
-    int rc = try_execute_stored_procedure_local_variables_placeholder_statement(
+    int rc = mylite_execution_try_stored_procedure_local_variables_placeholder(
         database,
         statement,
         out_result,

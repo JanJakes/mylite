@@ -61,11 +61,11 @@ static int execute_use_statement(
         return MYLITE_ERROR;
     }
     database->session.has_selected_schema = true;
-    clear_session_system_variable_override(
+    mylite_execution_clear_session_system_variable_override(
         database,
         MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE
     );
-    clear_session_system_variable_override(
+    mylite_execution_clear_session_system_variable_override(
         database,
         MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE
     );
@@ -78,7 +78,12 @@ static int execute_set_names_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    return execute_set_connection_character_set_statement(database, statement, true, out_result);
+    return mylite_execution_execute_set_connection_character_set_statement(
+        database,
+        statement,
+        true,
+        out_result
+    );
 }
 
 static int execute_set_character_set_statement(
@@ -86,7 +91,12 @@ static int execute_set_character_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    return execute_set_connection_character_set_statement(database, statement, false, out_result);
+    return mylite_execution_execute_set_connection_character_set_statement(
+        database,
+        statement,
+        false,
+        out_result
+    );
 }
 
 static int execute_set_statement(
@@ -108,7 +118,7 @@ static int execute_set_statement(
         return rc;
     }
 
-    rc = apply_set_statement(database, statement);
+    rc = mylite_execution_apply_set_statement(database, statement);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;

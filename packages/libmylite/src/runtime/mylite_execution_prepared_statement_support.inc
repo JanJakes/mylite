@@ -34,7 +34,7 @@ static int prepare_statement_source_sql(
         return MYLITE_ERROR;
     }
 
-    rc = session_user_variable_value(database, source, &value);
+    rc = mylite_execution_set_session_user_variable_value(database, source, &value);
     if (rc == MYLITE_OK) {
         rc = copy_session_scalar_sql_text(database, &value, "NULL", out_sql, &decoded_length);
     }
@@ -188,7 +188,7 @@ static int copy_prepared_statement_name(
     int rc = copy_identifier_text(node, buffer, buffer_size, database);
 
     if (rc == MYLITE_OK) {
-        fold_user_variable_name(buffer);
+        mylite_execution_set_fold_user_variable_name(buffer);
     }
     return rc;
 }

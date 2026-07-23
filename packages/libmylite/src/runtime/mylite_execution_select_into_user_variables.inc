@@ -131,7 +131,7 @@ static int apply_select_into_user_variables(
             .has_value_size = true,
         };
 
-        rc = set_session_user_variable(
+        rc = mylite_execution_set_session_user_variable(
             database,
             variable,
             &cell,
@@ -189,7 +189,7 @@ static enum mylite_session_user_variable_value_kind select_into_user_variable_va
     }
 
     value_size = mylite_result_value_size(select_result, 0U, column_index);
-    if (text_is_decimal_integer_literal(value, value_size)) {
+    if (mylite_execution_set_text_is_decimal_integer_literal(value, value_size)) {
         return MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER;
     }
     return MYLITE_SESSION_USER_VARIABLE_VALUE_STRING;

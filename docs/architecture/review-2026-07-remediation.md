@@ -374,6 +374,28 @@ complete.
   and approximately 261,000 lines to 252 fragments and 223,807 lines. The full
   687-test Debug suite and focused scalar, SET, SHOW, and system-variable tests
   pass after the extraction.
+  Statement families with independent session or transaction ownership now
+  form five more execution modules. VALUES query execution, table maintenance,
+  and transaction/lock/savepoint control moved behind typed statement APIs.
+  SET execution now owns connection character-set changes, user-variable
+  mutation, system-variable overrides, SQL-mode handling, and the complete
+  system-variable assignment dispatcher in one module. SQL
+  PREPARE/EXECUTE/DEALLOCATE and session-scoped stored-procedure lifecycle form
+  a separate session-program module whose parser, completion, schema, and table
+  dependencies are explicit support callbacks. Together these extractions move
+  24,450 implementation-fragment lines out of the main execution translation
+  unit and reduce its direct fragment includes from 252 to 217. Remaining
+  query and DDL families stay in the execution unit where splitting would
+  expose a broader private helper surface than it removes; future extraction
+  requires a cohesive ownership boundary rather than a facade translation unit.
+  A controlled GCC production comparison isolates the SET and session-program
+  split: `mylite_execution.c.o` fell from 3,845,840 to 3,572,112 bytes, while
+  the new SET and session-program objects are 237,256 and 75,104 bytes. Their
+  combined loaded text/data is 1,825,947 bytes versus 1,825,895 bytes before the
+  split, a 52-byte increase. The static archive grew from 12,235,024 to
+  12,276,346 bytes because the explicit module interfaces add symbols and
+  relocation metadata. This is size-neutral loaded code with a 7.1% smaller
+  dominant compile object, not a binary-size optimization.
 - [x] Separate mutable session publication from statement-owned collections.
   Cursor and buffered execution now capture diagnostics, row counts, found-row
   counts, and insert IDs in statement-owned completion records and publish them
@@ -541,10 +563,10 @@ complete.
 ## Phase 6: Release qualification
 
 - [x] Add assertion-enabled Debug jobs and representative Release jobs. The
-  688-test Debug suite passes locally and CI retains the four-platform Release
+  689-test Debug suite passes locally and CI retains the four-platform Release
   matrix alongside a dedicated Clang Debug job.
 - [x] Add reproducible ASan+UBSan presets and run the complete core suite. The
-  complete 688-test suite passes with ASan, UBSan, strict abort-on-error, and
+  complete 689-test suite passes with ASan, UBSan, strict abort-on-error, and
   leak detection. The full sweep exposed and fixed retained heap-backed AST
   cache chunks plus lost ownership of allocated IF/CASE scalar results; the
   installed pkg-config consumer also propagates sanitizer runtime linkage.
@@ -609,7 +631,7 @@ Local qualification of the remediated tree produced the following closure
 evidence:
 
 - Native Debug, Release, and strict ASan+UBSan configurations each pass all
-  688 tests; the eight PHP adapter suites pass in normal and sanitized builds.
+  689 tests; the eight PHP adapter suites pass in normal and sanitized builds.
 - The two deterministic TSan tests, two allocator/VFS fault-injection tests,
   six ASan+UBSan fuzz targets, crash/recovery tests, and N-1 catalog migration
   verifier pass.

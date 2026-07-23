@@ -2811,7 +2811,7 @@ static int append_show_create_identifier(
 }
 
 static bool show_create_sql_quote_show_create_enabled(const struct mylite_db *database) {
-    const char *value = session_system_variable_override_value(
+    const char *value = mylite_execution_set_session_system_variable_override_value(
         database,
         MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE
     );

@@ -880,7 +880,7 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
         return user_variable_assignment_expression_value(database, expression, out_cell);
     case MYLITE_SQL_AST_USER_VARIABLE:
-        return session_user_variable_value(database, expression, out_cell);
+        return mylite_execution_set_session_user_variable_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
     default:
@@ -918,13 +918,17 @@ static int user_variable_assignment_expression_value(
     unwrapped_value = unwrap_parenthesized_expression(value_node);
     rc = session_scalar_value(database, value_node, &value);
     if (rc == MYLITE_OK) {
-        value_kind = infer_user_variable_value_kind(value_node, &value);
+        value_kind = mylite_execution_set_infer_user_variable_value_kind(value_node, &value);
         if (unwrapped_value != NULL && unwrapped_value->kind == MYLITE_SQL_AST_USER_VARIABLE) {
-            rc = session_user_variable_value_kind(database, unwrapped_value, &value_kind);
+            rc = mylite_execution_set_session_user_variable_value_kind(
+                database,
+                unwrapped_value,
+                &value_kind
+            );
         }
     }
     if (rc == MYLITE_OK) {
-        rc = set_session_user_variable(database, target, &value, value_kind);
+        rc = mylite_execution_set_session_user_variable(database, target, &value, value_kind);
     }
     if (rc == MYLITE_OK) {
         rc = append_user_variable_assignment_deprecation_warning(database);

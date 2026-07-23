@@ -58,6 +58,11 @@ MySQL adjusts the read-only `innodb_purge_threads` startup value from `4` to
 | `innodb_read_ahead_threshold` | `56` | `56` | global | dynamic global |
 | `innodb_read_io_threads` | `9` | `9` | global | read-only |
 
+MySQL likewise adjusts the read-only `innodb_read_io_threads` startup value
+from `9` to `4` on CPU-constrained hosts. MyLite exposes the canonical
+unconstrained value `9` because its compatibility placeholder does not
+allocate I/O threads.
+
 All variables appear in default, global, and session `SHOW VARIABLES` output.
 For global-only variables, scalar `@@SESSION` and `@@LOCAL` reads fail with
 `1238/HY000` and text containing `Variable '<name>' is a GLOBAL variable`.

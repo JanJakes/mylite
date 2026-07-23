@@ -63,7 +63,8 @@ normalize_tsv() {
 
 variables() {
     cat <<'EOF' | sed \
-        "s/@INNODB_PURGE_THREADS_DEFAULT@/$innodb_purge_threads_default/g"
+        -e "s/@INNODB_PURGE_THREADS_DEFAULT@/$innodb_purge_threads_default/g" \
+        -e "s/@INNODB_READ_IO_THREADS_DEFAULT@/$innodb_read_io_threads_default/g"
 innodb_old_blocks_pct|37|37|dynamic_numeric|37|38
 innodb_old_blocks_time|1000|1000|dynamic_numeric|1000|1001
 innodb_online_alter_log_max_size|134217728|134217728|dynamic_numeric|134217728|134217729
@@ -79,7 +80,7 @@ innodb_purge_rseg_truncate_frequency|128|128|dynamic_numeric|128|127
 innodb_purge_threads|@INNODB_PURGE_THREADS_DEFAULT@|@INNODB_PURGE_THREADS_DEFAULT@|read_only||
 innodb_random_read_ahead|0|OFF|dynamic_boolean|OFF|ON
 innodb_read_ahead_threshold|56|56|dynamic_numeric|56|57
-innodb_read_io_threads|9|9|read_only||
+innodb_read_io_threads|@INNODB_READ_IO_THREADS_DEFAULT@|@INNODB_READ_IO_THREADS_DEFAULT@|read_only||
 EOF
 }
 
@@ -267,6 +268,12 @@ innodb_purge_threads_default=$(run_mysql 'SELECT @@GLOBAL.innodb_purge_threads;'
 case "$innodb_purge_threads_default" in
     1|4) ;;
     *) fail "unexpected hardware-adjusted innodb_purge_threads default [$innodb_purge_threads_default]" ;;
+esac
+
+innodb_read_io_threads_default=$(run_mysql 'SELECT @@GLOBAL.innodb_read_io_threads;')
+case "$innodb_read_io_threads_default" in
+    4|9) ;;
+    *) fail "unexpected hardware-adjusted innodb_read_io_threads default [$innodb_read_io_threads_default]" ;;
 esac
 
 trap reset_defaults EXIT

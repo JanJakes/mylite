@@ -447,7 +447,10 @@ static size_t find_session_stored_procedure_index(
 );
 static void remove_session_stored_procedure_at(struct mylite_session_state *session, size_t index);
 static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure);
-static int ensure_session_stored_procedure_capacity(struct mylite_db *database);
+static int prepare_session_stored_procedure_slot(
+    struct mylite_db *database,
+    struct mylite_session_stored_procedure **out_procedure
+);
 static void set_prepared_statement_argument_count_error(struct mylite_db *database);
 static void set_unknown_prepared_statement_error(
     struct mylite_db *database,

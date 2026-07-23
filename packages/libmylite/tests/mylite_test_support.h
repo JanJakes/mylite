@@ -34,4 +34,6 @@ int mylite_test_register_temporary_path(const char *path);
 
 int mylite_test_open_temporary(mylite_db **out_database);
 
+int mylite_test_escape_sql_string(char *output, size_t output_size, const char *input);
+
 #endif

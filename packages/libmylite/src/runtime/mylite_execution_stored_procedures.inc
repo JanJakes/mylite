@@ -541,7 +541,6 @@ static int build_stored_procedure_show_create_sql(
     char **out_sql,
     size_t *out_sql_size
 );
-static int append_show_create_definer(struct mylite_dynamic_string *string, const char *identity);
 static int append_mysql_quoted_identifier_bytes(
     struct mylite_dynamic_string *string,
     const char *text,
@@ -1295,10 +1294,9 @@ static int store_stored_procedure_placeholder_body(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = ensure_session_stored_procedure_capacity(database);
+        rc = prepare_session_stored_procedure_slot(database, &procedure);
     }
     if (rc == MYLITE_OK) {
-        procedure = &database->session.stored_procedures[database->session.stored_procedure_count];
         *procedure = (struct mylite_session_stored_procedure){0};
         memcpy(
             procedure->schema_name,
@@ -1415,10 +1413,9 @@ static int execute_create_procedure_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = ensure_session_stored_procedure_capacity(database);
+        rc = prepare_session_stored_procedure_slot(database, &procedure);
     }
     if (rc == MYLITE_OK) {
-        procedure = &database->session.stored_procedures[database->session.stored_procedure_count];
         *procedure = (struct mylite_session_stored_procedure){0};
         memcpy(
             procedure->schema_name,
@@ -3500,38 +3497,47 @@ static void deinit_session_stored_procedure(struct mylite_session_stored_procedu
     *procedure = (struct mylite_session_stored_procedure){0};
 }
 
-static int ensure_session_stored_procedure_capacity(struct mylite_db *database) {
+static int prepare_session_stored_procedure_slot(
+    struct mylite_db *database,
+    struct mylite_session_stored_procedure **out_procedure
+) {
     struct mylite_session_state *session = database == NULL ? NULL : &database->session;
     struct mylite_session_stored_procedure *procedures = NULL;
     size_t new_capacity = 0U;
 
-    if (session == NULL) {
+    if (session == NULL || out_procedure == NULL) {
         return MYLITE_MISUSE;
     }
-    if (session->stored_procedure_count < session->stored_procedure_capacity) {
-        return MYLITE_OK;
+    *out_procedure = NULL;
+
+    if (session->stored_procedure_count >= session->stored_procedure_capacity) {
+        new_capacity =
+            session->stored_procedure_capacity == 0U ? 4U : session->stored_procedure_capacity * 2U;
+        if (new_capacity < session->stored_procedure_capacity ||
+            new_capacity > SIZE_MAX / sizeof(*procedures)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+
+        procedures = (struct mylite_session_stored_procedure *)
+            realloc(session->stored_procedures, new_capacity * sizeof(*procedures));
+        if (procedures == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memset(
+            procedures + session->stored_procedure_capacity,
+            0,
+            (new_capacity - session->stored_procedure_capacity) * sizeof(*procedures)
+        );
+        session->stored_procedures = procedures;
+        session->stored_procedure_capacity = new_capacity;
     }
 
-    new_capacity =
-        session->stored_procedure_capacity == 0U ? 4U : session->stored_procedure_capacity * 2U;
-    if (new_capacity < session->stored_procedure_capacity ||
-        new_capacity > SIZE_MAX / sizeof(*procedures)) {
+    if (session->stored_procedures == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-
-    procedures = (struct mylite_session_stored_procedure *)
-        realloc(session->stored_procedures, new_capacity * sizeof(*procedures));
-    if (procedures == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    memset(
-        procedures + session->stored_procedure_capacity,
-        0,
-        (new_capacity - session->stored_procedure_capacity) * sizeof(*procedures)
-    );
-    session->stored_procedures = procedures;
-    session->stored_procedure_capacity = new_capacity;
+    *out_procedure = &session->stored_procedures[session->stored_procedure_count];
     return MYLITE_OK;
 }

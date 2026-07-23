@@ -25,6 +25,8 @@ enum {
     concurrent_table_name_capacity = 128,
     concurrent_statement_capacity = 256,
     concurrent_load_sql_extra_capacity = 128,
+    escaped_test_path_capacity = (test_path_capacity * 2) + 1,
+    concurrent_load_sql_capacity = escaped_test_path_capacity + concurrent_load_sql_extra_capacity,
     show_table_status_query_capacity = 128,
     show_columns_field_count = 6,
     show_table_status_field_count = 18,
@@ -162,7 +164,8 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
     char writer_sql[concurrent_statement_capacity];
     char query_sql[concurrent_statement_capacity];
     char load_path[test_path_capacity];
-    char load_sql[test_path_capacity + concurrent_load_sql_extra_capacity];
+    char escaped_load_path[escaped_test_path_capacity];
+    char load_sql[concurrent_load_sql_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
@@ -395,11 +398,16 @@ static int test_auto_increment_concurrent_writer_rebase(void) {
             failures +=
                 mylite_test_expect_int(fclose(load_file), 0, "close concurrent LOAD DATA fixture");
         }
+        failures += mylite_test_expect_int(
+            mylite_test_escape_sql_string(escaped_load_path, sizeof(escaped_load_path), load_path),
+            0,
+            "escape concurrent LOAD DATA path"
+        );
         written = snprintf(
             load_sql,
             sizeof(load_sql),
             "LOAD DATA INFILE '%s' INTO TABLE concurrent_load",
-            load_path
+            escaped_load_path
         );
         failures += mylite_test_expect_int(
             written > 0 && (size_t)written < sizeof(load_sql),

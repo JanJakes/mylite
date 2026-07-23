@@ -13,6 +13,7 @@
 enum {
     mylite_test_temp_path_slots = 128,
     mylite_test_temp_path_suffix_capacity = 16,
+    mylite_test_combined_name_capacity = 256,
 };
 
 static char mylite_test_temp_paths[mylite_test_temp_path_slots][mylite_test_temp_path_capacity];
@@ -60,7 +61,7 @@ int mylite_test_make_path_with_suffix(
     const char *name,
     const char *suffix
 ) {
-    char combined_name[256];
+    char combined_name[mylite_test_combined_name_capacity];
     int written = snprintf(
         combined_name,
         sizeof(combined_name),

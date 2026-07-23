@@ -19,6 +19,7 @@
 enum {
     test_path_capacity = 1024,
     sql_capacity = 4096,
+    sql_escape_probe_capacity = 64,
     loaded_column_count = 5,
     mysql_error_cant_get_stat = 13,
     mysql_error_no_database_selected = 1046,
@@ -64,6 +65,7 @@ struct load_data_sql {
 static int test_load_data_success_persistence_and_metadata(void);
 static int test_load_data_diagnostics_and_nonstrict_adjustment(void);
 static int test_load_data_independent_handles(void);
+static int test_load_data_sql_string_escaping(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -86,7 +88,6 @@ static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int write_text_file(struct text_file file);
 static int build_load_sql(char *sql, size_t sql_size, struct load_data_sql load_sql);
-static int escape_sql_string(char *output, size_t output_size, const char *input);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int expect_bytes(
     const unsigned char *actual,
@@ -101,8 +102,26 @@ int main(void) {
     failures += test_load_data_success_persistence_and_metadata();
     failures += test_load_data_diagnostics_and_nonstrict_adjustment();
     failures += test_load_data_independent_handles();
+    failures += test_load_data_sql_string_escaping();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_load_data_sql_string_escaping(void) {
+    char escaped_path[sql_escape_probe_capacity];
+    int failures = 0;
+
+    failures += mylite_test_expect_int(
+        mylite_test_escape_sql_string(escaped_path, sizeof(escaped_path), "C:\\Temp\\O'Brien.tsv"),
+        0,
+        "escape Windows LOAD DATA path"
+    );
+    failures += mylite_test_expect_text(
+        escaped_path,
+        "C:\\\\Temp\\\\O\\'Brien.tsv",
+        "escaped Windows LOAD DATA path"
+    );
+    return failures;
 }
 
 static int test_load_data_success_persistence_and_metadata(void) {
@@ -918,7 +937,8 @@ static int build_load_sql(char *sql, size_t sql_size, struct load_data_sql load_
     char escaped_path[test_path_capacity * 2U];
     int written = 0;
 
-    if (escape_sql_string(escaped_path, sizeof(escaped_path), load_sql.file_path) != 0) {
+    if (mylite_test_escape_sql_string(escaped_path, sizeof(escaped_path), load_sql.file_path) !=
+        0) {
         fprintf(stderr, "LOAD DATA path is too long for %s\n", load_sql.file_path);
         return 1;
     }
@@ -930,30 +950,6 @@ static int build_load_sql(char *sql, size_t sql_size, struct load_data_sql load_
         return 1;
     }
 
-    return 0;
-}
-
-static int escape_sql_string(char *output, size_t output_size, const char *input) {
-    size_t read_offset = 0U;
-    size_t write_offset = 0U;
-
-    while (input[read_offset] != '\0') {
-        if (input[read_offset] == '\\' || input[read_offset] == '\'') {
-            if (write_offset + 1U >= output_size) {
-                return 1;
-            }
-            output[write_offset] = '\\';
-            ++write_offset;
-        }
-        if (write_offset + 1U >= output_size) {
-            return 1;
-        }
-        output[write_offset] = input[read_offset];
-        ++write_offset;
-        ++read_offset;
-    }
-
-    output[write_offset] = '\0';
     return 0;
 }
 

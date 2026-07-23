@@ -50,10 +50,22 @@ from the scaffold onward.
 `MYLITE_WARNINGS_AS_ERRORS` is enabled by the shared `dev` preset so local and
 CI builds use the same strict warning baseline.
 
+Lemon is a required build-time host tool, independent of
+`MYLITE_BUILD_TOOLS`. Native builds compile it normally. Cross builds compile
+it in an isolated host project using `MYLITE_HOST_C_COMPILER` or
+`CC_FOR_BUILD`; `MYLITE_LEMON_EXECUTABLE` can instead name an existing host
+binary. Generated parsers use a content-addressed cache under the build root,
+keyed by the grammar, Lemon source and binary, template, host/compiler context,
+and flags. `MYLITE_GENERATED_CACHE_DIR` can relocate that cache.
+
 Large package build registrations should stay split into package-local CMake
 modules under the owning package's `cmake/` directory. The package root
 `CMakeLists.txt` should show the high-level target/test structure, while
-included modules own cohesive source lists or test-family registrations.
+included modules own cohesive source lists. Native tests are registered from
+`packages/libmylite/tests/native-tests.txt`; configuration fails when that
+manifest and the test-source inventory differ. Common native-test assertions
+and temporary-path ownership belong in `mylite_test_support`, while
+behavior-specific fixtures remain local to each test.
 
 Within `packages/libmylite/src/sql/`, the parser driver owns the public parse
 entry point, Lemon token feeding, version-comment expansion, and parser state

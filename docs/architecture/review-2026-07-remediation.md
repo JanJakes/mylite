@@ -522,6 +522,14 @@ complete.
   smaller parser, so no parser-generation tradeoff was retained.
 - [x] Add `lempar.c` as a parser-generation dependency and include first-party
   `.inc` files in format validation.
+- [x] Treat Lemon as a host build tool and cache generated parser output.
+  Native builds retain a normal Lemon target; cross builds use an isolated host
+  project selected by `MYLITE_HOST_C_COMPILER`/`CC_FOR_BUILD`, or consume an
+  explicitly supplied `MYLITE_LEMON_EXECUTABLE`. Generated output is cached by
+  grammar, Lemon source and executable, template, host/compiler context, and
+  flags. A cross-compilation fixture uses a target compiler that cannot link
+  executables, then verifies host generation, cache restoration, and
+  template-only invalidation.
 - [x] Add installable headers, exported CMake/pkg-config targets, clean consumer
   tests, shared-library policy, ABI checks, and PHP packaging independent of
   checkout build paths. Static and shared packages build and execute clean

@@ -55,3 +55,21 @@ set_tests_properties(
     LABELS "install;integration"
     TIMEOUT 30
 )
+
+if(UNIX)
+  add_test(
+    NAME mylite.build.lemon_host_cross
+    COMMAND "${CMAKE_COMMAND}"
+      "-DMYLITE_BUILD_DIR=${PROJECT_BINARY_DIR}"
+      "-DMYLITE_C_COMPILER=${CMAKE_C_COMPILER}"
+      "-DMYLITE_GENERATOR=${CMAKE_GENERATOR}"
+      "-DMYLITE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/lemon-host-cross/run.cmake"
+  )
+  set_tests_properties(
+    mylite.build.lemon_host_cross
+    PROPERTIES
+      LABELS "build;integration"
+      TIMEOUT 60
+  )
+endif()

@@ -11,22 +11,11 @@ set(MYLITE_LEMON_TEMPLATE "${PROJECT_SOURCE_DIR}/third_party/sqlite/upstream/too
 
 find_package(ZLIB REQUIRED)
 
-add_custom_command(
-  OUTPUT
-    "${MYLITE_SQL_PARSE_C}"
-    "${MYLITE_SQL_PARSE_H}"
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${MYLITE_SQL_PARSE_DIR}"
-  COMMAND "$<TARGET_FILE:mylite_lemon>"
-    -q
-    "-T${MYLITE_LEMON_TEMPLATE}"
-    "-d${MYLITE_SQL_PARSE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
-  DEPENDS
-    mylite_lemon
-    "${MYLITE_LEMON_TEMPLATE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
-  COMMENT "Generating MyLite SQL parser"
-  VERBATIM
+mylite_add_lemon_parser(
+  BASENAME mylite_parse
+  GRAMMAR "${CMAKE_CURRENT_SOURCE_DIR}/src/sql/mylite_parse.y"
+  OUTPUT_DIR "${MYLITE_SQL_PARSE_DIR}"
+  TEMPLATE "${MYLITE_LEMON_TEMPLATE}"
 )
 
 if(MSVC)

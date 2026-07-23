@@ -17,6 +17,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CTest)
 include(MyLiteCompilerOptions)
 include(MyLiteDeveloperTools)
+include(MyLiteLemon)
 include(MyLitePHP)
 
 option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
@@ -102,7 +103,7 @@ if(MYLITE_BUILD_PHP_EXTENSIONS)
 endif()
 
 add_subdirectory(third_party/sqlite)
-add_subdirectory(tools/lemon)
+mylite_add_lemon_host_tool()
 add_subdirectory(packages/libmylite)
 
 if(MYLITE_ENABLE_SECTION_GC)

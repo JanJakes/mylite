@@ -57,6 +57,30 @@ the parse result. `kind=lexer` measures tokenization only. `kind=execute`
 measures `mylite_execute()` against a temporary file-backed MyLite database and
 does not use PHP, WordPress, or the PHP extensions.
 
+## Large-Dataset MyLite/SQLite Qualification
+
+The opt-in large-dataset suite creates equivalent deterministic MyLite and
+bundled-SQLite databases, verifies result hashes, and compares indexed reads,
+scans, expressions, grouping, ordering, joins, correlated subqueries, foreign
+keys, and writes:
+
+```sh
+cmake --preset ci
+cmake --build build/ci --target mylite_large_dataset_benchmark_check
+
+build/ci/packages/libmylite/mylite_large_dataset_benchmark \
+  --rows 100000 \
+  --samples 5 \
+  --warmup 1 \
+  --database-dir build/perf-data \
+  --output build/perf-data/large-dataset-100000.csv
+```
+
+The smoke target uses 1,000 rows and does not run the expensive qualification.
+Use `--list` to inspect scenarios and default iterations. The methodology,
+fairness boundaries, investigation thresholds, and current measurements are in
+[large-dataset-qualification-2026-07.md](large-dataset-qualification-2026-07.md).
+
 `runtime.wp_frontend_request` executes six representative WordPress frontend
 reads per iteration. `runtime.wp_medium_frontend_request` uses nine WordPress
 tables and eleven queries, including pagination with `SQL_CALC_FOUND_ROWS`,

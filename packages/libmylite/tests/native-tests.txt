@@ -621,7 +621,7 @@ tests/runtime_system_function_residuals_test.c|internal|always
 tests/runtime_system_table_lookup_test.c|internal|always
 tests/runtime_table_charset_collation_surface_test.c|internal|always
 tests/runtime_table_if_exists_lifecycle_test.c|internal-sqlite|always
-tests/runtime_table_maintenance_test.c|internal|always
+tests/runtime_table_maintenance_test.c|internal-sqlite|always
 tests/runtime_table_partition_selection_test.c|internal-sqlite|always
 tests/runtime_table_rename_lifecycle_test.c|internal-sqlite|always
 tests/runtime_table_statement_test.c|internal|always

@@ -38,6 +38,7 @@ enum {
     mysql_error_unknown = 1105,
     replacement_index_sql_extra_capacity = 64,
     catalog_tamper_sql_capacity = 1024,
+    expected_catalog_integrity_trigger_count = 29,
 };
 
 _Static_assert(
@@ -779,7 +780,11 @@ static int test_catalog_integrity_seal_lifecycle(void) {
         );
     }
     failures += expect_bool(seal_matches, true, "new catalog integrity seal matches");
-    failures += mylite_test_expect_int(trigger_count, 29, "catalog integrity trigger count");
+    failures += mylite_test_expect_int(
+        trigger_count,
+        expected_catalog_integrity_trigger_count,
+        "catalog integrity trigger count"
+    );
 
     if (sqlite != NULL) {
         failures += execute_sql(

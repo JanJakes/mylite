@@ -106,7 +106,7 @@ static int run_cold_open_scenario(
 );
 static int run_reopen_query_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
@@ -412,7 +412,7 @@ static int run_cold_open_scenario(
 
 static int run_reopen_query_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 ) {

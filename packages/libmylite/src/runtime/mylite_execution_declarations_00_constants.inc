@@ -38,6 +38,7 @@ enum {
     information_schema_grouped_bytes_display_length = 45,
     mysql_group_concat_blob_type_threshold = 512,
     predicate_planning_stack_initial_capacity = 8,
+    dml_parameter_context_stack_initial_capacity = 32,
     index_display_group_primary = 0,
     index_display_group_spatial = 1,
     index_display_group_not_null_unique = 2,

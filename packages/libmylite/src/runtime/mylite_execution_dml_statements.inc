@@ -834,7 +834,8 @@ static bool push_dml_parameter_context(
     size_t capacity = 0U;
 
     if (stack->count == stack->capacity) {
-        capacity = stack->capacity == 0U ? 32U : stack->capacity * 2U;
+        capacity = stack->capacity == 0U ? dml_parameter_context_stack_initial_capacity
+                                         : stack->capacity * 2U;
         if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
             return false;
         }

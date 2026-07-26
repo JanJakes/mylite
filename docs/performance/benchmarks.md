@@ -165,6 +165,12 @@ selected explicitly with `--scenario`:
 - `runtime.concurrent_read_write`
 - `runtime.processlist_concurrent_8`
 
+`runtime.cold_open` creates and seals one file before timing repeated
+`mylite_open()`/`mylite_close()` pairs. `runtime.reopen_query` additionally
+executes one indexed point read after every reopen. They separate clean reopen
+cost from reopen-plus-query cost and are included in paired performance
+regression runs.
+
 `runtime.catalog_ddl_generations` repeatedly changes a column comment and then
 warms table metadata. It reports `peak_retained_bytes` and fails if completed
 catalog generations or their cold strings escape the catalog cache byte budget.

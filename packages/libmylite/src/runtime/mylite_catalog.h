@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 37
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 37
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 38
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 38
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -108,6 +108,8 @@ struct mylite_catalog {
     bool initialized;
     uint32_t schema_version;
     uint64_t generation;
+    uint64_t integrity_catalog_generation;
+    uint64_t integrity_sqlite_schema_version;
     uint64_t cached_generation;
     uint64_t observed_data_version;
     bool descriptor_cache_is_valid;

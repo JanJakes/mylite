@@ -42,6 +42,7 @@ enum {
 
 enum runtime_stress_kind {
     runtime_stress_cold_open,
+    runtime_stress_reopen_query,
     runtime_stress_large_in,
     runtime_stress_large_or,
     runtime_stress_scalar_projection,
@@ -100,6 +101,12 @@ struct balanced_or_frame {
 static int run_cold_open_scenario(
     const struct runtime_stress_scenario *scenario,
     size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+);
+static int run_reopen_query_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
@@ -189,6 +196,10 @@ static int finish_processlist_workers(
 );
 static int prepare_stress_database(const char *path, mylite_db **out_database);
 static int execute_stress_sql(mylite_db *database, const char *sql, size_t sql_length);
+static int execute_reopen_query_iteration(
+    const char *path,
+    struct mylite_benchmark_runtime_stress_measurement *measurement
+);
 static int execute_stress_iterations(
     mylite_db *database,
     const char *sql,
@@ -233,6 +244,7 @@ static void execute_stress_worker(struct runtime_stress_worker *worker);
 
 static const struct runtime_stress_scenario runtime_stress_scenarios[] = {
     {"runtime.cold_open", runtime_stress_cold_open, 0U},
+    {"runtime.reopen_query", runtime_stress_reopen_query, 0U},
     {"runtime.large_in_256", runtime_stress_large_in, 256U},
     {"runtime.large_in_4096", runtime_stress_large_in, 4096U},
     {"runtime.large_or_2048", runtime_stress_large_or, 2048U},
@@ -288,6 +300,8 @@ int mylite_benchmark_run_runtime_stress_scenario(
     switch (scenario->kind) {
     case runtime_stress_cold_open:
         return run_cold_open_scenario(scenario, iterations, warmup_iterations, out_measurement);
+    case runtime_stress_reopen_query:
+        return run_reopen_query_scenario(scenario, iterations, warmup_iterations, out_measurement);
     case runtime_stress_large_in:
         return run_large_in_scenario(scenario, iterations, warmup_iterations, out_measurement);
     case runtime_stress_large_or:
@@ -394,6 +408,53 @@ static int run_cold_open_scenario(
     out_measurement->elapsed_ns = monotonic_now_ns() - started;
     remove_stress_files(path);
     return out_measurement->error_count == 0U ? 0 : 1;
+}
+
+static int run_reopen_query_scenario(
+    const struct runtime_stress_scenario *scenario,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct mylite_benchmark_runtime_stress_measurement *out_measurement
+) {
+    static const char create_sql[] =
+        "CREATE TABLE items (id BIGINT PRIMARY KEY, value VARCHAR(20))";
+    static const char insert_sql[] = "INSERT INTO items VALUES (1, 'one')";
+
+    char path[stress_path_capacity];
+    mylite_db *database = NULL;
+    uint64_t started = 0U;
+    int rc = 0;
+
+    if (make_stress_path(path, sizeof(path), scenario->name) != 0) {
+        return 1;
+    }
+    remove_stress_files(path);
+    if (prepare_stress_database(path, &database) != 0 ||
+        execute_stress_sql(database, create_sql, sizeof(create_sql) - 1U) != 0 ||
+        execute_stress_sql(database, insert_sql, sizeof(insert_sql) - 1U) != 0) {
+        mylite_close(database);
+        remove_stress_files(path);
+        return 1;
+    }
+    mylite_close(database);
+    for (size_t index = 0U; index < warmup_iterations; ++index) {
+        if (execute_reopen_query_iteration(path, NULL) != 0) {
+            remove_stress_files(path);
+            return 1;
+        }
+    }
+
+    started = monotonic_now_ns();
+    for (size_t index = 0U; index < iterations; ++index) {
+        if (execute_reopen_query_iteration(path, out_measurement) != 0) {
+            ++out_measurement->error_count;
+            rc = 1;
+            break;
+        }
+    }
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+    remove_stress_files(path);
+    return rc;
 }
 
 static int run_large_in_scenario(
@@ -1203,6 +1264,26 @@ static int execute_stress_sql(mylite_db *database, const char *sql, size_t sql_l
     }
     mylite_result_free(result);
     return rc == MYLITE_OK ? 0 : 1;
+}
+
+static int execute_reopen_query_iteration(
+    const char *path,
+    struct mylite_benchmark_runtime_stress_measurement *measurement
+) {
+    static const char query[] = "SELECT value FROM benchmark.items WHERE id = 1";
+
+    mylite_db *database = NULL;
+    int rc = mylite_open(path, &database) == MYLITE_OK
+                 ? execute_stress_sql(database, query, sizeof(query) - 1U)
+                 : 1;
+
+    mylite_close(database);
+    if (rc == 0 && measurement != NULL) {
+        ++measurement->ok_count;
+        ++measurement->operations;
+        measurement->bytes += sizeof(query) - 1U;
+    }
+    return rc;
 }
 
 static int execute_stress_iterations(

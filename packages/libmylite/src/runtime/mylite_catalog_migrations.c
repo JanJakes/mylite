@@ -39,6 +39,7 @@ enum {
     catalog_schema_version_v34 = 34U,
     catalog_schema_version_v35 = 35U,
     catalog_schema_version_v36 = 36U,
+    catalog_schema_version_v37 = 37U,
 };
 
 static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite);
@@ -77,6 +78,7 @@ static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite);
 static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite);
 static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite);
 static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite);
+static int migrate_catalog_schema_v37_to_v38(sqlite3 *sqlite);
 static int rollback_catalog_transaction(sqlite3 *sqlite, int primary_rc);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version) {
@@ -230,6 +232,10 @@ int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v36:
         rc = migrate_catalog_schema_v36_to_v37(sqlite);
+        next_schema_version = catalog_schema_version_v37;
+        break;
+    case catalog_schema_version_v37:
+        rc = migrate_catalog_schema_v37_to_v38(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -1409,12 +1415,10 @@ static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite) {
-    static const char *sql =
-        "BEGIN IMMEDIATE;"
-        "UPDATE _mylite_catalog_state "
-        "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
-        ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ";"
-        "COMMIT;";
+    static const char *sql = "BEGIN IMMEDIATE;"
+                             "UPDATE _mylite_catalog_state "
+                             "SET schema_version = 37, minimum_reader_schema_version = 37;"
+                             "COMMIT;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
@@ -1422,6 +1426,46 @@ static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite) {
         return rc;
     }
 
+    return MYLITE_OK;
+}
+
+static int migrate_catalog_schema_v37_to_v38(sqlite3 *sqlite) {
+    int rc = mylite_catalog_execute_sql(sqlite, "BEGIN IMMEDIATE");
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_execute_sql(
+            sqlite,
+            "ALTER TABLE _mylite_catalog_state "
+            "ADD COLUMN integrity_catalog_generation INTEGER NOT NULL DEFAULT 0 "
+            "CHECK(integrity_catalog_generation >= 0)"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_execute_sql(
+            sqlite,
+            "ALTER TABLE _mylite_catalog_state "
+            "ADD COLUMN integrity_sqlite_schema_version INTEGER NOT NULL DEFAULT 0 "
+            "CHECK(integrity_sqlite_schema_version >= 0)"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_create_integrity_seal_triggers(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_execute_sql(
+            sqlite,
+            "UPDATE _mylite_catalog_state "
+            "SET schema_version = " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
+            ", minimum_reader_schema_version = " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT
+            ", integrity_catalog_generation = 0, integrity_sqlite_schema_version = 0"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_execute_sql(sqlite, "COMMIT");
+    }
+    if (rc != MYLITE_OK) {
+        return rollback_catalog_transaction(sqlite, rc);
+    }
     return MYLITE_OK;
 }
 

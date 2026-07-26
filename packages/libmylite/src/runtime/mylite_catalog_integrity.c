@@ -67,6 +67,9 @@ int mylite_catalog_validate_integrity(sqlite3 *sqlite) {
         rc = validate_catalog_indexes(sqlite);
     }
     if (rc == MYLITE_OK) {
+        rc = mylite_catalog_validate_integrity_seal_triggers(sqlite);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_catalog_rows(sqlite);
     }
     if (rc == MYLITE_OK) {
@@ -82,8 +85,14 @@ static int validate_catalog_tables(sqlite3 *sqlite) {
         "minimum_reader_schema_version",
         "catalog_generation",
         "created_with_file_format_version",
+        "integrity_catalog_generation",
+        "integrity_sqlite_schema_version",
     };
-    static const char *const state_checks[] = {"check(singleton_id=1)"};
+    static const char *const state_checks[] = {
+        "check(singleton_id=1)",
+        "check(integrity_catalog_generation>=0)",
+        "check(integrity_sqlite_schema_version>=0)",
+    };
     static const char *const schema_columns[] = {
         "schema_id",
         "name",

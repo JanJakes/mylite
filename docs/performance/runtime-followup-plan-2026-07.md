@@ -100,6 +100,21 @@ scenario, with zero normalization, parse, or DML-plan builds. Parameterized
 arithmetic and parameter conversions that materialize values during planning
 remain on the full-planning path.
 
+## Reopen Results
+
+The existing open-only `runtime.cold_open` scenario was run in paired Release
+builds with 1,000 open/close operations, ten warmups, and seven samples.
+
+| Scenario | Baseline median | Integrity-seal median | Change |
+| --- | ---: | ---: | ---: |
+| `runtime.cold_open` | 4.493 ms | 1.095 ms | -75.6% |
+| `runtime.reopen_query` | 6.131 ms | 1.859 ms | -69.7% |
+
+The fast path reads catalog state and the SQLite schema cookie. Unsealed files,
+generation or cookie mismatches, migrations, catalog trigger changes, and
+physical DDL run the complete catalog/physical-schema validator under
+`BEGIN IMMEDIATE`. The seal is published only after successful validation.
+
 ## Tasks
 
 - [x] Add retained DML analysis ownership, matching, and teardown.
@@ -107,11 +122,11 @@ remain on the full-planning path.
 - [x] Reuse safe UPDATE and DELETE plans with correctness fallbacks.
 - [x] Add DML plan profiling counters and lifecycle tests.
 - [x] Measure retained INSERT, UPDATE, and DELETE before and after.
-- [ ] Add catalog integrity seal state and migration.
-- [ ] Add and validate structural invalidation triggers.
-- [ ] Publish the seal atomically after trusted catalog changes or full validation.
-- [ ] Add clean reopen, tamper, migration, rollback, and external-DDL tests.
-- [ ] Measure open-only and reopen-plus-query costs.
+- [x] Add catalog integrity seal state and migration.
+- [x] Add and validate structural invalidation triggers.
+- [x] Publish the seal atomically after trusted catalog changes or full validation.
+- [x] Add clean reopen, tamper, migration, rollback, and external-DDL tests.
+- [x] Measure open-only and reopen-plus-query costs.
 - [ ] Extend paired performance scenarios and tooling tests.
 - [ ] Add scheduled large-dataset evidence without noisy absolute gates.
 - [ ] Run focused, full, sanitizer, static-analysis, and workflow validation.

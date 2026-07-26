@@ -76,6 +76,10 @@ void mylite_catalog_cache_foreign_key_roles(
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
 int mylite_catalog_validate_integrity(sqlite3 *sqlite);
+int mylite_catalog_create_integrity_seal_triggers(sqlite3 *sqlite);
+int mylite_catalog_validate_integrity_seal_triggers(sqlite3 *sqlite);
+int mylite_catalog_read_sqlite_schema_version(sqlite3 *sqlite, uint64_t *out_schema_version);
+int mylite_catalog_publish_integrity_seal(sqlite3 *sqlite, uint64_t catalog_generation);
 int mylite_catalog_begin_generation_change(
     struct mylite_db *database,
     struct mylite_catalog_generation_change *out_change

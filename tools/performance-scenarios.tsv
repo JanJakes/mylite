@@ -9,6 +9,8 @@ runtime.wp_prepared_select	runtime	prepared	5000	2	7	12	15
 runtime.wp_prepared_update	runtime	prepared	5000	2	7	12	15
 runtime.wp_prepared_insert	runtime	prepared	3000	2	7	15	20
 runtime.wp_prepared_delete	runtime	prepared	5000	2	7	12	15
+runtime.cold_open	runtime	stress	1000	10	7	15	25
+runtime.reopen_query	runtime	stress	500	5	7	15	25
 runtime.large_in_4096	runtime	stress	100	2	7	15	15
 runtime.catalog_cache_saturation	runtime	stress	50	2	7	15	35
 runtime.metadata_columns_128	runtime	stress	10	2	7	15	25

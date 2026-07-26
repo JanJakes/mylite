@@ -50,6 +50,7 @@ add_library(mylite
   src/runtime/mylite_catalog_column_mutation.c
   src/runtime/mylite_catalog_column_values.c
   src/runtime/mylite_catalog_integrity.c
+  src/runtime/mylite_catalog_integrity_seal.c
   src/runtime/mylite_catalog_key_constraints.c
   src/runtime/mylite_catalog_migrations.c
   src/runtime/mylite_catalog_object_lifecycle.c

@@ -553,6 +553,8 @@ static int execute_delete_from_plan(
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
     struct mylite_statement_transaction transaction = {0};
+    struct loaded_foreign_key_info *parent_foreign_keys = NULL;
+    size_t parent_foreign_key_count = 0U;
     int64_t affected_rows = 0;
     int sqlite_rc = SQLITE_OK;
     int rc = build_delete_sql(plan, &sql);
@@ -561,7 +563,12 @@ static int execute_delete_from_plan(
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        rc = apply_parent_delete_actions(database, plan);
+        rc = apply_parent_delete_actions(
+            database,
+            plan,
+            &parent_foreign_keys,
+            &parent_foreign_key_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = prepare_sqlite_statement(database, sql, &statement);
@@ -583,7 +590,12 @@ static int execute_delete_from_plan(
         rc = touch_persistent_table_updated_time(database, &plan->table, affected_rows, false);
     }
     if (rc == MYLITE_OK) {
-        rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
+        rc = validate_self_referencing_parent_foreign_keys_after_delete(
+            database,
+            plan,
+            parent_foreign_keys,
+            parent_foreign_key_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &transaction);
@@ -591,6 +603,10 @@ static int execute_delete_from_plan(
     if (rc != MYLITE_OK) {
         rc = rollback_statement_transaction(database, &transaction, rc);
     }
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &parent_foreign_keys,
+        &parent_foreign_key_count
+    );
     free(sql);
 
     if (rc != MYLITE_OK) {
@@ -612,26 +628,31 @@ static int execute_delete_from_plan(
 
 static int apply_parent_delete_actions(
     struct mylite_db *database,
-    const struct planned_delete *plan
+    const struct planned_delete *plan,
+    struct loaded_foreign_key_info **out_foreign_keys,
+    size_t *out_foreign_key_count
 ) {
-    struct loaded_foreign_key_info *foreign_keys = NULL;
-    size_t foreign_key_count = 0U;
     int rc = MYLITE_OK;
 
+    *out_foreign_keys = NULL;
+    *out_foreign_key_count = 0U;
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
     rc = mylite_execution_load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
-        &foreign_keys,
-        &foreign_key_count
+        out_foreign_keys,
+        out_foreign_key_count
     );
-    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
-        const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < *out_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &(*out_foreign_keys)[index];
 
         if (!foreign_key_rule_is_cascade(foreign_key->foreign_key.delete_rule) &&
             !foreign_key_rule_is_set_null(foreign_key->foreign_key.delete_rule)) {
+            if (foreign_key->child_table.table_id != foreign_key->parent_table.table_id) {
+                rc = reject_parent_delete_with_references(database, plan, foreign_key);
+            }
             continue;
         }
         rc = reject_unsupported_recursive_foreign_key_action(database, foreign_key);
@@ -644,7 +665,99 @@ static int apply_parent_delete_actions(
         }
     }
 
-    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    return rc;
+}
+
+static int validate_self_referencing_parent_foreign_keys_after_delete(
+    struct mylite_db *database,
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
+) {
+    int rc = MYLITE_OK;
+
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
+        if (foreign_keys[index].child_table.table_id == plan->table.table_id) {
+            rc = validate_foreign_key_references(database, &foreign_keys[index], true);
+        }
+    }
+
+    return rc;
+}
+
+static int reject_parent_delete_with_references(
+    struct mylite_db *database,
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_parent_delete_reference_check_sql(plan, foreign_key, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_delete_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = set_row_is_referenced_foreign_key_error(database, foreign_key);
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    return rc;
+}
+
+static int build_parent_delete_reference_check_sql(
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_key,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+
+    rc = mylite_dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            &string,
+            foreign_key->child_table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(&string, "c");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_parent_delete_child_key_filter_sql(&string, plan, foreign_key);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    mylite_dynamic_string_deinit(&string);
     return rc;
 }
 
@@ -692,8 +805,6 @@ static int build_parent_delete_cascade_sql(
     char **out_sql
 ) {
     struct mylite_dynamic_string string;
-    bool has_parent_condition = false;
-    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -716,31 +827,7 @@ static int build_parent_delete_cascade_sql(
         rc = mylite_dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_foreign_key_child_not_null_checks(&string, foreign_key);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " AND EXISTS (SELECT 1 FROM ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(
-            &string,
-            foreign_key->parent_table.physical_name
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(&string, "p");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_parent_delete_target_sql(&string, plan, &next_parameter, &has_parent_condition);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_parent_child_match_sql(&string, has_parent_condition, foreign_key);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_char(&string, ')');
+        rc = append_parent_delete_child_key_filter_sql(&string, plan, foreign_key);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -802,8 +889,6 @@ static int build_parent_delete_set_null_sql(
     char **out_sql
 ) {
     struct mylite_dynamic_string string;
-    bool has_parent_condition = false;
-    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -832,31 +917,7 @@ static int build_parent_delete_set_null_sql(
         rc = mylite_dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_foreign_key_child_not_null_checks(&string, foreign_key);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " AND EXISTS (SELECT 1 FROM ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(
-            &string,
-            foreign_key->parent_table.physical_name
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " AS ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(&string, "p");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_parent_delete_target_sql(&string, plan, &next_parameter, &has_parent_condition);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_parent_child_match_sql(&string, has_parent_condition, foreign_key);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_char(&string, ')');
+        rc = append_parent_delete_child_key_filter_sql(&string, plan, foreign_key);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -866,6 +927,73 @@ static int build_parent_delete_set_null_sql(
     }
 
     mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_parent_delete_child_key_filter_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    bool has_parent_condition = false;
+    size_t next_parameter = 1U;
+    int rc = append_foreign_key_column_tuple_sql(string, foreign_key, true);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IN (SELECT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_foreign_key_column_tuple_sql(string, foreign_key, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            string,
+            foreign_key->parent_table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, "p");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_parent_delete_target_sql(string, plan, &next_parameter, &has_parent_condition);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_foreign_key_column_tuple_sql(
+    struct mylite_dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool child_columns
+) {
+    const char *alias = child_columns ? "c" : "p";
+    int rc = MYLITE_OK;
+
+    if (child_columns && foreign_key->part_count > 1U) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key->part_count; ++index) {
+        const char *column_name = child_columns ? foreign_key->parts[index].child_column.name
+                                                : foreign_key->parts[index].parent_column.name;
+
+        if (index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_foreign_key_column_reference(string, alias, column_name);
+        }
+    }
+    if (rc == MYLITE_OK && child_columns && foreign_key->part_count > 1U) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
     return rc;
 }
 

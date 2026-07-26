@@ -7,7 +7,6 @@ static int plan_insert(
     const struct mylite_sql_ast_node *row_list = child_at(statement, 2U);
     size_t *target_indexes = NULL;
     size_t target_count = 0U;
-    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert){0};
@@ -30,29 +29,7 @@ static int plan_insert(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_primary_key_info(
-            database,
-            out_plan->table.table_id,
-            out_plan->columns,
-            out_plan->column_count,
-            &primary_key
-        );
-    }
-    if (rc == MYLITE_OK && primary_key.has_primary_key) {
-        out_plan->has_primary_key = true;
-        if (primary_key.part_count == 1U) {
-            out_plan->primary_key_column_index = primary_key.parts[0].column_index;
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
-            database,
-            out_plan->table.table_id,
-            out_plan->columns,
-            out_plan->column_count,
-            &out_plan->indexes,
-            &out_plan->index_count
-        );
+        rc = load_insert_table_key_metadata(database, out_plan);
     }
     if (rc == MYLITE_OK) {
         rc = load_insert_target_foreign_key_infos(database, out_plan);
@@ -98,7 +75,6 @@ static int plan_insert(
     }
 
     free(target_indexes);
-    mylite_execution_primary_key_info_deinit(&primary_key);
     if (rc != MYLITE_OK) {
         planned_insert_deinit(out_plan);
     }
@@ -114,7 +90,6 @@ static int plan_insert_set(
     const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
     size_t *target_indexes = NULL;
     size_t target_count = 0U;
-    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert){0};
@@ -137,29 +112,7 @@ static int plan_insert_set(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_primary_key_info(
-            database,
-            out_plan->table.table_id,
-            out_plan->columns,
-            out_plan->column_count,
-            &primary_key
-        );
-    }
-    if (rc == MYLITE_OK && primary_key.has_primary_key) {
-        out_plan->has_primary_key = true;
-        if (primary_key.part_count == 1U) {
-            out_plan->primary_key_column_index = primary_key.parts[0].column_index;
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
-            database,
-            out_plan->table.table_id,
-            out_plan->columns,
-            out_plan->column_count,
-            &out_plan->indexes,
-            &out_plan->index_count
-        );
+        rc = load_insert_table_key_metadata(database, out_plan);
     }
     if (rc == MYLITE_OK) {
         rc = load_insert_target_foreign_key_infos(database, out_plan);
@@ -204,11 +157,34 @@ static int plan_insert_set(
     }
 
     free(target_indexes);
-    mylite_execution_primary_key_info_deinit(&primary_key);
     if (rc != MYLITE_OK) {
         planned_insert_deinit(out_plan);
     }
 
+    return rc;
+}
+
+static int load_insert_table_key_metadata(struct mylite_db *database, struct planned_insert *plan) {
+    int rc = mylite_execution_acquire_table_key_metadata(
+        database,
+        plan->table.table_id,
+        plan->columns,
+        plan->column_count,
+        &plan->key_metadata
+    );
+
+    if (rc == MYLITE_OK) {
+        const struct loaded_table_key_metadata *key_metadata = plan->key_metadata.metadata;
+
+        plan->indexes = key_metadata->indexes;
+        plan->index_count = key_metadata->index_count;
+        if (key_metadata->primary_key.has_primary_key) {
+            plan->has_primary_key = true;
+            if (key_metadata->primary_key.part_count == 1U) {
+                plan->primary_key_column_index = key_metadata->primary_key.parts[0].column_index;
+            }
+        }
+    }
     return rc;
 }
 
@@ -1402,7 +1378,7 @@ static void planned_insert_deinit(struct planned_insert *plan) {
         free(plan->duplicate_update.assignments[index].row_scalar_expression);
     }
     free(plan->duplicate_update.assignments);
-    mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&plan->key_metadata);
     mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
     mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
     *plan = (struct planned_insert){0};

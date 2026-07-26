@@ -82,10 +82,10 @@ static int execute_update_from_plan(
         rc = touch_persistent_table_updated_time(database, &plan->table, affected_rows, false);
     }
     if (rc == MYLITE_OK && executes_physical_update) {
-        rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
+        rc = validate_update_child_foreign_keys_after_write(database, &executable_plan);
     }
     if (rc == MYLITE_OK && executes_physical_update) {
-        rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
+        rc = validate_update_parent_foreign_keys_after_write(database, &executable_plan);
     }
     if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &transaction);
@@ -135,6 +135,88 @@ static int execute_update_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_update_child_foreign_keys_after_write(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->child_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &plan->child_foreign_keys[index];
+        bool changes_foreign_key = false;
+
+        for (size_t part_index = 0U; part_index < foreign_key->part_count; ++part_index) {
+            if (planned_update_assigns_column_id(
+                    plan,
+                    foreign_key->parts[part_index].child_column.column_id
+                )) {
+                changes_foreign_key = true;
+                break;
+            }
+        }
+        if (changes_foreign_key) {
+            rc = validate_foreign_key_references(database, foreign_key, false);
+        }
+    }
+    return rc;
+}
+
+static int validate_update_parent_foreign_keys_after_write(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->parent_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &plan->parent_foreign_keys[index];
+        bool changes_foreign_key = false;
+
+        for (size_t part_index = 0U; part_index < foreign_key->part_count; ++part_index) {
+            if (planned_update_assigns_column_id(
+                    plan,
+                    foreign_key->parts[part_index].parent_column.column_id
+                )) {
+                changes_foreign_key = true;
+                break;
+            }
+        }
+        if (changes_foreign_key) {
+            rc = validate_foreign_key_references(database, foreign_key, true);
+        }
+    }
+    return rc;
+}
+
+static bool planned_update_assigns_column_id(const struct planned_update *plan, int64_t column_id) {
+    if (plan == NULL || column_id <= 0) {
+        return false;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            if (!planned_update_assignment_is_noop(&plan->assignments[index]) &&
+                plan->assignments[index].column.column_id == column_id) {
+                return true;
+            }
+        }
+    } else if (!plan->generated_default_noop && plan->assignment_column.column_id == column_id) {
+        return true;
+    }
+
+    for (size_t index = 0U; index < plan->column_count; ++index) {
+        if (plan->columns[index].column_id == column_id &&
+            planned_update_column_has_auto_update(plan, &plan->columns[index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int read_limited_update_matched_row_state(
@@ -688,21 +770,13 @@ static int validate_parent_update_action_child_foreign_keys(
     struct mylite_db *database,
     const struct planned_update *plan
 ) {
-    struct loaded_foreign_key_info *foreign_keys = NULL;
-    size_t foreign_key_count = 0U;
     int rc = MYLITE_OK;
 
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    rc = mylite_execution_load_parent_foreign_key_infos(
-        database,
-        plan->table.table_id,
-        &foreign_keys,
-        &foreign_key_count
-    );
-    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
-        const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->parent_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &plan->parent_foreign_keys[index];
         size_t updated_part_index = 0U;
 
         if ((!foreign_key_rule_is_set_null(foreign_key->foreign_key.update_rule) &&
@@ -716,8 +790,6 @@ static int validate_parent_update_action_child_foreign_keys(
         }
         rc = validate_child_foreign_keys_after_write(database, foreign_key->child_table.table_id);
     }
-
-    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     return rc;
 }
 
@@ -725,21 +797,13 @@ static int apply_parent_update_actions(
     struct mylite_db *database,
     const struct planned_update *plan
 ) {
-    struct loaded_foreign_key_info *foreign_keys = NULL;
-    size_t foreign_key_count = 0U;
     int rc = MYLITE_OK;
 
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    rc = mylite_execution_load_parent_foreign_key_infos(
-        database,
-        plan->table.table_id,
-        &foreign_keys,
-        &foreign_key_count
-    );
-    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
-        const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->parent_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &plan->parent_foreign_keys[index];
         size_t updated_part_index = 0U;
 
         if (!planned_update_assigns_foreign_key_parent_part(
@@ -762,8 +826,6 @@ static int apply_parent_update_actions(
             }
         }
     }
-
-    mylite_execution_loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     return rc;
 }
 

@@ -1027,7 +1027,8 @@ struct planned_insert {
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
     struct loaded_table_columns_cache_entry *columns_cache_entry;
-    struct loaded_index_info *indexes;
+    struct loaded_table_key_metadata_reference key_metadata;
+    const struct loaded_index_info *indexes;
     size_t index_count;
     struct loaded_foreign_key_info *foreign_keys;
     size_t foreign_key_count;
@@ -2469,8 +2470,13 @@ struct planned_update {
     size_t target_source_index;
     struct planned_update_assignment *assignments;
     size_t assignment_count;
-    struct loaded_index_info *indexes;
+    struct loaded_table_key_metadata_reference key_metadata;
+    const struct loaded_index_info *indexes;
     size_t index_count;
+    struct loaded_foreign_key_info *child_foreign_keys;
+    size_t child_foreign_key_count;
+    struct loaded_foreign_key_info *parent_foreign_keys;
+    size_t parent_foreign_key_count;
     struct mylite_sql_ast_snapshot assignment_value_syntax;
     const struct mylite_sql_ast_node *assignment_value_node;
     uint64_t arithmetic_delta_magnitude;

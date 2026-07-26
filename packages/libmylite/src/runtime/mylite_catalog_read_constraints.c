@@ -242,6 +242,69 @@ int mylite_catalog_read_table_foreign_key_roles(
     return rc;
 }
 
+int mylite_catalog_read_column_foreign_key_roles(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t column_id,
+    bool *out_is_child_column,
+    bool *out_is_parent_column
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_catalog_validate_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_is_child_column == NULL || out_is_parent_column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_child_column = false;
+    *out_is_parent_column = false;
+    rc = mylite_catalog_validate_positive_id(table_id);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_validate_positive_id(column_id);
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_prepare_statement(
+            database->sqlite,
+            "SELECT EXISTS("
+            "SELECT 1 FROM _mylite_catalog_foreign_keys AS fk "
+            "JOIN _mylite_catalog_foreign_key_columns AS part "
+            "ON part.foreign_key_id = fk.foreign_key_id "
+            "WHERE fk.child_table_id = ?1 AND part.child_column_id = ?2 LIMIT 1"
+            "), EXISTS("
+            "SELECT 1 FROM _mylite_catalog_foreign_keys AS fk "
+            "JOIN _mylite_catalog_foreign_key_columns AS part "
+            "ON part.foreign_key_id = fk.foreign_key_id "
+            "WHERE fk.parent_table_id = ?1 AND part.parent_column_id = ?2 LIMIT 1"
+            ")",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 2, column_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = mylite_catalog_sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_is_child_column = sqlite3_column_int(statement, 0) != 0;
+            *out_is_parent_column = sqlite3_column_int(statement, 1) != 0;
+            sqlite_rc = mylite_catalog_sqlite3_step(statement);
+            if (sqlite_rc != SQLITE_DONE) {
+                rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            }
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    return mylite_catalog_finalize_statement(statement, rc);
+}
+
 int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
     struct mylite_db *database,
     int64_t foreign_key_id,

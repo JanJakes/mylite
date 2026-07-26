@@ -56,7 +56,7 @@ static int execute_insert_from_plan(
             false
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->duplicate_update.has_clause) {
         rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
     }
     if (rc == MYLITE_OK) {
@@ -260,9 +260,6 @@ static int execute_load_data_infile_from_plan(
             counters.affected_rows,
             false
         );
-    }
-    if (rc == MYLITE_OK) {
-        rc = validate_child_foreign_keys_after_write(database, plan->insert.table.table_id);
     }
     if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &transaction);
@@ -1078,6 +1075,16 @@ static int execute_insert_plan_rows(
                 counters
             );
         }
+        if (rc == MYLITE_OK && !plan->ignore_errors && !plan->duplicate_update.has_clause &&
+            plan->foreign_key_count != 0U) {
+            bool violates = false;
+
+            rc = validate_insert_row_foreign_keys(database, plan, row_index, &violates);
+            if (rc == MYLITE_OK && violates) {
+                set_no_referenced_row_error(database);
+                rc = MYLITE_ERROR;
+            }
+        }
     }
 
     return rc;
@@ -1281,19 +1288,36 @@ static int validate_insert_ignore_row_foreign_keys(
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
-        bool violates = false;
+    rc = validate_insert_row_foreign_keys(database, plan, row_index, out_skip_row);
+    if (rc == MYLITE_OK && *out_skip_row) {
+        rc = append_no_referenced_row_warning(database);
+        *out_skip_row = rc == MYLITE_OK;
+    }
 
-        rc = validate_insert_ignore_row_foreign_key(
+    return rc;
+}
+
+static int validate_insert_row_foreign_keys(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_violates
+) {
+    int rc = MYLITE_OK;
+
+    *out_violates = false;
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        rc = validate_insert_row_foreign_key(
             database,
             plan,
             &plan->foreign_keys[index],
             row_index,
-            &violates
+            out_violates
         );
-        if (rc == MYLITE_OK && violates) {
-            rc = append_no_referenced_row_warning(database);
-            *out_skip_row = rc == MYLITE_OK;
+        if (rc == MYLITE_OK && *out_violates) {
             break;
         }
     }
@@ -1301,7 +1325,7 @@ static int validate_insert_ignore_row_foreign_keys(
     return rc;
 }
 
-static int validate_insert_ignore_row_foreign_key(
+static int validate_insert_row_foreign_key(
     struct mylite_db *database,
     const struct planned_insert *plan,
     const struct loaded_foreign_key_info *foreign_key,

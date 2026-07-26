@@ -66,7 +66,25 @@ static bool joined_delete_target_matches_source(
 static void planned_delete_deinit(struct planned_delete *plan);
 static int apply_parent_delete_actions(
     struct mylite_db *database,
-    const struct planned_delete *plan
+    const struct planned_delete *plan,
+    struct loaded_foreign_key_info **out_foreign_keys,
+    size_t *out_foreign_key_count
+);
+static int validate_self_referencing_parent_foreign_keys_after_delete(
+    struct mylite_db *database,
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count
+);
+static int reject_parent_delete_with_references(
+    struct mylite_db *database,
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int build_parent_delete_reference_check_sql(
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_key,
+    char **out_sql
 );
 static int execute_parent_delete_cascade(
     struct mylite_db *database,
@@ -87,6 +105,16 @@ static int build_parent_delete_set_null_sql(
     const struct planned_delete *plan,
     const struct loaded_foreign_key_info *foreign_key,
     char **out_sql
+);
+static int append_parent_delete_child_key_filter_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_delete *plan,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int append_foreign_key_column_tuple_sql(
+    struct mylite_dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool child_columns
 );
 static int append_parent_delete_target_sql(
     struct mylite_dynamic_string *string,
@@ -114,6 +142,14 @@ static int plan_update(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
+);
+static int load_update_foreign_key_infos(struct mylite_db *database, struct planned_update *plan);
+static int load_update_column_foreign_key_roles(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t column_id,
+    bool *out_load_child_foreign_keys,
+    bool *out_load_parent_foreign_keys
 );
 static int plan_single_table_update(
     struct mylite_db *database,
@@ -320,6 +356,15 @@ static int execute_update_from_plan(
     const struct planned_update *plan,
     mylite_result *result
 );
+static int validate_update_child_foreign_keys_after_write(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static int validate_update_parent_foreign_keys_after_write(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static bool planned_update_assigns_column_id(const struct planned_update *plan, int64_t column_id);
 static int read_limited_update_matched_row_state(
     struct mylite_db *database,
     const struct planned_update *plan,

@@ -730,6 +730,13 @@ int mylite_catalog_read_table_foreign_key_roles(
     bool *out_has_child_foreign_keys,
     bool *out_has_parent_foreign_keys
 );
+int mylite_catalog_read_column_foreign_key_roles(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t column_id,
+    bool *out_is_child_column,
+    bool *out_is_parent_column
+);
 int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
     struct mylite_db *database,
     int64_t foreign_key_id,

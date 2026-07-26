@@ -167,12 +167,7 @@ static bool insert_select_source_is_row_scalar(const struct mylite_sql_ast_node 
 static int plan_insert_select_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    struct planned_insert_select *out_plan,
-    struct primary_key_info *primary_key
-);
-static void apply_insert_select_primary_key_info(
-    const struct primary_key_info *primary_key,
-    struct planned_insert *target
+    struct planned_insert_select *out_plan
 );
 static int plan_insert_select_source(
     struct mylite_db *database,

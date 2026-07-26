@@ -74,6 +74,7 @@ static int plan_insert_auto_increment_values(
     struct mylite_db *database,
     struct planned_insert *plan
 );
+static int load_insert_table_key_metadata(struct mylite_db *database, struct planned_insert *plan);
 static int load_insert_target_foreign_key_infos(
     struct mylite_db *database,
     struct planned_insert *plan
@@ -264,7 +265,13 @@ static int validate_insert_ignore_row_foreign_keys(
     size_t row_index,
     bool *out_skip_row
 );
-static int validate_insert_ignore_row_foreign_key(
+static int validate_insert_row_foreign_keys(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_violates
+);
+static int validate_insert_row_foreign_key(
     struct mylite_db *database,
     const struct planned_insert *plan,
     const struct loaded_foreign_key_info *foreign_key,

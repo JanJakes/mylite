@@ -63,9 +63,12 @@ struct expected_dml_status {
 
 struct foreign_key_probe_trace {
     size_t role_probe_count;
+    size_t full_validation_scan_count;
+    size_t table_index_scan_count;
 };
 
 static int test_no_foreign_key_role_cache(void);
+static int test_targeted_foreign_key_write_validation(void);
 static int test_create_table_foreign_key_lifecycle(void);
 static int test_self_referencing_foreign_key_lifecycle(void);
 static int test_inline_foreign_key_references_are_ignored(void);
@@ -121,6 +124,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_no_foreign_key_role_cache();
+    failures += test_targeted_foreign_key_write_validation();
     failures += test_create_table_foreign_key_lifecycle();
     failures += test_self_referencing_foreign_key_lifecycle();
     failures += test_inline_foreign_key_references_are_ignored();
@@ -290,6 +294,69 @@ static int test_no_foreign_key_role_cache(void) {
     return failures;
 }
 
+static int test_targeted_foreign_key_write_validation(void) {
+    struct foreign_key_probe_trace trace = {0};
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = mylite_test_expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open targeted FK validation database"
+    );
+
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE validation_parent (id INT PRIMARY KEY, payload INT NOT NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE validation_child ("
+        "id INT PRIMARY KEY, parent_id INT NOT NULL, payload INT NOT NULL,"
+        "CONSTRAINT fk_validation_parent FOREIGN KEY (parent_id) "
+        "REFERENCES validation_parent (id))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO validation_parent VALUES (1, 10)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO validation_child VALUES (1, 1, 10)", 1);
+
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(sqlite, SQLITE_TRACE_STMT, count_foreign_key_role_probe, &trace),
+        SQLITE_OK,
+        "install targeted FK validation trace"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO validation_child VALUES (2, 1, 20)", 1);
+    failures += expect_dml_ok(
+        database,
+        "UPDATE validation_child SET payload = payload + 1 WHERE id = 2",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE validation_parent SET payload = payload + 1 WHERE id = 1",
+        1
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove targeted FK validation trace"
+    );
+    failures += mylite_test_expect_size(
+        trace.full_validation_scan_count,
+        0U,
+        "targeted FK writes avoid full validation scans"
+    );
+    failures += mylite_test_expect_size(
+        trace.table_index_scan_count,
+        0U,
+        "warmed FK writes reuse table key metadata"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int count_foreign_key_role_probe(
     unsigned trace_kind,
     void *user_data, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace ABI.
@@ -308,6 +375,13 @@ static int count_foreign_key_role_probe(
     if (sql != NULL &&
         strstr(sql, "SELECT EXISTS(SELECT 1 FROM _mylite_catalog_foreign_keys") != NULL) {
         ++trace->role_probe_count;
+    }
+    if (sql != NULL && strstr(sql, " AND NOT EXISTS (SELECT 1 FROM ") != NULL) {
+        ++trace->full_validation_scan_count;
+    }
+    if (sql != NULL &&
+        strstr(sql, "FROM _mylite_catalog_indexes WHERE table_id = ?1 ORDER BY index_id") != NULL) {
+        ++trace->table_index_scan_count;
     }
     return 0;
 }

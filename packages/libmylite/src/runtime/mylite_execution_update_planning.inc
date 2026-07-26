@@ -11,6 +11,9 @@ static int plan_update(
         rc = plan_single_table_update(database, statement, out_plan);
     }
     if (rc == MYLITE_OK) {
+        rc = load_update_foreign_key_infos(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_update_assignment_warnings(database, out_plan);
     }
     if (rc == MYLITE_OK) {
@@ -18,6 +21,110 @@ static int plan_update(
     }
     if (rc != MYLITE_OK) {
         planned_update_deinit(out_plan);
+    }
+    return rc;
+}
+
+static int load_update_foreign_key_infos(struct mylite_db *database, struct planned_update *plan) {
+    bool has_child_foreign_keys = false;
+    bool has_parent_foreign_keys = false;
+    bool load_child_foreign_keys = false;
+    bool load_parent_foreign_keys = false;
+    int rc = MYLITE_OK;
+
+    if (plan->table.table_id <= 0 || !foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    rc = mylite_catalog_read_table_foreign_key_roles(
+        database,
+        plan->table.table_id,
+        &has_child_foreign_keys,
+        &has_parent_foreign_keys
+    );
+
+    if (rc != MYLITE_OK || (!has_child_foreign_keys && !has_parent_foreign_keys)) {
+        return rc;
+    }
+
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+            if (!planned_update_assignment_is_noop(&plan->assignments[index])) {
+                rc = load_update_column_foreign_key_roles(
+                    database,
+                    plan->table.table_id,
+                    plan->assignments[index].column.column_id,
+                    &load_child_foreign_keys,
+                    &load_parent_foreign_keys
+                );
+            }
+        }
+    } else if (!plan->generated_default_noop) {
+        rc = load_update_column_foreign_key_roles(
+            database,
+            plan->table.table_id,
+            plan->assignment_column.column_id,
+            &load_child_foreign_keys,
+            &load_parent_foreign_keys
+        );
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->column_count; ++index) {
+        if (planned_update_column_has_auto_update(plan, &plan->columns[index])) {
+            rc = load_update_column_foreign_key_roles(
+                database,
+                plan->table.table_id,
+                plan->columns[index].column_id,
+                &load_child_foreign_keys,
+                &load_parent_foreign_keys
+            );
+        }
+    }
+
+    if (rc == MYLITE_OK && load_child_foreign_keys) {
+        rc = mylite_execution_load_table_foreign_key_infos(
+            database,
+            plan->table.table_id,
+            plan->columns,
+            plan->column_count,
+            &plan->child_foreign_keys,
+            &plan->child_foreign_key_count
+        );
+    }
+    if (rc == MYLITE_OK && load_parent_foreign_keys) {
+        rc = mylite_execution_load_parent_foreign_key_infos(
+            database,
+            plan->table.table_id,
+            &plan->parent_foreign_keys,
+            &plan->parent_foreign_key_count
+        );
+    }
+    return rc;
+}
+
+static int load_update_column_foreign_key_roles(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t column_id,
+    bool *out_load_child_foreign_keys,
+    bool *out_load_parent_foreign_keys
+) {
+    bool is_child_column = false;
+    bool is_parent_column = false;
+    int rc = MYLITE_OK;
+
+    if (*out_load_child_foreign_keys && *out_load_parent_foreign_keys) {
+        return MYLITE_OK;
+    }
+    rc = mylite_catalog_read_column_foreign_key_roles(
+        database,
+        table_id,
+        column_id,
+        &is_child_column,
+        &is_parent_column
+    );
+    if (rc == MYLITE_OK) {
+        *out_load_child_foreign_keys = *out_load_child_foreign_keys || is_child_column;
+        *out_load_parent_foreign_keys = *out_load_parent_foreign_keys || is_parent_column;
     }
     return rc;
 }
@@ -33,7 +140,6 @@ static int plan_single_table_update(
     const struct mylite_sql_ast_node *optional_clause = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
-    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -71,30 +177,28 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_primary_key_info(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             out_plan->table.table_id,
             table_columns,
             table_column_count,
-            &primary_key
+            &out_plan->key_metadata
         );
-    }
-    if (rc == MYLITE_OK && primary_key.has_primary_key) {
-        out_plan->has_primary_key = true;
-        if (primary_key.part_count == 1U) {
-            out_plan->primary_key_column_index = primary_key.parts[0].column_index;
-            out_plan->primary_key_column_id = primary_key.parts[0].index_column.column_id;
-        }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
-            database,
-            out_plan->table.table_id,
-            table_columns,
-            table_column_count,
-            &out_plan->indexes,
-            &out_plan->index_count
-        );
+        const struct loaded_table_key_metadata *key_metadata = out_plan->key_metadata.metadata;
+
+        out_plan->indexes = key_metadata->indexes;
+        out_plan->index_count = key_metadata->index_count;
+        if (key_metadata->primary_key.has_primary_key) {
+            out_plan->has_primary_key = true;
+            if (key_metadata->primary_key.part_count == 1U) {
+                out_plan->primary_key_column_index =
+                    key_metadata->primary_key.parts[0].column_index;
+                out_plan->primary_key_column_id =
+                    key_metadata->primary_key.parts[0].index_column.column_id;
+            }
+        }
     }
     if (rc == MYLITE_OK) {
         rc = plan_update_assignment(
@@ -167,7 +271,6 @@ static int plan_single_table_update(
     }
 
     mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
-    mylite_execution_primary_key_info_deinit(&primary_key);
     if (rc != MYLITE_OK) {
         planned_update_deinit(out_plan);
     }
@@ -902,7 +1005,6 @@ static int finish_joined_update_target_plan(
     struct mylite_db *database,
     struct planned_update *out_plan
 ) {
-    struct primary_key_info primary_key = mylite_execution_primary_key_info_init();
     struct planned_select_source *target_source = NULL;
     int rc = MYLITE_OK;
 
@@ -930,30 +1032,28 @@ static int finish_joined_update_target_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_primary_key_info(
+        rc = mylite_execution_acquire_table_key_metadata(
             database,
             out_plan->table.table_id,
             out_plan->columns,
             out_plan->column_count,
-            &primary_key
+            &out_plan->key_metadata
         );
-    }
-    if (rc == MYLITE_OK && primary_key.has_primary_key) {
-        out_plan->has_primary_key = true;
-        if (primary_key.part_count == 1U) {
-            out_plan->primary_key_column_index = primary_key.parts[0].column_index;
-            out_plan->primary_key_column_id = primary_key.parts[0].index_column.column_id;
-        }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
-            database,
-            out_plan->table.table_id,
-            out_plan->columns,
-            out_plan->column_count,
-            &out_plan->indexes,
-            &out_plan->index_count
-        );
+        const struct loaded_table_key_metadata *key_metadata = out_plan->key_metadata.metadata;
+
+        out_plan->indexes = key_metadata->indexes;
+        out_plan->index_count = key_metadata->index_count;
+        if (key_metadata->primary_key.has_primary_key) {
+            out_plan->has_primary_key = true;
+            if (key_metadata->primary_key.part_count == 1U) {
+                out_plan->primary_key_column_index =
+                    key_metadata->primary_key.parts[0].column_index;
+                out_plan->primary_key_column_id =
+                    key_metadata->primary_key.parts[0].index_column.column_id;
+            }
+        }
     }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(out_plan)) {
         rc = validate_joined_update_multiple_assignment_targets(database, out_plan);
@@ -984,7 +1084,6 @@ static int finish_joined_update_target_plan(
         );
     }
 
-    mylite_execution_primary_key_info_deinit(&primary_key);
     return rc;
 }
 
@@ -1062,8 +1161,16 @@ static void planned_update_deinit(struct planned_update *plan) {
     }
     free(plan->assignments);
     mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&plan->key_metadata);
     planned_select_order_deinit(&plan->order);
-    mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &plan->child_foreign_keys,
+        &plan->child_foreign_key_count
+    );
+    mylite_execution_loaded_foreign_key_infos_deinit(
+        &plan->parent_foreign_keys,
+        &plan->parent_foreign_key_count
+    );
     *plan = (struct planned_update){0};
 }
 

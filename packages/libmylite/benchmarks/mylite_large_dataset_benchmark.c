@@ -57,9 +57,27 @@ enum {
     item_created_at_parameter = 5,
     item_title_parameter = 6,
     item_payload_parameter = 7,
+    item_tenant_parameter = 8,
+    item_optional_parameter = 9,
+    skew_tenant_count = 10000,
+    null_value_interval = 10,
+    selectivity_basis_points = 10000,
+    selectivity_one_basis_point = 1,
+    selectivity_one_percent_basis_points = 100,
+    selectivity_ten_percent_basis_points = 1000,
+    result_small_limit = 100,
+    result_medium_limit = 10000,
+    unindexed_sort_limit = 1000,
+    batch_insert_count = 10,
+    fanout_parent_count = 100,
     bits_per_byte = 8,
     byte_mask = 255,
     median_pair_count = 2,
+    or_lookup_third_offset_multiplier = 2,
+    deep_offset_limit = 20,
+    deep_offset_numerator = 9,
+    deep_offset_denominator = 10,
+    window_partition_account_limit = 10,
 };
 
 static const uint64_t fnv_offset_basis = 1469598103934665603ULL;
@@ -73,6 +91,7 @@ enum benchmark_execution_mode {
     benchmark_execution_prepare_each,
     benchmark_execution_prepared,
     benchmark_execution_write_rollback,
+    benchmark_execution_expected_error_rollback,
 };
 
 enum benchmark_scenario_id {
@@ -90,6 +109,49 @@ enum benchmark_scenario_id {
     benchmark_scenario_indexed_update,
     benchmark_scenario_foreign_key_insert,
     benchmark_scenario_foreign_key_cascade,
+    benchmark_scenario_selectivity_zero,
+    benchmark_scenario_selectivity_one,
+    benchmark_scenario_selectivity_one_basis_point,
+    benchmark_scenario_selectivity_one_percent,
+    benchmark_scenario_selectivity_ten_percent,
+    benchmark_scenario_selectivity_full,
+    benchmark_scenario_covering_range,
+    benchmark_scenario_noncovering_range,
+    benchmark_scenario_null_lookup,
+    benchmark_scenario_or_lookup,
+    benchmark_scenario_deep_offset,
+    benchmark_scenario_unindexed_sort_limit,
+    benchmark_scenario_high_cardinality_group,
+    benchmark_scenario_high_cardinality_distinct,
+    benchmark_scenario_window_partition,
+    benchmark_scenario_three_table_join,
+    benchmark_scenario_left_join,
+    benchmark_scenario_anti_join,
+    benchmark_scenario_large_large_join,
+    benchmark_scenario_skew_hot,
+    benchmark_scenario_skew_cold,
+    benchmark_scenario_update_one_basis_point,
+    benchmark_scenario_update_one_percent,
+    benchmark_scenario_update_ten_percent,
+    benchmark_scenario_delete_one_basis_point,
+    benchmark_scenario_delete_one_percent,
+    benchmark_scenario_upsert_hit,
+    benchmark_scenario_upsert_miss,
+    benchmark_scenario_insert_index_zero,
+    benchmark_scenario_insert_index_one,
+    benchmark_scenario_insert_index_five,
+    benchmark_scenario_insert_index_ten,
+    benchmark_scenario_insert_batch_ten,
+    benchmark_scenario_composite_foreign_key_insert,
+    benchmark_scenario_composite_foreign_key_invalid,
+    benchmark_scenario_foreign_key_cascade_fanout,
+    benchmark_scenario_foreign_key_restrict,
+    benchmark_scenario_foreign_key_set_null,
+    benchmark_scenario_result_narrow_small,
+    benchmark_scenario_result_narrow_medium,
+    benchmark_scenario_result_narrow_full,
+    benchmark_scenario_result_wide_small,
+    benchmark_scenario_result_wide_medium,
 };
 
 struct benchmark_options {
@@ -99,8 +161,12 @@ struct benchmark_options {
     size_t iteration_override;
     const char *scenario_name;
     const char *database_directory;
+    const char *database_base;
     const char *output_path;
     bool keep_databases;
+    bool reuse_databases;
+    bool seed_only;
+    bool analyze;
     bool list_scenarios;
     bool show_help;
 };
@@ -143,6 +209,7 @@ struct benchmark_load_measurement {
     uint64_t accounts_ns;
     uint64_t items_ns;
     uint64_t tags_ns;
+    uint64_t support_ns;
 };
 
 struct benchmark_dataset {
@@ -172,6 +239,15 @@ static int parse_named_option(
 static void print_usage(const char *program_name, FILE *stream);
 static void print_scenarios(FILE *stream);
 static int run_benchmark(const struct benchmark_options *options);
+static int prepare_benchmark_databases(
+    const struct benchmark_options *options,
+    struct benchmark_paths *paths,
+    const struct benchmark_dataset *dataset,
+    struct benchmark_database *mylite,
+    struct benchmark_database *sqlite,
+    struct benchmark_load_measurement *mylite_load,
+    struct benchmark_load_measurement *sqlite_load
+);
 static int make_database_paths(
     const struct benchmark_options *options,
     struct benchmark_paths *out_paths
@@ -221,6 +297,10 @@ static int run_scenario_engine(
     size_t warmup_iterations,
     struct benchmark_measurement *out_measurement
 );
+static const char *scenario_sql(
+    const struct benchmark_database *database,
+    const struct benchmark_scenario *scenario
+);
 static int run_scenario_phase(
     struct benchmark_database *database,
     const struct benchmark_scenario *scenario,
@@ -243,10 +323,45 @@ static int bind_scenario_parameters(
     const struct benchmark_dataset *dataset,
     size_t iteration
 );
+static int bind_core_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+);
+static int bind_read_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+);
+static int bind_write_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+);
+static int bind_foreign_key_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+);
+static int bind_id_range_parameters(
+    struct benchmark_statement *statement,
+    size_t iteration,
+    const struct benchmark_dataset *dataset,
+    unsigned int basis_points
+);
 static int consume_statement(
     struct benchmark_database *database,
     struct benchmark_statement *statement,
     bool include_affected_rows,
+    struct benchmark_measurement *measurement
+);
+static int consume_expected_error(
+    struct benchmark_database *database,
+    struct benchmark_statement *statement,
     struct benchmark_measurement *measurement
 );
 static int consume_mylite_statement(
@@ -293,6 +408,7 @@ static int prepare_statement(
 static int reset_statement(struct benchmark_statement *statement);
 static int finalize_statement(struct benchmark_statement *statement);
 static int bind_int64(struct benchmark_statement *statement, size_t index, int64_t value);
+static int bind_null(struct benchmark_statement *statement, size_t index);
 static int bind_text(struct benchmark_statement *statement, size_t index, const char *value);
 static int execute_sql(struct benchmark_database *database, const char *sql);
 static int fetch_scalar_count(
@@ -306,6 +422,26 @@ static int seed_accounts(
 );
 static int seed_items(struct benchmark_database *database, const struct benchmark_dataset *dataset);
 static int seed_tags(struct benchmark_database *database, const struct benchmark_dataset *dataset);
+static int seed_support_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+);
+static int seed_upsert_and_composite_parents(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+);
+static int seed_fanout_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+);
+static int seed_restrict_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+);
+static int seed_set_null_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+);
 static int insert_account(struct benchmark_statement *statement, size_t account_id, size_t region);
 static int insert_item(
     struct benchmark_statement *statement,
@@ -334,6 +470,10 @@ static const char *engine_name(enum benchmark_engine_kind kind);
 static const char *mode_name(enum benchmark_execution_mode mode);
 static size_t account_count_for_rows(size_t row_count);
 static size_t tag_count_for_rows(size_t row_count);
+static size_t fanout_parent_count_for_rows(size_t row_count);
+static size_t range_count_for_basis_points(size_t row_count, size_t basis_points);
+static bool scenario_includes_affected_rows(const struct benchmark_scenario *scenario);
+static bool scenario_uses_rollback(const struct benchmark_scenario *scenario);
 static size_t scenario_iterations(
     const struct benchmark_scenario *scenario,
     const struct benchmark_options *options
@@ -453,6 +593,324 @@ static const struct benchmark_scenario benchmark_scenarios[] = {
         "DELETE FROM items WHERE id = ?",
         5,
     },
+    {
+        "selectivity_zero",
+        benchmark_scenario_selectivity_zero,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE id BETWEEN ? AND ?",
+        100,
+    },
+    {
+        "selectivity_one",
+        benchmark_scenario_selectivity_one,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE id BETWEEN ? AND ?",
+        100,
+    },
+    {
+        "selectivity_001pct",
+        benchmark_scenario_selectivity_one_basis_point,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE id BETWEEN ? AND ?",
+        50,
+    },
+    {
+        "selectivity_1pct",
+        benchmark_scenario_selectivity_one_percent,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE id BETWEEN ? AND ?",
+        20,
+    },
+    {
+        "selectivity_10pct",
+        benchmark_scenario_selectivity_ten_percent,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE id BETWEEN ? AND ?",
+        5,
+    },
+    {
+        "selectivity_full",
+        benchmark_scenario_selectivity_full,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE id BETWEEN ? AND ?",
+        3,
+    },
+    {
+        "covering_composite_range",
+        benchmark_scenario_covering_range,
+        benchmark_execution_prepared,
+        "SELECT id, score FROM items WHERE category_id = ? AND score BETWEEN ? AND ? "
+        "ORDER BY score, id LIMIT 100",
+        50,
+    },
+    {
+        "noncovering_composite_range",
+        benchmark_scenario_noncovering_range,
+        benchmark_execution_prepared,
+        "SELECT id, title FROM items WHERE category_id = ? AND score BETWEEN ? AND ? "
+        "ORDER BY score, id LIMIT 100",
+        50,
+    },
+    {
+        "indexed_null_lookup",
+        benchmark_scenario_null_lookup,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE optional_value IS NULL",
+        5,
+    },
+    {
+        "primary_key_or_lookup",
+        benchmark_scenario_or_lookup,
+        benchmark_execution_prepared,
+        "SELECT id, score FROM items WHERE id = ? OR id = ? OR id = ? ORDER BY id",
+        200,
+    },
+    {
+        "deep_offset_90pct",
+        benchmark_scenario_deep_offset,
+        benchmark_execution_prepared,
+        "SELECT id, score FROM items ORDER BY id LIMIT ? OFFSET ?",
+        10,
+    },
+    {
+        "unindexed_sort_top_1000",
+        benchmark_scenario_unindexed_sort_limit,
+        benchmark_execution_prepared,
+        "SELECT id, payload FROM items ORDER BY payload, id LIMIT 1000",
+        3,
+    },
+    {
+        "high_cardinality_group",
+        benchmark_scenario_high_cardinality_group,
+        benchmark_execution_prepared,
+        "SELECT score, COUNT(*) FROM items GROUP BY score ORDER BY score",
+        1,
+    },
+    {
+        "high_cardinality_distinct",
+        benchmark_scenario_high_cardinality_distinct,
+        benchmark_execution_prepared,
+        "SELECT DISTINCT score FROM items ORDER BY score",
+        1,
+    },
+    {
+        "window_partition_rank",
+        benchmark_scenario_window_partition,
+        benchmark_execution_prepared,
+        "SELECT id, ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY score DESC) "
+        "FROM items WHERE account_id BETWEEN ? AND ? ORDER BY account_id, score DESC, id",
+        3,
+    },
+    {
+        "three_table_join",
+        benchmark_scenario_three_table_join,
+        benchmark_execution_prepared,
+        "SELECT a.region, COUNT(*), SUM(i.score + t.weight) FROM accounts AS a "
+        "JOIN items AS i ON i.account_id = a.id "
+        "JOIN item_tags AS t ON t.item_id = i.id "
+        "WHERE a.region = ? GROUP BY a.region",
+        10,
+    },
+    {
+        "left_join_range",
+        benchmark_scenario_left_join,
+        benchmark_execution_prepared,
+        "SELECT i.id, t.item_id FROM items AS i "
+        "LEFT JOIN item_tags AS t ON t.item_id = i.id WHERE i.id BETWEEN ? AND ? "
+        "ORDER BY i.id, t.item_id",
+        10,
+    },
+    {
+        "anti_join",
+        benchmark_scenario_anti_join,
+        benchmark_execution_prepared,
+        "SELECT i.id FROM items AS i WHERE NOT EXISTS "
+        "(SELECT 1 FROM item_tags AS t WHERE t.item_id = i.id) ORDER BY i.id",
+        3,
+    },
+    {
+        "large_large_bounded_join",
+        benchmark_scenario_large_large_join,
+        benchmark_execution_prepared,
+        "SELECT i.id, i.score + t.weight FROM items AS i "
+        "JOIN item_tags AS t ON t.item_id = i.id WHERE i.id BETWEEN ? AND ? "
+        "ORDER BY i.id, t.tag_id",
+        10,
+    },
+    {
+        "skew_hot_tenant",
+        benchmark_scenario_skew_hot,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE tenant_id = ?",
+        5,
+    },
+    {
+        "skew_cold_tenant",
+        benchmark_scenario_skew_cold,
+        benchmark_execution_prepared,
+        "SELECT COUNT(*), SUM(score) FROM items WHERE tenant_id = ?",
+        100,
+    },
+    {
+        "update_001pct_rollback",
+        benchmark_scenario_update_one_basis_point,
+        benchmark_execution_write_rollback,
+        "UPDATE items SET score = score + 1 WHERE id BETWEEN ? AND ?",
+        3,
+    },
+    {
+        "update_1pct_rollback",
+        benchmark_scenario_update_one_percent,
+        benchmark_execution_write_rollback,
+        "UPDATE items SET score = score + 1 WHERE id BETWEEN ? AND ?",
+        1,
+    },
+    {
+        "update_10pct_rollback",
+        benchmark_scenario_update_ten_percent,
+        benchmark_execution_write_rollback,
+        "UPDATE items SET score = score + 1 WHERE id BETWEEN ? AND ?",
+        1,
+    },
+    {
+        "delete_001pct_rollback",
+        benchmark_scenario_delete_one_basis_point,
+        benchmark_execution_write_rollback,
+        "DELETE FROM items WHERE id BETWEEN ? AND ?",
+        1,
+    },
+    {
+        "delete_1pct_rollback",
+        benchmark_scenario_delete_one_percent,
+        benchmark_execution_write_rollback,
+        "DELETE FROM items WHERE id BETWEEN ? AND ?",
+        1,
+    },
+    {
+        "upsert_hit_rollback",
+        benchmark_scenario_upsert_hit,
+        benchmark_execution_write_rollback,
+        "INSERT INTO upsert_targets (id, value_text) VALUES (?, ?) "
+        "ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)",
+        200,
+    },
+    {
+        "upsert_miss_rollback",
+        benchmark_scenario_upsert_miss,
+        benchmark_execution_write_rollback,
+        "INSERT INTO upsert_targets (id, value_text) VALUES (?, ?) "
+        "ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)",
+        200,
+    },
+    {
+        "insert_zero_indexes_rollback",
+        benchmark_scenario_insert_index_zero,
+        benchmark_execution_write_rollback,
+        "INSERT INTO insert_index_0 (id, value_a, value_b) VALUES (?, ?, ?)",
+        500,
+    },
+    {
+        "insert_one_index_rollback",
+        benchmark_scenario_insert_index_one,
+        benchmark_execution_write_rollback,
+        "INSERT INTO insert_index_1 (id, value_a, value_b) VALUES (?, ?, ?)",
+        500,
+    },
+    {
+        "insert_five_indexes_rollback",
+        benchmark_scenario_insert_index_five,
+        benchmark_execution_write_rollback,
+        "INSERT INTO insert_index_5 (id, value_a, value_b) VALUES (?, ?, ?)",
+        500,
+    },
+    {
+        "insert_ten_indexes_rollback",
+        benchmark_scenario_insert_index_ten,
+        benchmark_execution_write_rollback,
+        "INSERT INTO insert_index_10 (id, value_a, value_b) VALUES (?, ?, ?)",
+        500,
+    },
+    {
+        "insert_batch_10_rollback",
+        benchmark_scenario_insert_batch_ten,
+        benchmark_execution_write_rollback,
+        "INSERT INTO insert_index_1 (id, value_a, value_b) VALUES "
+        "(?,?,?),(?,?,?),(?,?,?),(?,?,?),(?,?,?),"
+        "(?,?,?),(?,?,?),(?,?,?),(?,?,?),(?,?,?)",
+        100,
+    },
+    {
+        "composite_foreign_key_insert_rollback",
+        benchmark_scenario_composite_foreign_key_insert,
+        benchmark_execution_write_rollback,
+        "INSERT INTO composite_children (id, parent_id, parent_shard, payload) VALUES (?, ?, ?, ?)",
+        200,
+    },
+    {
+        "composite_foreign_key_invalid_rollback",
+        benchmark_scenario_composite_foreign_key_invalid,
+        benchmark_execution_expected_error_rollback,
+        "INSERT INTO composite_children (id, parent_id, parent_shard, payload) VALUES (?, ?, ?, ?)",
+        50,
+    },
+    {
+        "foreign_key_cascade_fanout_rollback",
+        benchmark_scenario_foreign_key_cascade_fanout,
+        benchmark_execution_write_rollback,
+        "DELETE FROM fanout_parents WHERE id = ?",
+        1,
+    },
+    {
+        "foreign_key_restrict_miss_rollback",
+        benchmark_scenario_foreign_key_restrict,
+        benchmark_execution_write_rollback,
+        "DELETE FROM restrict_parents WHERE id = ?",
+        100,
+    },
+    {
+        "foreign_key_set_null_fanout_rollback",
+        benchmark_scenario_foreign_key_set_null,
+        benchmark_execution_write_rollback,
+        "DELETE FROM set_null_parents WHERE id = ?",
+        1,
+    },
+    {
+        "result_narrow_100",
+        benchmark_scenario_result_narrow_small,
+        benchmark_execution_prepared,
+        "SELECT id FROM items ORDER BY id LIMIT 100",
+        20,
+    },
+    {
+        "result_narrow_10000",
+        benchmark_scenario_result_narrow_medium,
+        benchmark_execution_prepared,
+        "SELECT id FROM items ORDER BY id LIMIT 10000",
+        3,
+    },
+    {
+        "result_narrow_full",
+        benchmark_scenario_result_narrow_full,
+        benchmark_execution_prepared,
+        "SELECT id FROM items ORDER BY id",
+        1,
+    },
+    {
+        "result_wide_100",
+        benchmark_scenario_result_wide_small,
+        benchmark_execution_prepared,
+        "SELECT id, account_id, category_id, status, score, created_at, title, payload "
+        "FROM items ORDER BY id LIMIT 100",
+        20,
+    },
+    {
+        "result_wide_10000",
+        benchmark_scenario_result_wide_medium,
+        benchmark_execution_prepared,
+        "SELECT id, account_id, category_id, status, score, created_at, title, payload "
+        "FROM items ORDER BY id LIMIT 10000",
+        3,
+    },
 };
 
 int main(int argc, char **argv) {
@@ -463,8 +921,12 @@ int main(int argc, char **argv) {
         .iteration_override = 0U,
         .scenario_name = NULL,
         .database_directory = NULL,
+        .database_base = NULL,
         .output_path = NULL,
         .keep_databases = false,
+        .reuse_databases = false,
+        .seed_only = false,
+        .analyze = false,
         .list_scenarios = false,
         .show_help = false,
     };
@@ -480,6 +942,10 @@ int main(int argc, char **argv) {
     if (options.list_scenarios) {
         print_scenarios(stdout);
         return 0;
+    }
+    if (options.reuse_databases && options.database_base == NULL) {
+        fprintf(stderr, "--reuse-databases requires --database-base\n");
+        return 1;
     }
     return run_benchmark(&options);
 }
@@ -518,6 +984,20 @@ static bool parse_flag_option(const char *argument, struct benchmark_options *ou
         out_options->keep_databases = true;
         return true;
     }
+    if (strcmp(argument, "--reuse-databases") == 0) {
+        out_options->reuse_databases = true;
+        out_options->keep_databases = true;
+        return true;
+    }
+    if (strcmp(argument, "--seed-only") == 0) {
+        out_options->seed_only = true;
+        out_options->keep_databases = true;
+        return true;
+    }
+    if (strcmp(argument, "--analyze") == 0) {
+        out_options->analyze = true;
+        return true;
+    }
     return false;
 }
 
@@ -525,7 +1005,7 @@ static bool option_takes_value(const char *argument) {
     return strcmp(argument, "--rows") == 0 || strcmp(argument, "--samples") == 0 ||
            strcmp(argument, "--warmup") == 0 || strcmp(argument, "--iterations") == 0 ||
            strcmp(argument, "--scenario") == 0 || strcmp(argument, "--database-dir") == 0 ||
-           strcmp(argument, "--output") == 0;
+           strcmp(argument, "--database-base") == 0 || strcmp(argument, "--output") == 0;
 }
 
 static int parse_named_option(
@@ -549,6 +1029,8 @@ static int parse_named_option(
         out_options->scenario_name = value;
     } else if (strcmp(argument, "--database-dir") == 0) {
         out_options->database_directory = value;
+    } else if (strcmp(argument, "--database-base") == 0) {
+        out_options->database_base = value;
     } else if (strcmp(argument, "--output") == 0) {
         out_options->output_path = value;
     } else {
@@ -561,8 +1043,9 @@ static void print_usage(const char *program_name, FILE *stream) {
     fprintf(
         stream,
         "usage: %s [--rows N] [--samples N] [--warmup N] [--iterations N]\n"
-        "          [--scenario NAME] [--database-dir PATH] [--output PATH]\n"
-        "          [--keep-databases] [--list] [--help]\n",
+        "          [--scenario NAME] [--database-dir PATH] [--database-base PATH]\n"
+        "          [--output PATH] [--keep-databases] [--reuse-databases]\n"
+        "          [--seed-only] [--analyze] [--list] [--help]\n",
         program_name
     );
 }
@@ -606,39 +1089,21 @@ static int run_benchmark(const struct benchmark_options *options) {
             return 1;
         }
     }
-    if (make_database_paths(options, &paths) != 0) {
-        goto cleanup;
-    }
-    remove_database_files(paths.mylite);
-    remove_database_files(paths.sqlite);
-    fprintf(
-        stderr,
-        "large-dataset: rows=%zu accounts=%zu tags=%zu\n",
-        dataset.row_count,
-        dataset.account_count,
-        dataset.tag_count
-    );
-    if (open_benchmark_database(benchmark_engine_mylite, paths.mylite, &mylite) != 0 ||
-        open_benchmark_database(benchmark_engine_sqlite, paths.sqlite, &sqlite) != 0) {
-        goto cleanup;
-    }
-    if (create_benchmark_schema(&mylite) != 0 || create_benchmark_schema(&sqlite) != 0) {
-        goto cleanup;
-    }
-    fprintf(stderr, "large-dataset: seeding MyLite\n");
-    if (seed_benchmark_database(&mylite, &dataset, &mylite_load) != 0) {
-        goto cleanup;
-    }
-    fprintf(stderr, "large-dataset: seeding SQLite\n");
-    if (seed_benchmark_database(&sqlite, &dataset, &sqlite_load) != 0) {
-        goto cleanup;
-    }
-    if (verify_benchmark_database(&mylite, &dataset) != 0 ||
-        verify_benchmark_database(&sqlite, &dataset) != 0) {
+    if (prepare_benchmark_databases(
+            options,
+            &paths,
+            &dataset,
+            &mylite,
+            &sqlite,
+            &mylite_load,
+            &sqlite_load
+        ) != 0) {
         goto cleanup;
     }
     print_csv_header(output);
-    print_load_measurements(output, &dataset, &mylite_load, &sqlite_load);
+    if (!options->reuse_databases) {
+        print_load_measurements(output, &dataset, &mylite_load, &sqlite_load);
+    }
     fprintf(
         output,
         "size,database_file,%zu,mylite,setup,0,1,0,%" PRIu64 ",0,0.000,0.000,0.000,0.000\n",
@@ -651,7 +1116,7 @@ static int run_benchmark(const struct benchmark_options *options) {
         dataset.row_count,
         file_size(paths.sqlite)
     );
-    if (run_scenarios(output, &mylite, &sqlite, &dataset, options) != 0) {
+    if (!options->seed_only && run_scenarios(output, &mylite, &sqlite, &dataset, options) != 0) {
         goto cleanup;
     }
     result = 0;
@@ -659,7 +1124,7 @@ static int run_benchmark(const struct benchmark_options *options) {
 cleanup:
     close_benchmark_database(&sqlite);
     close_benchmark_database(&mylite);
-    if (!options->keep_databases) {
+    if (!options->keep_databases && !options->reuse_databases && !options->seed_only) {
         remove_database_files(paths.sqlite);
         remove_database_files(paths.mylite);
     } else if (paths.mylite[0] != '\0') {
@@ -673,10 +1138,86 @@ cleanup:
     return result;
 }
 
+static int prepare_benchmark_databases(
+    const struct benchmark_options *options,
+    struct benchmark_paths *paths,
+    const struct benchmark_dataset *dataset,
+    struct benchmark_database *mylite,
+    struct benchmark_database *sqlite,
+    struct benchmark_load_measurement *mylite_load,
+    struct benchmark_load_measurement *sqlite_load
+) {
+    if (make_database_paths(options, paths) != 0) {
+        return 1;
+    }
+    if (!options->reuse_databases) {
+        remove_database_files(paths->mylite);
+        remove_database_files(paths->sqlite);
+    }
+    fprintf(
+        stderr,
+        "large-dataset: rows=%zu accounts=%zu tags=%zu\n",
+        dataset->row_count,
+        dataset->account_count,
+        dataset->tag_count
+    );
+    if (open_benchmark_database(benchmark_engine_mylite, paths->mylite, mylite) != 0 ||
+        open_benchmark_database(benchmark_engine_sqlite, paths->sqlite, sqlite) != 0) {
+        return 1;
+    }
+    if (options->reuse_databases) {
+        if (execute_sql(mylite, "USE perf") != 0) {
+            return 1;
+        }
+    } else {
+        if (create_benchmark_schema(mylite) != 0 || create_benchmark_schema(sqlite) != 0) {
+            return 1;
+        }
+        fprintf(stderr, "large-dataset: seeding MyLite\n");
+        if (seed_benchmark_database(mylite, dataset, mylite_load) != 0) {
+            return 1;
+        }
+        fprintf(stderr, "large-dataset: seeding SQLite\n");
+        if (seed_benchmark_database(sqlite, dataset, sqlite_load) != 0) {
+            return 1;
+        }
+    }
+    if (verify_benchmark_database(mylite, dataset) != 0 ||
+        verify_benchmark_database(sqlite, dataset) != 0) {
+        return 1;
+    }
+    if (options->analyze && (execute_sql(mylite, "ANALYZE TABLE accounts, items, item_tags") != 0 ||
+                             execute_sql(sqlite, "ANALYZE") != 0)) {
+        return 1;
+    }
+    return 0;
+}
+
 static int make_database_paths(
     const struct benchmark_options *options,
     struct benchmark_paths *out_paths
 ) {
+    if (options->database_base != NULL) {
+        int mylite_written = snprintf(
+            out_paths->mylite,
+            sizeof(out_paths->mylite),
+            "%s.mylite",
+            options->database_base
+        );
+        int sqlite_written = snprintf(
+            out_paths->sqlite,
+            sizeof(out_paths->sqlite),
+            "%s.sqlite",
+            options->database_base
+        );
+
+        if (mylite_written < 0 || (size_t)mylite_written >= sizeof(out_paths->mylite) ||
+            sqlite_written < 0 || (size_t)sqlite_written >= sizeof(out_paths->sqlite)) {
+            fprintf(stderr, "large-dataset: database base path is too long\n");
+            return 1;
+        }
+        return 0;
+    }
     const char *directory = options->database_directory == NULL ? default_database_directory()
                                                                 : options->database_directory;
 #if defined(_WIN32)
@@ -770,11 +1311,14 @@ static int create_benchmark_schema(struct benchmark_database *database) {
         "id BIGINT NOT NULL, account_id BIGINT NOT NULL, category_id INT NOT NULL,"
         "status VARCHAR(16) NOT NULL, score BIGINT NOT NULL, created_at BIGINT NOT NULL,"
         "title VARCHAR(64) NOT NULL, payload VARCHAR(160) NOT NULL,"
+        "tenant_id INT NOT NULL, optional_value BIGINT NULL,"
         "PRIMARY KEY (id),"
         "KEY idx_items_account_created (account_id, created_at, id),"
         "KEY idx_items_account_score (account_id, score),"
         "KEY idx_items_category_score (category_id, score),"
         "KEY idx_items_status_created (status, created_at, id),"
+        "KEY idx_items_tenant_status_score (tenant_id, status, score),"
+        "KEY idx_items_optional (optional_value, id),"
         "CONSTRAINT fk_items_account FOREIGN KEY (account_id) "
         "REFERENCES accounts (id) ON DELETE CASCADE)",
         "CREATE TABLE item_tags ("
@@ -787,6 +1331,49 @@ static int create_benchmark_schema(struct benchmark_database *database) {
         "id BIGINT NOT NULL, item_id BIGINT NOT NULL, note VARCHAR(64) NOT NULL,"
         "PRIMARY KEY (id), KEY idx_write_log_item (item_id),"
         "CONSTRAINT fk_write_log_item FOREIGN KEY (item_id) REFERENCES items (id))",
+        "CREATE TABLE upsert_targets ("
+        "id BIGINT NOT NULL, value_text VARCHAR(64) NOT NULL, PRIMARY KEY (id))",
+        "CREATE TABLE insert_index_0 (id BIGINT NOT NULL, value_a BIGINT NOT NULL,"
+        "value_b BIGINT NOT NULL)",
+        "CREATE TABLE insert_index_1 (id BIGINT NOT NULL, value_a BIGINT NOT NULL,"
+        "value_b BIGINT NOT NULL, PRIMARY KEY (id))",
+        "CREATE TABLE insert_index_5 (id BIGINT NOT NULL, value_a BIGINT NOT NULL,"
+        "value_b BIGINT NOT NULL, PRIMARY KEY (id), KEY i5_a (value_a), KEY i5_b (value_b),"
+        "KEY i5_ab (value_a, value_b), KEY i5_ba (value_b, value_a))",
+        "CREATE TABLE insert_index_10 (id BIGINT NOT NULL, value_a BIGINT NOT NULL,"
+        "value_b BIGINT NOT NULL, PRIMARY KEY (id), KEY i10_a (value_a), KEY i10_b (value_b),"
+        "KEY i10_ab (value_a, value_b), KEY i10_ba (value_b, value_a),"
+        "KEY i10_ai (value_a, id), KEY i10_bi (value_b, id),"
+        "KEY i10_abi (value_a, value_b, id), KEY i10_bai (value_b, value_a, id),"
+        "KEY i10_ia (id, value_a))",
+        "CREATE TABLE composite_parents ("
+        "id BIGINT NOT NULL, shard_id INT NOT NULL, payload BIGINT NOT NULL,"
+        "PRIMARY KEY (id, shard_id))",
+        "CREATE TABLE composite_children ("
+        "id BIGINT NOT NULL, parent_id BIGINT NOT NULL, parent_shard INT NOT NULL,"
+        "payload BIGINT NOT NULL, PRIMARY KEY (id),"
+        "KEY idx_composite_parent (parent_id, parent_shard),"
+        "CONSTRAINT fk_composite_parent FOREIGN KEY (parent_id, parent_shard) "
+        "REFERENCES composite_parents (id, shard_id))",
+        "CREATE TABLE fanout_parents (id BIGINT NOT NULL, payload BIGINT NOT NULL,"
+        "PRIMARY KEY (id))",
+        "CREATE TABLE fanout_children ("
+        "id BIGINT NOT NULL, parent_id BIGINT NOT NULL, payload BIGINT NOT NULL,"
+        "PRIMARY KEY (id), KEY idx_fanout_parent (parent_id),"
+        "CONSTRAINT fk_fanout_parent FOREIGN KEY (parent_id) "
+        "REFERENCES fanout_parents (id) ON DELETE CASCADE)",
+        "CREATE TABLE restrict_parents (id BIGINT NOT NULL, PRIMARY KEY (id))",
+        "CREATE TABLE restrict_children ("
+        "id BIGINT NOT NULL, parent_id BIGINT NOT NULL, PRIMARY KEY (id),"
+        "KEY idx_restrict_parent (parent_id),"
+        "CONSTRAINT fk_restrict_parent FOREIGN KEY (parent_id) "
+        "REFERENCES restrict_parents (id) ON DELETE RESTRICT)",
+        "CREATE TABLE set_null_parents (id BIGINT NOT NULL, PRIMARY KEY (id))",
+        "CREATE TABLE set_null_children ("
+        "id BIGINT NOT NULL, parent_id BIGINT NULL, payload BIGINT NOT NULL,"
+        "PRIMARY KEY (id), KEY idx_set_null_parent (parent_id),"
+        "CONSTRAINT fk_set_null_parent FOREIGN KEY (parent_id) "
+        "REFERENCES set_null_parents (id) ON DELETE SET NULL)",
     };
     static const char *const sqlite_schema[] = {
         "CREATE TABLE accounts ("
@@ -795,12 +1382,15 @@ static int create_benchmark_schema(struct benchmark_database *database) {
         "CREATE TABLE items ("
         "id BIGINT NOT NULL PRIMARY KEY, account_id BIGINT NOT NULL, category_id INTEGER NOT NULL,"
         "status TEXT NOT NULL, score BIGINT NOT NULL, created_at BIGINT NOT NULL,"
-        "title TEXT NOT NULL, payload TEXT NOT NULL,"
+        "title TEXT NOT NULL, payload TEXT NOT NULL, tenant_id INTEGER NOT NULL,"
+        "optional_value BIGINT NULL,"
         "FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE)",
         "CREATE INDEX idx_items_account_created ON items(account_id, created_at, id)",
         "CREATE INDEX idx_items_account_score ON items(account_id, score)",
         "CREATE INDEX idx_items_category_score ON items(category_id, score)",
         "CREATE INDEX idx_items_status_created ON items(status, created_at, id)",
+        "CREATE INDEX idx_items_tenant_status_score ON items(tenant_id, status, score)",
+        "CREATE INDEX idx_items_optional ON items(optional_value, id)",
         "CREATE TABLE item_tags ("
         "item_id BIGINT NOT NULL, tag_id INTEGER NOT NULL, weight INTEGER NOT NULL,"
         "PRIMARY KEY (item_id, tag_id),"
@@ -810,6 +1400,53 @@ static int create_benchmark_schema(struct benchmark_database *database) {
         "id BIGINT NOT NULL PRIMARY KEY, item_id BIGINT NOT NULL, note TEXT NOT NULL,"
         "FOREIGN KEY (item_id) REFERENCES items(id))",
         "CREATE INDEX idx_write_log_item ON write_log(item_id)",
+        "CREATE TABLE upsert_targets ("
+        "id BIGINT NOT NULL PRIMARY KEY, value_text TEXT NOT NULL)",
+        "CREATE TABLE insert_index_0 ("
+        "id BIGINT NOT NULL, value_a BIGINT NOT NULL, value_b BIGINT NOT NULL)",
+        "CREATE TABLE insert_index_1 ("
+        "id BIGINT NOT NULL PRIMARY KEY, value_a BIGINT NOT NULL, value_b BIGINT NOT NULL)",
+        "CREATE TABLE insert_index_5 ("
+        "id BIGINT NOT NULL PRIMARY KEY, value_a BIGINT NOT NULL, value_b BIGINT NOT NULL)",
+        "CREATE INDEX i5_a ON insert_index_5(value_a)",
+        "CREATE INDEX i5_b ON insert_index_5(value_b)",
+        "CREATE INDEX i5_ab ON insert_index_5(value_a, value_b)",
+        "CREATE INDEX i5_ba ON insert_index_5(value_b, value_a)",
+        "CREATE TABLE insert_index_10 ("
+        "id BIGINT NOT NULL PRIMARY KEY, value_a BIGINT NOT NULL, value_b BIGINT NOT NULL)",
+        "CREATE INDEX i10_a ON insert_index_10(value_a)",
+        "CREATE INDEX i10_b ON insert_index_10(value_b)",
+        "CREATE INDEX i10_ab ON insert_index_10(value_a, value_b)",
+        "CREATE INDEX i10_ba ON insert_index_10(value_b, value_a)",
+        "CREATE INDEX i10_ai ON insert_index_10(value_a, id)",
+        "CREATE INDEX i10_bi ON insert_index_10(value_b, id)",
+        "CREATE INDEX i10_abi ON insert_index_10(value_a, value_b, id)",
+        "CREATE INDEX i10_bai ON insert_index_10(value_b, value_a, id)",
+        "CREATE INDEX i10_ia ON insert_index_10(id, value_a)",
+        "CREATE TABLE composite_parents ("
+        "id BIGINT NOT NULL, shard_id INTEGER NOT NULL, payload BIGINT NOT NULL,"
+        "PRIMARY KEY (id, shard_id))",
+        "CREATE TABLE composite_children ("
+        "id BIGINT NOT NULL PRIMARY KEY, parent_id BIGINT NOT NULL,"
+        "parent_shard INTEGER NOT NULL, payload BIGINT NOT NULL,"
+        "FOREIGN KEY (parent_id, parent_shard) REFERENCES composite_parents(id, shard_id))",
+        "CREATE INDEX idx_composite_parent ON composite_children(parent_id, parent_shard)",
+        "CREATE TABLE fanout_parents ("
+        "id BIGINT NOT NULL PRIMARY KEY, payload BIGINT NOT NULL)",
+        "CREATE TABLE fanout_children ("
+        "id BIGINT NOT NULL PRIMARY KEY, parent_id BIGINT NOT NULL, payload BIGINT NOT NULL,"
+        "FOREIGN KEY (parent_id) REFERENCES fanout_parents(id) ON DELETE CASCADE)",
+        "CREATE INDEX idx_fanout_parent ON fanout_children(parent_id)",
+        "CREATE TABLE restrict_parents (id BIGINT NOT NULL PRIMARY KEY)",
+        "CREATE TABLE restrict_children ("
+        "id BIGINT NOT NULL PRIMARY KEY, parent_id BIGINT NOT NULL,"
+        "FOREIGN KEY (parent_id) REFERENCES restrict_parents(id) ON DELETE RESTRICT)",
+        "CREATE INDEX idx_restrict_parent ON restrict_children(parent_id)",
+        "CREATE TABLE set_null_parents (id BIGINT NOT NULL PRIMARY KEY)",
+        "CREATE TABLE set_null_children ("
+        "id BIGINT NOT NULL PRIMARY KEY, parent_id BIGINT NULL, payload BIGINT NOT NULL,"
+        "FOREIGN KEY (parent_id) REFERENCES set_null_parents(id) ON DELETE SET NULL)",
+        "CREATE INDEX idx_set_null_parent ON set_null_children(parent_id)",
     };
     const char *const *queries =
         database->kind == benchmark_engine_mylite ? mylite_schema : sqlite_schema;
@@ -860,6 +1497,12 @@ static int seed_benchmark_database(
         return 1;
     }
     out_measurement->tags_ns = monotonic_now_ns() - phase_started;
+    phase_started = monotonic_now_ns();
+    if (seed_support_tables(database, dataset) != 0) {
+        (void)rollback_transaction(database);
+        return 1;
+    }
+    out_measurement->support_ns = monotonic_now_ns() - phase_started;
     if (commit_transaction(database) != 0) {
         return 1;
     }
@@ -876,12 +1519,31 @@ static int verify_benchmark_database(
         "SELECT COUNT(*) FROM items",
         "SELECT COUNT(*) FROM item_tags",
         "SELECT COUNT(*) FROM write_log",
+        "SELECT COUNT(*) FROM upsert_targets",
+        "SELECT COUNT(*) FROM composite_parents",
+        "SELECT COUNT(*) FROM composite_children",
+        "SELECT COUNT(*) FROM fanout_parents",
+        "SELECT COUNT(*) FROM fanout_children",
+        "SELECT COUNT(*) FROM restrict_parents",
+        "SELECT COUNT(*) FROM restrict_children",
+        "SELECT COUNT(*) FROM set_null_parents",
+        "SELECT COUNT(*) FROM set_null_children",
     };
+    size_t fanout_parents = fanout_parent_count_for_rows(dataset->row_count);
     const uint64_t expected[] = {
         dataset->account_count,
         dataset->row_count,
         dataset->row_count,
         0U,
+        dataset->account_count,
+        dataset->account_count,
+        0U,
+        fanout_parents,
+        dataset->row_count,
+        fanout_parents,
+        fanout_parents - 1U,
+        fanout_parents,
+        dataset->row_count,
     };
 
     for (size_t index = 0U; index < sizeof(queries) / sizeof(queries[0]); ++index) {
@@ -917,24 +1579,36 @@ static void print_load_measurements(
     const struct benchmark_load_measurement *mylite,
     const struct benchmark_load_measurement *sqlite
 ) {
-    static const char *const names[] = {"load.total", "load.accounts", "load.items", "load.tags"};
+    static const char *const names[] = {
+        "load.total",
+        "load.accounts",
+        "load.items",
+        "load.tags",
+        "load.support",
+    };
+    size_t fanout_parents = fanout_parent_count_for_rows(dataset->row_count);
+    size_t support_operations =
+        (dataset->account_count * 2U) + (dataset->row_count * 2U) + (fanout_parents * 4U) - 1U;
     const uint64_t mylite_values[] = {
         mylite->total_ns,
         mylite->accounts_ns,
         mylite->items_ns,
         mylite->tags_ns,
+        mylite->support_ns,
     };
     const uint64_t sqlite_values[] = {
         sqlite->total_ns,
         sqlite->accounts_ns,
         sqlite->items_ns,
         sqlite->tags_ns,
+        sqlite->support_ns,
     };
     const size_t operations[] = {
-        dataset->account_count + (dataset->row_count * 2U),
+        dataset->account_count + (dataset->row_count * 2U) + support_operations,
         dataset->account_count,
         dataset->row_count,
         dataset->row_count,
+        support_operations,
     };
 
     for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
@@ -1102,14 +1776,15 @@ static int run_scenario_engine(
     bool profile_started = false;
 #endif
     int result = 1;
+    const char *sql = scenario_sql(database, scenario);
 
     if (scenario->mode != benchmark_execution_prepare_each) {
-        if (prepare_statement(database, scenario->sql, &statement) != 0) {
+        if (prepare_statement(database, sql, &statement) != 0) {
             return 1;
         }
         prepared_statement = &statement;
     }
-    if (scenario->mode == benchmark_execution_write_rollback && begin_transaction(database) != 0) {
+    if (scenario_uses_rollback(scenario) && begin_transaction(database) != 0) {
         goto cleanup;
     }
     if (warmup_iterations > 0U && run_scenario_phase(
@@ -1120,12 +1795,12 @@ static int run_scenario_engine(
                                       warmup_iterations,
                                       &warmup
                                   ) != 0) {
-        if (scenario->mode == benchmark_execution_write_rollback) {
+        if (scenario_uses_rollback(scenario)) {
             (void)rollback_transaction(database);
         }
         goto cleanup;
     }
-    if (scenario->mode == benchmark_execution_write_rollback) {
+    if (scenario_uses_rollback(scenario)) {
         if (rollback_transaction(database) != 0 || begin_transaction(database) != 0) {
             goto cleanup;
         }
@@ -1149,7 +1824,7 @@ static int run_scenario_engine(
             iterations,
             out_measurement
         ) != 0) {
-        if (scenario->mode == benchmark_execution_write_rollback) {
+        if (scenario_uses_rollback(scenario)) {
             (void)rollback_transaction(database);
         }
 #ifdef MYLITE_ENABLE_PROFILING
@@ -1190,8 +1865,7 @@ static int run_scenario_engine(
         );
     }
 #endif
-    if (scenario->mode == benchmark_execution_write_rollback &&
-        rollback_transaction(database) != 0) {
+    if (scenario_uses_rollback(scenario) && rollback_transaction(database) != 0) {
         goto cleanup;
     }
     result = 0;
@@ -1206,6 +1880,22 @@ cleanup:
         result = 1;
     }
     return result;
+}
+
+static const char *scenario_sql(
+    const struct benchmark_database *database,
+    const struct benchmark_scenario *scenario
+) {
+    static const char sqlite_upsert_sql[] =
+        "INSERT INTO upsert_targets (id, value_text) VALUES (?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET value_text = excluded.value_text";
+
+    if (database->kind == benchmark_engine_sqlite &&
+        (scenario->id == benchmark_scenario_upsert_hit ||
+         scenario->id == benchmark_scenario_upsert_miss)) {
+        return sqlite_upsert_sql;
+    }
+    return scenario->sql;
 }
 
 static int run_scenario_phase(
@@ -1248,7 +1938,7 @@ static int execute_scenario_iteration(
     int result = 1;
 
     if (statement == NULL) {
-        if (prepare_statement(database, scenario->sql, &local_statement) != 0) {
+        if (prepare_statement(database, scenario_sql(database, scenario), &local_statement) != 0) {
             return 1;
         }
         statement = &local_statement;
@@ -1272,12 +1962,16 @@ static int execute_scenario_iteration(
         );
         goto cleanup;
     }
-    if (consume_statement(
-            database,
-            statement,
-            scenario->mode == benchmark_execution_write_rollback,
-            measurement
-        ) != 0) {
+    if (scenario->mode == benchmark_execution_expected_error_rollback) {
+        if (consume_expected_error(database, statement, measurement) != 0) {
+            goto cleanup;
+        }
+    } else if (consume_statement(
+                   database,
+                   statement,
+                   scenario_includes_affected_rows(scenario),
+                   measurement
+               ) != 0) {
         goto cleanup;
     }
     result = 0;
@@ -1290,6 +1984,28 @@ cleanup:
 }
 
 static int bind_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+) {
+    if (scenario->id >= benchmark_scenario_result_narrow_small) {
+        return 0;
+    }
+    if (scenario->id == benchmark_scenario_foreign_key_insert ||
+        scenario->id == benchmark_scenario_foreign_key_cascade) {
+        return bind_write_scenario_parameters(statement, scenario, dataset, iteration);
+    }
+    if (scenario->id < benchmark_scenario_selectivity_zero) {
+        return bind_core_scenario_parameters(statement, scenario, dataset, iteration);
+    }
+    if (scenario->id <= benchmark_scenario_skew_cold) {
+        return bind_read_scenario_parameters(statement, scenario, dataset, iteration);
+    }
+    return bind_write_scenario_parameters(statement, scenario, dataset, iteration);
+}
+
+static int bind_core_scenario_parameters(
     struct benchmark_statement *statement,
     const struct benchmark_scenario *scenario,
     const struct benchmark_dataset *dataset,
@@ -1315,12 +2031,11 @@ static int bind_scenario_parameters(
         }
         return rc;
     case benchmark_scenario_full_scan_expression:
+    case benchmark_scenario_group_aggregate:
         return 0;
     case benchmark_scenario_text_expression:
     case benchmark_scenario_indexed_order_limit:
         return bind_text(statement, 0U, "published");
-    case benchmark_scenario_group_aggregate:
-        return 0;
     case benchmark_scenario_parent_join:
         return bind_int64(statement, 0U, (int64_t)(iteration % account_region_count));
     case benchmark_scenario_bridge_join: {
@@ -1338,6 +2053,232 @@ static int bind_scenario_parameters(
     }
     case benchmark_scenario_correlated_exists:
         return bind_int64(statement, 0U, correlated_score_threshold);
+    default:
+        return 1;
+    }
+}
+
+static int bind_read_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+) {
+    size_t pseudo_random = (iteration * score_multiplier) + pseudo_random_increment;
+    int rc = 0;
+
+    switch (scenario->id) {
+    case benchmark_scenario_selectivity_zero:
+        rc = bind_int64(statement, 0U, (int64_t)dataset->row_count + 1);
+        if (rc == 0) {
+            rc = bind_int64(statement, 1U, (int64_t)dataset->row_count);
+        }
+        return rc;
+    case benchmark_scenario_selectivity_one: {
+        int64_t id = (int64_t)((pseudo_random % dataset->row_count) + 1U);
+
+        rc = bind_int64(statement, 0U, id);
+        if (rc == 0) {
+            rc = bind_int64(statement, 1U, id);
+        }
+        return rc;
+    }
+    case benchmark_scenario_selectivity_one_basis_point:
+        return bind_id_range_parameters(statement, iteration, dataset, selectivity_one_basis_point);
+    case benchmark_scenario_selectivity_one_percent:
+        return bind_id_range_parameters(
+            statement,
+            iteration,
+            dataset,
+            selectivity_one_percent_basis_points
+        );
+    case benchmark_scenario_selectivity_ten_percent:
+        return bind_id_range_parameters(
+            statement,
+            iteration,
+            dataset,
+            selectivity_ten_percent_basis_points
+        );
+    case benchmark_scenario_selectivity_full:
+        return bind_id_range_parameters(statement, iteration, dataset, selectivity_basis_points);
+    case benchmark_scenario_covering_range:
+    case benchmark_scenario_noncovering_range:
+        rc = bind_int64(statement, 0U, (int64_t)(iteration % category_count));
+        if (rc == 0) {
+            rc = bind_int64(statement, 1U, score_range_lower);
+        }
+        if (rc == 0) {
+            rc = bind_int64(statement, 2U, score_range_upper);
+        }
+        return rc;
+    case benchmark_scenario_or_lookup:
+        rc = bind_int64(statement, 0U, (int64_t)((pseudo_random % dataset->row_count) + 1U));
+        if (rc == 0) {
+            rc = bind_int64(
+                statement,
+                1U,
+                (int64_t)(((pseudo_random + pseudo_random_increment) % dataset->row_count) + 1U)
+            );
+        }
+        if (rc == 0) {
+            rc = bind_int64(
+                statement,
+                2U,
+                (int64_t)(((pseudo_random +
+                            ((size_t)pseudo_random_increment * or_lookup_third_offset_multiplier)) %
+                           dataset->row_count) +
+                          1U)
+            );
+        }
+        return rc;
+    case benchmark_scenario_deep_offset:
+        rc = bind_int64(statement, 0U, deep_offset_limit);
+        if (rc == 0) {
+            rc = bind_int64(
+                statement,
+                1U,
+                (int64_t)((dataset->row_count * deep_offset_numerator) / deep_offset_denominator)
+            );
+        }
+        return rc;
+    case benchmark_scenario_null_lookup:
+    case benchmark_scenario_unindexed_sort_limit:
+    case benchmark_scenario_high_cardinality_group:
+    case benchmark_scenario_high_cardinality_distinct:
+    case benchmark_scenario_anti_join:
+        return 0;
+    case benchmark_scenario_window_partition:
+        rc = bind_int64(statement, 0U, 1);
+        if (rc == 0) {
+            size_t upper = dataset->account_count < window_partition_account_limit
+                               ? dataset->account_count
+                               : window_partition_account_limit;
+
+            rc = bind_int64(statement, 1U, (int64_t)upper);
+        }
+        return rc;
+    case benchmark_scenario_three_table_join:
+        return bind_int64(statement, 0U, (int64_t)(iteration % account_region_count));
+    case benchmark_scenario_left_join:
+    case benchmark_scenario_large_large_join:
+        return bind_id_range_parameters(
+            statement,
+            iteration,
+            dataset,
+            selectivity_one_percent_basis_points
+        );
+    case benchmark_scenario_skew_hot:
+        return bind_int64(statement, 0U, 0);
+    case benchmark_scenario_skew_cold:
+        return bind_int64(
+            statement,
+            0U,
+            (int64_t)(((iteration * pseudo_random_increment) % skew_tenant_count) + 1U)
+        );
+    default:
+        return 1;
+    }
+}
+
+static int bind_write_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+) {
+    if (scenario->id == benchmark_scenario_foreign_key_insert ||
+        scenario->id == benchmark_scenario_foreign_key_cascade ||
+        scenario->id >= benchmark_scenario_composite_foreign_key_insert) {
+        return bind_foreign_key_scenario_parameters(statement, scenario, dataset, iteration);
+    }
+    size_t pseudo_random = (iteration * score_multiplier) + pseudo_random_increment;
+    int rc = 0;
+
+    switch (scenario->id) {
+    case benchmark_scenario_update_one_basis_point:
+    case benchmark_scenario_delete_one_basis_point:
+        return bind_id_range_parameters(statement, iteration, dataset, selectivity_one_basis_point);
+    case benchmark_scenario_update_one_percent:
+    case benchmark_scenario_delete_one_percent:
+        return bind_id_range_parameters(
+            statement,
+            iteration,
+            dataset,
+            selectivity_one_percent_basis_points
+        );
+    case benchmark_scenario_update_ten_percent:
+        return bind_id_range_parameters(
+            statement,
+            iteration,
+            dataset,
+            selectivity_ten_percent_basis_points
+        );
+    case benchmark_scenario_upsert_hit:
+    case benchmark_scenario_upsert_miss: {
+        char value_text[generated_text_capacity];
+        size_t id = scenario->id == benchmark_scenario_upsert_hit
+                        ? ((pseudo_random % dataset->account_count) + 1U)
+                        : ((dataset->row_count * write_log_id_factor) + iteration + 1U);
+        int written = snprintf(value_text, sizeof(value_text), "updated-%010zu", iteration);
+
+        if (written < 0 || (size_t)written >= sizeof(value_text)) {
+            return 1;
+        }
+        rc = bind_int64(statement, 0U, (int64_t)id);
+        if (rc == 0) {
+            rc = bind_text(statement, 1U, value_text);
+        }
+        return rc;
+    }
+    case benchmark_scenario_insert_index_zero:
+    case benchmark_scenario_insert_index_one:
+    case benchmark_scenario_insert_index_five:
+    case benchmark_scenario_insert_index_ten: {
+        size_t id = (dataset->row_count * write_log_id_factor) + iteration + 1U;
+
+        rc = bind_int64(statement, 0U, (int64_t)id);
+        if (rc == 0) {
+            rc = bind_int64(statement, 1U, (int64_t)(pseudo_random % score_modulus));
+        }
+        if (rc == 0) {
+            rc = bind_int64(statement, 2U, (int64_t)(id % category_count));
+        }
+        return rc;
+    }
+    case benchmark_scenario_insert_batch_ten:
+        for (size_t row = 0U; row < batch_insert_count && rc == 0; ++row) {
+            size_t id = (dataset->row_count * write_log_id_factor) +
+                        (iteration * batch_insert_count) + row + 1U;
+            size_t parameter = row * 3U;
+
+            rc = bind_int64(statement, parameter, (int64_t)id);
+            if (rc == 0) {
+                rc = bind_int64(
+                    statement,
+                    parameter + 1U,
+                    (int64_t)((pseudo_random + row) % score_modulus)
+                );
+            }
+            if (rc == 0) {
+                rc = bind_int64(statement, parameter + 2U, (int64_t)(id % category_count));
+            }
+        }
+        return rc;
+    default:
+        return 1;
+    }
+}
+
+static int bind_foreign_key_scenario_parameters(
+    struct benchmark_statement *statement,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iteration
+) {
+    size_t pseudo_random = (iteration * score_multiplier) + pseudo_random_increment;
+    int rc = 0;
+
+    switch (scenario->id) {
     case benchmark_scenario_foreign_key_insert: {
         char note[generated_text_capacity];
         int written = snprintf(note, sizeof(note), "write-%010zu", iteration);
@@ -1360,8 +2301,59 @@ static int bind_scenario_parameters(
     }
     case benchmark_scenario_foreign_key_cascade:
         return bind_int64(statement, 0U, (int64_t)((pseudo_random % dataset->row_count) + 1U));
+    case benchmark_scenario_composite_foreign_key_insert:
+    case benchmark_scenario_composite_foreign_key_invalid: {
+        size_t parent_id = (pseudo_random % dataset->account_count) + 1U;
+        size_t id = (dataset->row_count * write_log_id_factor) + iteration + 1U;
+
+        rc = bind_int64(statement, 0U, (int64_t)id);
+        if (rc == 0) {
+            rc = bind_int64(statement, 1U, (int64_t)parent_id);
+        }
+        if (rc == 0) {
+            rc = bind_int64(
+                statement,
+                2U,
+                scenario->id == benchmark_scenario_composite_foreign_key_invalid
+                    ? (int64_t)account_region_count
+                    : (int64_t)(parent_id % account_region_count)
+            );
+        }
+        if (rc == 0) {
+            rc = bind_int64(statement, 3U, (int64_t)(pseudo_random % score_modulus));
+        }
+        return rc;
     }
-    return 1;
+    case benchmark_scenario_foreign_key_cascade_fanout:
+    case benchmark_scenario_foreign_key_set_null:
+        return bind_int64(
+            statement,
+            0U,
+            (int64_t)((iteration % fanout_parent_count_for_rows(dataset->row_count)) + 1U)
+        );
+    case benchmark_scenario_foreign_key_restrict:
+        return bind_int64(statement, 0U, (int64_t)fanout_parent_count_for_rows(dataset->row_count));
+    default:
+        return 1;
+    }
+}
+
+static int bind_id_range_parameters(
+    struct benchmark_statement *statement,
+    size_t iteration,
+    const struct benchmark_dataset *dataset,
+    unsigned int basis_points
+) {
+    size_t count = range_count_for_basis_points(dataset->row_count, basis_points);
+    size_t available_starts = dataset->row_count - count + 1U;
+    size_t lower = ((iteration * score_multiplier) % available_starts) + 1U;
+    size_t upper = lower + count - 1U;
+    int rc = bind_int64(statement, 0U, (int64_t)lower);
+
+    if (rc == 0) {
+        rc = bind_int64(statement, 1U, (int64_t)upper);
+    }
+    return rc;
 }
 
 static int consume_statement(
@@ -1374,6 +2366,38 @@ static int consume_statement(
         return consume_mylite_statement(database, statement, include_affected_rows, measurement);
     }
     return consume_sqlite_statement(statement, include_affected_rows, measurement);
+}
+
+static int consume_expected_error(
+    struct benchmark_database *database,
+    struct benchmark_statement *statement,
+    struct benchmark_measurement *measurement
+) {
+    if (statement->kind == benchmark_engine_mylite) {
+        int rc = mylite_stmt_step(statement->mylite);
+
+        if (rc == MYLITE_ROW || rc == MYLITE_DONE) {
+            fprintf(stderr, "large-dataset: MyLite unexpectedly accepted invalid foreign key\n");
+            return 1;
+        }
+        if (mylite_stmt_reset(statement->mylite) != MYLITE_OK) {
+            return 1;
+        }
+    } else {
+        int rc = sqlite3_step(statement->sqlite);
+
+        if (rc == SQLITE_ROW || rc == SQLITE_DONE) {
+            fprintf(
+                stderr,
+                "large-dataset: SQLite unexpectedly accepted invalid foreign key: %s\n",
+                sqlite3_errmsg(database->sqlite)
+            );
+            return 1;
+        }
+        (void)sqlite3_reset(statement->sqlite);
+    }
+    hash_uint64(&measurement->checksum, 1U);
+    return 0;
 }
 
 static int consume_mylite_statement(
@@ -1673,8 +2697,12 @@ static int reset_statement(struct benchmark_statement *statement) {
     if (statement->kind == benchmark_engine_mylite) {
         return mylite_stmt_reset(statement->mylite) == MYLITE_OK ? 0 : 1;
     }
-    if (sqlite3_reset(statement->sqlite) != SQLITE_OK ||
-        sqlite3_clear_bindings(statement->sqlite) != SQLITE_OK) {
+    /*
+     * sqlite3_reset() returns the prior step status. That status was already
+     * checked by the caller and may intentionally be a constraint error.
+     */
+    (void)sqlite3_reset(statement->sqlite);
+    if (sqlite3_clear_bindings(statement->sqlite) != SQLITE_OK) {
         return 1;
     }
     return 0;
@@ -1704,6 +2732,13 @@ static int bind_int64(struct benchmark_statement *statement, size_t index, int64
         return mylite_stmt_bind_int64(statement->mylite, index, value) == MYLITE_OK ? 0 : 1;
     }
     return sqlite3_bind_int64(statement->sqlite, (int)index + 1, value) == SQLITE_OK ? 0 : 1;
+}
+
+static int bind_null(struct benchmark_statement *statement, size_t index) {
+    if (statement->kind == benchmark_engine_mylite) {
+        return mylite_stmt_bind_null(statement->mylite, index) == MYLITE_OK ? 0 : 1;
+    }
+    return sqlite3_bind_null(statement->sqlite, (int)index + 1) == SQLITE_OK ? 0 : 1;
 }
 
 static int bind_text(struct benchmark_statement *statement, size_t index, const char *value) {
@@ -1823,8 +2858,9 @@ static int seed_items(
     if (prepare_statement(
             database,
             "INSERT INTO items "
-            "(id, account_id, category_id, status, score, created_at, title, payload) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(id, account_id, category_id, status, score, created_at, title, payload,"
+            " tenant_id, optional_value) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             &statement
         ) != 0) {
         return 1;
@@ -1877,6 +2913,234 @@ cleanup:
     return result;
 }
 
+static int seed_support_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+) {
+    if (seed_upsert_and_composite_parents(database, dataset) != 0 ||
+        seed_fanout_tables(database, dataset) != 0 ||
+        seed_restrict_tables(database, dataset) != 0 ||
+        seed_set_null_tables(database, dataset) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int seed_upsert_and_composite_parents(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+) {
+    struct benchmark_statement upsert_statement = {0};
+    struct benchmark_statement composite_statement = {0};
+    char value_text[generated_text_capacity];
+    int result = 1;
+
+    if (prepare_statement(
+            database,
+            "INSERT INTO upsert_targets (id, value_text) VALUES (?, ?)",
+            &upsert_statement
+        ) != 0 ||
+        prepare_statement(
+            database,
+            "INSERT INTO composite_parents (id, shard_id, payload) VALUES (?, ?, ?)",
+            &composite_statement
+        ) != 0) {
+        goto cleanup;
+    }
+    for (size_t id = 1U; id <= dataset->account_count; ++id) {
+        int written = snprintf(value_text, sizeof(value_text), "value-%010zu", id);
+
+        if (written < 0 || (size_t)written >= sizeof(value_text) ||
+            reset_statement(&upsert_statement) != 0 ||
+            bind_int64(&upsert_statement, 0U, (int64_t)id) != 0 ||
+            bind_text(&upsert_statement, 1U, value_text) != 0 ||
+            step_write_statement(&upsert_statement) != 0 ||
+            reset_statement(&composite_statement) != 0 ||
+            bind_int64(&composite_statement, 0U, (int64_t)id) != 0 ||
+            bind_int64(&composite_statement, 1U, (int64_t)(id % account_region_count)) != 0 ||
+            bind_int64(&composite_statement, 2U, (int64_t)(id * score_multiplier)) != 0 ||
+            step_write_statement(&composite_statement) != 0) {
+            goto cleanup;
+        }
+    }
+    result = 0;
+
+cleanup:
+    if ((upsert_statement.mylite != NULL || upsert_statement.sqlite != NULL) &&
+        finalize_statement(&upsert_statement) != 0) {
+        result = 1;
+    }
+    if ((composite_statement.mylite != NULL || composite_statement.sqlite != NULL) &&
+        finalize_statement(&composite_statement) != 0) {
+        result = 1;
+    }
+    return result;
+}
+
+static int seed_fanout_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+) {
+    struct benchmark_statement parent_statement = {0};
+    struct benchmark_statement child_statement = {0};
+    size_t parent_count = fanout_parent_count_for_rows(dataset->row_count);
+    int result = 1;
+
+    if (parent_count == 0U) {
+        return 1;
+    }
+    if (prepare_statement(
+            database,
+            "INSERT INTO fanout_parents (id, payload) VALUES (?, ?)",
+            &parent_statement
+        ) != 0 ||
+        prepare_statement(
+            database,
+            "INSERT INTO fanout_children (id, parent_id, payload) VALUES (?, ?, ?)",
+            &child_statement
+        ) != 0) {
+        goto cleanup;
+    }
+    for (size_t id = 1U; id <= parent_count; ++id) {
+        if (reset_statement(&parent_statement) != 0 ||
+            bind_int64(&parent_statement, 0U, (int64_t)id) != 0 ||
+            bind_int64(&parent_statement, 1U, (int64_t)(id * score_multiplier)) != 0 ||
+            step_write_statement(&parent_statement) != 0) {
+            goto cleanup;
+        }
+    }
+    for (size_t id = 1U; id <= dataset->row_count; ++id) {
+        size_t parent_id = ((id - 1U) % parent_count) + 1U;
+
+        if (reset_statement(&child_statement) != 0 ||
+            bind_int64(&child_statement, 0U, (int64_t)id) != 0 ||
+            bind_int64(&child_statement, 1U, (int64_t)parent_id) != 0 ||
+            bind_int64(&child_statement, 2U, (int64_t)(id % score_modulus)) != 0 ||
+            step_write_statement(&child_statement) != 0) {
+            goto cleanup;
+        }
+    }
+    result = 0;
+
+cleanup:
+    if ((parent_statement.mylite != NULL || parent_statement.sqlite != NULL) &&
+        finalize_statement(&parent_statement) != 0) {
+        result = 1;
+    }
+    if ((child_statement.mylite != NULL || child_statement.sqlite != NULL) &&
+        finalize_statement(&child_statement) != 0) {
+        result = 1;
+    }
+    return result;
+}
+
+static int seed_restrict_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+) {
+    struct benchmark_statement parent_statement = {0};
+    struct benchmark_statement child_statement = {0};
+    size_t parent_count = fanout_parent_count_for_rows(dataset->row_count);
+    int result = 1;
+
+    if (parent_count == 0U) {
+        return 1;
+    }
+    if (prepare_statement(
+            database,
+            "INSERT INTO restrict_parents (id) VALUES (?)",
+            &parent_statement
+        ) != 0 ||
+        prepare_statement(
+            database,
+            "INSERT INTO restrict_children (id, parent_id) VALUES (?, ?)",
+            &child_statement
+        ) != 0) {
+        goto cleanup;
+    }
+    for (size_t id = 1U; id <= parent_count; ++id) {
+        if (reset_statement(&parent_statement) != 0 ||
+            bind_int64(&parent_statement, 0U, (int64_t)id) != 0 ||
+            step_write_statement(&parent_statement) != 0) {
+            goto cleanup;
+        }
+        if (id < parent_count && (reset_statement(&child_statement) != 0 ||
+                                  bind_int64(&child_statement, 0U, (int64_t)id) != 0 ||
+                                  bind_int64(&child_statement, 1U, (int64_t)id) != 0 ||
+                                  step_write_statement(&child_statement) != 0)) {
+            goto cleanup;
+        }
+    }
+    result = 0;
+
+cleanup:
+    if ((parent_statement.mylite != NULL || parent_statement.sqlite != NULL) &&
+        finalize_statement(&parent_statement) != 0) {
+        result = 1;
+    }
+    if ((child_statement.mylite != NULL || child_statement.sqlite != NULL) &&
+        finalize_statement(&child_statement) != 0) {
+        result = 1;
+    }
+    return result;
+}
+
+static int seed_set_null_tables(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset
+) {
+    struct benchmark_statement parent_statement = {0};
+    struct benchmark_statement child_statement = {0};
+    size_t parent_count = fanout_parent_count_for_rows(dataset->row_count);
+    int result = 1;
+
+    if (parent_count == 0U) {
+        return 1;
+    }
+    if (prepare_statement(
+            database,
+            "INSERT INTO set_null_parents (id) VALUES (?)",
+            &parent_statement
+        ) != 0 ||
+        prepare_statement(
+            database,
+            "INSERT INTO set_null_children (id, parent_id, payload) VALUES (?, ?, ?)",
+            &child_statement
+        ) != 0) {
+        goto cleanup;
+    }
+    for (size_t id = 1U; id <= parent_count; ++id) {
+        if (reset_statement(&parent_statement) != 0 ||
+            bind_int64(&parent_statement, 0U, (int64_t)id) != 0 ||
+            step_write_statement(&parent_statement) != 0) {
+            goto cleanup;
+        }
+    }
+    for (size_t id = 1U; id <= dataset->row_count; ++id) {
+        size_t parent_id = ((id - 1U) % parent_count) + 1U;
+
+        if (reset_statement(&child_statement) != 0 ||
+            bind_int64(&child_statement, 0U, (int64_t)id) != 0 ||
+            bind_int64(&child_statement, 1U, (int64_t)parent_id) != 0 ||
+            bind_int64(&child_statement, 2U, (int64_t)(id % score_modulus)) != 0 ||
+            step_write_statement(&child_statement) != 0) {
+            goto cleanup;
+        }
+    }
+    result = 0;
+
+cleanup:
+    if ((parent_statement.mylite != NULL || parent_statement.sqlite != NULL) &&
+        finalize_statement(&parent_statement) != 0) {
+        result = 1;
+    }
+    if ((child_statement.mylite != NULL || child_statement.sqlite != NULL) &&
+        finalize_statement(&child_statement) != 0) {
+        result = 1;
+    }
+    return result;
+}
+
 static int insert_account(struct benchmark_statement *statement, size_t account_id, size_t region) {
     char name[generated_text_capacity];
     int written = snprintf(name, sizeof(name), "account-%010zu", account_id);
@@ -1910,6 +3174,8 @@ static int insert_item(
     char payload[generated_text_capacity];
     size_t account_id = ((item_id - 1U) % dataset->account_count) + 1U;
     size_t category_id = item_id % category_count;
+    size_t tenant_id =
+        item_id <= dataset->row_count / 2U ? 0U : ((item_id % skew_tenant_count) + 1U);
     int64_t score = (int64_t)((item_id * score_multiplier) % score_modulus);
     int title_written = snprintf(title, sizeof(title), "item-%010zu", item_id);
     int payload_written = snprintf(
@@ -1933,7 +3199,11 @@ static int insert_item(
             (int64_t)(seed_timestamp_base + (item_id % seconds_per_year))
         ) != 0 ||
         bind_text(statement, item_title_parameter, title) != 0 ||
-        bind_text(statement, item_payload_parameter, payload) != 0) {
+        bind_text(statement, item_payload_parameter, payload) != 0 ||
+        bind_int64(statement, item_tenant_parameter, (int64_t)tenant_id) != 0 ||
+        (item_id % null_value_interval == 0U
+             ? bind_null(statement, item_optional_parameter)
+             : bind_int64(statement, item_optional_parameter, score)) != 0) {
         return 1;
     }
     return step_write_statement(statement);
@@ -2092,6 +3362,8 @@ static const char *mode_name(enum benchmark_execution_mode mode) {
         return "prepared";
     case benchmark_execution_write_rollback:
         return "write_rollback";
+    case benchmark_execution_expected_error_rollback:
+        return "expected_error_rollback";
     }
     return "unknown";
 }
@@ -2109,6 +3381,37 @@ static size_t tag_count_for_rows(size_t row_count) {
         return minimum_tag_count;
     }
     return count > maximum_tag_count ? maximum_tag_count : count;
+}
+
+static size_t fanout_parent_count_for_rows(size_t row_count) {
+    return row_count < fanout_parent_count ? row_count : fanout_parent_count;
+}
+
+static size_t range_count_for_basis_points(size_t row_count, size_t basis_points) {
+    size_t count = (row_count * basis_points) / selectivity_basis_points;
+
+    return count == 0U ? 1U : count;
+}
+
+static bool scenario_includes_affected_rows(const struct benchmark_scenario *scenario) {
+    if (!scenario_uses_rollback(scenario) ||
+        scenario->mode == benchmark_execution_expected_error_rollback) {
+        return false;
+    }
+
+    /*
+     * MySQL reports two affected rows for a changed duplicate-key update while
+     * SQLite reports one. Both paths are verified by successful execution and
+     * transaction rollback, so affected-row comparison is intentionally omitted
+     * only for the two cross-dialect UPSERT scenarios.
+     */
+    return scenario->id != benchmark_scenario_upsert_hit &&
+           scenario->id != benchmark_scenario_upsert_miss;
+}
+
+static bool scenario_uses_rollback(const struct benchmark_scenario *scenario) {
+    return scenario->mode == benchmark_execution_write_rollback ||
+           scenario->mode == benchmark_execution_expected_error_rollback;
 }
 
 static size_t scenario_iterations(

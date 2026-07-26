@@ -10,6 +10,7 @@ phpunit_tools_dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR:-${root_dir}/build/wordp
 cmake_build_dir="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR:-${root_dir}/build/wordpress-php-mylite}"
 cmake_build_type="${MYLITE_WORDPRESS_CMAKE_BUILD_TYPE:-Release}"
 db_path="${MYLITE_WORDPRESS_DB_PATH:-${root_dir}/build/wordpress-tests.mylite}"
+large_db_path="${MYLITE_WORDPRESS_LARGE_DB_PATH:-${root_dir}/build/wordpress-large-benchmark.mylite}"
 container_root="/work"
 container_wordpress_dir="${container_root}${wordpress_dir#"${root_dir}"}"
 container_phpunit_tools_dir="${container_root}${phpunit_tools_dir#"${root_dir}"}"
@@ -32,6 +33,7 @@ container_path_for() {
 }
 
 container_db_path="$(container_path_for "${db_path}")"
+container_large_db_path="$(container_path_for "${large_db_path}")"
 container_mysqli_profile="${MYLITE_MYSQLI_PROFILE:-}"
 if [[ -n "${container_mysqli_profile}" ]]; then
   container_mysqli_profile="$(container_path_for "${container_mysqli_profile}")"
@@ -78,6 +80,8 @@ Commands:
   build                 Build the Docker image and full PHPUnit environment.
   test                  Run the WordPress PHPUnit test suite.
   run                   Build the environment, then run the WordPress PHPUnit test suite.
+  benchmark-large       Run the large WordPress/wpdb benchmark in an existing environment.
+  benchmark-large-run   Build the environment, then run the large WordPress/wpdb benchmark.
 USAGE
 }
 
@@ -93,6 +97,7 @@ run_container() {
     -e MYLITE_WORDPRESS_CMAKE_BUILD_DIR="${container_cmake_build_dir}" \
     -e MYLITE_WORDPRESS_CMAKE_BUILD_TYPE="${cmake_build_type}" \
     -e MYLITE_WORDPRESS_DB_PATH="${container_db_path}" \
+    -e MYLITE_WORDPRESS_LARGE_DB_PATH="${container_large_db_path}" \
     -e MYLITE_MYSQLI_PROFILE="${container_mysqli_profile}" \
     -e MYLITE_MYSQLI_PROFILE_LIMIT="${MYLITE_MYSQLI_PROFILE_LIMIT:-}" \
     -v "${root_dir}:${container_root}" \
@@ -296,6 +301,21 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
   return "${suite_status}"
 }
 
+run_wordpress_large_benchmark() {
+  require_executable "${php_wrapper}"
+  benchmark_script="/work/packages/php-ext-mysqli-mylite/benchmarks/wordpress_large_dataset.php"
+  if [ ! -f "${benchmark_script}" ]; then
+    printf '%s\n' "missing benchmark script: ${benchmark_script}" >&2
+    exit 1
+  fi
+
+  phase "Run WordPress large-dataset benchmark"
+  "${php_wrapper}" "${benchmark_script}" \
+    --database "${MYLITE_WORDPRESS_LARGE_DB_PATH}" \
+    --wordpress-dir "${MYLITE_WORDPRESS_DIR}" \
+    "$@"
+}
+
 case "${container_phase}" in
   fetch-wordpress)
     fetch_wordpress_develop
@@ -312,6 +332,9 @@ case "${container_phase}" in
   test)
     run_wordpress_phpunit_suite "$@"
     ;;
+  benchmark-large)
+    run_wordpress_large_benchmark "$@"
+    ;;
   *)
     printf 'unknown WordPress PHPUnit phase: %s\n' "${container_phase}" >&2
     exit 2
@@ -323,7 +346,7 @@ CONTAINER
 command="run"
 if [ "$#" -gt 0 ]; then
   case "$1" in
-    image|fetch-wordpress|build-extensions|install-dependencies|build|test|run)
+    image|fetch-wordpress|build-extensions|install-dependencies|build|test|run|benchmark-large|benchmark-large-run)
       command="$1"
       shift
       ;;
@@ -355,6 +378,13 @@ case "${command}" in
     ;;
   test)
     run_container test "$@"
+    ;;
+  benchmark-large)
+    run_container benchmark-large "$@"
+    ;;
+  benchmark-large-run)
+    build_image
+    run_container build && run_container benchmark-large "$@"
     ;;
   run)
     build_image

@@ -128,6 +128,10 @@ jobs:
       - name: Test
         run: ctest --preset ci --output-on-failure --output-junit build/ci/ctest.xml
 
+      - name: Test large-dataset benchmark harnesses
+        if: matrix.name == 'ubuntu-clang'
+        run: cmake --build --preset ci --target mylite_large_dataset_benchmark_check
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -364,6 +368,7 @@ jobs:
       MYLITE_WORDPRESS_REF: 6ddfc9d9b532c6e95c1266165149815895e2eb56
       MYLITE_WORDPRESS_CMAKE_BUILD_TYPE: Release
       MYLITE_WORDPRESS_DB_PATH: /dev/shm/mylite-wordpress-tests.mylite
+      MYLITE_WORDPRESS_LARGE_DB_PATH: /dev/shm/mylite-wordpress-large.mylite
       MYLITE_MYSQLI_PROFILE: build/wordpress-mysqli-profile.log
       MYLITE_MYSQLI_PROFILE_LIMIT: 20
 
@@ -391,16 +396,34 @@ jobs:
       - name: Run full WordPress PHPUnit test suite
         run: tools/wordpress-phpunit-mysqli-mylite test
 
+      - name: Test WordPress large-dataset benchmark harness
+        run: |
+          tools/wordpress-phpunit-mysqli-mylite benchmark-large \
+            --posts 1000 \
+            --meta-per-post 2 \
+            --samples 1 \
+            --iterations 2 \
+            --output /work/build/wordpress-large-dataset-smoke.csv
+
       - name: Show generated artifact sizes
         if: always()
         run: |
           du -sh \
             build/wordpress-tests.mylite \
+            build/wordpress-large-dataset-smoke.csv \
             build/wordpress-develop \
             build/wordpress-phpunit-tools \
             build/wordpress-php-mylite \
             2>/dev/null || true
           df -h .
+
+      - name: Upload WordPress benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wordpress-large-dataset-smoke
+          path: build/wordpress-large-dataset-smoke.csv
+          if-no-files-found: ignore
 
   drupal-phpunit:
     name: drupal-phpunit-mysqli-mylite

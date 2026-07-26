@@ -59,10 +59,11 @@ does not use PHP, WordPress, or the PHP extensions.
 
 ## Large-Dataset MyLite/SQLite Qualification
 
-The opt-in large-dataset suite creates equivalent deterministic MyLite and
-bundled-SQLite databases, verifies result hashes, and compares indexed reads,
-scans, expressions, grouping, ordering, joins, correlated subqueries, foreign
-keys, and writes:
+The opt-in large-dataset suites create equivalent deterministic MyLite and
+bundled-SQLite databases, verify result hashes and write outcomes, and exercise
+57 native scenarios across selectivity, scans, temporary work, join topology,
+writes, foreign-key fan-out, skew, result transfer, concurrency, and storage
+lifecycle:
 
 ```sh
 cmake --preset ci
@@ -72,14 +73,66 @@ build/ci/packages/libmylite/mylite_large_dataset_benchmark \
   --rows 100000 \
   --samples 5 \
   --warmup 1 \
-  --database-dir build/perf-data \
+  --database-base build/perf-data/dataset-100000 \
+  --keep-databases \
   --output build/perf-data/large-dataset-100000.csv
 ```
 
-The smoke target uses 1,000 rows and does not run the expensive qualification.
-Use `--list` to inspect scenarios and default iterations. The methodology,
-fairness boundaries, investigation thresholds, and current measurements are in
-[large-dataset-qualification-2026-07.md](large-dataset-qualification-2026-07.md).
+Seed once and reuse the same verified database pair for focused runs:
+
+```sh
+build/ci/packages/libmylite/mylite_large_dataset_benchmark \
+  --rows 1000000 \
+  --database-base build/perf-data/dataset-1000000 \
+  --seed-only
+
+build/ci/packages/libmylite/mylite_large_dataset_benchmark \
+  --rows 1000000 \
+  --database-base build/perf-data/dataset-1000000 \
+  --reuse-databases \
+  --analyze \
+  --scenario skew_hot_tenant \
+  --samples 7 \
+  --output build/perf-data/skew-hot-1000000.csv
+
+build/ci/packages/libmylite/mylite_large_dataset_system_benchmark \
+  --rows 1000000 \
+  --database-base build/perf-data/dataset-1000000 \
+  --iterations 100 \
+  --output build/perf-data/system-1000000.csv
+```
+
+`--analyze` runs `ANALYZE TABLE` for MyLite and equivalent SQLite `ANALYZE`
+commands before measurement. `--reuse-databases` verifies the requested
+cardinality and support-table counts before running. The system benchmark
+requires a retained pair and uses independent handles and disposable copies for
+reopen, concurrency, delete, and reclaim scenarios.
+
+The PHP boundary has a separate benchmark that loads the pinned real
+`class-wpdb.php`, seeds WordPress-shaped posts, postmeta, and taxonomy tables,
+and compares `wpdb`, buffered mysqli, and streaming mysqli result paths:
+
+```sh
+MYLITE_WORDPRESS_LARGE_DB_PATH="$PWD/build/perf-data/wp-100000.mylite" \
+  tools/wordpress-phpunit-mysqli-mylite benchmark-large-run \
+    --posts 100000 \
+    --meta-per-post 2 \
+    --samples 5 \
+    --iterations 20 \
+    --output /work/build/perf-data/wordpress-100000.csv
+```
+
+Use `benchmark-large` instead of `benchmark-large-run` when the WordPress and
+extension environment already exists. Pass `--reuse` to measure an existing
+verified fixture and `--seed-only` to prepare one without timing queries.
+
+The smoke target uses 1,000 rows, executes all native scenarios for both
+engines, and runs the system suite. CI also runs a 1,000-post real-`wpdb`
+smoke. Use `--list` to inspect native scenario defaults. The initial
+qualification is in
+[large-dataset-qualification-2026-07.md](large-dataset-qualification-2026-07.md);
+the expanded methodology and final 100K/500K/1M results are in
+[large-dataset-extended-qualification-2026-07.md](large-dataset-extended-qualification-2026-07.md).
 
 `runtime.wp_frontend_request` executes six representative WordPress frontend
 reads per iteration. `runtime.wp_medium_frontend_request` uses nine WordPress

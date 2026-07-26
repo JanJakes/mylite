@@ -6,7 +6,6 @@
 #include "sqlite3.h"
 
 #include <float.h>
-#include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -16,6 +15,7 @@
 
 enum {
     approximate_numeric_text_capacity = DBL_MAX_10_EXP + 34,
+    maximum_int64_decimal_digits = 20,
 };
 
 static int result_row_storage_reserve(
@@ -39,6 +39,7 @@ static int read_sqlite_integer_result_cell(
     size_t text_capacity,
     struct mylite_result_cell *out_value
 );
+static bool format_int64_decimal(int64_t value, char *text, size_t text_capacity, size_t *out_size);
 static int read_sqlite_float_result_cell(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -269,22 +270,58 @@ static int read_sqlite_integer_result_cell(
     size_t text_capacity,
     struct mylite_result_cell *out_value
 ) {
-    int written = snprintf(
-        text,
-        text_capacity,
-        "%" PRId64,
-        (int64_t)sqlite3_column_int64(statement, (int)column_index)
-    );
+    size_t written = 0U;
 
-    if (written < 0 || (size_t)written >= text_capacity) {
+    if (!format_int64_decimal(
+            (int64_t)sqlite3_column_int64(statement, (int)column_index),
+            text,
+            text_capacity,
+            &written
+        )) {
         return MYLITE_ERROR;
     }
     *out_value = (struct mylite_result_cell){
         .bytes = text,
-        .size = (size_t)written,
+        .size = written,
         .is_null = false,
     };
     return MYLITE_OK;
+}
+
+static bool format_int64_decimal(
+    int64_t value,
+    char *text,
+    size_t text_capacity,
+    size_t *out_size
+) {
+    char reversed[maximum_int64_decimal_digits];
+    uint64_t magnitude = 0U;
+    size_t digit_count = 0U;
+    size_t output_size = 0U;
+    bool negative = value < 0;
+
+    if (text == NULL || out_size == NULL) {
+        return false;
+    }
+    magnitude = negative ? (uint64_t)(-(value + 1)) + UINT64_C(1) : (uint64_t)value;
+    do {
+        reversed[digit_count++] = (char)('0' + (magnitude % UINT64_C(10)));
+        magnitude /= UINT64_C(10);
+    } while (magnitude != 0U);
+
+    output_size = digit_count + (negative ? 1U : 0U);
+    if (output_size >= text_capacity) {
+        return false;
+    }
+    if (negative) {
+        text[0] = '-';
+    }
+    for (size_t index = 0U; index < digit_count; ++index) {
+        text[output_size - index - 1U] = reversed[index];
+    }
+    text[output_size] = '\0';
+    *out_size = output_size;
+    return true;
 }
 
 static int read_sqlite_float_result_cell(

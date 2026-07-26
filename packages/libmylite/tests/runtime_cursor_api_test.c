@@ -62,6 +62,7 @@ struct native_prepared_binding {
 };
 
 static int test_cursor_select_streams_rows_and_metadata(void);
+static int test_cursor_integer_text_boundaries(void);
 static int test_cursor_keeps_borrowed_metadata_across_invalidation(void);
 static int test_key_metadata_cache_uses_lru_replacement(void);
 static int test_metadata_caches_enforce_byte_budgets(void);
@@ -115,6 +116,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_cursor_select_streams_rows_and_metadata();
+    failures += test_cursor_integer_text_boundaries();
     failures += test_cursor_keeps_borrowed_metadata_across_invalidation();
     failures += test_key_metadata_cache_uses_lru_replacement();
     failures += test_metadata_caches_enforce_byte_budgets();
@@ -133,6 +135,68 @@ int main(void) {
     failures += test_materialized_cursor_does_not_overwrite_later_statement_state();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_cursor_integer_text_boundaries(void) {
+    static const char *const expected_values[] = {
+        "0",
+        "1",
+        "-1",
+        "9223372036854775807",
+        "-9223372036854775808",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open cursor integer boundaries"
+    );
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE integer_values (id INT, v BIGINT)");
+    failures += execute_ok(
+        database,
+        "INSERT INTO integer_values VALUES "
+        "(1, 0), (2, 1), (3, -1), "
+        "(4, 9223372036854775807), (5, -9223372036854775808)"
+    );
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT v FROM integer_values ORDER BY id",
+            strlen("SELECT v FROM integer_values ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare cursor integer boundaries"
+    );
+    for (size_t index = 0U; index < sizeof(expected_values) / sizeof(expected_values[0]); ++index) {
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_ROW,
+            "step cursor integer boundary"
+        );
+        failures +=
+            expect_cursor_text(stmt, 0U, expected_values[index], "cursor integer boundary text");
+        failures += mylite_test_expect_size(
+            mylite_stmt_value_size(stmt, 0U),
+            strlen(expected_values[index]),
+            "cursor integer boundary size"
+        );
+    }
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "finish integer boundaries");
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize integer boundaries"
+    );
+
+    mylite_close(database);
+    return failures;
 }
 
 static int test_streaming_cursor_reports_select_row_count(void) {

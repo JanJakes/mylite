@@ -19,6 +19,7 @@ enum mylite_collation_level {
 enum {
     invalid_utf8_weight_base = 0x110000,
     compatibility_secondary_weight_base = 0x120000,
+    ascii_code_point_limit = 0x80,
 };
 
 static const uint32_t collation_key_level_separator = UINT32_MAX;
@@ -44,6 +45,14 @@ static int compare_binary(
     size_t left_size,
     const unsigned char *right,
     size_t right_size
+);
+static bool compare_ascii(
+    enum mylite_collation_kind kind,
+    const unsigned char *left,
+    size_t left_size,
+    const unsigned char *right,
+    size_t right_size,
+    int *out_result
 );
 static int compare_unicode_level(
     enum mylite_collation_level level,
@@ -142,6 +151,9 @@ int mylite_collation_compare(
     }
     if (kind == MYLITE_COLLATION_BINARY) {
         return compare_binary(left_bytes, left_size, right_bytes, right_size);
+    }
+    if (compare_ascii(kind, left_bytes, left_size, right_bytes, right_size, &result)) {
+        return result;
     }
 
     result = compare_unicode_level(
@@ -253,6 +265,69 @@ static int compare_binary(
         return -1;
     }
     return left_size > right_size ? 1 : 0;
+}
+
+static bool compare_ascii(
+    enum mylite_collation_kind kind,
+    const unsigned char *left,
+    size_t left_size,
+    const unsigned char *right,
+    size_t right_size,
+    int *out_result
+) {
+    size_t shared_size = left_size < right_size ? left_size : right_size;
+
+    for (size_t index = 0U; index < shared_size; ++index) {
+        unsigned char left_byte = left[index];
+        unsigned char right_byte = right[index];
+        unsigned char left_folded = 0U;
+        unsigned char right_folded = 0U;
+
+        if (left_byte >= ascii_code_point_limit || right_byte >= ascii_code_point_limit) {
+            return false;
+        }
+        left_folded = ascii_fold(left_byte);
+        right_folded = ascii_fold(right_byte);
+        if (left_folded < right_folded) {
+            *out_result = -1;
+            return true;
+        }
+        if (left_folded > right_folded) {
+            *out_result = 1;
+            return true;
+        }
+    }
+    for (size_t index = shared_size; index < left_size; ++index) {
+        if (left[index] >= ascii_code_point_limit) {
+            return false;
+        }
+    }
+    for (size_t index = shared_size; index < right_size; ++index) {
+        if (right[index] >= ascii_code_point_limit) {
+            return false;
+        }
+    }
+    if (left_size != right_size) {
+        *out_result = left_size < right_size ? -1 : 1;
+        return true;
+    }
+    if (kind == MYLITE_COLLATION_UTF8MB4_0900_AS_CS) {
+        for (size_t index = 0U; index < shared_size; ++index) {
+            unsigned int left_weight = ascii_fold(left[index]) == left[index] ? 1U : 2U;
+            unsigned int right_weight = ascii_fold(right[index]) == right[index] ? 1U : 2U;
+
+            if (left_weight < right_weight) {
+                *out_result = -1;
+                return true;
+            }
+            if (left_weight > right_weight) {
+                *out_result = 1;
+                return true;
+            }
+        }
+    }
+    *out_result = 0;
+    return true;
 }
 
 static int compare_unicode_level(

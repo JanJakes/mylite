@@ -79,26 +79,32 @@ manifest gains:
 
 Raw samples, robust statistics, revisions, and environment metadata remain
 artifacts. Tool tests verify manifest parsing, threshold failures, noisy-run
-rejection, and the new scenario kinds. Large-dataset runs remain scheduled
-qualification artifacts rather than per-PR gates because hosted-runner cost and
-variance are too high for a reliable million-row PR threshold.
+rejection, new baseline-only scenarios, missing candidate scenarios, and the
+new scenario kinds. A weekly and manually configurable large-dataset job runs
+the complete native and system suites at 100,000 rows by default. These runs
+remain qualification artifacts rather than per-PR gates because hosted-runner
+cost and variance are too high for a reliable large-dataset absolute threshold.
 
 ## Prepared DML Results
 
-Paired Release builds from the same checkout and host used 5,000 iterations
-for UPDATE and 3,000 for INSERT and DELETE, with two warmups and seven samples.
-Only the benchmark scenario declarations were added to the baseline build.
+Paired Release builds used Clang 19.1.7 on the same host, with the candidate
+compared against a baseline containing only the benchmark scenario
+declarations. The ABBA run collected 18 samples per revision after five
+warmups, using 7,500 operations per UPDATE and DELETE sample and 4,500 per
+INSERT sample.
 
 | Scenario | Baseline median | Retained-plan median | Change |
 | --- | ---: | ---: | ---: |
-| `runtime.wp_prepared_update` | 72.204 us | 61.218 us | -15.2% |
-| `runtime.wp_prepared_insert` | 203.434 us | 172.191 us | -15.4% |
-| `runtime.wp_prepared_delete` | 69.088 us | 56.457 us | -18.3% |
+| `runtime.wp_prepared_update` | 68.184 us | 67.290 us | -1.3% |
+| `runtime.wp_prepared_insert` | 190.999 us | 170.205 us | -10.9% |
+| `runtime.wp_prepared_delete` | 65.886 us | 56.873 us | -13.7% |
 
 Profiling confirms 100 cache hits per 100 measured executions for each
 scenario, with zero normalization, parse, or DML-plan builds. Parameterized
 arithmetic and parameter conversions that materialize values during planning
-remain on the full-planning path.
+remain on the full-planning path. UPDATE plan reuse removes repeated planning,
+but that work is not a material share of this Clang-built scenario's
+end-to-end latency.
 
 ## Reopen Results
 
@@ -115,6 +121,14 @@ generation or cookie mismatches, migrations, catalog trigger changes, and
 physical DDL run the complete catalog/physical-schema validator under
 `BEGIN IMMEDIATE`. The seal is published only after successful validation.
 
+## Automation Validation
+
+The scheduled-job command was exercised locally at its 100,000-row default.
+It produced 469 native CSV records, 62 complete paired summaries covering five
+load phases and all 57 scenarios, and ten system rows covering five scenarios
+on both engines. The CSV validator accepted all pairs; no checksum,
+operation-count, worker-error, or row-count mismatch occurred.
+
 ## Tasks
 
 - [x] Add retained DML analysis ownership, matching, and teardown.
@@ -127,7 +141,7 @@ physical DDL run the complete catalog/physical-schema validator under
 - [x] Publish the seal atomically after trusted catalog changes or full validation.
 - [x] Add clean reopen, tamper, migration, rollback, and external-DDL tests.
 - [x] Measure open-only and reopen-plus-query costs.
-- [ ] Extend paired performance scenarios and tooling tests.
-- [ ] Add scheduled large-dataset evidence without noisy absolute gates.
+- [x] Extend paired performance scenarios and tooling tests.
+- [x] Add scheduled large-dataset evidence without noisy absolute gates.
 - [ ] Run focused, full, sanitizer, static-analysis, and workflow validation.
 - [ ] Review ownership, invalidation, diagnostics, compatibility, and cleanup.

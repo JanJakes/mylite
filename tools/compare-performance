@@ -95,6 +95,25 @@ def parse_recovery_scenario(scenario):
     return shape, depth
 
 
+def list_benchmark_scenarios(binary):
+    result = subprocess.run(
+        [str(binary), "--list"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("failed to list scenarios from {}".format(binary))
+    scenarios = {
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    if not scenarios:
+        raise RuntimeError("benchmark reported no scenarios from {}".format(binary))
+    return scenarios
+
+
 def run_benchmark(binary, row, role, pass_index, output_dir):
     if row["kind"] == "recovery":
         _, depth = parse_recovery_scenario(row["scenario"])
@@ -257,6 +276,22 @@ def compare_scenario(row, baseline_values, candidate_values):
     }
 
 
+def report_new_scenario(row, candidate_values):
+    return {
+        "scenario": row["scenario"],
+        "kind": row["kind"],
+        "status": "new",
+        "reason": "baseline benchmark does not provide this scenario",
+        "regression_percent": None,
+        "base_tolerance_percent": row["max_regression_percent"],
+        "statistical_allowance_percent": None,
+        "allowed_regression_percent": None,
+        "max_noise_percent": row["max_noise_percent"],
+        "baseline": None,
+        "candidate": summarize_samples(candidate_values),
+    }
+
+
 def write_reports(output_dir, results):
     (output_dir / "summary.json").write_text(
         json.dumps({"results": results}, indent=2, sort_keys=True) + "\n",
@@ -266,19 +301,27 @@ def write_reports(output_dir, results):
         "scenario\tstatus\tbaseline_median_us\tcandidate_median_us\tregression\tallowed\tnoise"
     ]
     for result in results:
-        noise = max(
-            result["baseline"]["scaled_relative_mad_percent"],
-            result["candidate"]["scaled_relative_mad_percent"],
-        )
-        lines.append("{}\t{}\t{:.3f}\t{:.3f}\t{:.2f}%\t{:.2f}%\t{:.2f}%".format(
-            result["scenario"],
-            result["status"],
-            result["baseline"]["median_us"],
-            result["candidate"]["median_us"],
-            result["regression_percent"],
-            result["allowed_regression_percent"],
-            noise,
-        ))
+        if result["baseline"] is None:
+            lines.append("{}\t{}\tn/a\t{:.3f}\tn/a\tn/a\t{:.2f}%".format(
+                result["scenario"],
+                result["status"],
+                result["candidate"]["median_us"],
+                result["candidate"]["scaled_relative_mad_percent"],
+            ))
+        else:
+            noise = max(
+                result["baseline"]["scaled_relative_mad_percent"],
+                result["candidate"]["scaled_relative_mad_percent"],
+            )
+            lines.append("{}\t{}\t{:.3f}\t{:.3f}\t{:.2f}%\t{:.2f}%\t{:.2f}%".format(
+                result["scenario"],
+                result["status"],
+                result["baseline"]["median_us"],
+                result["candidate"]["median_us"],
+                result["regression_percent"],
+                result["allowed_regression_percent"],
+                noise,
+            ))
     (output_dir / "summary.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -314,9 +357,43 @@ def main():
                 if not resolved.is_file():
                     raise RuntimeError("{} recovery benchmark is not a file".format(role))
                 binaries[role]["recovery"] = resolved
+        benchmark_scenarios = {
+            role: list_benchmark_scenarios(role_binaries["default"])
+            for role, role_binaries in binaries.items()
+        }
+        candidate_missing = [
+            row["scenario"]
+            for row in rows
+            if row["kind"] != "recovery"
+            and row["scenario"] not in benchmark_scenarios["candidate"]
+        ]
+        if candidate_missing:
+            raise RuntimeError(
+                "candidate benchmark does not provide manifest scenarios: {}".format(
+                    ", ".join(candidate_missing)
+                )
+            )
         options.output_dir.mkdir(parents=True, exist_ok=True)
         results = []
         for row in rows:
+            if (
+                row["kind"] != "recovery"
+                and row["scenario"] not in benchmark_scenarios["baseline"]
+            ):
+                candidate_values = run_benchmark(
+                    binaries["candidate"]["default"],
+                    row,
+                    "candidate",
+                    1,
+                    options.output_dir,
+                )
+                result = report_new_scenario(row, candidate_values)
+                results.append(result)
+                print("{}: new (candidate median {:.3f} us)".format(
+                    row["scenario"],
+                    result["candidate"]["median_us"],
+                ), flush=True)
+                continue
             values = {"baseline": [], "candidate": []}
             binary_key = "recovery" if row["kind"] == "recovery" else "default"
             sequence = (("baseline", 1), ("candidate", 1), ("candidate", 2), ("baseline", 2))
@@ -342,14 +419,14 @@ def main():
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
         return fail(str(error))
 
-    failures = [result for result in results if result["status"] != "pass"]
+    failures = [result for result in results if result["status"] == "fail"]
     if failures:
         for result in failures:
             print("compare-performance: {}: {}".format(
                 result["scenario"], result["reason"]
             ), file=sys.stderr)
         return 1
-    print("compare-performance: all performance thresholds passed")
+    print("compare-performance: all comparable performance thresholds passed")
     return 0
 
 

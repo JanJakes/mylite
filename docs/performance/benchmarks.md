@@ -298,6 +298,13 @@ and CPU model are retained for 90 days. Only paired measurements are treated as
 regression evidence; absolute values from different hosted runners are history,
 not directly comparable baselines.
 
+The weekly and manually dispatched workflow also runs all 57 native
+large-dataset scenarios at 100,000 rows, followed by the reopen, concurrency,
+and storage-lifecycle system suite. Manual runs accept 1,000 through 1,000,000
+rows. The job retains raw CSV and paired MyLite/SQLite summaries for 90 days.
+Correctness mismatches and worker errors fail the job, while timings remain
+evidence rather than absolute hosted-runner gates.
+
 ## WordPress MySQL Server-Test Query CSV
 
 The WordPress SQLite integration project publishes a MySQL server-test query

@@ -16,6 +16,11 @@ on:
         description: Release tag or commit used as the paired baseline
         required: false
         type: string
+      large_dataset_rows:
+        description: Rows for scheduled large-dataset evidence (1,000 to 1,000,000)
+        required: false
+        default: '100000'
+        type: string
 
 permissions:
   contents: read
@@ -60,7 +65,9 @@ jobs:
           printf 'candidate=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check performance tooling
-        run: tools/test-performance-regression-tools
+        run: |
+          tools/test-performance-regression-tools
+          tools/test-large-dataset-performance-tools
 
       - name: Build baseline and candidate benchmarks
         env:
@@ -119,5 +126,109 @@ jobs:
         with:
           name: paired-performance-${{ github.run_id }}
           path: build/performance-regression
+          if-no-files-found: ignore
+          retention-days: 90
+
+  large-dataset-evidence:
+    name: large-dataset MyLite and SQLite evidence
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build
+
+      - name: Build large-dataset benchmarks
+        env:
+          CC: clang
+        run: |
+          cmake --preset ci
+          cmake --build --preset ci \
+            --target mylite_large_dataset_benchmark \
+              mylite_large_dataset_system_benchmark
+
+      - name: Run large-dataset qualification
+        env:
+          LARGE_DATASET_ROWS: ${{ inputs.large_dataset_rows || '100000' }}
+        run: |
+          case "$LARGE_DATASET_ROWS" in
+            ''|*[!0-9]*)
+              echo "large_dataset_rows must be an integer" >&2
+              exit 2
+              ;;
+          esac
+          if [ "$LARGE_DATASET_ROWS" -lt 1000 ] \
+              || [ "$LARGE_DATASET_ROWS" -gt 1000000 ]; then
+            echo "large_dataset_rows must be between 1,000 and 1,000,000" >&2
+            exit 2
+          fi
+
+          output=$PWD/build/performance-large
+          database_base=$output/databases/dataset
+          mkdir -p "$output/databases"
+          {
+            printf 'revision=%s\n' "$(git rev-parse HEAD)"
+            printf 'rows=%s\n' "$LARGE_DATASET_ROWS"
+            uname -a
+            clang --version | head -1
+            grep -m1 'model name' /proc/cpuinfo
+          } > "$output/environment.txt"
+
+          build/ci/packages/libmylite/mylite_large_dataset_benchmark \
+            --rows "$LARGE_DATASET_ROWS" \
+            --samples 3 \
+            --warmup 1 \
+            --database-base "$database_base" \
+            --keep-databases \
+            --analyze \
+            --output "$output/native.csv"
+
+          build/ci/packages/libmylite/mylite_large_dataset_system_benchmark \
+            --rows "$LARGE_DATASET_ROWS" \
+            --iterations 10 \
+            --database-base "$database_base" \
+            --output "$output/system.csv"
+
+          tools/summarize-large-dataset-performance \
+            "$output/native.csv" \
+            "$output/system.csv" \
+            --output-dir "$output"
+
+      - name: Remove generated large datasets
+        if: always()
+        run: rm -rf "$PWD/build/performance-large/databases"
+
+      - name: Publish large-dataset summary
+        if: always()
+        run: |
+          if [ -f build/performance-large/native-summary.tsv ]; then
+            {
+              printf '### Large-dataset qualification\n\n'
+              printf 'Native scenario medians and MyLite/SQLite ratios:\n\n'
+              printf '```text\n'
+              cat build/performance-large/native-summary.tsv
+              printf '```\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f build/performance-large/system-summary.tsv ]; then
+            {
+              printf '\nSystem scenario averages and MyLite/SQLite ratios:\n\n'
+              printf '```text\n'
+              cat build/performance-large/system-summary.tsv
+              printf '```\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload large-dataset evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: large-dataset-performance-${{ github.run_id }}
+          path: build/performance-large
           if-no-files-found: ignore
           retention-days: 90

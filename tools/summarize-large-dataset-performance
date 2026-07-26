@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+
+import argparse
+import csv
+import math
+import sys
+from pathlib import Path
+
+
+ENGINES = ("mylite", "sqlite")
+NATIVE_REQUIRED_COLUMNS = {
+    "record",
+    "scenario",
+    "rows",
+    "engine",
+    "avg_us",
+}
+SYSTEM_REQUIRED_COLUMNS = {
+    "scenario",
+    "rows",
+    "engine",
+    "operations",
+    "errors",
+    "checksum",
+    "avg_us",
+}
+
+
+def fail(message):
+    print("summarize-large-dataset-performance: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def parse_positive_float(value, field, path):
+    try:
+        parsed = float(value)
+    except ValueError as error:
+        raise RuntimeError("invalid {} in {}".format(field, path)) from error
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return parsed
+
+
+def parse_nonnegative_integer(value, field, path):
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise RuntimeError("invalid {} in {}".format(field, path)) from error
+    if parsed < 0:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return parsed
+
+
+def read_csv(path, required_columns):
+    with path.open(encoding="utf-8", newline="") as input_file:
+        reader = csv.DictReader(input_file)
+        if reader.fieldnames is None or not required_columns.issubset(reader.fieldnames):
+            raise RuntimeError("unexpected CSV header in {}".format(path))
+        return list(reader)
+
+
+def require_engine_pairs(records, order, path):
+    for scenario in order:
+        if set(records[scenario]) != set(ENGINES):
+            raise RuntimeError("incomplete engine pair for {} in {}".format(scenario, path))
+
+
+def summarize_native(path):
+    rows = read_csv(path, NATIVE_REQUIRED_COLUMNS)
+    records = {}
+    order = []
+    for row in rows:
+        if row["record"] != "summary":
+            continue
+        scenario = row["scenario"]
+        engine = row["engine"]
+        if not scenario or engine not in ENGINES:
+            raise RuntimeError("invalid native summary row in {}".format(path))
+        scenario_records = records.setdefault(scenario, {})
+        if not scenario_records:
+            order.append(scenario)
+        if engine in scenario_records:
+            raise RuntimeError("duplicate {} {} row in {}".format(scenario, engine, path))
+        scenario_records[engine] = {
+            "rows": parse_nonnegative_integer(row["rows"], "rows", path),
+            "avg_us": parse_positive_float(row["avg_us"], "avg_us", path),
+        }
+    if not order:
+        raise RuntimeError("no native summary rows in {}".format(path))
+    require_engine_pairs(records, order, path)
+
+    summaries = []
+    for scenario in order:
+        mylite = records[scenario]["mylite"]
+        sqlite = records[scenario]["sqlite"]
+        if mylite["rows"] != sqlite["rows"]:
+            raise RuntimeError("row count mismatch for {} in {}".format(scenario, path))
+        summaries.append((
+            scenario,
+            mylite["rows"],
+            mylite["avg_us"],
+            sqlite["avg_us"],
+            mylite["avg_us"] / sqlite["avg_us"],
+        ))
+    return summaries
+
+
+def summarize_system(path):
+    rows = read_csv(path, SYSTEM_REQUIRED_COLUMNS)
+    records = {}
+    order = []
+    for row in rows:
+        scenario = row["scenario"]
+        engine = row["engine"]
+        if not scenario or engine not in ENGINES:
+            raise RuntimeError("invalid system benchmark row in {}".format(path))
+        scenario_records = records.setdefault(scenario, {})
+        if not scenario_records:
+            order.append(scenario)
+        if engine in scenario_records:
+            raise RuntimeError("duplicate {} {} row in {}".format(scenario, engine, path))
+        errors = parse_nonnegative_integer(row["errors"], "errors", path)
+        if errors != 0:
+            raise RuntimeError("{} {} reported errors in {}".format(scenario, engine, path))
+        scenario_records[engine] = {
+            "rows": parse_nonnegative_integer(row["rows"], "rows", path),
+            "operations": parse_nonnegative_integer(row["operations"], "operations", path),
+            "checksum": parse_nonnegative_integer(row["checksum"], "checksum", path),
+            "avg_us": parse_positive_float(row["avg_us"], "avg_us", path),
+        }
+    if not order:
+        raise RuntimeError("no system benchmark rows in {}".format(path))
+    require_engine_pairs(records, order, path)
+
+    summaries = []
+    for scenario in order:
+        mylite = records[scenario]["mylite"]
+        sqlite = records[scenario]["sqlite"]
+        for field in ("rows", "operations", "checksum"):
+            if mylite[field] != sqlite[field]:
+                raise RuntimeError("{} mismatch for {} in {}".format(field, scenario, path))
+        summaries.append((
+            scenario,
+            mylite["rows"],
+            mylite["avg_us"],
+            sqlite["avg_us"],
+            mylite["avg_us"] / sqlite["avg_us"],
+        ))
+    return summaries
+
+
+def write_summary(path, rows, mylite_label, sqlite_label):
+    with path.open("w", encoding="utf-8", newline="") as output_file:
+        writer = csv.writer(output_file, delimiter="\t", lineterminator="\n")
+        writer.writerow(("scenario", "rows", mylite_label, sqlite_label, "ratio"))
+        for scenario, row_count, mylite_us, sqlite_us, ratio in rows:
+            writer.writerow((
+                scenario,
+                row_count,
+                "{:.3f}".format(mylite_us),
+                "{:.3f}".format(sqlite_us),
+                "{:.6f}".format(ratio),
+            ))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("native_csv", type=Path)
+    parser.add_argument("system_csv", type=Path)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    options = parser.parse_args()
+
+    try:
+        native_path = options.native_csv.resolve(strict=True)
+        system_path = options.system_csv.resolve(strict=True)
+        native = summarize_native(native_path)
+        system = summarize_system(system_path)
+        options.output_dir.mkdir(parents=True, exist_ok=True)
+        write_summary(
+            options.output_dir / "native-summary.tsv",
+            native,
+            "mylite_median_us",
+            "sqlite_median_us",
+        )
+        write_summary(
+            options.output_dir / "system-summary.tsv",
+            system,
+            "mylite_avg_us",
+            "sqlite_avg_us",
+        )
+    except (OSError, RuntimeError) as error:
+        return fail(str(error))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

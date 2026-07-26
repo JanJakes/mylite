@@ -35,6 +35,9 @@ jobs:
       - name: Test performance comparison tooling
         run: tools/test-performance-regression-tools
 
+      - name: Test large-dataset performance tooling
+        run: tools/test-large-dataset-performance-tools
+
       - name: Test release tooling
         run: tools/test-release-tools
 

@@ -14,6 +14,13 @@ kind=
 samples=
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --list)
+      printf '%s\n' 'runtime.test'
+      case "$0" in
+        *candidate*) printf '%s\n' 'runtime.new' ;;
+      esac
+      exit 0
+      ;;
     --scenario) scenario=$2; shift 2 ;;
     --only) kind=$2; shift 2 ;;
     --samples) samples=$2; shift 2 ;;
@@ -63,6 +70,12 @@ runtime.test	runtime	execute	1	0	5	10	20
 parse.recovery.expression_192	recovery	recovery	1	0	5	10	20
 EOF
 
+cat > "$temporary_directory/new-manifest.tsv" <<'EOF'
+scenario	kind	output_kind	iterations	warmup	samples_per_pass	max_regression_percent	max_noise_percent
+runtime.test	runtime	execute	1	0	5	10	20
+runtime.new	runtime	execute	1	0	5	10	20
+EOF
+
 "$root/tools/compare-performance" \
   "$temporary_directory/benchmark" \
   "$temporary_directory/candidate" \
@@ -72,6 +85,23 @@ EOF
   --output-dir "$temporary_directory/pass" >/dev/null
 grep -q 'runtime.test[[:space:]]pass' "$temporary_directory/pass/summary.tsv"
 grep -q 'parse.recovery.expression_192[[:space:]]pass' "$temporary_directory/pass/summary.tsv"
+
+"$root/tools/compare-performance" \
+  "$temporary_directory/benchmark" \
+  "$temporary_directory/candidate" \
+  --manifest "$temporary_directory/new-manifest.tsv" \
+  --output-dir "$temporary_directory/new-result" >/dev/null
+grep -q 'runtime.new[[:space:]]new[[:space:]]n/a' \
+  "$temporary_directory/new-result/summary.tsv"
+
+if "$root/tools/compare-performance" \
+  "$temporary_directory/benchmark" \
+  "$temporary_directory/benchmark" \
+  --manifest "$temporary_directory/new-manifest.tsv" \
+  --output-dir "$temporary_directory/missing-result" >/dev/null 2>&1; then
+  echo "test-performance-regression-tools: accepted a missing candidate scenario" >&2
+  exit 1
+fi
 
 if "$root/tools/compare-performance" \
   "$temporary_directory/benchmark" \

@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+struct sqlite3;
+
 enum {
     mylite_test_temp_path_capacity = 1024,
 };
@@ -35,5 +37,6 @@ int mylite_test_register_temporary_path(const char *path);
 int mylite_test_open_temporary(mylite_db **out_database);
 
 int mylite_test_escape_sql_string(char *output, size_t output_size, const char *input);
+int mylite_test_remove_catalog_integrity_seal(struct sqlite3 *sqlite);
 
 #endif

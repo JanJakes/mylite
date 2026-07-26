@@ -638,7 +638,7 @@ static int expect_parent_foreign_key_index(sqlite3 *sqlite, const char *context)
 }
 
 static int make_catalog_look_like_v30(sqlite3 *sqlite) {
-    int failures = 0;
+    int failures = mylite_test_remove_catalog_integrity_seal(sqlite);
 
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN row_format_option");

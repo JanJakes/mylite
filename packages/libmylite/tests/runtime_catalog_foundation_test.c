@@ -51,6 +51,7 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
 static int test_reopen_preserves_catalog_rows_and_generation(void);
 static int test_idempotent_catalog_initialization_across_repeated_opens(void);
 static int test_catalog_integrity_seal_lifecycle(void);
+static int test_catalog_mutation_does_not_reseal_physical_corruption(void);
 static int test_independent_file_backed_handles_have_independent_catalog_state(void);
 static int test_catalog_default_text_validation(void);
 static int test_rejects_incompatible_and_incomplete_catalog_metadata(void);
@@ -116,6 +117,7 @@ int main(void) {
     failures += test_reopen_preserves_catalog_rows_and_generation();
     failures += test_idempotent_catalog_initialization_across_repeated_opens();
     failures += test_catalog_integrity_seal_lifecycle();
+    failures += test_catalog_mutation_does_not_reseal_physical_corruption();
     failures += test_independent_file_backed_handles_have_independent_catalog_state();
     failures += test_catalog_default_text_validation();
     failures += test_rejects_incompatible_and_incomplete_catalog_metadata();
@@ -860,6 +862,70 @@ static int test_catalog_integrity_seal_lifecycle(void) {
     );
     failures +=
         mylite_test_expect_true(database == NULL, "missing trigger rejection leaves output null");
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_catalog_mutation_does_not_reseal_physical_corruption(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int catalog_table_count = 0;
+    int failures = 0;
+
+    if (mylite_test_make_path(path, sizeof(path), "mutation_physical_corruption") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open mutation physical corruption file"
+    );
+    failures += execute_mylite_statement(database, "CREATE DATABASE app");
+    failures += execute_mylite_statement(
+        database,
+        "CREATE TABLE app.items (id BIGINT PRIMARY KEY, value INT)"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += tamper_drop_physical_table(sqlite);
+    }
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "CREATE TABLE app.after_physical_loss (id INT)",
+            strlen("CREATE TABLE app.after_physical_loss (id INT)"),
+            &result
+        ),
+        MYLITE_ERROR,
+        "reject DDL over unrelated physical corruption"
+    );
+    mylite_result_free(result);
+    if (sqlite != NULL) {
+        failures += query_single_int(
+            sqlite,
+            "SELECT count(*) FROM _mylite_catalog_tables "
+            "WHERE schema_id = (SELECT schema_id FROM _mylite_catalog_schemas WHERE name = 'app') "
+            "AND name = 'after_physical_loss'",
+            &catalog_table_count
+        );
+    }
+    failures +=
+        mylite_test_expect_int(catalog_table_count, 0, "failed DDL does not publish catalog table");
+    mylite_close(database);
+    database = NULL;
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "physical corruption remains rejected after failed DDL"
+    );
+    failures += mylite_test_expect_true(
+        database == NULL,
+        "physical corruption rejection leaves output null"
+    );
     mylite_close(database);
     remove_related_files(path);
     return failures;
@@ -1911,74 +1977,14 @@ static int tamper_remove_physical_check_constraint(sqlite3 *sqlite) {
 }
 
 static int downgrade_catalog_to_v37(sqlite3 *sqlite) {
-    enum {
-        integrity_trigger_capacity = 32,
-        integrity_trigger_name_capacity = 96,
-    };
+    int failures = mylite_test_remove_catalog_integrity_seal(sqlite);
 
-    sqlite3_stmt *statement = NULL;
-    char trigger_names[integrity_trigger_capacity][integrity_trigger_name_capacity];
-    char sql[sql_buffer_capacity];
-    size_t trigger_count = 0U;
-    int step_rc = SQLITE_OK;
-    int rc = sqlite3_prepare_v2(
+    failures += execute_sql(
         sqlite,
-        "SELECT name FROM sqlite_master "
-        "WHERE type = 'trigger' AND name LIKE '_mylite_integrity_%' ORDER BY name",
-        -1,
-        &statement,
-        NULL
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 37, minimum_reader_schema_version = 37"
     );
-
-    while (rc == SQLITE_OK && (step_rc = sqlite3_step(statement)) == SQLITE_ROW) {
-        const unsigned char *name = sqlite3_column_text(statement, 0);
-        int written = 0;
-
-        if (name == NULL || trigger_count >= integrity_trigger_capacity) {
-            rc = SQLITE_ERROR;
-            break;
-        }
-        written = snprintf(
-            trigger_names[trigger_count],
-            sizeof(trigger_names[trigger_count]),
-            "%s",
-            (const char *)name
-        );
-        if (written < 0 || (size_t)written >= sizeof(trigger_names[trigger_count])) {
-            rc = SQLITE_ERROR;
-            break;
-        }
-        ++trigger_count;
-    }
-    if (rc == SQLITE_OK && step_rc != SQLITE_DONE) {
-        rc = step_rc;
-    }
-    if (sqlite3_finalize(statement) != SQLITE_OK || rc != SQLITE_OK || trigger_count != 29U) {
-        return 1;
-    }
-    for (size_t index = 0U; index < trigger_count; ++index) {
-        int written = snprintf(sql, sizeof(sql), "DROP TRIGGER %s", trigger_names[index]);
-
-        if (written < 0 || (size_t)written >= sizeof(sql) || execute_sql(sqlite, sql) != 0) {
-            return 1;
-        }
-    }
-    return execute_sql(
-        sqlite,
-        "ALTER TABLE _mylite_catalog_state RENAME TO _mylite_catalog_state_v38;"
-        "CREATE TABLE _mylite_catalog_state ("
-        "singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),"
-        "schema_version INTEGER NOT NULL,"
-        "minimum_reader_schema_version INTEGER NOT NULL,"
-        "catalog_generation INTEGER NOT NULL,"
-        "created_with_file_format_version INTEGER NOT NULL);"
-        "INSERT INTO _mylite_catalog_state "
-        "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
-        "created_with_file_format_version) "
-        "SELECT singleton_id, 37, 37, catalog_generation, created_with_file_format_version "
-        "FROM _mylite_catalog_state_v38;"
-        "DROP TABLE _mylite_catalog_state_v38"
-    );
+    return failures;
 }
 
 static int test_zero_initialized_catalog_cleanup(void) {

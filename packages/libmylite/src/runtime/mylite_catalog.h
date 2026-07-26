@@ -282,6 +282,7 @@ struct mylite_catalog_check_constraint_descriptor {
 
 struct mylite_catalog_mutation {
     bool active;
+    bool requires_integrity_validation;
     uint64_t next_generation;
 };
 

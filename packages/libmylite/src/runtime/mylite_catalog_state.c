@@ -178,7 +178,11 @@ void mylite_catalog_mutation_init(struct mylite_catalog_mutation *mutation) {
         return;
     }
 
-    *mutation = (struct mylite_catalog_mutation){.active = false, .next_generation = 0U};
+    *mutation = (struct mylite_catalog_mutation){
+        .active = false,
+        .requires_integrity_validation = false,
+        .next_generation = 0U,
+    };
 }
 
 void mylite_catalog_mutation_deinit(struct mylite_catalog_mutation *mutation) {
@@ -186,7 +190,11 @@ void mylite_catalog_mutation_deinit(struct mylite_catalog_mutation *mutation) {
         return;
     }
 
-    *mutation = (struct mylite_catalog_mutation){.active = false, .next_generation = 0U};
+    *mutation = (struct mylite_catalog_mutation){
+        .active = false,
+        .requires_integrity_validation = false,
+        .next_generation = 0U,
+    };
 }
 
 int mylite_catalog_begin_mutation(
@@ -194,6 +202,7 @@ int mylite_catalog_begin_mutation(
     struct mylite_catalog_mutation *mutation
 ) {
     struct mylite_catalog catalog = {.initialized = false};
+    bool seal_matches = false;
     int rc = MYLITE_OK;
 
     if (mutation != NULL) {
@@ -216,7 +225,7 @@ int mylite_catalog_begin_mutation(
     if (rc != MYLITE_OK) {
         return rollback_catalog_transaction(database, rc);
     }
-    rc = validate_and_seal_catalog_in_transaction(database->sqlite, &catalog);
+    rc = catalog_integrity_seal_matches(database->sqlite, &catalog, &seal_matches);
     if (rc != MYLITE_OK) {
         return rollback_catalog_transaction(database, rc);
     }
@@ -227,6 +236,7 @@ int mylite_catalog_begin_mutation(
     }
 
     mutation->active = true;
+    mutation->requires_integrity_validation = !seal_matches;
     mutation->next_generation = catalog.generation + 1U;
     database->catalog.descriptor_cache_is_suspended = true;
     mylite_catalog_invalidate_descriptor_cache(database);
@@ -249,6 +259,9 @@ int mylite_catalog_commit_mutation(
     }
 
     rc = update_catalog_generation(database->sqlite, mutation->next_generation);
+    if (rc == MYLITE_OK && mutation->requires_integrity_validation) {
+        rc = mylite_catalog_validate_integrity(database->sqlite);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_publish_integrity_seal(database->sqlite, mutation->next_generation);
     }
@@ -299,6 +312,7 @@ int mylite_catalog_begin_generation_change(
     struct mylite_catalog_generation_change *out_change
 ) {
     struct mylite_catalog catalog = {.initialized = false};
+    bool seal_matches = false;
     int rc = begin_catalog_transaction(database->sqlite);
 
     *out_change = (struct mylite_catalog_generation_change){0};
@@ -312,7 +326,7 @@ int mylite_catalog_begin_generation_change(
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
-    rc = validate_and_seal_catalog_in_transaction(database->sqlite, &catalog);
+    rc = catalog_integrity_seal_matches(database->sqlite, &catalog, &seal_matches);
     if (rc != MYLITE_OK) {
         rc = rollback_catalog_transaction(database, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
@@ -322,6 +336,7 @@ int mylite_catalog_begin_generation_change(
         return rollback_catalog_transaction(database, MYLITE_ERROR);
     }
 
+    out_change->requires_integrity_validation = !seal_matches;
     out_change->next_generation = catalog.generation + 1U;
 
     return MYLITE_OK;
@@ -333,6 +348,9 @@ int mylite_catalog_finish_generation_change(
 ) {
     int rc = update_catalog_generation(database->sqlite, change->next_generation);
 
+    if (rc == MYLITE_OK && change->requires_integrity_validation) {
+        rc = mylite_catalog_validate_integrity(database->sqlite);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_publish_integrity_seal(database->sqlite, change->next_generation);
     }

@@ -1146,13 +1146,16 @@ static int make_catalog_look_like_v18(sqlite3 *connection) {
         "SET schema_version = 18, minimum_reader_schema_version = 18;"
         "COMMIT;";
 
-    return execute_sqlite(
+    int failures = mylite_test_remove_catalog_integrity_seal(connection);
+
+    failures += execute_sqlite(
         connection,
         (struct sqlite_exec_request){
             .sql = sql,
             .context = "make catalog look like v18",
         }
     );
+    return failures;
 }
 
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result) {

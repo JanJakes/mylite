@@ -639,7 +639,7 @@ static int seed_visibility_schema(mylite_db *database) {
 }
 
 static int make_catalog_look_like_v22(sqlite3 *sqlite) {
-    int failures = 0;
+    int failures = mylite_test_remove_catalog_integrity_seal(sqlite);
 
     failures += execute_sql(
         sqlite,

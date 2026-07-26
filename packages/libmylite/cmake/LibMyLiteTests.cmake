@@ -1,10 +1,12 @@
 add_library(mylite_test_support STATIC
   tests/mylite_test_assertions.c
+  tests/mylite_test_catalog.c
   tests/mylite_test_paths.c
   tests/mylite_test_runtime.c
   tests/mylite_test_sql.c
 )
 target_link_libraries(mylite_test_support PUBLIC MyLite::headers)
+target_link_libraries(mylite_test_support PRIVATE MyLite::sqlite)
 target_include_directories(mylite_test_support PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 mylite_configure_c_target(mylite_test_support)
 

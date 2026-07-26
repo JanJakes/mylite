@@ -823,6 +823,7 @@ static int test_catalog_v28_character_expression_migration(void) {
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE existing_defaults (id INT)");
     sqlite = mylite_connection_sqlite_for_test(database);
+    failures += mylite_test_remove_catalog_integrity_seal(sqlite);
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN row_format_option");
     failures +=
@@ -947,6 +948,7 @@ static int test_catalog_v33_scalar_expression_migration(void) {
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE existing_defaults (id INT)");
     sqlite = mylite_connection_sqlite_for_test(database);
+    failures += mylite_test_remove_catalog_integrity_seal(sqlite);
     failures += execute_sql(sqlite, downgrade_catalog_columns_sql);
     mylite_close(database);
     database = NULL;

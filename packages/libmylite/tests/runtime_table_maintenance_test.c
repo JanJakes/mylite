@@ -2,6 +2,8 @@
 
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -28,6 +30,8 @@ enum {
     checksum_table_display_length = 384,
     checksum_value_display_length = 22,
     checksum_table_decimals = 31,
+    maintenance_insert_sql_overhead = 128,
+    physical_maintenance_row_count = 4096,
 };
 
 static const char expected_checksum_numeric[] = "<numeric checksum>";
@@ -50,6 +54,7 @@ static int test_table_maintenance_result_rows(void);
 static int test_checksum_table_result_rows_and_diagnostics(void);
 static int test_table_maintenance_resolution_and_diagnostics(void);
 static int test_table_maintenance_transactions_persistence_and_preamble(void);
+static int test_analyze_and_optimize_apply_physical_maintenance(void);
 static int test_independent_table_maintenance_handles(void);
 static int create_schema_with_table(mylite_db *database);
 static int expect_maintenance_rows(
@@ -88,6 +93,13 @@ static int expect_decimal_result_value(
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
+static int read_file_size(const char *path, long *out_size);
+static int expect_sqlite_scalar_int(
+    sqlite3 *sqlite,
+    const char *sql,
+    int expected,
+    const char *context
+);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -102,6 +114,7 @@ int main(void) {
     failures += test_checksum_table_result_rows_and_diagnostics();
     failures += test_table_maintenance_resolution_and_diagnostics();
     failures += test_table_maintenance_transactions_persistence_and_preamble();
+    failures += test_analyze_and_optimize_apply_physical_maintenance();
     failures += test_independent_table_maintenance_handles();
 
     return failures == 0 ? 0 : 1;
@@ -660,6 +673,142 @@ static int test_table_maintenance_transactions_persistence_and_preamble(void) {
     return failures;
 }
 
+static int test_analyze_and_optimize_apply_physical_maintenance(void) {
+    static const char payload[] =
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    static const char *const analyze_rows[] = {"app.large_table", "analyze", "status", "OK"};
+    static const char *const optimize_rows[] = {
+        "app.large_table",
+        "optimize",
+        "note",
+        "Table does not support optimize, doing recreate + analyze instead",
+        "app.large_table",
+        "optimize",
+        "status",
+        "OK",
+    };
+    char path[test_path_capacity];
+    char sql[sizeof(payload) + maintenance_insert_sql_overhead];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    long size_before_optimize = 0L;
+    long size_after_optimize = 0L;
+    int failures = 0;
+
+    if (mylite_test_make_path(path, sizeof(path), "physical-maintenance") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open physical maintenance file"
+    );
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE large_table (id INT PRIMARY KEY, v TEXT)");
+    for (int row = 1; failures == 0 && row <= physical_maintenance_row_count; ++row) {
+        const int written =
+            snprintf(sql, sizeof(sql), "INSERT INTO large_table VALUES (%d, '%s')", row, payload);
+
+        if (written < 0 || (size_t)written >= sizeof(sql)) {
+            fprintf(stderr, "failed to build physical maintenance INSERT\n");
+            ++failures;
+            break;
+        }
+        failures += expect_statement_ok(database, sql);
+    }
+    failures += expect_maintenance_rows(
+        database,
+        "ANALYZE TABLE large_table",
+        analyze_rows,
+        1U,
+        "analyze applies physical statistics"
+    );
+    failures += expect_sqlite_scalar_int(
+        mylite_connection_sqlite_for_test(database),
+        "SELECT count(*) FROM sqlite_stat1 "
+        "WHERE tbl = (SELECT physical_name FROM _mylite_catalog_tables "
+        "WHERE name = 'large_table')",
+        1,
+        "analyze sqlite statistics"
+    );
+
+    failures += expect_statement_ok(database, "DELETE FROM large_table WHERE id > 1");
+    failures += read_file_size(path, &size_before_optimize);
+    failures += expect_maintenance_rows(
+        database,
+        "OPTIMIZE TABLE large_table",
+        optimize_rows,
+        2U,
+        "optimize applies physical maintenance"
+    );
+    failures += read_file_size(path, &size_after_optimize);
+    if (size_after_optimize >= size_before_optimize) {
+        fprintf(
+            stderr,
+            "optimize did not shrink file: before=%ld after=%ld\n",
+            size_before_optimize,
+            size_after_optimize
+        );
+        ++failures;
+    }
+    failures += expect_sqlite_scalar_int(
+        mylite_connection_sqlite_for_test(database),
+        "SELECT count(*) FROM sqlite_stat1 "
+        "WHERE tbl = (SELECT physical_name FROM _mylite_catalog_tables "
+        "WHERE name = 'large_table')",
+        1,
+        "optimize refreshes sqlite statistics"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM large_table",
+            .values = (const char *const[]){"1", payload},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "optimize preserves rows",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "optimize preserves preamble"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen optimized database"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM app.large_table",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "optimized database reopens",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_independent_table_maintenance_handles(void) {
     static const char *const first_rows[] = {"1", "one", "2", "two"};
     static const char *const second_rows[] = {"10", "ten"};
@@ -1043,6 +1192,58 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     }
     fclose(file);
     return 0;
+}
+
+static int read_file_size(const char *path, long *out_size) {
+    FILE *file = fopen(path, "rb");
+    int rc = 0;
+
+    if (file == NULL) {
+        fprintf(stderr, "failed to open %s for size check\n", path);
+        return 1;
+    }
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        fprintf(stderr, "failed to seek %s for size check\n", path);
+        rc = 1;
+    } else {
+        *out_size = ftell(file);
+        if (*out_size < 0L) {
+            fprintf(stderr, "failed to read %s size\n", path);
+            rc = 1;
+        }
+    }
+    fclose(file);
+    return rc;
+}
+
+static int expect_sqlite_scalar_int(
+    sqlite3 *sqlite,
+    const char *sql,
+    int expected,
+    const char *context
+) {
+    sqlite3_stmt *statement = NULL;
+    int actual = 0;
+    int failures = 0;
+    int sqlite_rc = sqlite3_prepare_v2(sqlite, sql, -1, &statement, NULL);
+
+    if (sqlite_rc != SQLITE_OK) {
+        fprintf(stderr, "%s: sqlite prepare failed: %s\n", context, sqlite3_errmsg(sqlite));
+        return 1;
+    }
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_rc != SQLITE_ROW) {
+        fprintf(stderr, "%s: sqlite step failed: %s\n", context, sqlite3_errmsg(sqlite));
+        failures = 1;
+    } else {
+        actual = sqlite3_column_int(statement, 0);
+        failures += mylite_test_expect_int(actual, expected, context);
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        fprintf(stderr, "%s: sqlite finalize failed: %s\n", context, sqlite3_errmsg(sqlite));
+        failures = 1;
+    }
+    return failures;
 }
 
 static int expect_bytes(

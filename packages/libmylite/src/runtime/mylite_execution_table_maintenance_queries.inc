@@ -480,6 +480,9 @@ static int execute_table_maintenance_statement(
         }
     }
     if (rc == MYLITE_OK) {
+        rc = execute_table_maintenance_targets(database, operation, targets, table_count);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
@@ -504,6 +507,63 @@ static int execute_table_maintenance_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int execute_table_maintenance_targets(
+    struct mylite_db *database,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *targets,
+    size_t target_count
+) {
+    bool has_persistent_target = false;
+    int rc = MYLITE_OK;
+
+    if (operation != TABLE_MAINTENANCE_ANALYZE && operation != TABLE_MAINTENANCE_OPTIMIZE) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < target_count; ++index) {
+        if (targets[index].has_table &&
+            targets[index].table.kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+            has_persistent_target = true;
+            break;
+        }
+    }
+    if (operation == TABLE_MAINTENANCE_OPTIMIZE && has_persistent_target) {
+        rc = execute_sqlite_schema_sql(database, "VACUUM");
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < target_count; ++index) {
+        if (targets[index].has_table && !targets[index].missing_schema &&
+            !targets[index].missing_table && !targets[index].unsupported_kind) {
+            rc = execute_table_analyze_target(database, &targets[index]);
+        }
+    }
+    return rc;
+}
+
+static int execute_table_analyze_target(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target
+) {
+    struct mylite_dynamic_string string;
+    int rc = MYLITE_OK;
+
+    mylite_dynamic_string_init(&string);
+    rc = mylite_dynamic_string_append(
+        &string,
+        target->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY ? "ANALYZE temp."
+                                                                  : "ANALYZE main."
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(&string, target->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, string.text);
+    }
+    mylite_dynamic_string_deinit(&string);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static enum table_maintenance_operation table_maintenance_operation_for_statement(

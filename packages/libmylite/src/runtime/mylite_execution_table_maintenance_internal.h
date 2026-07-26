@@ -97,6 +97,16 @@ static int execute_table_maintenance_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_table_maintenance_targets(
+    struct mylite_db *database,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *targets,
+    size_t target_count
+);
+static int execute_table_analyze_target(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target
+);
 static enum table_maintenance_operation table_maintenance_operation_for_statement(
     const struct mylite_sql_ast_node *statement
 );

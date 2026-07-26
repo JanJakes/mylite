@@ -5,8 +5,6 @@ static int plan_insert(
 ) {
     const struct mylite_sql_ast_node *column_list = child_at(statement, 1U);
     const struct mylite_sql_ast_node *row_list = child_at(statement, 2U);
-    size_t *target_indexes = NULL;
-    size_t target_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert){0};
@@ -43,26 +41,37 @@ static int plan_insert(
             column_list,
             out_plan,
             row_list,
-            &target_indexes,
-            &target_count
+            &out_plan->target_indexes,
+            &out_plan->target_count
         );
     }
     if (rc == MYLITE_OK) {
         rc = check_insert_target_duplicate(
             database,
             out_plan->columns,
-            target_indexes,
-            target_count
+            out_plan->target_indexes,
+            out_plan->target_count
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_insert_row_shapes(database, row_list, target_count);
+        rc = validate_insert_row_shapes(database, row_list, out_plan->target_count);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_insert_rows(database, row_list, target_indexes, target_count, out_plan);
+        rc = plan_insert_rows(
+            database,
+            row_list,
+            out_plan->target_indexes,
+            out_plan->target_count,
+            out_plan
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
+        rc = check_insert_omitted_columns(
+            database,
+            out_plan,
+            out_plan->target_indexes,
+            out_plan->target_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_auto_increment_values(database, out_plan);
@@ -74,7 +83,6 @@ static int plan_insert(
         rc = plan_insert_duplicate_update(database, statement, out_plan);
     }
 
-    free(target_indexes);
     if (rc != MYLITE_OK) {
         planned_insert_deinit(out_plan);
     }
@@ -88,8 +96,6 @@ static int plan_insert_set(
     struct planned_insert *out_plan
 ) {
     const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
-    size_t *target_indexes = NULL;
-    size_t target_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert){0};
@@ -128,23 +134,34 @@ static int plan_insert_set(
             statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT
                 ? "REPLACE ... SET supports only unqualified assignment columns"
                 : "INSERT ... SET supports only unqualified assignment columns",
-            &target_indexes,
-            &target_count
+            &out_plan->target_indexes,
+            &out_plan->target_count
         );
     }
     if (rc == MYLITE_OK) {
         rc = check_insert_target_duplicate(
             database,
             out_plan->columns,
-            target_indexes,
-            target_count
+            out_plan->target_indexes,
+            out_plan->target_count
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_insert_set_row(database, assignment_list, target_indexes, target_count, out_plan);
+        rc = plan_insert_set_row(
+            database,
+            assignment_list,
+            out_plan->target_indexes,
+            out_plan->target_count,
+            out_plan
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
+        rc = check_insert_omitted_columns(
+            database,
+            out_plan,
+            out_plan->target_indexes,
+            out_plan->target_count
+        );
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_auto_increment_values(database, out_plan);
@@ -156,11 +173,57 @@ static int plan_insert_set(
         rc = plan_insert_duplicate_update(database, statement, out_plan);
     }
 
-    free(target_indexes);
     if (rc != MYLITE_OK) {
         planned_insert_deinit(out_plan);
     }
 
+    return rc;
+}
+
+static int plan_prepared_insert_dynamic_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL || statement == NULL || plan == NULL || plan->rows != NULL ||
+        plan->duplicate_update.assignments != NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (statement->kind == MYLITE_SQL_AST_INSERT_SET_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
+        rc = plan_insert_set_row(
+            database,
+            child_at(statement, 1U),
+            plan->target_indexes,
+            plan->target_count,
+            plan
+        );
+    } else {
+        rc = plan_insert_rows(
+            database,
+            child_at(statement, 2U),
+            plan->target_indexes,
+            plan->target_count,
+            plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_omitted_columns(database, plan, plan->target_indexes, plan->target_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_auto_increment_values(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_string_key_values(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_duplicate_update(database, statement, plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_insert_dynamic_deinit(plan);
+    }
     return rc;
 }
 
@@ -1357,6 +1420,19 @@ static void planned_insert_deinit(struct planned_insert *plan) {
         return;
     }
 
+    planned_insert_dynamic_deinit(plan);
+    free(plan->target_indexes);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&plan->key_metadata);
+    mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
+    mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
+    *plan = (struct planned_insert){0};
+}
+
+static void planned_insert_dynamic_deinit(struct planned_insert *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
     if (plan->rows != NULL) {
         for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
             for (size_t column_index = 0U;
@@ -1378,8 +1454,10 @@ static void planned_insert_deinit(struct planned_insert *plan) {
         free(plan->duplicate_update.assignments[index].row_scalar_expression);
     }
     free(plan->duplicate_update.assignments);
-    mylite_execution_loaded_table_key_metadata_reference_deinit(&plan->key_metadata);
-    mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
-    mylite_execution_release_table_columns(plan->columns_cache_entry, plan->columns);
-    *plan = (struct planned_insert){0};
+    plan->rows = NULL;
+    plan->row_count = 0U;
+    plan->duplicate_update = (struct planned_insert_duplicate_update){0};
+    plan->auto_increment_next_after_statement = plan->auto_increment_next;
+    plan->first_generated_auto_increment = 0;
+    plan->generated_auto_increment = false;
 }

@@ -75,8 +75,13 @@ static int execute_planned_insert_statement(
 ) {
     struct planned_insert plan = {0};
     mylite_result *result = NULL;
-    int rc = mylite_result_create(&result);
+    int rc = MYLITE_OK;
 
+    if (database->active_bound_statement != NULL &&
+        prepared_dml_plan_reuse_is_enabled(database->active_bound_statement)) {
+        return execute_prepared_insert_statement(database, statement, out_result);
+    }
+    rc = mylite_result_create(&result);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -209,8 +214,13 @@ static int execute_planned_insert_set_statement(
 ) {
     struct planned_insert plan = {0};
     mylite_result *result = NULL;
-    int rc = mylite_result_create(&result);
+    int rc = MYLITE_OK;
 
+    if (database->active_bound_statement != NULL &&
+        prepared_dml_plan_reuse_is_enabled(database->active_bound_statement)) {
+        return execute_prepared_insert_statement(database, statement, out_result);
+    }
+    rc = mylite_result_create(&result);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -318,8 +328,13 @@ static int execute_delete_statement(
 ) {
     struct planned_delete plan = {0};
     mylite_result *result = NULL;
-    int rc = mylite_result_create(&result);
+    int rc = MYLITE_OK;
 
+    if (database->active_bound_statement != NULL &&
+        prepared_dml_plan_reuse_is_enabled(database->active_bound_statement)) {
+        return execute_prepared_delete_statement(database, out_result);
+    }
+    rc = mylite_result_create(&result);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -350,8 +365,13 @@ static int execute_update_statement(
 ) {
     struct planned_update plan = {0};
     mylite_result *result = NULL;
-    int rc = mylite_result_create(&result);
+    int rc = MYLITE_OK;
 
+    if (database->active_bound_statement != NULL &&
+        prepared_dml_plan_reuse_is_enabled(database->active_bound_statement)) {
+        return execute_prepared_update_statement(database, out_result);
+    }
+    rc = mylite_result_create(&result);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -399,4 +419,454 @@ static int append_update_assignment_warnings(
         return MYLITE_OK;
     }
     return append_planned_scalar_warnings(database, &plan->assignment_warnings);
+}
+
+static int execute_prepared_insert_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    mylite_stmt *stmt = database->active_bound_statement;
+    struct planned_insert executable_plan = {0};
+    struct planned_insert *plan = NULL;
+    mylite_result *result = NULL;
+    bool created = false;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = ensure_prepared_dml_plan(stmt, MYLITE_ANALYZED_DML_PLAN_INSERT, &created);
+    if (rc == MYLITE_OK && created) {
+        plan = &stmt->analyzed_dml->plan.insert;
+    } else if (rc == MYLITE_OK) {
+        executable_plan = stmt->analyzed_dml->plan.insert;
+        executable_plan.rows = NULL;
+        executable_plan.row_count = 0U;
+        executable_plan.duplicate_update = (struct planned_insert_duplicate_update){0};
+        executable_plan.generated_auto_increment = false;
+        executable_plan.first_generated_auto_increment = 0;
+        executable_plan.auto_increment_next_after_statement = executable_plan.auto_increment_next;
+        rc = plan_prepared_insert_dynamic_values(database, statement, &executable_plan);
+        plan = &executable_plan;
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_update_warnings_if_needed(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_execution_reject_read_only_persistent_write(
+            database,
+            &plan->target,
+            &plan->table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_from_plan(database, plan, result);
+    }
+    if (created && stmt->analyzed_dml != NULL) {
+        planned_insert_dynamic_deinit(&stmt->analyzed_dml->plan.insert);
+    } else {
+        planned_insert_dynamic_deinit(&executable_plan);
+    }
+    release_one_shot_prepared_dml_plan(stmt);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_prepared_delete_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    mylite_stmt *stmt = database->active_bound_statement;
+    struct planned_delete *plan = NULL;
+    mylite_result *result = NULL;
+    bool created = false;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = ensure_prepared_dml_plan(stmt, MYLITE_ANALYZED_DML_PLAN_DELETE, &created);
+    (void)created;
+    if (rc == MYLITE_OK) {
+        plan = &stmt->analyzed_dml->plan.delete;
+        rc = mylite_execution_reject_read_only_persistent_write(
+            database,
+            &plan->target,
+            &plan->table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_delete_from_plan(database, plan, result);
+    }
+    release_one_shot_prepared_dml_plan(stmt);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_prepared_update_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    mylite_stmt *stmt = database->active_bound_statement;
+    struct planned_update *plan = NULL;
+    mylite_result *result = NULL;
+    bool created = false;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = ensure_prepared_dml_plan(stmt, MYLITE_ANALYZED_DML_PLAN_UPDATE, &created);
+    (void)created;
+    if (rc == MYLITE_OK) {
+        plan = &stmt->analyzed_dml->plan.update;
+        rc = mylite_execution_reject_read_only_persistent_write(
+            database,
+            &plan->target,
+            &plan->table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_update_from_plan(database, plan, result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_assignment_warnings(database, plan);
+    }
+    release_one_shot_prepared_dml_plan(stmt);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_execution_clear_next_transaction_characteristics_after_statement(database);
+    return finish_successful_result(database, result, out_result);
+}
+
+static bool prepared_dml_plan_reuse_is_enabled(mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->statement == NULL) {
+        return false;
+    }
+    if (!stmt->dml_plan_reuse_checked) {
+        stmt->dml_plan_reusable = prepared_dml_parameter_contexts_are_reusable(stmt->statement);
+        stmt->dml_plan_reuse_checked = true;
+    }
+    return stmt->dml_plan_reusable;
+}
+
+static int ensure_prepared_dml_plan(
+    mylite_stmt *stmt,
+    enum mylite_analyzed_dml_plan_kind kind,
+    bool *out_created
+) {
+    struct mylite_analyzed_dml_plan *analysis = NULL;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_plan_started_ns = 0U;
+#endif
+    int rc = MYLITE_OK;
+
+    if (stmt == NULL || stmt->database == NULL || out_created == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_created = false;
+    if (!prepared_dml_plan_matches(stmt, kind)) {
+        deinit_analyzed_dml_plan(&stmt->analyzed_dml);
+    }
+    if (stmt->analyzed_dml != NULL) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_dml_plan(stmt->database, 0U, true);
+#endif
+        return MYLITE_OK;
+    }
+
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_plan_started_ns = mylite_profile_now_ns();
+#endif
+    analysis = calloc(1U, sizeof(*analysis));
+    if (analysis == NULL) {
+        set_nomem_error(stmt->database);
+        return MYLITE_NOMEM;
+    }
+    stmt->analyzed_dml = analysis;
+    analysis->kind = kind;
+    stmt->parameter_plan_reusable = true;
+    switch (kind) {
+    case MYLITE_ANALYZED_DML_PLAN_INSERT:
+        if (stmt->statement->kind == MYLITE_SQL_AST_INSERT_SET_STATEMENT ||
+            stmt->statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
+            rc = plan_insert_set(stmt->database, stmt->statement, &analysis->plan.insert);
+        } else {
+            rc = plan_insert(stmt->database, stmt->statement, &analysis->plan.insert);
+        }
+        break;
+    case MYLITE_ANALYZED_DML_PLAN_UPDATE:
+        rc = plan_update(stmt->database, stmt->statement, &analysis->plan.update);
+        break;
+    case MYLITE_ANALYZED_DML_PLAN_DELETE:
+        rc = plan_delete(stmt->database, stmt->statement, &analysis->plan.delete);
+        break;
+    case MYLITE_ANALYZED_DML_PLAN_NONE:
+        rc = MYLITE_MISUSE;
+        break;
+    }
+    if (rc == MYLITE_OK && kind != MYLITE_ANALYZED_DML_PLAN_INSERT &&
+        !stmt->parameter_plan_reusable) {
+        stmt->dml_plan_reusable = false;
+        *out_created = true;
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_dml_plan(stmt->database, profile_plan_started_ns, false);
+#endif
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = capture_prepared_dml_bindings(stmt);
+    }
+    if (rc == MYLITE_OK) {
+        analysis->key = current_dml_analysis_key(stmt->database);
+        analysis->valid = true;
+        *out_created = true;
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_dml_plan(stmt->database, profile_plan_started_ns, false);
+#endif
+        return MYLITE_OK;
+    }
+
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_dml_plan(stmt->database, profile_plan_started_ns, false);
+#endif
+    deinit_analyzed_dml_plan(&stmt->analyzed_dml);
+    return rc;
+}
+
+static bool prepared_dml_plan_matches(
+    const mylite_stmt *stmt,
+    enum mylite_analyzed_dml_plan_kind kind
+) {
+    const struct mylite_analyzed_dml_plan *analysis = NULL;
+    struct mylite_dml_analysis_key key = {0};
+
+    if (stmt == NULL || stmt->database == NULL || stmt->analyzed_dml == NULL) {
+        return false;
+    }
+    analysis = stmt->analyzed_dml;
+    if (!analysis->valid || analysis->kind != kind ||
+        analysis->binding_type_count != stmt->parameter_count ||
+        (stmt->parameter_count != 0U && (analysis->binding_types == NULL || stmt->bindings == NULL)
+        )) {
+        return false;
+    }
+    key = current_dml_analysis_key(stmt->database);
+    if (analysis->key.catalog_generation != key.catalog_generation ||
+        analysis->key.sqlite_schema_generation != key.sqlite_schema_generation ||
+        analysis->key.sql_mode != key.sql_mode ||
+        (kind != MYLITE_ANALYZED_DML_PLAN_INSERT &&
+         analysis->key.last_insert_id != key.last_insert_id) ||
+        analysis->key.insert_id != key.insert_id ||
+        analysis->key.auto_increment_increment != key.auto_increment_increment ||
+        analysis->key.auto_increment_offset != key.auto_increment_offset ||
+        analysis->key.time_zone_offset_minutes != key.time_zone_offset_minutes ||
+        analysis->key.foreign_key_checks_enabled != key.foreign_key_checks_enabled ||
+        analysis->key.sql_safe_updates_enabled != key.sql_safe_updates_enabled ||
+        analysis->key.sql_auto_is_null != key.sql_auto_is_null) {
+        return false;
+    }
+    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
+        if (analysis->binding_types[index] != stmt->bindings[index].type) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static struct mylite_dml_analysis_key current_dml_analysis_key(const struct mylite_db *database) {
+    const char *sql_auto_is_null = NULL;
+
+    if (database == NULL) {
+        return (struct mylite_dml_analysis_key){0};
+    }
+    sql_auto_is_null = mylite_execution_session_system_variable_override_value(
+        database,
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL
+    );
+    return (struct mylite_dml_analysis_key){
+        .catalog_generation = database->session.catalog_generation,
+        .sqlite_schema_generation = database->session.sqlite_schema_generation,
+        .sql_mode = database->session.sql_mode,
+        .last_insert_id = database->session.last_insert_id,
+        .insert_id = database->session.insert_id,
+        .auto_increment_increment = database->session.auto_increment_increment,
+        .auto_increment_offset = database->session.auto_increment_offset,
+        .time_zone_offset_minutes = database->session.time_zone_offset_minutes,
+        .foreign_key_checks_enabled = foreign_key_checks_system_variable_value(database, false),
+        .sql_safe_updates_enabled = sql_safe_updates_is_enabled(database),
+        .sql_auto_is_null = sql_auto_is_null != NULL && strcmp(sql_auto_is_null, "1") == 0,
+    };
+}
+
+static int capture_prepared_dml_bindings(mylite_stmt *stmt) {
+    struct mylite_analyzed_dml_plan *analysis = stmt->analyzed_dml;
+
+    if (stmt->parameter_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (stmt->parameter_count > SIZE_MAX / sizeof(*analysis->binding_types)) {
+        set_nomem_error(stmt->database);
+        return MYLITE_NOMEM;
+    }
+    analysis->binding_types = malloc(stmt->parameter_count * sizeof(*analysis->binding_types));
+    if (analysis->binding_types == NULL) {
+        set_nomem_error(stmt->database);
+        return MYLITE_NOMEM;
+    }
+    analysis->binding_type_count = stmt->parameter_count;
+    for (size_t index = 0U; index < stmt->parameter_count; ++index) {
+        analysis->binding_types[index] = stmt->bindings[index].type;
+    }
+    return MYLITE_OK;
+}
+
+static void release_one_shot_prepared_dml_plan(mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->analyzed_dml == NULL ||
+        (stmt->analyzed_dml->kind == MYLITE_ANALYZED_DML_PLAN_INSERT && stmt->analyzed_dml->valid
+        )) {
+        return;
+    }
+    if (!stmt->analyzed_dml->valid || !stmt->parameter_plan_reusable) {
+        stmt->dml_plan_reusable = false;
+        deinit_analyzed_dml_plan(&stmt->analyzed_dml);
+    }
+}
+
+static bool prepared_dml_parameter_contexts_are_reusable(const struct mylite_sql_ast_node *statement
+) {
+    struct mylite_dml_parameter_context_stack stack = {0};
+    bool reusable = statement != NULL;
+
+    if (!reusable) {
+        return false;
+    }
+    if (statement->kind == MYLITE_SQL_AST_INSERT_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_INSERT_SET_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
+        return true;
+    }
+    reusable = push_dml_parameter_context(
+        &stack,
+        (struct mylite_dml_parameter_context_frame){
+            .node = statement,
+            .parent_kind = MYLITE_SQL_AST_SCRIPT,
+            .grandparent_kind = MYLITE_SQL_AST_SCRIPT,
+            .child_index = SIZE_MAX,
+        }
+    );
+    while (reusable && stack.count != 0U) {
+        struct mylite_dml_parameter_context_frame frame = stack.items[--stack.count];
+        const struct mylite_sql_ast_node *child = NULL;
+        size_t child_index = 0U;
+
+        if (frame.node->kind == MYLITE_SQL_AST_PARAMETER) {
+            reusable = prepared_dml_parameter_context_is_reusable(&frame, statement->kind);
+            continue;
+        }
+        for (child = frame.node->first_child; reusable && child != NULL;
+             child = child->next_sibling) {
+            struct mylite_dml_parameter_context_frame child_frame = {
+                .node = child,
+                .parent_kind = frame.node->kind,
+                .grandparent_kind = frame.parent_kind,
+                .child_index = child_index,
+            };
+
+            if (frame.node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+                child_frame.parent_kind = frame.parent_kind;
+                child_frame.grandparent_kind = frame.grandparent_kind;
+                child_frame.child_index = frame.child_index;
+            }
+            reusable = push_dml_parameter_context(&stack, child_frame);
+            ++child_index;
+        }
+    }
+    free(stack.items);
+    return reusable;
+}
+
+static bool prepared_dml_parameter_context_is_reusable(
+    const struct mylite_dml_parameter_context_frame *frame,
+    enum mylite_sql_ast_node_kind statement_kind
+) {
+    if (frame == NULL) {
+        return false;
+    }
+    if ((statement_kind == MYLITE_SQL_AST_UPDATE_STATEMENT ||
+         statement_kind == MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT) &&
+        frame->parent_kind == MYLITE_SQL_AST_UPDATE_ASSIGNMENT && frame->child_index == 1U) {
+        return true;
+    }
+    if (frame->parent_kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return frame->child_index == 1U;
+    }
+    if (frame->parent_kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
+        return frame->child_index == 1U || frame->child_index == 2U;
+    }
+    return frame->parent_kind == MYLITE_SQL_AST_PREDICATE_VALUE_LIST &&
+           frame->grandparent_kind == MYLITE_SQL_AST_IN_PREDICATE;
+}
+
+static bool push_dml_parameter_context(
+    struct mylite_dml_parameter_context_stack *stack,
+    struct mylite_dml_parameter_context_frame frame
+) {
+    struct mylite_dml_parameter_context_frame *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? 32U : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            return false;
+        }
+        items = realloc(stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            return false;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+    stack->items[stack->count++] = frame;
+    return true;
+}
+
+static void deinit_analyzed_dml_plan(struct mylite_analyzed_dml_plan **analysis) {
+    if (analysis == NULL || *analysis == NULL) {
+        return;
+    }
+    switch ((*analysis)->kind) {
+    case MYLITE_ANALYZED_DML_PLAN_INSERT:
+        planned_insert_deinit(&(*analysis)->plan.insert);
+        break;
+    case MYLITE_ANALYZED_DML_PLAN_UPDATE:
+        planned_update_deinit(&(*analysis)->plan.update);
+        break;
+    case MYLITE_ANALYZED_DML_PLAN_DELETE:
+        planned_delete_deinit(&(*analysis)->plan.delete);
+        break;
+    case MYLITE_ANALYZED_DML_PLAN_NONE:
+        break;
+    }
+    free((*analysis)->binding_types);
+    free(*analysis);
+    *analysis = NULL;
 }

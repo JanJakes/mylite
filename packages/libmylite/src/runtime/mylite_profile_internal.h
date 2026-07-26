@@ -14,6 +14,7 @@ struct mylite_profile_snapshot {
     uint64_t normalization_ns;
     uint64_t parse_ns;
     uint64_t select_plan_ns;
+    uint64_t dml_plan_ns;
     uint64_t select_lowering_ns;
     uint64_t sqlite_step_ns;
     uint64_t metadata_step_ns;
@@ -27,6 +28,8 @@ struct mylite_profile_snapshot {
     uint64_t parser_retry_handled_count;
     uint64_t select_plan_count;
     uint64_t select_plan_cache_hit_count;
+    uint64_t dml_plan_count;
+    uint64_t dml_plan_cache_hit_count;
     uint64_t select_lowering_count;
     uint64_t select_lowering_cache_hit_count;
     uint64_t sqlite_step_count;
@@ -74,6 +77,7 @@ void mylite_profile_record_parse(
     size_t retry_handled_count
 );
 void mylite_profile_record_select_plan(mylite_db *database, uint64_t started_ns, bool cache_hit);
+void mylite_profile_record_dml_plan(mylite_db *database, uint64_t started_ns, bool cache_hit);
 void mylite_profile_record_select_lowering(
     mylite_db *database,
     uint64_t started_ns,

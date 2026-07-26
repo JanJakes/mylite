@@ -32,6 +32,30 @@ static bool prepared_statement_requires_object_validation(
 static int validate_prepared_statement_objects(mylite_stmt *stmt);
 static int validate_prepared_select_statement_objects(mylite_stmt *stmt);
 static int execute_prepared_materialized_statement(mylite_stmt *stmt);
+static bool prepared_dml_plan_reuse_is_enabled(mylite_stmt *stmt);
+static int ensure_prepared_dml_plan(
+    mylite_stmt *stmt,
+    enum mylite_analyzed_dml_plan_kind kind,
+    bool *out_created
+);
+static bool prepared_dml_plan_matches(
+    const mylite_stmt *stmt,
+    enum mylite_analyzed_dml_plan_kind kind
+);
+static struct mylite_dml_analysis_key current_dml_analysis_key(const struct mylite_db *database);
+static int capture_prepared_dml_bindings(mylite_stmt *stmt);
+static void release_one_shot_prepared_dml_plan(mylite_stmt *stmt);
+static bool prepared_dml_parameter_contexts_are_reusable(const struct mylite_sql_ast_node *statement
+);
+static bool prepared_dml_parameter_context_is_reusable(
+    const struct mylite_dml_parameter_context_frame *frame,
+    enum mylite_sql_ast_node_kind statement_kind
+);
+static bool push_dml_parameter_context(
+    struct mylite_dml_parameter_context_stack *stack,
+    struct mylite_dml_parameter_context_frame frame
+);
+static void deinit_analyzed_dml_plan(struct mylite_analyzed_dml_plan **analysis);
 static void release_stmt_bindings(mylite_stmt *stmt);
 static int prepare_cursor_select_statement(
     struct mylite_db *database,

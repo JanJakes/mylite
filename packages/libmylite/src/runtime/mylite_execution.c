@@ -2349,6 +2349,7 @@ static int release_cursor_statement_resources(mylite_stmt *stmt, int rc) {
     }
     rc = rollback_statement_transaction(stmt->database, &stmt->read_transaction, rc);
     deinit_analyzed_select_plan(&stmt->analyzed_select);
+    deinit_analyzed_dml_plan(&stmt->analyzed_dml);
     mylite_execution_result_row_storage_deinit(&stmt->row_storage);
     result_column_metadata_context_deinit(&stmt->metadata_context);
     mylite_result_free(stmt->metadata_result);

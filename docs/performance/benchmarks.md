@@ -142,7 +142,8 @@ executes a five-query mixed request containing a read, an upsert, two updates,
 and a delete. These scenarios measure a request-shaped sequence while retaining
 the existing `.queryN` isolation for hotspot analysis.
 
-`runtime.wp_prepared_select` and `runtime.wp_prepared_update` prepare one
+`runtime.wp_prepared_select`, `runtime.wp_prepared_update`,
+`runtime.wp_prepared_insert`, and `runtime.wp_prepared_delete` prepare one
 WordPress-shaped statement before warmup, then reset, bind, and execute that
 same native statement for every measured operation. These scenarios isolate
 retained-plan execution from prepare cost and accept `--profile-json`; measured

@@ -384,6 +384,26 @@ static const struct benchmark_query wordpress_prepared_update_bindings[] = {
     QUERY("siteurl"),
 };
 
+static const struct benchmark_query wordpress_prepared_insert_queries[] = {
+    QUERY("INSERT INTO wp_options (option_name, option_value, autoload) VALUES (?, ?, ?) "
+          "ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), "
+          "autoload = VALUES(autoload)"),
+};
+
+static const struct benchmark_query wordpress_prepared_insert_bindings[] = {
+    QUERY("siteurl"),
+    QUERY("https://example.test"),
+    QUERY("yes"),
+};
+
+static const struct benchmark_query wordpress_prepared_delete_queries[] = {
+    QUERY("DELETE FROM wp_options WHERE option_name = ?"),
+};
+
+static const struct benchmark_query wordpress_prepared_delete_bindings[] = {
+    QUERY("_transient_delete_miss"),
+};
+
 static const struct benchmark_query wordpress_posts_meta_queries[] = {
     QUERY("SELECT ID, post_title FROM wp_posts "
           "WHERE post_type = 'post' AND post_status = 'publish' "
@@ -887,6 +907,28 @@ static const struct runtime_scenario runtime_prepared_scenarios[] = {
         .prepared_bindings = wordpress_prepared_update_bindings,
         .prepared_binding_count = sizeof(wordpress_prepared_update_bindings) /
                                   sizeof(wordpress_prepared_update_bindings[0]),
+    },
+    {
+        .name = "runtime.wp_prepared_insert",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_prepared_insert_queries,
+        .query_count = sizeof(wordpress_prepared_insert_queries) /
+                       sizeof(wordpress_prepared_insert_queries[0]),
+        .prepared_bindings = wordpress_prepared_insert_bindings,
+        .prepared_binding_count = sizeof(wordpress_prepared_insert_bindings) /
+                                  sizeof(wordpress_prepared_insert_bindings[0]),
+    },
+    {
+        .name = "runtime.wp_prepared_delete",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_prepared_delete_queries,
+        .query_count = sizeof(wordpress_prepared_delete_queries) /
+                       sizeof(wordpress_prepared_delete_queries[0]),
+        .prepared_bindings = wordpress_prepared_delete_bindings,
+        .prepared_binding_count = sizeof(wordpress_prepared_delete_bindings) /
+                                  sizeof(wordpress_prepared_delete_bindings[0]),
     },
 };
 
@@ -3218,6 +3260,7 @@ static int append_profile_json(
     unattributed_ns = subtract_saturating(unattributed_ns, profile->normalization_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->parse_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->select_plan_ns);
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->dml_plan_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->select_lowering_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->sqlite_step_ns);
     unattributed_ns = subtract_saturating(unattributed_ns, profile->result_buffer_ns);
@@ -3231,12 +3274,13 @@ static int append_profile_json(
         "{\"scenario\":\"%s\",\"kind\":\"%s\",\"sample\":%zu,"
         "\"operations\":%zu,\"wall_ns\":%" PRIu64 ",\"statement_api_ns\":%" PRIu64
         ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64 ",\"select_plan_ns\":%" PRIu64
-        ",\"select_lowering_ns\":%" PRIu64 ",\"sqlite_step_ns\":%" PRIu64
-        ",\"metadata_step_ns\":%" PRIu64 ",\"result_buffer_ns\":%" PRIu64
-        ",\"cursor_step_ns\":%" PRIu64 ",\"cursor_finalize_ns\":%" PRIu64
-        ",\"unattributed_ns\":%" PRIu64 ",\"statement_count\":%" PRIu64
-        ",\"normalization_count\":%" PRIu64 ",\"parse_count\":%" PRIu64
-        ",\"select_plan_count\":%" PRIu64 ",\"parser_retry_callback_count\":%" PRIu64
+        ",\"dml_plan_ns\":%" PRIu64 ",\"select_lowering_ns\":%" PRIu64
+        ",\"sqlite_step_ns\":%" PRIu64 ",\"metadata_step_ns\":%" PRIu64
+        ",\"result_buffer_ns\":%" PRIu64 ",\"cursor_step_ns\":%" PRIu64
+        ",\"cursor_finalize_ns\":%" PRIu64 ",\"unattributed_ns\":%" PRIu64
+        ",\"statement_count\":%" PRIu64 ",\"normalization_count\":%" PRIu64
+        ",\"parse_count\":%" PRIu64 ",\"select_plan_count\":%" PRIu64 ",\"dml_plan_count\":%" PRIu64
+        ",\"dml_plan_cache_hit_count\":%" PRIu64 ",\"parser_retry_callback_count\":%" PRIu64
         ",\"parser_retry_handled_count\":%" PRIu64 ",\"select_plan_cache_hit_count\":%" PRIu64
         ",\"select_lowering_count\":%" PRIu64 ",\"select_lowering_cache_hit_count\":%" PRIu64
         ",\"sqlite_step_count\":%" PRIu64 ",\"metadata_step_count\":%" PRIu64
@@ -3261,6 +3305,7 @@ static int append_profile_json(
         profile->normalization_ns,
         profile->parse_ns,
         profile->select_plan_ns,
+        profile->dml_plan_ns,
         profile->select_lowering_ns,
         profile->sqlite_step_ns,
         profile->metadata_step_ns,
@@ -3272,6 +3317,8 @@ static int append_profile_json(
         profile->normalization_count,
         profile->parse_count,
         profile->select_plan_count,
+        profile->dml_plan_count,
+        profile->dml_plan_cache_hit_count,
         profile->parser_retry_callback_count,
         profile->parser_retry_handled_count,
         profile->select_plan_cache_hit_count,

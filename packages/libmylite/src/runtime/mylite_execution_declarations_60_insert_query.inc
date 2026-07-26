@@ -8,6 +8,12 @@ static int plan_insert_set(
     const struct mylite_sql_ast_node *statement,
     struct planned_insert *out_plan
 );
+static int plan_prepared_insert_dynamic_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *plan
+);
+static void planned_insert_dynamic_deinit(struct planned_insert *plan);
 static int plan_load_data_infile(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

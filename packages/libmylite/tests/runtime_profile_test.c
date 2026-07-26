@@ -25,6 +25,7 @@ static int test_cursor_profile(void);
 static int test_repeated_prepared_profile(void);
 static int test_prepared_plan_cache_profile(void);
 static int test_parameterized_prepared_plan_cache_profile(void);
+static int test_prepared_dml_plan_cache_profile(void);
 static int test_connection_attribution(void);
 static int test_transaction_control_profile(void);
 static int test_close_active_profile(void);
@@ -40,6 +41,7 @@ int main(void) {
     failures += test_repeated_prepared_profile();
     failures += test_prepared_plan_cache_profile();
     failures += test_parameterized_prepared_plan_cache_profile();
+    failures += test_prepared_dml_plan_cache_profile();
     failures += test_connection_attribution();
     failures += test_transaction_control_profile();
     failures += test_close_active_profile();
@@ -1116,6 +1118,431 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
     );
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int test_prepared_dml_plan_cache_profile(void) {
+    struct mylite_profile_snapshot snapshot = {0};
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open DML profile");
+    failures += mylite_test_expect_int(
+        mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
+        MYLITE_OK,
+        "create DML profile schema"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_execute(database, "USE app", strlen("USE app"), &result),
+        MYLITE_OK,
+        "use DML profile schema"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "CREATE TABLE t (id INT PRIMARY KEY, value VARCHAR(20), score INT NOT NULL DEFAULT 0, "
+            "amount DECIMAL(10,2) NOT NULL DEFAULT 0)",
+            strlen(
+                "CREATE TABLE t (id INT PRIMARY KEY, value VARCHAR(20), score INT NOT NULL DEFAULT "
+                "0, amount DECIMAL(10,2) NOT NULL DEFAULT 0)"
+            ),
+            &result
+        ),
+        MYLITE_OK,
+        "create DML profile table"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "INSERT INTO t (id, value) VALUES (?, ?)",
+            strlen("INSERT INTO t (id, value) VALUES (?, ?)"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare retained INSERT"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 1),
+        MYLITE_OK,
+        "bind first INSERT id"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "one", strlen("one")),
+        MYLITE_OK,
+        "bind first INSERT value"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "execute first retained INSERT"
+    );
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start retained INSERT profile"
+    );
+    for (int64_t id = 2; id <= 4; ++id) {
+        failures +=
+            mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset retained INSERT");
+        failures += mylite_test_expect_int(
+            mylite_stmt_bind_int64(stmt, 0U, id),
+            MYLITE_OK,
+            "rebind retained INSERT id"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_bind_text(stmt, 1U, "next", strlen("next")),
+            MYLITE_OK,
+            "rebind retained INSERT value"
+        );
+        failures +=
+            mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute retained INSERT");
+    }
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop retained INSERT profile"
+    );
+    failures +=
+        mylite_test_expect_true(snapshot.dml_plan_count == 0U, "retained INSERT plan build count");
+    failures += mylite_test_expect_true(
+        snapshot.dml_plan_cache_hit_count == 3U,
+        "retained INSERT plan hit count"
+    );
+    failures += mylite_test_expect_true(snapshot.parse_count == 0U, "retained INSERT parse count");
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT COUNT(*), SUM(id) FROM t",
+            strlen("SELECT COUNT(*), SUM(id) FROM t"),
+            &result
+        ),
+        MYLITE_OK,
+        "read retained INSERT results"
+    );
+    failures += mylite_test_expect_true(
+        result != NULL && mylite_result_row_count(result) == 1U &&
+            strcmp(mylite_result_value_text(result, 0U, 0U), "4") == 0 &&
+            strcmp(mylite_result_value_text(result, 0U, 1U), "10") == 0,
+        "retained INSERT uses rebound values"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize retained INSERT");
+    stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "UPDATE t SET score = score + ? WHERE id = ?",
+            strlen("UPDATE t SET score = score + ? WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare value-sensitive UPDATE"
+    );
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start value-sensitive UPDATE profile"
+    );
+    for (int64_t delta = 1; delta <= 2; ++delta) {
+        if (delta != 1) {
+            failures += mylite_test_expect_int(
+                mylite_stmt_reset(stmt),
+                MYLITE_OK,
+                "reset value-sensitive UPDATE"
+            );
+        }
+        failures += mylite_test_expect_int(
+            mylite_stmt_bind_int64(stmt, 0U, delta),
+            MYLITE_OK,
+            "bind value-sensitive delta"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_bind_int64(stmt, 1U, 1),
+            MYLITE_OK,
+            "bind value-sensitive id"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "execute value-sensitive UPDATE"
+        );
+    }
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop value-sensitive UPDATE profile"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.dml_plan_count == 0U && snapshot.dml_plan_cache_hit_count == 0U,
+        "value-sensitive UPDATE uses full planning"
+    );
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT score FROM t WHERE id = 1",
+            strlen("SELECT score FROM t WHERE id = 1"),
+            &result
+        ),
+        MYLITE_OK,
+        "read value-sensitive UPDATE result"
+    );
+    failures += mylite_test_expect_true(
+        result != NULL && strcmp(mylite_result_value_text(result, 0U, 0U), "3") == 0,
+        "value-sensitive UPDATE uses each rebound delta"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize value-sensitive UPDATE"
+    );
+    stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "UPDATE t SET value = ? WHERE id = ?",
+            strlen("UPDATE t SET value = ? WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare invalidated UPDATE"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "changed", strlen("changed")),
+        MYLITE_OK,
+        "bind invalidated UPDATE value"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, 1),
+        MYLITE_OK,
+        "bind invalidated UPDATE id"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute initial UPDATE plan");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset invalidated UPDATE");
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "rebound", strlen("rebound")),
+        MYLITE_OK,
+        "rebind retained UPDATE value"
+    );
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start retained UPDATE profile"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute retained UPDATE");
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop retained UPDATE profile"
+    );
+    failures +=
+        mylite_test_expect_true(snapshot.dml_plan_count == 0U, "retained UPDATE plan build count");
+    failures += mylite_test_expect_true(
+        snapshot.dml_plan_cache_hit_count == 1U,
+        "retained UPDATE plan hit count"
+    );
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT value FROM t WHERE id = 1",
+            strlen("SELECT value FROM t WHERE id = 1"),
+            &result
+        ),
+        MYLITE_OK,
+        "read retained UPDATE result"
+    );
+    failures += mylite_test_expect_true(
+        result != NULL && strcmp(mylite_result_value_text(result, 0U, 0U), "rebound") == 0,
+        "retained UPDATE uses rebound assignment"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset invalidated UPDATE");
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "after-alter", strlen("after-alter")),
+        MYLITE_OK,
+        "rebind invalidated UPDATE value"
+    );
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "ALTER TABLE t ADD COLUMN note VARCHAR(20)",
+            strlen("ALTER TABLE t ADD COLUMN note VARCHAR(20)"),
+            &result
+        ),
+        MYLITE_OK,
+        "alter table before retained UPDATE"
+    );
+    mylite_result_free(result);
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start invalidated UPDATE profile"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute invalidated UPDATE");
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop invalidated UPDATE profile"
+    );
+    failures +=
+        mylite_test_expect_true(snapshot.dml_plan_count == 1U, "invalidated UPDATE plan rebuild");
+    failures += mylite_test_expect_true(
+        snapshot.dml_plan_cache_hit_count == 0U,
+        "invalidated UPDATE plan has no hit"
+    );
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT value FROM t WHERE id = 1",
+            strlen("SELECT value FROM t WHERE id = 1"),
+            &result
+        ),
+        MYLITE_OK,
+        "read invalidated UPDATE result"
+    );
+    failures += mylite_test_expect_true(
+        result != NULL && strcmp(mylite_result_value_text(result, 0U, 0U), "after-alter") == 0,
+        "rebuilt UPDATE uses current assignment"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize invalidated UPDATE"
+    );
+    stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "DELETE FROM t WHERE amount = ?",
+            strlen("DELETE FROM t WHERE amount = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare converted-parameter DELETE"
+    );
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start converted-parameter DELETE profile"
+    );
+    for (int value = 1; value <= 2; ++value) {
+        const char *binding = value == 1 ? "91.25" : "92.50";
+
+        if (value != 1) {
+            failures += mylite_test_expect_int(
+                mylite_stmt_reset(stmt),
+                MYLITE_OK,
+                "reset converted-parameter DELETE"
+            );
+        }
+        failures += mylite_test_expect_int(
+            mylite_stmt_bind_text(stmt, 0U, binding, strlen(binding)),
+            MYLITE_OK,
+            "bind converted-parameter DELETE"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "execute converted-parameter DELETE"
+        );
+    }
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop converted-parameter DELETE profile"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.dml_plan_count == 1U && snapshot.dml_plan_cache_hit_count == 0U,
+        "converted predicate parameter does not retain first binding"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize converted-parameter DELETE"
+    );
+    stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "DELETE FROM t WHERE id = ?",
+            strlen("DELETE FROM t WHERE id = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare retained DELETE"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_bind_int64(stmt, 0U, 4), MYLITE_OK, "bind first DELETE");
+    failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute first DELETE");
+    failures += mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset retained DELETE");
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 3),
+        MYLITE_OK,
+        "rebind retained DELETE"
+    );
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start retained DELETE profile"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute retained DELETE");
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop retained DELETE profile"
+    );
+    failures +=
+        mylite_test_expect_true(snapshot.dml_plan_count == 0U, "retained DELETE plan build count");
+    failures += mylite_test_expect_true(
+        snapshot.dml_plan_cache_hit_count == 1U,
+        "retained DELETE plan hit count"
+    );
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT COUNT(*), SUM(id) FROM t",
+            strlen("SELECT COUNT(*), SUM(id) FROM t"),
+            &result
+        ),
+        MYLITE_OK,
+        "read retained DELETE results"
+    );
+    failures += mylite_test_expect_true(
+        result != NULL && strcmp(mylite_result_value_text(result, 0U, 0U), "2") == 0 &&
+            strcmp(mylite_result_value_text(result, 0U, 1U), "3") == 0,
+        "retained DELETE uses rebound predicate"
+    );
+    mylite_result_free(result);
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize retained DELETE");
+
+    mylite_close(database);
     return failures;
 }
 

@@ -1026,6 +1026,8 @@ struct planned_insert {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    size_t *target_indexes;
+    size_t target_count;
     struct loaded_table_columns_cache_entry *columns_cache_entry;
     struct loaded_table_key_metadata_reference key_metadata;
     const struct loaded_index_info *indexes;
@@ -2610,6 +2612,53 @@ struct mylite_analyzed_select_plan {
     struct mylite_select_analysis_state analysis;
 };
 
+enum mylite_analyzed_dml_plan_kind {
+    MYLITE_ANALYZED_DML_PLAN_NONE = 0,
+    MYLITE_ANALYZED_DML_PLAN_INSERT,
+    MYLITE_ANALYZED_DML_PLAN_UPDATE,
+    MYLITE_ANALYZED_DML_PLAN_DELETE,
+};
+
+struct mylite_dml_analysis_key {
+    uint64_t catalog_generation;
+    uint64_t sqlite_schema_generation;
+    uint64_t sql_mode;
+    uint64_t last_insert_id;
+    uint64_t insert_id;
+    uint64_t auto_increment_increment;
+    uint64_t auto_increment_offset;
+    int time_zone_offset_minutes;
+    bool foreign_key_checks_enabled;
+    bool sql_safe_updates_enabled;
+    bool sql_auto_is_null;
+};
+
+struct mylite_analyzed_dml_plan {
+    union {
+        struct planned_insert insert;
+        struct planned_update update;
+        struct planned_delete delete;
+    } plan;
+    struct mylite_dml_analysis_key key;
+    enum mylite_stmt_binding_type *binding_types;
+    size_t binding_type_count;
+    enum mylite_analyzed_dml_plan_kind kind;
+    bool valid;
+};
+
+struct mylite_dml_parameter_context_frame {
+    const struct mylite_sql_ast_node *node;
+    enum mylite_sql_ast_node_kind parent_kind;
+    enum mylite_sql_ast_node_kind grandparent_kind;
+    size_t child_index;
+};
+
+struct mylite_dml_parameter_context_stack {
+    struct mylite_dml_parameter_context_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
 struct mylite_stmt {
     struct mylite_db *database;
     struct mylite_stmt *next_live_statement;
@@ -2619,6 +2668,7 @@ struct mylite_stmt {
     struct mylite_execution_normalized_sql normalized_sql;
     const struct mylite_sql_ast_node *statement;
     struct mylite_analyzed_select_plan analyzed_select;
+    struct mylite_analyzed_dml_plan *analyzed_dml;
     struct result_column_metadata_context metadata_context;
     struct mylite_execution_result_row_storage row_storage;
     struct mylite_statement_transaction read_transaction;
@@ -2645,6 +2695,8 @@ struct mylite_stmt {
     bool returns_rows;
     bool analyzing_unbound_parameters;
     bool parameter_plan_reusable;
+    bool dml_plan_reuse_checked;
+    bool dml_plan_reusable;
     bool sqlite_statement_is_cached;
     bool current_row_available;
     bool done;

@@ -154,6 +154,18 @@ void mylite_profile_record_select_plan(mylite_db *database, uint64_t started_ns,
     ++database->profile.select_plan_count;
 }
 
+void mylite_profile_record_dml_plan(mylite_db *database, uint64_t started_ns, bool cache_hit) {
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    if (cache_hit) {
+        ++database->profile.dml_plan_cache_hit_count;
+        return;
+    }
+    database->profile.dml_plan_ns += elapsed_since(started_ns);
+    ++database->profile.dml_plan_count;
+}
+
 void mylite_profile_record_select_lowering(
     mylite_db *database,
     uint64_t started_ns,

@@ -361,7 +361,6 @@ int mylite_catalog_begin_generation_change(
     struct mylite_catalog_generation_change *out_change
 ) {
     struct mylite_catalog catalog = {.initialized = false};
-    bool seal_matches = false;
     int rc = MYLITE_OK;
 
     *out_change = (struct mylite_catalog_generation_change){0};
@@ -380,17 +379,10 @@ int mylite_catalog_begin_generation_change(
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
-    rc = catalog_integrity_seal_matches(database->sqlite, &catalog, &seal_matches);
-    if (rc != MYLITE_OK) {
-        rc = mylite_catalog_abandon_generation_change(database, rc);
-        mylite_catalog_invalidate_descriptor_cache(database);
-        return rc;
-    }
     if (catalog.generation == UINT64_MAX) {
         return mylite_catalog_abandon_generation_change(database, MYLITE_ERROR);
     }
 
-    out_change->requires_integrity_validation = !seal_matches;
     out_change->next_generation = catalog.generation + 1U;
 
     return MYLITE_OK;
@@ -402,12 +394,6 @@ int mylite_catalog_finish_generation_change(
 ) {
     int rc = update_catalog_generation(database->sqlite, change->next_generation);
 
-    if (rc == MYLITE_OK && change->requires_integrity_validation) {
-        rc = mylite_catalog_validate_integrity(database->sqlite);
-    }
-    if (rc == MYLITE_OK && !database->defer_catalog_integrity_seal) {
-        rc = mylite_catalog_publish_integrity_seal(database->sqlite, change->next_generation);
-    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_execute_sql(
             database->sqlite,

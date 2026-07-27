@@ -48,6 +48,13 @@ logical and physical change, advances the catalog generation, validates
 structural mutations, and publishes the new seal. A failure rolls back the
 physical change, catalog rows, generation, and seal together.
 
+Private catalog-foundation helpers are a test-only exception: they assemble
+descriptor and physical state in separate transactions. Each helper advances
+the generation atomically but deliberately leaves the seal invalid. A later
+existing-file open validates the completed state and may reseal it. These
+helpers cannot publish an intermediate descriptor-only state as structurally
+complete and are not used by SQL statement execution.
+
 The exact durable outcomes for commit-adjacent I/O failures are defined by the
 [durable DDL fault-atomicity contract](durable-ddl-fault-atomicity.md).
 

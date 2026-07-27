@@ -9,7 +9,6 @@
 #include <stdint.h>
 
 struct mylite_catalog_generation_change {
-    bool requires_integrity_validation;
     bool uses_savepoint;
     uint64_t next_generation;
 };

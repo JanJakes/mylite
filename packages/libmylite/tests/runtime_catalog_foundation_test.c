@@ -531,6 +531,7 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     struct mylite_catalog_column_descriptor column = {0};
     const struct mylite_catalog *catalog = NULL;
     sqlite3 *sqlite = NULL;
+    bool seal_matches = false;
     int failures = 0;
 
     if (mylite_test_make_path(path, sizeof(path), "reopen") != 0) {
@@ -568,6 +569,15 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
         MYLITE_OK,
         "create table descriptor"
     );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_integrity_seal_matches(sqlite, &seal_matches);
+    }
+    failures += expect_bool(
+        seal_matches,
+        false,
+        "staged table descriptor does not publish an integrity seal"
+    );
     failures += mylite_test_expect_int(
         mylite_catalog_create_column(
             database,
@@ -593,7 +603,6 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
         MYLITE_OK,
         "create column descriptor"
     );
-    sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += execute_sql(sqlite, "CREATE TABLE phys_items (id INTEGER NOT NULL)");
     }

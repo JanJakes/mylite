@@ -304,10 +304,12 @@ Catalog initialization runs in one SQLite transaction. If any statement fails,
 the transaction is rolled back and the open fails.
 
 Private descriptor mutations run in one SQLite transaction each for this slice.
-The mutation updates descriptor rows and the catalog generation atomically. The
-future DDL implementation may instead call lower-level mutation helpers inside
-its statement transaction or savepoint so catalog and physical schema changes
-commit or roll back together.
+The mutation updates descriptor rows and the catalog generation atomically but
+does not publish an integrity seal because these test-only helpers may assemble
+catalog and physical state in separate transactions. SQL DDL uses lower-level
+mutation helpers inside its statement transaction or savepoint so catalog and
+physical schema changes commit or roll back together and are validated before
+seal publication.
 
 Because SQLite foreign-key enforcement is currently disabled by bootstrap
 policy, catalog deletion helpers must explicitly delete dependent rows needed by

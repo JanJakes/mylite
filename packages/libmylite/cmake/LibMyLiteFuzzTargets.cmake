@@ -78,7 +78,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     mylite_database_open_fuzzer
     fuzz/database_open_fuzzer.c
     database_open
-    65536
+    1048576
     1000
   )
   list(APPEND mylite_fuzzer_targets mylite_database_open_fuzzer)

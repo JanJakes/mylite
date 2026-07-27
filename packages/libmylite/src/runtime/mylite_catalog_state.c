@@ -470,7 +470,6 @@ static int ensure_catalog_schema(struct mylite_db *database) {
 
 static int load_existing_catalog(struct mylite_db *database) {
     struct mylite_catalog catalog = {.initialized = false};
-    bool seal_matches = false;
     int rc = read_catalog_state(database->sqlite, &catalog);
 
     if (rc == MYLITE_OK && catalog.schema_version < MYLITE_CATALOG_SCHEMA_VERSION) {
@@ -483,9 +482,6 @@ static int load_existing_catalog(struct mylite_db *database) {
         rc = read_catalog_state(database->sqlite, &catalog);
     }
     if (rc == MYLITE_OK) {
-        rc = catalog_integrity_seal_matches(database->sqlite, &catalog, &seal_matches);
-    }
-    if (rc == MYLITE_OK && !seal_matches) {
         rc = validate_and_seal_catalog(database);
     }
     if (rc == MYLITE_OK) {
@@ -1092,7 +1088,7 @@ static int validate_and_seal_catalog_in_transaction(
     bool seal_matches = false;
     int rc = catalog_integrity_seal_matches(sqlite, catalog, &seal_matches);
 
-    if (rc == MYLITE_OK && !seal_matches) {
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_validate_integrity(sqlite);
     }
     if (rc == MYLITE_OK && !seal_matches) {

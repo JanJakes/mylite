@@ -158,18 +158,18 @@ buildable and reviewable.
 
 ### `STOR-01`: integrity-seal corruption contract
 
-- [ ] Specify whether MyLite promises detection of relational/catalog
+- [x] Specify whether MyLite promises detection of relational/catalog
   inconsistency only, raw payload corruption, or broader page-level bit rot.
-- [ ] Choose between full open-time structural validation, a deterministic
+- [x] Choose between full open-time structural validation, a deterministic
   catalog/schema digest, or another measured design that cannot trust only
   generation and SQLite schema-cookie values.
-- [ ] Ensure the fast-open optimization never accepts a raw catalog mutation
+- [x] Ensure the fast-open optimization never accepts a raw catalog mutation
   that changes physical/catalog correspondence.
-- [ ] Add valid-file structured mutations that preserve SQLite b-tree
+- [x] Add valid-file structured mutations that preserve SQLite b-tree
   integrity and generation/schema-cookie values.
-- [ ] Require deterministic open-time corruption diagnostics rather than a
+- [x] Require deterministic open-time corruption diagnostics rather than a
   later internal row-operation error.
-- [ ] Expand the database-open fuzzer beyond 65,536 bytes with valid current
+- [x] Expand the database-open fuzzer beyond 65,536 bytes with valid current
   catalog seeds and post-open catalog/query operations.
 
 ### `STOR-02` and `STOR-03`: initialization recovery and fault coverage

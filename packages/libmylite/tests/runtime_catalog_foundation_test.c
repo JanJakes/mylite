@@ -52,6 +52,7 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
 static int test_reopen_preserves_catalog_rows_and_generation(void);
 static int test_idempotent_catalog_initialization_across_repeated_opens(void);
 static int test_catalog_integrity_seal_lifecycle(void);
+static int test_rejects_structured_catalog_corruption_with_restored_seal(void);
 static int test_catalog_mutation_does_not_reseal_physical_corruption(void);
 static int test_independent_file_backed_handles_have_independent_catalog_state(void);
 static int test_catalog_default_text_validation(void);
@@ -118,6 +119,7 @@ int main(void) {
     failures += test_reopen_preserves_catalog_rows_and_generation();
     failures += test_idempotent_catalog_initialization_across_repeated_opens();
     failures += test_catalog_integrity_seal_lifecycle();
+    failures += test_rejects_structured_catalog_corruption_with_restored_seal();
     failures += test_catalog_mutation_does_not_reseal_physical_corruption();
     failures += test_independent_file_backed_handles_have_independent_catalog_state();
     failures += test_catalog_default_text_validation();
@@ -867,6 +869,104 @@ static int test_catalog_integrity_seal_lifecycle(void) {
     );
     failures +=
         mylite_test_expect_true(database == NULL, "missing trigger rejection leaves output null");
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_rejects_structured_catalog_corruption_with_restored_seal(void) {
+    char path[test_path_capacity];
+    char restore_seal_sql[sql_buffer_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    bool seal_matches = false;
+    int catalog_generation_before = 0;
+    int catalog_generation_after = 0;
+    int schema_version_before = 0;
+    int schema_version_after = 0;
+    int written = 0;
+    int failures = 0;
+
+    if (mylite_test_make_path(path, sizeof(path), "structured_catalog_corruption") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "open structured catalog corruption file"
+    );
+    failures += execute_mylite_statement(database, "CREATE DATABASE app");
+    failures += execute_mylite_statement(database, "CREATE TABLE app.items (id INT, value INT)");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_single_int(
+            sqlite,
+            "SELECT catalog_generation FROM _mylite_catalog_state",
+            &catalog_generation_before
+        );
+        failures += query_single_int(sqlite, "PRAGMA schema_version", &schema_version_before);
+        failures += execute_sql(
+            sqlite,
+            "UPDATE _mylite_catalog_columns SET physical_type = 'TEXT' WHERE name = 'value'"
+        );
+        written = snprintf(
+            restore_seal_sql,
+            sizeof(restore_seal_sql),
+            "UPDATE _mylite_catalog_state "
+            "SET integrity_catalog_generation = catalog_generation, "
+            "integrity_sqlite_schema_version = %d",
+            schema_version_before
+        );
+        failures += mylite_test_expect_true(
+            written > 0 && (size_t)written < sizeof(restore_seal_sql),
+            "format restored integrity seal"
+        );
+        if (written > 0 && (size_t)written < sizeof(restore_seal_sql)) {
+            failures += execute_sql(sqlite, restore_seal_sql);
+        }
+        failures += query_single_int(
+            sqlite,
+            "SELECT catalog_generation FROM _mylite_catalog_state",
+            &catalog_generation_after
+        );
+        failures += query_single_int(sqlite, "PRAGMA schema_version", &schema_version_after);
+        failures += query_integrity_seal_matches(sqlite, &seal_matches);
+        failures += query_single_text(
+            sqlite,
+            "PRAGMA integrity_check",
+            restore_seal_sql,
+            sizeof(restore_seal_sql)
+        );
+    }
+    failures += mylite_test_expect_int(
+        catalog_generation_after,
+        catalog_generation_before,
+        "structured mutation preserves catalog generation"
+    );
+    failures += mylite_test_expect_int(
+        schema_version_after,
+        schema_version_before,
+        "structured mutation preserves SQLite schema version"
+    );
+    failures += expect_bool(seal_matches, true, "structured mutation restores matching seal");
+    failures += mylite_test_expect_text(
+        restore_seal_sql,
+        "ok",
+        "structured mutation preserves SQLite integrity"
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_ERROR,
+        "reject structured catalog corruption despite matching seal"
+    );
+    failures += mylite_test_expect_true(
+        database == NULL,
+        "structured catalog corruption rejection leaves output null"
+    );
     mylite_close(database);
     remove_related_files(path);
     return failures;

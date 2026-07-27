@@ -283,11 +283,12 @@ changed ownership and behavior.
 
 ### Remaining opportunities
 
-- **Retained DML planning:** Bulk load and tiny FK-write throughput remain the
-  clearest gaps. A reusable, generation-invalidated native DML plan would avoid
-  rebuilding MyLite planning state on each `mylite_stmt_step()`. This is an
-  architectural optimization and must preserve parameter-dependent conversion,
-  diagnostics, SQL modes, schema generation invalidation, and session state.
+- **Retained DML planning:** This follow-up is complete. Prepared INSERTs now
+  retain generation-invalidated analysis, lowered SQL, row storage, and command
+  results while regenerating parameter-dependent conversion and diagnostics.
+  Transaction metadata, FK checks, batching, and `LOAD DATA` were optimized and
+  requalified in
+  [repeated-write-import-qualification-2026-07.md](repeated-write-import-qualification-2026-07.md).
 - **Text execution and row conversion:** The 1M text scenario is 1.85x SQLite
   and 225 ms slower while returning many rows. Further work should separately
   benchmark MySQL `LIKE`/collation callbacks and cursor-to-public-value

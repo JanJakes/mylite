@@ -83,6 +83,8 @@ set(expected_scenarios
   insert_five_indexes_rollback
   insert_ten_indexes_rollback
   insert_batch_10_rollback
+  load_data_zero_indexes_rollback
+  load_data_five_indexes_rollback
   composite_foreign_key_insert_rollback
   composite_foreign_key_invalid_rollback
   foreign_key_cascade_fanout_rollback

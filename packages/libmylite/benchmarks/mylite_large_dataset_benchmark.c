@@ -29,6 +29,8 @@ enum {
     default_warmup_iterations = 1,
     path_capacity = 1024,
     generated_text_capacity = 160,
+    import_line_capacity = 192,
+    import_sql_capacity = path_capacity * 2,
     decimal_base = 10,
     sqlite_busy_timeout_ms = 5000,
     nanoseconds_per_second = 1000000000ULL,
@@ -92,6 +94,7 @@ enum benchmark_execution_mode {
     benchmark_execution_prepared,
     benchmark_execution_write_rollback,
     benchmark_execution_expected_error_rollback,
+    benchmark_execution_bulk_import_rollback,
 };
 
 enum benchmark_scenario_id {
@@ -142,6 +145,8 @@ enum benchmark_scenario_id {
     benchmark_scenario_insert_index_five,
     benchmark_scenario_insert_index_ten,
     benchmark_scenario_insert_batch_ten,
+    benchmark_scenario_load_data_index_zero,
+    benchmark_scenario_load_data_index_five,
     benchmark_scenario_composite_foreign_key_insert,
     benchmark_scenario_composite_foreign_key_invalid,
     benchmark_scenario_foreign_key_cascade_fanout,
@@ -210,12 +215,20 @@ struct benchmark_load_measurement {
     uint64_t items_ns;
     uint64_t tags_ns;
     uint64_t support_ns;
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_snapshot profile;
+#endif
 };
 
 struct benchmark_dataset {
     size_t row_count;
     size_t account_count;
     size_t tag_count;
+};
+
+struct benchmark_bulk_import_options {
+    size_t row_count;
+    size_t warmup_iterations;
 };
 
 struct benchmark_paths {
@@ -263,6 +276,14 @@ static int seed_benchmark_database(
     const struct benchmark_dataset *dataset,
     struct benchmark_load_measurement *out_measurement
 );
+#ifdef MYLITE_ENABLE_PROFILING
+static int finish_load_profile(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset,
+    struct benchmark_load_measurement *measurement,
+    bool *profile_started
+);
+#endif
 static int verify_benchmark_database(
     struct benchmark_database *database,
     const struct benchmark_dataset *dataset
@@ -297,6 +318,49 @@ static int run_scenario_engine(
     size_t warmup_iterations,
     struct benchmark_measurement *out_measurement
 );
+static int run_statement_scenario_engine(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct benchmark_measurement *out_measurement
+);
+static int run_bulk_import_engine(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_bulk_import_options *options,
+    struct benchmark_measurement *out_measurement
+);
+static int create_bulk_import_file(
+    const struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    size_t row_count,
+    char *out_path,
+    size_t out_path_size
+);
+static int run_bulk_import_once(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const char *path,
+    size_t row_count,
+    struct benchmark_measurement *measurement
+);
+static int run_mylite_bulk_import(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const char *path,
+    size_t row_count,
+    struct benchmark_measurement *measurement
+);
+static int run_sqlite_bulk_import(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const char *path,
+    size_t row_count,
+    struct benchmark_measurement *measurement
+);
+static const char *bulk_import_table(const struct benchmark_scenario *scenario);
 static const char *scenario_sql(
     const struct benchmark_database *database,
     const struct benchmark_scenario *scenario
@@ -838,6 +902,20 @@ static const struct benchmark_scenario benchmark_scenarios[] = {
         "(?,?,?),(?,?,?),(?,?,?),(?,?,?),(?,?,?),"
         "(?,?,?),(?,?,?),(?,?,?),(?,?,?),(?,?,?)",
         100,
+    },
+    {
+        "load_data_zero_indexes_rollback",
+        benchmark_scenario_load_data_index_zero,
+        benchmark_execution_bulk_import_rollback,
+        NULL,
+        10000,
+    },
+    {
+        "load_data_five_indexes_rollback",
+        benchmark_scenario_load_data_index_five,
+        benchmark_execution_bulk_import_rollback,
+        NULL,
+        10000,
     },
     {
         "composite_foreign_key_insert_rollback",
@@ -1475,40 +1553,114 @@ static int seed_benchmark_database(
 ) {
     uint64_t total_started = monotonic_now_ns();
     uint64_t phase_started = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    bool profile_started = false;
+
+    if (database->kind == benchmark_engine_mylite) {
+        if (mylite_profile_start(database->mylite) != MYLITE_OK) {
+            fprintf(stderr, "large-dataset: failed to start load profile\n");
+            return 1;
+        }
+        profile_started = true;
+    }
+#endif
 
     if (begin_transaction(database) != 0) {
+#ifdef MYLITE_ENABLE_PROFILING
+        (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
+#endif
         return 1;
     }
     phase_started = monotonic_now_ns();
     if (seed_accounts(database, dataset) != 0) {
         (void)rollback_transaction(database);
+#ifdef MYLITE_ENABLE_PROFILING
+        (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
+#endif
         return 1;
     }
     out_measurement->accounts_ns = monotonic_now_ns() - phase_started;
     phase_started = monotonic_now_ns();
     if (seed_items(database, dataset) != 0) {
         (void)rollback_transaction(database);
+#ifdef MYLITE_ENABLE_PROFILING
+        (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
+#endif
         return 1;
     }
     out_measurement->items_ns = monotonic_now_ns() - phase_started;
     phase_started = monotonic_now_ns();
     if (seed_tags(database, dataset) != 0) {
         (void)rollback_transaction(database);
+#ifdef MYLITE_ENABLE_PROFILING
+        (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
+#endif
         return 1;
     }
     out_measurement->tags_ns = monotonic_now_ns() - phase_started;
     phase_started = monotonic_now_ns();
     if (seed_support_tables(database, dataset) != 0) {
         (void)rollback_transaction(database);
+#ifdef MYLITE_ENABLE_PROFILING
+        (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
+#endif
         return 1;
     }
     out_measurement->support_ns = monotonic_now_ns() - phase_started;
     if (commit_transaction(database) != 0) {
+#ifdef MYLITE_ENABLE_PROFILING
+        (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
+#endif
         return 1;
     }
     out_measurement->total_ns = monotonic_now_ns() - total_started;
+#ifdef MYLITE_ENABLE_PROFILING
+    if (finish_load_profile(database, dataset, out_measurement, &profile_started) != 0) {
+        return 1;
+    }
+#endif
     return 0;
 }
+
+#ifdef MYLITE_ENABLE_PROFILING
+static int finish_load_profile(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset,
+    struct benchmark_load_measurement *measurement,
+    bool *profile_started
+) {
+    if (!*profile_started) {
+        return 0;
+    }
+    *profile_started = false;
+    if (mylite_profile_stop(database->mylite, &measurement->profile) != MYLITE_OK) {
+        fprintf(stderr, "large-dataset: failed to stop load profile\n");
+        return 1;
+    }
+    fprintf(
+        stderr,
+        "large-dataset-load-profile: rows=%zu sqlite_step_ms=%.3f metadata_step_ms=%.3f "
+        "cursor_step_ms=%.3f statements=%" PRIu64 " sqlite_steps=%" PRIu64
+        " metadata_steps=%" PRIu64 " dml_plans=%" PRIu64 " dml_plan_hits=%" PRIu64
+        " allocations=%" PRIu64 " allocation_bytes=%" PRIu64 " statement_cache_hits=%" PRIu64
+        " statement_cache_misses=%" PRIu64 "\n",
+        dataset->row_count,
+        (double)measurement->profile.sqlite_step_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.metadata_step_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.cursor_step_ns / (double)nanoseconds_per_millisecond,
+        measurement->profile.statement_count,
+        measurement->profile.sqlite_step_count,
+        measurement->profile.metadata_step_count,
+        measurement->profile.dml_plan_count,
+        measurement->profile.dml_plan_cache_hit_count,
+        measurement->profile.allocation_count,
+        measurement->profile.allocation_bytes,
+        measurement->profile.execution_statement_cache_hit_count,
+        measurement->profile.execution_statement_cache_miss_count
+    );
+    return 0;
+}
+#endif
 
 static int verify_benchmark_database(
     struct benchmark_database *database,
@@ -1768,6 +1920,32 @@ static int run_scenario_engine(
     size_t warmup_iterations,
     struct benchmark_measurement *out_measurement
 ) {
+    if (scenario->mode == benchmark_execution_bulk_import_rollback) {
+        const struct benchmark_bulk_import_options options = {
+            .row_count = iterations,
+            .warmup_iterations = warmup_iterations,
+        };
+
+        return run_bulk_import_engine(database, scenario, &options, out_measurement);
+    }
+    return run_statement_scenario_engine(
+        database,
+        scenario,
+        dataset,
+        iterations,
+        warmup_iterations,
+        out_measurement
+    );
+}
+
+static int run_statement_scenario_engine(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t iterations,
+    size_t warmup_iterations,
+    struct benchmark_measurement *out_measurement
+) {
     struct benchmark_statement statement = {0};
     struct benchmark_measurement warmup = {0};
     struct benchmark_statement *prepared_statement = NULL;
@@ -1849,7 +2027,9 @@ static int run_scenario_engine(
             "large-dataset-profile: scenario=%s iterations=%zu total_ms=%.3f "
             "api_ms=%.3f sqlite_step_ms=%.3f metadata_step_ms=%.3f cursor_step_ms=%.3f "
             "cursor_finalize_ms=%.3f statements=%" PRIu64 " sqlite_steps=%" PRIu64
-            " metadata_steps=%" PRIu64 "\n",
+            " metadata_steps=%" PRIu64 " dml_plans=%" PRIu64 " dml_plan_hits=%" PRIu64
+            " allocations=%" PRIu64 " allocation_bytes=%" PRIu64 " statement_cache_hits=%" PRIu64
+            " statement_cache_misses=%" PRIu64 "\n",
             scenario->name,
             iterations,
             (double)out_measurement->elapsed_ns / (double)nanoseconds_per_millisecond,
@@ -1861,7 +2041,13 @@ static int run_scenario_engine(
                 (double)nanoseconds_per_millisecond,
             out_measurement->profile.statement_count,
             out_measurement->profile.sqlite_step_count,
-            out_measurement->profile.metadata_step_count
+            out_measurement->profile.metadata_step_count,
+            out_measurement->profile.dml_plan_count,
+            out_measurement->profile.dml_plan_cache_hit_count,
+            out_measurement->profile.allocation_count,
+            out_measurement->profile.allocation_bytes,
+            out_measurement->profile.execution_statement_cache_hit_count,
+            out_measurement->profile.execution_statement_cache_miss_count
         );
     }
 #endif
@@ -1880,6 +2066,269 @@ cleanup:
         result = 1;
     }
     return result;
+}
+
+static int run_bulk_import_engine(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_bulk_import_options *options,
+    struct benchmark_measurement *out_measurement
+) {
+    char path[path_capacity];
+    struct benchmark_measurement warmup = {0};
+    uint64_t started = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    bool profile_started = false;
+#endif
+    int result = 1;
+
+    if (create_bulk_import_file(database, scenario, options->row_count, path, sizeof(path)) != 0) {
+        return 1;
+    }
+    for (size_t index = 0U; index < options->warmup_iterations; ++index) {
+        if (begin_transaction(database) != 0 ||
+            run_bulk_import_once(database, scenario, path, options->row_count, &warmup) != 0 ||
+            rollback_transaction(database) != 0) {
+            goto cleanup;
+        }
+    }
+    if (begin_transaction(database) != 0) {
+        goto cleanup;
+    }
+    *out_measurement = (struct benchmark_measurement){0};
+#ifdef MYLITE_ENABLE_PROFILING
+    if (database->kind == benchmark_engine_mylite) {
+        if (mylite_profile_start(database->mylite) != MYLITE_OK) {
+            goto rollback;
+        }
+        profile_started = true;
+    }
+#endif
+    started = monotonic_now_ns();
+    if (run_bulk_import_once(database, scenario, path, options->row_count, out_measurement) != 0) {
+        goto rollback;
+    }
+    out_measurement->elapsed_ns = monotonic_now_ns() - started;
+#ifdef MYLITE_ENABLE_PROFILING
+    if (profile_started) {
+        if (mylite_profile_stop(database->mylite, &out_measurement->profile) != MYLITE_OK) {
+            profile_started = false;
+            goto rollback;
+        }
+        profile_started = false;
+        fprintf(
+            stderr,
+            "large-dataset-profile: scenario=%s iterations=%zu total_ms=%.3f "
+            "sqlite_step_ms=%.3f metadata_step_ms=%.3f sqlite_steps=%" PRIu64
+            " metadata_steps=%" PRIu64 " allocations=%" PRIu64 " allocation_bytes=%" PRIu64 "\n",
+            scenario->name,
+            options->row_count,
+            (double)out_measurement->elapsed_ns / (double)nanoseconds_per_millisecond,
+            (double)out_measurement->profile.sqlite_step_ns / (double)nanoseconds_per_millisecond,
+            (double)out_measurement->profile.metadata_step_ns / (double)nanoseconds_per_millisecond,
+            out_measurement->profile.sqlite_step_count,
+            out_measurement->profile.metadata_step_count,
+            out_measurement->profile.allocation_count,
+            out_measurement->profile.allocation_bytes
+        );
+    }
+#endif
+    if (rollback_transaction(database) != 0) {
+        goto cleanup;
+    }
+    result = 0;
+    goto cleanup;
+
+rollback:
+#ifdef MYLITE_ENABLE_PROFILING
+    if (profile_started) {
+        (void)mylite_profile_stop(database->mylite, &out_measurement->profile);
+    }
+#endif
+    (void)rollback_transaction(database);
+
+cleanup:
+    if (remove(path) != 0 && errno != ENOENT) {
+        fprintf(stderr, "large-dataset: failed to remove import file %s\n", path);
+        result = 1;
+    }
+    return result;
+}
+
+static int create_bulk_import_file(
+    const struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    size_t row_count,
+    char *out_path,
+    size_t out_path_size
+) {
+    FILE *file = NULL;
+    int written = snprintf(
+        out_path,
+        out_path_size,
+        "%s.%s.tsv",
+        database->path,
+        scenario->id == benchmark_scenario_load_data_index_zero ? "load0" : "load5"
+    );
+
+    if (written < 0 || (size_t)written >= out_path_size) {
+        return 1;
+    }
+    file = fopen(out_path, "wb");
+    if (file == NULL) {
+        return 1;
+    }
+    for (size_t row = 0U; row < row_count; ++row) {
+        size_t id = row + 1U;
+
+        if (fprintf(
+                file,
+                "%zu\t%zu\t%zu\n",
+                id,
+                (id * score_multiplier) % score_modulus,
+                id % category_count
+            ) < 0) {
+            (void)fclose(file);
+            return 1;
+        }
+    }
+    return fclose(file) == 0 ? 0 : 1;
+}
+
+static int run_bulk_import_once(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const char *path,
+    size_t row_count,
+    struct benchmark_measurement *measurement
+) {
+    int rc = database->kind == benchmark_engine_mylite
+                 ? run_mylite_bulk_import(database, scenario, path, row_count, measurement)
+                 : run_sqlite_bulk_import(database, scenario, path, row_count, measurement);
+
+    if (rc == 0) {
+        measurement->operation_count = row_count;
+        measurement->result_row_count = 0U;
+        measurement->result_value_bytes = 0U;
+        measurement->checksum = fnv_offset_basis;
+        hash_uint64(&measurement->checksum, measurement->affected_rows);
+    }
+    return rc;
+}
+
+static int run_mylite_bulk_import(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const char *path,
+    size_t row_count,
+    struct benchmark_measurement *measurement
+) {
+    char sql[import_sql_capacity];
+    char escaped_path[import_sql_capacity];
+    const char *table = bulk_import_table(scenario);
+    mylite_result *result = NULL;
+    size_t escaped_length = 0U;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; path[index] != '\0'; ++index) {
+        if (escaped_length + 2U >= sizeof(escaped_path)) {
+            return 1;
+        }
+        escaped_path[escaped_length++] = path[index];
+        if (path[index] == '\'') {
+            escaped_path[escaped_length++] = '\'';
+        }
+    }
+    escaped_path[escaped_length] = '\0';
+    written =
+        snprintf(sql, sizeof(sql), "LOAD DATA INFILE '%s' INTO TABLE %s", escaped_path, table);
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    rc = mylite_execute(database->mylite, sql, (size_t)written, &result);
+    if (rc != MYLITE_OK || mylite_result_affected_rows(result) != (int64_t)row_count) {
+        fprintf(
+            stderr,
+            "large-dataset: MyLite bulk import failed: %s\n",
+            mylite_errmsg(database->mylite)
+        );
+        mylite_result_free(result);
+        return 1;
+    }
+    measurement->affected_rows = (uint64_t)mylite_result_affected_rows(result);
+    mylite_result_free(result);
+    return 0;
+}
+
+static int run_sqlite_bulk_import(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const char *path,
+    size_t row_count,
+    struct benchmark_measurement *measurement
+) {
+    char sql[generated_text_capacity];
+    char line[import_line_capacity];
+    sqlite3_stmt *statement = NULL;
+    FILE *file = fopen(path, "rb");
+    size_t imported = 0U;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "INSERT INTO %s (id, value_a, value_b) VALUES (?, ?, ?)",
+        bulk_import_table(scenario)
+    );
+
+    if (file == NULL || written < 0 || (size_t)written >= sizeof(sql) ||
+        sqlite3_prepare_v2(database->sqlite, sql, written, &statement, NULL) != SQLITE_OK) {
+        if (file != NULL) {
+            (void)fclose(file);
+        }
+        sqlite3_finalize(statement);
+        return 1;
+    }
+    while (fgets(line, sizeof(line), file) != NULL) {
+        int64_t id = 0;
+        int64_t value_a = 0;
+        int64_t value_b = 0;
+        int consumed = 0;
+
+        if (sscanf(
+                line,
+                "%" SCNd64 "\t%" SCNd64 "\t%" SCNd64 "%n",
+                &id,
+                &value_a,
+                &value_b,
+                &consumed
+            ) != 3 ||
+            (line[consumed] != '\n' && line[consumed] != '\0') ||
+            sqlite3_reset(statement) != SQLITE_OK ||
+            sqlite3_clear_bindings(statement) != SQLITE_OK ||
+            sqlite3_bind_int64(statement, 1, id) != SQLITE_OK ||
+            sqlite3_bind_int64(statement, 2, value_a) != SQLITE_OK ||
+            sqlite3_bind_int64(statement, 3, value_b) != SQLITE_OK ||
+            sqlite3_step(statement) != SQLITE_DONE) {
+            (void)fclose(file);
+            sqlite3_finalize(statement);
+            return 1;
+        }
+        ++imported;
+    }
+    int file_error = ferror(file);
+    int close_rc = fclose(file);
+    int finalize_rc = sqlite3_finalize(statement);
+
+    if (file_error != 0 || close_rc != 0 || finalize_rc != SQLITE_OK || imported != row_count) {
+        return 1;
+    }
+    measurement->affected_rows = imported;
+    return 0;
+}
+
+static const char *bulk_import_table(const struct benchmark_scenario *scenario) {
+    return scenario->id == benchmark_scenario_load_data_index_zero ? "insert_index_0"
+                                                                   : "insert_index_5";
 }
 
 static const char *scenario_sql(
@@ -3364,6 +3813,8 @@ static const char *mode_name(enum benchmark_execution_mode mode) {
         return "write_rollback";
     case benchmark_execution_expected_error_rollback:
         return "expected_error_rollback";
+    case benchmark_execution_bulk_import_rollback:
+        return "bulk_import_rollback";
     }
     return "unknown";
 }
@@ -3411,7 +3862,8 @@ static bool scenario_includes_affected_rows(const struct benchmark_scenario *sce
 
 static bool scenario_uses_rollback(const struct benchmark_scenario *scenario) {
     return scenario->mode == benchmark_execution_write_rollback ||
-           scenario->mode == benchmark_execution_expected_error_rollback;
+           scenario->mode == benchmark_execution_expected_error_rollback ||
+           scenario->mode == benchmark_execution_bulk_import_rollback;
 }
 
 static size_t scenario_iterations(

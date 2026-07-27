@@ -61,9 +61,9 @@ does not use PHP, WordPress, or the PHP extensions.
 
 The opt-in large-dataset suites create equivalent deterministic MyLite and
 bundled-SQLite databases, verify result hashes and write outcomes, and exercise
-57 native scenarios across selectivity, scans, temporary work, join topology,
-writes, foreign-key fan-out, skew, result transfer, concurrency, and storage
-lifecycle:
+59 native scenarios across selectivity, scans, temporary work, join topology,
+writes, bulk import, foreign-key fan-out, skew, result transfer, concurrency,
+and storage lifecycle:
 
 ```sh
 cmake --preset ci
@@ -100,6 +100,15 @@ build/ci/packages/libmylite/mylite_large_dataset_system_benchmark \
   --database-base build/perf-data/dataset-1000000 \
   --iterations 100 \
   --output build/perf-data/system-1000000.csv
+
+build/ci/packages/libmylite/mylite_large_dataset_benchmark \
+  --rows 1000000 \
+  --database-base build/perf-data/dataset-1000000 \
+  --reuse-databases \
+  --scenario load_data_five_indexes_rollback \
+  --iterations 1000000 \
+  --samples 3 \
+  --output build/perf-data/load-data-five-indexes-1000000.csv
 ```
 
 `--analyze` runs `ANALYZE TABLE` for MyLite and equivalent SQLite `ANALYZE`
@@ -133,6 +142,8 @@ qualification is in
 [large-dataset-qualification-2026-07.md](large-dataset-qualification-2026-07.md);
 the expanded methodology and final 100K/500K/1M results are in
 [large-dataset-extended-qualification-2026-07.md](large-dataset-extended-qualification-2026-07.md).
+The repeated-write implementation and final import measurements are in
+[repeated-write-import-qualification-2026-07.md](repeated-write-import-qualification-2026-07.md).
 
 `runtime.wp_frontend_request` executes six representative WordPress frontend
 reads per iteration. `runtime.wp_medium_frontend_request` uses nine WordPress

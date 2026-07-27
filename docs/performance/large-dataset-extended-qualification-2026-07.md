@@ -212,6 +212,12 @@ it. A future reusable DML-plan design could reduce the remaining per-execution
 parse/validation work, but it must retain schema-generation, session-state,
 diagnostic, trigger, auto-increment, and FK correctness.
 
+That follow-up was subsequently completed. The final mixed-load result is
+14.72 seconds at 100K and 174.18 seconds at 1M, improving MyLite by 53.7% and
+51.3%, respectively. The retained-plan, transaction, FK, batch, and `LOAD DATA`
+changes and final measurements are recorded in
+[repeated-write-import-qualification-2026-07.md](repeated-write-import-qualification-2026-07.md).
+
 ## Statistics and Skew
 
 `ANALYZE TABLE` now performs real SQLite statistics collection. After analyze,

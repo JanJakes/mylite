@@ -67,17 +67,19 @@ struct catalog_rollback_fault_state {
 };
 
 #ifndef _WIN32
-struct concurrent_write_context {
-    mylite_db *database;
-    int rc;
-    int64_t affected_rows;
-};
-
 struct writer_busy_wait_context {
     pthread_mutex_t mutex;
     pthread_cond_t condition;
     bool writer_blocked;
+    bool writer_finished;
     bool reader_released;
+};
+
+struct concurrent_write_context {
+    mylite_db *database;
+    struct writer_busy_wait_context *busy_wait;
+    int rc;
+    int64_t affected_rows;
 };
 #endif
 
@@ -2195,6 +2197,7 @@ static int test_read_only_transaction_does_not_reserve_writer_lock(void) {
 #ifndef _WIN32
 static int test_writer_waits_for_active_read_cursor(void) {
     static const char query[] = "SELECT id FROM t ORDER BY id";
+    static const char *const committed_rows[] = {"1", "30", "2", "20"};
     char path[test_path_capacity];
     mylite_db *reader = NULL;
     mylite_db *writer = NULL;
@@ -2226,8 +2229,14 @@ static int test_writer_waits_for_active_read_cursor(void) {
     );
     failures +=
         mylite_test_expect_int(mylite_stmt_step(cursor), MYLITE_ROW, "step active read cursor");
+    failures += mylite_test_expect_int(
+        sqlite3_txn_state(mylite_connection_sqlite_for_test(reader), "main"),
+        SQLITE_TXN_READ,
+        "active read cursor retains a SQLite read transaction"
+    );
 
     write.database = writer;
+    write.busy_wait = &busy_wait;
     if (failures == 0 && pthread_mutex_init(&busy_wait.mutex, NULL) == 0) {
         if (pthread_cond_init(&busy_wait.condition, NULL) == 0) {
             synchronization_initialized = true;
@@ -2249,9 +2258,13 @@ static int test_writer_waits_for_active_read_cursor(void) {
         pthread_create(&writer_thread, NULL, execute_concurrent_write, &write) == 0) {
         thread_was_created = 1;
         (void)pthread_mutex_lock(&busy_wait.mutex);
-        while (!busy_wait.writer_blocked) {
+        while (!busy_wait.writer_blocked && !busy_wait.writer_finished) {
             (void)pthread_cond_wait(&busy_wait.condition, &busy_wait.mutex);
         }
+        failures += mylite_test_expect_true(
+            busy_wait.writer_blocked,
+            "concurrent writer reaches the busy handler"
+        );
         (void)pthread_mutex_unlock(&busy_wait.mutex);
     } else if (failures == 0) {
         fprintf(stderr, "create busy-wait writer thread: failed\n");
@@ -2278,6 +2291,16 @@ static int test_writer_waits_for_active_read_cursor(void) {
         failures +=
             mylite_test_expect_int64(write.affected_rows, 1, "concurrent write affected rows");
     }
+    failures += expect_query_values(
+        reader,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = committed_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "concurrent write commits after creator-handle reader releases",
+        }
+    );
     if (synchronization_initialized) {
         sqlite3_busy_handler(mylite_connection_sqlite_for_test(writer), NULL, NULL);
         (void)pthread_cond_destroy(&busy_wait.condition);
@@ -2300,6 +2323,10 @@ static void *execute_concurrent_write(void *argument) {
         write->affected_rows = mylite_result_affected_rows(result);
     }
     mylite_result_free(result);
+    (void)pthread_mutex_lock(&write->busy_wait->mutex);
+    write->busy_wait->writer_finished = true;
+    (void)pthread_cond_signal(&write->busy_wait->condition);
+    (void)pthread_mutex_unlock(&write->busy_wait->mutex);
 
     return NULL;
 }

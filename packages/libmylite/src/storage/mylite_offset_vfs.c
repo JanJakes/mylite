@@ -701,17 +701,24 @@ static int validate_existing_main_database_file(struct mylite_offset_file *file)
 }
 
 static int acquire_initialization_lock(struct mylite_offset_file *file) {
+    int unlock_rc = SQLITE_OK;
     int rc = SQLITE_OK;
 
     if (file->initialization_lock_held) {
         return SQLITE_OK;
     }
-    rc = file->inner_file->pMethods->xLock(file->inner_file, SQLITE_LOCK_EXCLUSIVE);
-    if (rc == SQLITE_OK) {
-        file->initialization_owner = true;
-        file->initialization_lock_held = true;
+    rc = file->inner_file->pMethods->xLock(file->inner_file, SQLITE_LOCK_SHARED);
+    if (rc != SQLITE_OK) {
+        return rc;
     }
-    return rc;
+    rc = file->inner_file->pMethods->xLock(file->inner_file, SQLITE_LOCK_EXCLUSIVE);
+    if (rc != SQLITE_OK) {
+        unlock_rc = file->inner_file->pMethods->xUnlock(file->inner_file, SQLITE_LOCK_NONE);
+        return unlock_rc == SQLITE_OK ? rc : unlock_rc;
+    }
+    file->initialization_owner = true;
+    file->initialization_lock_held = true;
+    return SQLITE_OK;
 }
 
 static int release_initialization_lock(struct mylite_offset_file *file) {
@@ -722,6 +729,7 @@ static int release_initialization_lock(struct mylite_offset_file *file) {
     }
     rc = file->inner_file->pMethods->xUnlock(file->inner_file, SQLITE_LOCK_NONE);
     if (rc == SQLITE_OK) {
+        file->initialization_owner = false;
         file->initialization_lock_held = false;
     }
     return rc;
@@ -806,7 +814,6 @@ static int transition_initialization_state(
     }
     rc = file->inner_file->pMethods->xSync(file->inner_file, SQLITE_SYNC_FULL);
     if (rc == SQLITE_OK) {
-        file->initialization_owner = false;
         rc = release_initialization_lock(file);
     }
 

@@ -36,7 +36,9 @@ pathname check.
 If exclusive creation succeeds, the offset VFS:
 
 1. verifies that the new file is empty;
-2. acquires the wrapped VFS's exclusive main-file lock and retains it for the
+2. acquires the wrapped VFS's shared main-file lock and upgrades it to
+   exclusive, following SQLite's required `NO_LOCK` to `SHARED` to
+   `EXCLUSIVE` transition sequence, then retains the exclusive lock for the
    complete unpublished lifecycle;
 3. writes and syncs a version-3 `initializing` preamble through the exact
    underlying `sqlite3_file` handle;
@@ -89,6 +91,10 @@ state, or nonzero reserved bytes is rejected and left unchanged.
 - The retained initialization/recovery lock satisfies SQLite lock upgrades on
   the owning handle; SQLite unlock requests do not release it before lifecycle
   publication.
+- Lock acquisition and release must preserve the wrapped VFS's per-file and
+  per-inode lock accounting. After publication, the creator handle must
+  participate in same-process reader/writer exclusion exactly like a handle
+  that opened an already committed file.
 - Main-database payload reads, writes, truncation, size reporting, and size
   controls retain the existing 4096-byte logical-to-physical shift.
 - Journal and other auxiliary files are not shifted and do not carry MyLite
@@ -106,6 +112,8 @@ Coverage must include:
 - reopen of version-3, version-2, and legacy version-1 files;
 - invalid, empty, truncated, plain-SQLite, and committed-preamble-only files;
 - a second opener while initialization is not committed;
+- a reader retained on the successful creator handle blocking a same-process
+  writer until its active cursor is released;
 - process death before payload creation, during bootstrap/catalog transactions,
   after catalog commit, and before lifecycle publication;
 - successful exclusive recovery of preamble-only and fully initialized

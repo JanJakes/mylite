@@ -41,8 +41,8 @@ VFS verifies:
 - for committed files, a physical size large enough for the preamble and
   minimum SQLite database plus the SQLite header at physical byte 4096; or
 - for initializing/recovery-required files, successful acquisition of the
-  wrapped VFS's exclusive lock followed by either an empty logical payload or a
-  complete SQLite header.
+  wrapped VFS's shared lock followed by a legal upgrade to its exclusive lock,
+  then either an empty logical payload or a complete SQLite header.
 
 The exclusive creator and any exclusive recovery opener retain that underlying
 lock until committed or recovery-required publication. SQLite lock upgrades on
@@ -50,6 +50,13 @@ the same wrapper are already satisfied, and SQLite unlock requests cannot
 release unpublished ownership. A competing live creator or recovery opener
 therefore causes deterministic open failure; creator death releases the
 operating-system lock and permits recovery.
+
+The wrapper follows SQLite's `NO_LOCK` to `SHARED` to `EXCLUSIVE` transition
+contract even when acquiring unpublished ownership before the pager begins.
+Publication releases that lock through the inverse supported transition. This
+preserves wrapped-VFS per-file and per-inode accounting, so the still-open
+creator handle provides normal same-process reader/writer exclusion after
+publication.
 
 After bootstrap and catalog initialization, storage resolves the exact main
 `sqlite3_file` with `SQLITE_FCNTL_FILE_POINTER` and syncs the committed lifecycle

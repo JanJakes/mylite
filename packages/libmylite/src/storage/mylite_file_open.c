@@ -2,6 +2,14 @@
 
 #include "sqlite3.h"
 
+#ifdef _WIN32
+#  define MYLITE_STORAGE_THREAD_LOCAL __declspec(thread)
+#else
+#  define MYLITE_STORAGE_THREAD_LOCAL _Thread_local
+#endif
+
+static MYLITE_STORAGE_THREAD_LOCAL bool test_truncate_journal;
+
 static int open_sqlite(const char *path, int flags, bool exclusive_create, sqlite3 **out_sqlite);
 static int control_sqlite_initialization(sqlite3 *sqlite, bool commit);
 static int sqlite_status_to_mylite(int sqlite_status);
@@ -62,7 +70,13 @@ int mylite_storage_configure_sqlite_payload(sqlite3 *sqlite) {
         return MYLITE_MISUSE;
     }
 
-    rc = sqlite3_exec(sqlite, "PRAGMA journal_mode=DELETE", NULL, NULL, NULL);
+    rc = sqlite3_exec(
+        sqlite,
+        test_truncate_journal ? "PRAGMA journal_mode=TRUNCATE" : "PRAGMA journal_mode=DELETE",
+        NULL,
+        NULL,
+        NULL
+    );
     if (rc != SQLITE_OK) {
         return sqlite_status_to_mylite(rc);
     }
@@ -73,6 +87,10 @@ int mylite_storage_configure_sqlite_payload(sqlite3 *sqlite) {
     }
 
     return MYLITE_OK;
+}
+
+void mylite_storage_test_set_truncate_journal(bool enabled) {
+    test_truncate_journal = enabled;
 }
 
 static int open_sqlite(const char *path, int flags, bool exclusive_create, sqlite3 **out_sqlite) {

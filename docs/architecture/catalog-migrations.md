@@ -35,6 +35,12 @@ the required recovery checks. Opening reports the original migration error.
 Recovery never treats an intermediate schema version as current, and integrity
 sealing occurs only after the whole chain succeeds.
 
+Process death at any migration write, sync, or truncate boundary follows the
+same pre/post rule. A later opener first performs SQLite hot-journal recovery,
+then migrates an intact old state or validates an intact current state. Tests
+terminate a child at every measured callback and require preserved user rows,
+no migration scratch objects, a valid final seal, and two stable reopens.
+
 Thread and process regression tests synchronize immediately after the old
 version read and before writer-lock acquisition. Both openers must succeed,
 observe the current version and minimum-reader version, agree on the published

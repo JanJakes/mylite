@@ -7,6 +7,7 @@
 #include "sqlite3.h"
 #include "storage/mylite_file_open.h"
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -28,6 +29,7 @@ enum {
     model_reopen_interval = 128,
     crash_round_count = 12,
     crash_value_scale = 10,
+    decimal_radix = 10,
     integer_text_capacity = 32,
     path_capacity = 1024,
     path_slot_count = 64,
@@ -39,6 +41,7 @@ enum {
     ddl_fault_setup_value_sum = 33,
     catalog_integrity_column_count = 2,
     catalog_previous_schema_version = MYLITE_CATALOG_SCHEMA_VERSION - 1,
+    migration_death_child_argument_count = 5,
 };
 
 enum ddl_fault_state {
@@ -132,7 +135,8 @@ static enum ddl_fault_state classify_drop_table(const struct ddl_fault_observati
 static enum ddl_fault_state classify_rename_table(const struct ddl_fault_observation *observation);
 static enum ddl_fault_state classify_create_index(const struct ddl_fault_observation *observation);
 static enum ddl_fault_state classify_drop_index(const struct ddl_fault_observation *observation);
-static enum ddl_fault_state classify_truncate_table(const struct ddl_fault_observation *observation
+static enum ddl_fault_state classify_truncate_table(
+    const struct ddl_fault_observation *observation
 );
 static bool ddl_fault_has_original_int_table(const struct ddl_fault_observation *observation);
 static bool ddl_fault_has_renamed_int_table(const struct ddl_fault_observation *observation);
@@ -149,11 +153,34 @@ static int query_integrity_seal_matches(sqlite3 *sqlite, bool *out_matches);
 static int configure_truncate_journal(mylite_db *database);
 static int close_after_fault(mylite_db *database);
 static int test_catalog_migration_fault_atomicity(void);
+static int test_catalog_migration_process_death(const char *executable_path);
+static int run_catalog_migration_process_death_matrix(
+    const char *executable_path,
+    enum mylite_storage_vfs_fault_operation operation,
+    const char *operation_name
+);
+static int run_migration_process_death_child(
+    const char *executable_path,
+    const char *path,
+    enum mylite_storage_vfs_fault_operation operation,
+    const char *operation_name,
+    size_t exit_on_call
+);
+static int migration_process_death_child_main(
+    const char *path,
+    enum mylite_storage_vfs_fault_operation operation,
+    size_t exit_on_call
+);
+static int parse_migration_process_death_operation(
+    const char *text,
+    enum mylite_storage_vfs_fault_operation *out_operation
+);
+static int parse_positive_size(const char *text, size_t *out_value);
 static int run_catalog_migration_fault_matrix(
     enum mylite_storage_vfs_fault_operation operation,
     const char *operation_name
 );
-static int setup_downgraded_catalog(const char *path);
+static int setup_downgraded_catalog(const char *path, bool use_truncate_journal);
 static int classify_catalog_migration_state(sqlite3 *sqlite, enum ddl_fault_state *out_state);
 static int prepare_path(char path[path_capacity]);
 static int register_path(const char *path);
@@ -180,9 +207,21 @@ static int query_single_text_value(
 static int query_sqlite_ints(sqlite3 *sqlite, const char *sql, struct fault_table_rows *out_values);
 static int expect_true(bool condition, const char *context);
 
-int main(void) {
+int main(int argc, char **argv) {
     int failures = 0;
     int phase_failures = 0;
+
+    if (argc == migration_death_child_argument_count &&
+        strcmp(argv[1], "--migration-death-child") == 0) {
+        enum mylite_storage_vfs_fault_operation operation = MYLITE_STORAGE_VFS_FAULT_NONE;
+        size_t exit_on_call = 0U;
+
+        if (parse_migration_process_death_operation(argv[3], &operation) != 0 ||
+            parse_positive_size(argv[4], &exit_on_call) != 0) {
+            return 1;
+        }
+        return migration_process_death_child_main(argv[2], operation, exit_on_call);
+    }
 
     phase_failures = test_dml_model_and_reopen();
     if (phase_failures != 0) {
@@ -204,6 +243,11 @@ int main(void) {
     phase_failures = test_ddl_fault_atomicity();
     if (phase_failures != 0) {
         fprintf(stderr, "DDL fault phase failed: %d\n", phase_failures);
+    }
+    failures += phase_failures;
+    phase_failures = test_catalog_migration_process_death(argv[0]);
+    if (phase_failures != 0) {
+        fprintf(stderr, "catalog migration process-death phase failed: %d\n", phase_failures);
     }
     failures += phase_failures;
     return failures == 0 ? 0 : 1;
@@ -886,7 +930,8 @@ static enum ddl_fault_state classify_create_table(const struct ddl_fault_observa
     return ddl_fault_state_invalid;
 }
 
-static enum ddl_fault_state classify_modify_column(const struct ddl_fault_observation *observation
+static enum ddl_fault_state classify_modify_column(
+    const struct ddl_fault_observation *observation
 ) {
     if (observation->old_table_count != 1 || observation->renamed_table_count != 0 ||
         observation->column_count != ddl_fault_table_column_count ||
@@ -953,7 +998,8 @@ static enum ddl_fault_state classify_drop_index(const struct ddl_fault_observati
     return ddl_fault_state_invalid;
 }
 
-static enum ddl_fault_state classify_truncate_table(const struct ddl_fault_observation *observation
+static enum ddl_fault_state classify_truncate_table(
+    const struct ddl_fault_observation *observation
 ) {
     if (!ddl_fault_has_original_int_table(observation) || observation->index_count != 0) {
         return ddl_fault_state_invalid;
@@ -1134,6 +1180,7 @@ static int test_catalog_migration_fault_atomicity(void) {
 
     failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_WRITE, "write");
     failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_SYNC, "sync");
+    failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_TRUNCATE, "truncate");
     failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_DELETE, "delete");
     failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_CLOSE, "close");
     return failures;
@@ -1145,6 +1192,7 @@ static int run_catalog_migration_fault_matrix(
 ) {
     char path[path_capacity];
     size_t operation_call_count = 0U;
+    bool use_truncate_journal = operation == MYLITE_STORAGE_VFS_FAULT_TRUNCATE;
     int failures = prepare_path(path);
 
     if (failures != 0) {
@@ -1155,7 +1203,8 @@ static int run_catalog_migration_fault_matrix(
         mylite_db *database = NULL;
         int close_rc = MYLITE_OK;
 
-        failures += setup_downgraded_catalog(path);
+        failures += setup_downgraded_catalog(path, use_truncate_journal);
+        mylite_storage_test_set_truncate_journal(use_truncate_journal);
         mylite_storage_vfs_test_set_fault(operation, SIZE_MAX);
         failures += mylite_test_expect_int(
             mylite_open(path, &database),
@@ -1174,6 +1223,7 @@ static int run_catalog_migration_fault_matrix(
             "catalog migration reaches measured VFS operation"
         );
         mylite_storage_vfs_test_clear_fault();
+        mylite_storage_test_set_truncate_journal(false);
         failures += mylite_test_expect_int(
             close_rc,
             MYLITE_OK,
@@ -1188,7 +1238,8 @@ static int run_catalog_migration_fault_matrix(
         struct fault_table_rows rows = {0};
         bool fault_triggered = false;
 
-        failures += setup_downgraded_catalog(path);
+        failures += setup_downgraded_catalog(path, use_truncate_journal);
+        mylite_storage_test_set_truncate_journal(use_truncate_journal);
         mylite_storage_vfs_test_set_fault(operation, fail_on_call);
         (void)mylite_open(path, &database);
         if (database != NULL) {
@@ -1197,6 +1248,7 @@ static int run_catalog_migration_fault_matrix(
         }
         fault_triggered = mylite_storage_vfs_test_fault_was_triggered();
         mylite_storage_vfs_test_clear_fault();
+        mylite_storage_test_set_truncate_journal(false);
         failures += expect_true(fault_triggered, operation_name);
 
         failures += mylite_test_expect_int(
@@ -1248,7 +1300,250 @@ static int run_catalog_migration_fault_matrix(
     return failures;
 }
 
-static int setup_downgraded_catalog(const char *path) {
+static int test_catalog_migration_process_death(const char *executable_path) {
+    int failures = 0;
+
+    failures += run_catalog_migration_process_death_matrix(
+        executable_path,
+        MYLITE_STORAGE_VFS_FAULT_WRITE,
+        "write"
+    );
+    failures += run_catalog_migration_process_death_matrix(
+        executable_path,
+        MYLITE_STORAGE_VFS_FAULT_SYNC,
+        "sync"
+    );
+    failures += run_catalog_migration_process_death_matrix(
+        executable_path,
+        MYLITE_STORAGE_VFS_FAULT_TRUNCATE,
+        "truncate"
+    );
+    return failures;
+}
+
+static int run_catalog_migration_process_death_matrix(
+    const char *executable_path,
+    enum mylite_storage_vfs_fault_operation operation,
+    const char *operation_name
+) {
+    char path[path_capacity];
+    size_t operation_call_count = 0U;
+    bool use_truncate_journal = operation == MYLITE_STORAGE_VFS_FAULT_TRUNCATE;
+    int failures = prepare_path(path);
+
+    if (failures != 0) {
+        return failures;
+    }
+
+    {
+        mylite_db *database = NULL;
+        int close_rc = MYLITE_OK;
+
+        failures += setup_downgraded_catalog(path, use_truncate_journal);
+        mylite_storage_test_set_truncate_journal(use_truncate_journal);
+        mylite_storage_vfs_test_set_fault(operation, SIZE_MAX);
+        failures += mylite_test_expect_int(
+            mylite_open(path, &database),
+            MYLITE_OK,
+            "measure migration process-death boundary"
+        );
+        close_rc = close_after_fault(database);
+        database = NULL;
+        operation_call_count = mylite_storage_vfs_test_matching_call_count();
+        failures += expect_true(
+            !mylite_storage_vfs_test_fault_was_triggered(),
+            "migration process-death measurement does not trigger"
+        );
+        failures += expect_true(
+            operation_call_count > 0U,
+            "migration reaches measured process-death boundary"
+        );
+        mylite_storage_vfs_test_clear_fault();
+        mylite_storage_test_set_truncate_journal(false);
+        failures += mylite_test_expect_int(
+            close_rc,
+            MYLITE_OK,
+            "migration process-death measurement closes"
+        );
+    }
+
+    for (size_t exit_on_call = 1U; exit_on_call <= operation_call_count; ++exit_on_call) {
+        mylite_db *database = NULL;
+        sqlite3 *raw_sqlite = NULL;
+        enum ddl_fault_state migration_state = ddl_fault_state_invalid;
+        struct fault_table_rows rows = {0};
+
+        failures += setup_downgraded_catalog(path, use_truncate_journal);
+        failures += run_migration_process_death_child(
+            executable_path,
+            path,
+            operation,
+            operation_name,
+            exit_on_call
+        );
+
+        failures += mylite_test_expect_int(
+            mylite_storage_open_sqlite_payload(path, &raw_sqlite),
+            MYLITE_OK,
+            "open crashed catalog migration without remigrating"
+        );
+        if (raw_sqlite != NULL) {
+            failures += classify_catalog_migration_state(raw_sqlite, &migration_state);
+            failures += query_single_text(raw_sqlite, "PRAGMA integrity_check", "ok");
+            failures += mylite_test_expect_int(
+                sqlite3_close(raw_sqlite),
+                SQLITE_OK,
+                "close crashed migration inspection"
+            );
+            raw_sqlite = NULL;
+        }
+        failures += expect_true(
+            migration_state == ddl_fault_state_pre || migration_state == ddl_fault_state_post,
+            "crashed catalog migration is complete pre or post state"
+        );
+
+        failures += mylite_test_expect_int(
+            open_model_database(path, &database),
+            MYLITE_OK,
+            "converge crashed catalog migration"
+        );
+        failures += assert_recovery_invariants(path, database);
+        failures += query_fault_table_rows(database, "fault_table", &rows);
+        failures += mylite_test_expect_int(
+            rows.count,
+            ddl_fault_setup_row_count,
+            "crashed migration preserves row count"
+        );
+        failures += mylite_test_expect_int(
+            rows.id_sum,
+            ddl_fault_setup_id_sum,
+            "crashed migration preserves row ids"
+        );
+        failures += mylite_test_expect_int(
+            rows.value_sum,
+            ddl_fault_setup_value_sum,
+            "crashed migration preserves values"
+        );
+        mylite_close(database);
+    }
+
+    remove_related_files(path);
+    return failures;
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+static int run_migration_process_death_child(
+    const char *executable_path,
+    const char *path,
+    enum mylite_storage_vfs_fault_operation operation,
+    const char *operation_name,
+    size_t exit_on_call
+) {
+#ifdef _WIN32
+    char exit_on_call_text[integer_text_capacity];
+    intptr_t child_status = -1;
+    int written = snprintf(exit_on_call_text, sizeof(exit_on_call_text), "%zu", exit_on_call);
+
+    (void)operation;
+    if (written < 0 || (size_t)written >= sizeof(exit_on_call_text)) {
+        return 1;
+    }
+    child_status = _spawnl(
+        _P_WAIT,
+        executable_path,
+        executable_path,
+        "--migration-death-child",
+        path,
+        operation_name,
+        exit_on_call_text,
+        NULL
+    );
+    if (child_status == -1) {
+        fprintf(stderr, "spawn migration process-death child failed\n");
+        return 1;
+    }
+    return mylite_test_expect_int(
+        (int)child_status,
+        0,
+        "migration child reached process-death boundary"
+    );
+#else
+    pid_t child = fork();
+    int child_status = 0;
+
+    (void)executable_path;
+    (void)operation_name;
+    if (child == 0) {
+        _exit(migration_process_death_child_main(path, operation, exit_on_call));
+    }
+    if (child < 0) {
+        fprintf(stderr, "fork migration process-death child failed\n");
+        return 1;
+    }
+    if (waitpid(child, &child_status, 0) != child) {
+        fprintf(stderr, "wait for migration process-death child failed\n");
+        return 1;
+    }
+    if (!WIFEXITED(child_status)) {
+        fprintf(stderr, "migration process-death child did not exit normally\n");
+        return 1;
+    }
+    return mylite_test_expect_int(
+        WEXITSTATUS(child_status),
+        0,
+        "migration child reached process-death boundary"
+    );
+#endif
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+static int migration_process_death_child_main(
+    const char *path,
+    enum mylite_storage_vfs_fault_operation operation,
+    size_t exit_on_call
+) {
+    mylite_db *database = NULL;
+
+    mylite_storage_test_set_truncate_journal(operation == MYLITE_STORAGE_VFS_FAULT_TRUNCATE);
+    mylite_storage_vfs_test_set_process_death(operation, exit_on_call);
+    (void)mylite_open(path, &database);
+    mylite_close(database);
+    mylite_storage_vfs_test_clear_fault();
+    mylite_storage_test_set_truncate_journal(false);
+    return 2;
+}
+
+static int parse_migration_process_death_operation(
+    const char *text,
+    enum mylite_storage_vfs_fault_operation *out_operation
+) {
+    *out_operation = MYLITE_STORAGE_VFS_FAULT_NONE;
+    if (strcmp(text, "write") == 0) {
+        *out_operation = MYLITE_STORAGE_VFS_FAULT_WRITE;
+    } else if (strcmp(text, "sync") == 0) {
+        *out_operation = MYLITE_STORAGE_VFS_FAULT_SYNC;
+    } else if (strcmp(text, "truncate") == 0) {
+        *out_operation = MYLITE_STORAGE_VFS_FAULT_TRUNCATE;
+    }
+    return *out_operation == MYLITE_STORAGE_VFS_FAULT_NONE ? 1 : 0;
+}
+
+static int parse_positive_size(const char *text, size_t *out_value) {
+    char *end = NULL;
+    unsigned long long parsed = 0U;
+
+    errno = 0;
+    parsed = strtoull(text, &end, decimal_radix);
+    if (errno != 0 || end == text || *end != '\0' || parsed == 0U ||
+        parsed > (unsigned long long)SIZE_MAX) {
+        return 1;
+    }
+    *out_value = (size_t)parsed;
+    return 0;
+}
+
+static int setup_downgraded_catalog(const char *path, bool use_truncate_journal) {
     mylite_db *database = NULL;
     sqlite3 *sqlite = NULL;
     char sql[sql_capacity];
@@ -1266,6 +1561,9 @@ static int setup_downgraded_catalog(const char *path) {
         "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT NOT NULL)"
     );
     failures += execute_ok(database, "INSERT INTO fault_table VALUES (1, 11), (2, 22)");
+    if (use_truncate_journal) {
+        failures += configure_truncate_journal(database);
+    }
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite == NULL) {
         failures += 1;
@@ -1326,9 +1624,10 @@ static int classify_catalog_migration_state(sqlite3 *sqlite, enum ddl_fault_stat
     if (schema_version == catalog_previous_schema_version && integrity_column_count == 0 &&
         integrity_trigger_count == 0) {
         *out_state = ddl_fault_state_pre;
-    } else if (schema_version == MYLITE_CATALOG_SCHEMA_VERSION &&
-               integrity_column_count == catalog_integrity_column_count &&
-               integrity_trigger_count > 0) {
+    } else if (
+        schema_version == MYLITE_CATALOG_SCHEMA_VERSION &&
+        integrity_column_count == catalog_integrity_column_count && integrity_trigger_count > 0
+    ) {
         *out_state = ddl_fault_state_post;
     }
     return failures;

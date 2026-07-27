@@ -154,7 +154,7 @@ buildable and reviewable.
 - [x] Add two-handle and two-process barriers for N-1 to current migration.
 - [x] Require both openers to succeed against one validated current-format
   file, with no partial migration, spurious corruption error, or stale handle.
-- [ ] Repeat migration tests under crash and write/sync/truncate failpoints.
+- [x] Repeat migration tests under crash and write/sync/truncate failpoints.
 
 ### `STOR-01`: integrity-seal corruption contract
 

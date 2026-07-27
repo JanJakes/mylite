@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct mylite_offset_file {
@@ -22,6 +23,7 @@ struct mylite_storage_vfs_fault {
     size_t calls_until_failure;
     size_t matching_call_count;
     bool triggered;
+    bool process_death;
 };
 
 #ifdef _WIN32
@@ -189,6 +191,18 @@ void mylite_storage_vfs_test_set_fault(
     injected_fault.calls_until_failure = fail_on_call == 0U ? 1U : fail_on_call;
     injected_fault.matching_call_count = 0U;
     injected_fault.triggered = false;
+    injected_fault.process_death = false;
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): the enum identifies the failpoint.
+void mylite_storage_vfs_test_set_process_death(
+    enum mylite_storage_vfs_fault_operation operation,
+    size_t exit_on_call
+) {
+    mylite_storage_vfs_test_set_fault(operation, exit_on_call);
+    injected_fault.process_death = true;
 }
 
 // NOLINTEND(bugprone-easily-swappable-parameters)
@@ -266,8 +280,10 @@ static int offset_close(sqlite3_file *file) {
 
     if (offset_file->inner_file != NULL) {
         if (offset_file->initialization_owner) {
-            (void
-            )transition_initialization_state(offset_file, MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED);
+            (void)transition_initialization_state(
+                offset_file,
+                MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED
+            );
         }
         if (offset_file->inner_file->pMethods != NULL) {
             rc = offset_file->inner_file->pMethods->xClose(offset_file->inner_file);
@@ -1058,5 +1074,8 @@ static bool inject_fault(enum mylite_storage_vfs_fault_operation operation) {
 
     injected_fault.calls_until_failure = 0U;
     injected_fault.triggered = true;
+    if (injected_fault.process_death) {
+        _Exit(EXIT_SUCCESS);
+    }
     return true;
 }

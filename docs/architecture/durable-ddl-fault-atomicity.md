@@ -31,7 +31,8 @@ The deterministic storage matrix covers:
 - N-1 catalog migration to the current catalog schema;
 - VFS write and sync failures for every statement and migration case; and
 - VFS truncate, delete, and close failures on representative physical-rebuild
-  and migration paths that exercise those callbacks.
+  and migration paths that exercise those callbacks;
+- process death at every measured migration write, sync, and truncate callback.
 
 Each statement case contains data that distinguishes the pre-state from the
 post-state. Rebuilding and rename cases must preserve committed rows in either
@@ -61,6 +62,13 @@ reopen completes the migration, exact-handle raw inspection must find either
 the complete N-1 schema or the complete current schema, with no migration
 scratch table or partial integrity-seal surface.
 
+The process-death matrix first measures every matching VFS call, recreates the
+N-1 source for each call index, and terminates a child process at that exact
+callback. Truncate cases use a test-scoped truncate journal mode during the
+migration open so the claimed callback is proven reachable. The parent applies
+ordinary hot-journal recovery and the same raw pre/post classification before
+allowing MyLite to converge the catalog.
+
 ## Recovery Invariants
 
 Every recovered current-format database must satisfy:
@@ -80,6 +88,6 @@ public ownership contract before inspecting the file.
 
 ## Platform Coverage
 
-The matrix is platform-neutral. Process-death initialization and hot-journal
-children use `fork` on POSIX and spawned child modes on Windows. Release
-qualification must execute both platform paths.
+The matrix is platform-neutral. Process-death initialization, migration, and
+hot-journal children use `fork` on POSIX and spawned child modes on Windows.
+Release qualification must execute both platform paths.

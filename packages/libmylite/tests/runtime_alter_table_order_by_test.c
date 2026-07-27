@@ -8,6 +8,7 @@
 #include "storage/mylite_file_format.h"
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,9 +46,19 @@ struct expected_query {
     const char *context;
 };
 
+struct integrity_validation_trace {
+    bool saw_physical_schema_validation;
+};
+
 static int test_alter_table_order_by_success_persistence_and_preamble(void);
 static int test_alter_table_order_by_diagnostics(void);
 static int test_independent_alter_table_order_by_handles(void);
+static int trace_integrity_validation(
+    unsigned int trace_type,
+    void *context,
+    void *statement_handle,
+    void *expanded_sql
+);
 static int create_table_with_rows(
     mylite_db *database,
     const char *table_name,
@@ -100,11 +111,13 @@ static int test_alter_table_order_by_success_persistence_and_preamble(void) {
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
     const struct mylite_catalog *catalog = NULL;
     const struct mylite_session_state *session = NULL;
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor before_table = {0};
     struct mylite_catalog_table_descriptor after_table = {0};
+    struct integrity_validation_trace integrity_trace = {0};
     uint64_t catalog_generation_before = 0U;
     uint64_t sqlite_generation_before = 0U;
     int failures = 0;
@@ -159,7 +172,33 @@ static int test_alter_table_order_by_success_persistence_and_preamble(void) {
         sqlite_generation_before = session->sqlite_schema_generation;
     }
 
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite == NULL) {
+        failures += 1;
+    } else {
+        failures += mylite_test_expect_int(
+            sqlite3_trace_v2(
+                sqlite,
+                SQLITE_TRACE_STMT,
+                trace_integrity_validation,
+                &integrity_trace
+            ),
+            SQLITE_OK,
+            "install structural integrity validation trace"
+        );
+    }
     failures += expect_alter_ok(database, "ALTER TABLE ordered_default ORDER BY id", 3);
+    if (sqlite != NULL) {
+        failures += mylite_test_expect_int(
+            sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+            SQLITE_OK,
+            "remove structural integrity validation trace"
+        );
+    }
+    failures += mylite_test_expect_true(
+        integrity_trace.saw_physical_schema_validation,
+        "ALTER TABLE ORDER BY validates catalog/physical integrity before commit"
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -556,6 +595,33 @@ static int test_independent_alter_table_order_by_handles(void) {
     remove_related_files(first_path);
     return failures;
 }
+
+/* sqlite3_trace_v2 fixes this callback's opaque parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+static int trace_integrity_validation(
+    unsigned int trace_type,
+    void *context,
+    void *statement_handle,
+    void *expanded_sql
+) {
+    static const char physical_validation_fragment[] =
+        "LEFT JOIN sqlite_schema AS s ON s.name = t.physical_name AND s.type = 'table'";
+
+    struct integrity_validation_trace *trace = context;
+    const char *sql = NULL;
+
+    (void)expanded_sql;
+    if (trace_type != SQLITE_TRACE_STMT || trace == NULL || statement_handle == NULL) {
+        return 0;
+    }
+    sql = sqlite3_sql((sqlite3_stmt *)statement_handle);
+    if (sql != NULL && strstr(sql, physical_validation_fragment) != NULL) {
+        trace->saw_physical_schema_validation = true;
+    }
+    return 0;
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int create_table_with_rows(
     mylite_db *database,

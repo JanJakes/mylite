@@ -174,10 +174,10 @@ buildable and reviewable.
 
 ### `STOR-02` and `STOR-03`: initialization recovery and fault coverage
 
-- [ ] Define recoverability for an `INITIALIZING` file after creator death.
-- [ ] Implement exclusive validation/recovery, or safe quarantine/removal only
+- [x] Define recoverability for an `INITIALIZING` file after creator death.
+- [x] Implement exclusive validation/recovery, or safe quarantine/removal only
   when the exact owned inode is proven to contain no committed user state.
-- [ ] Test process death at every initialization transaction, payload sync,
+- [x] Test process death at every initialization transaction, payload sync,
   catalog commit, and lifecycle-byte publication boundary.
 - [ ] Extend VFS fault coverage from CREATE TABLE to rebuilding ALTER,
   DROP/RENAME, index DDL, migrations, truncate, delete, and close.

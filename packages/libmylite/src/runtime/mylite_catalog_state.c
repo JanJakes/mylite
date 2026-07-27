@@ -725,6 +725,11 @@ static int initialize_catalog_schema(struct mylite_db *database) {
          rc == MYLITE_OK && index < sizeof(sql_statements) / sizeof(sql_statements[0U]);
          ++index) {
         rc = mylite_catalog_execute_sql(database->sqlite, sql_statements[index]);
+        if (rc == MYLITE_OK && index == 0U) {
+            mylite_connection_notify_file_initialization_test_event(
+                MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_ACTIVE
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_create_integrity_seal_triggers(database->sqlite);
@@ -734,6 +739,11 @@ static int initialize_catalog_schema(struct mylite_db *database) {
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_execute_sql(database->sqlite, "COMMIT;");
+        if (rc == MYLITE_OK) {
+            mylite_connection_notify_file_initialization_test_event(
+                MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_COMMITTED
+            );
+        }
     }
     if (rc != MYLITE_OK) {
         return rollback_catalog_transaction(database, rc);

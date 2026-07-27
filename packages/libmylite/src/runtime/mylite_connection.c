@@ -17,6 +17,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#  define MYLITE_CONNECTION_THREAD_LOCAL __declspec(thread)
+#else
+#  define MYLITE_CONNECTION_THREAD_LOCAL _Thread_local
+#endif
+
 static int allocate_database_handle(struct mylite_db **out_database);
 static int open_memory_sqlite(struct mylite_db *database);
 static int open_file_sqlite(struct mylite_db *database, const char *path);
@@ -54,6 +60,9 @@ static uint64_t allocate_session_connection_id(void);
 static void copy_session_text(char *destination, size_t destination_size, const char *source);
 
 static struct mylite_db *processlist_registry_head = NULL;
+static MYLITE_CONNECTION_THREAD_LOCAL mylite_file_initialization_test_hook
+    file_initialization_test_hook = NULL;
+static MYLITE_CONNECTION_THREAD_LOCAL void *file_initialization_test_hook_context = NULL;
 
 int mylite_open_memory(mylite_db **out_db) {
     return mylite_open_memory_with_diagnostic(out_db, NULL);
@@ -359,6 +368,22 @@ void mylite_connection_unlock_processlist_registry_for_test(void) {
     sqlite3_mutex_leave(processlist_registry_mutex());
 }
 
+void mylite_connection_set_file_initialization_test_hook(
+    mylite_file_initialization_test_hook hook,
+    void *context
+) {
+    file_initialization_test_hook = hook;
+    file_initialization_test_hook_context = context;
+}
+
+void mylite_connection_notify_file_initialization_test_event(
+    enum mylite_file_initialization_test_event event
+) {
+    if (file_initialization_test_hook != NULL) {
+        file_initialization_test_hook(event, file_initialization_test_hook_context);
+    }
+}
+
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database) {
     if (database == NULL) {
         return NULL;
@@ -457,6 +482,9 @@ static int open_file_sqlite(struct mylite_db *database, const char *path) {
     }
 
     database->sqlite = sqlite;
+    mylite_connection_notify_file_initialization_test_event(
+        MYLITE_FILE_INITIALIZATION_PAYLOAD_OPENED
+    );
 
     rc = bootstrap_sqlite_connection(database);
     if (rc == MYLITE_OK) {
@@ -466,7 +494,15 @@ static int open_file_sqlite(struct mylite_db *database, const char *path) {
         rc = initialize_catalog(database);
     }
     if (rc == MYLITE_OK) {
+        mylite_connection_notify_file_initialization_test_event(
+            MYLITE_FILE_INITIALIZATION_BEFORE_LIFECYCLE_PUBLICATION
+        );
         rc = mylite_storage_commit_sqlite_initialization(database->sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        mylite_connection_notify_file_initialization_test_event(
+            MYLITE_FILE_INITIALIZATION_AFTER_LIFECYCLE_PUBLICATION
+        );
     }
     if (rc != MYLITE_OK) {
         mylite_storage_abort_sqlite_initialization(database->sqlite);

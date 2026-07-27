@@ -37,15 +37,30 @@ If exclusive creation reports that the path already exists, MyLite retries a
 read-write open without create. Through that exact underlying file object the
 VFS verifies:
 
-- a committed supported preamble;
-- a physical size large enough for the preamble and minimum SQLite database;
-  and
-- the SQLite header at physical byte 4096.
+- a supported, internally valid preamble;
+- for committed files, a physical size large enough for the preamble and
+  minimum SQLite database plus the SQLite header at physical byte 4096; or
+- for initializing/recovery-required files, successful acquisition of the
+  wrapped VFS's exclusive lock followed by either an empty logical payload or a
+  complete SQLite header.
+
+The exclusive creator and any exclusive recovery opener retain that underlying
+lock until committed or recovery-required publication. SQLite lock upgrades on
+the same wrapper are already satisfied, and SQLite unlock requests cannot
+release unpublished ownership. A competing live creator or recovery opener
+therefore causes deterministic open failure; creator death releases the
+operating-system lock and permits recovery.
 
 After bootstrap and catalog initialization, storage resolves the exact main
 `sqlite3_file` with `SQLITE_FCNTL_FILE_POINTER` and syncs the committed lifecycle
-state. Failed initialization marks that same file recovery-required. It never
-deletes an unverified pathname.
+state before releasing unpublished ownership. Failed initialization marks that
+same file recovery-required. It never deletes, replaces, or truncates an
+unverified pathname.
+
+Recovery is non-destructive. An empty unpublished payload may finish normal
+SQLite and catalog initialization. A complete payload must pass SQLite
+hot-journal recovery and MyLite's full catalog/physical validation. Invalid
+payloads remain recovery-required.
 
 ## Offset VFS
 
@@ -100,11 +115,14 @@ Coverage includes:
 
 - version-3 creation, shifted SQLite header, catalog initialization, and reopen;
 - legacy version-1 and version-2 reopen;
-- invalid, empty, truncated, plain-SQLite, preamble-only, initializing, and
-  recovery-required files;
+- invalid, empty, truncated, plain-SQLite, and committed-preamble-only files;
 - independent handles and bootstrap state;
 - second-open rejection while initialization is active;
-- process-death rejection before lifecycle publication;
+- process-death recovery across bootstrap, catalog commit, and lifecycle
+  publication boundaries;
+- recovery of preamble-only and valid current-catalog unpublished files without
+  data loss;
+- rejection of invalid unpublished payloads without destructive cleanup;
 - POSIX rename/replacement during abort, proving only the opened inode receives
   recovery state and the replacement pathname is unchanged; and
 - sparse lock-boundary mapping and legacy growth containment; and

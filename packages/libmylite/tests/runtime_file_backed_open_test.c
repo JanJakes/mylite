@@ -30,6 +30,9 @@ enum {
     reopen_marker_value = 73,
     updated_reopen_marker_value = 74,
     initialization_child_argument_count = 5,
+    initialization_death_child_argument_count = 4,
+    hot_journal_child_argument_count = 3,
+    decimal_radix = 10,
     lock_gap_control_size = 1024 * 1024,
     path_wait_attempt_count = 500,
     path_wait_sleep_ms = 10,
@@ -41,28 +44,47 @@ struct initialization_child_paths {
     const char *release;
 };
 
+struct child_process_paths {
+    const char *executable;
+    const char *database;
+};
+
 static int test_open_rejects_invalid_arguments(void);
 static int test_create_new_file_with_preamble_and_shifted_payload(void);
 static int test_reopen_existing_file_preserves_sqlite_payload(void);
 static int test_rejects_invalid_truncated_and_plain_sqlite_files(void);
 static int test_independent_file_backed_handles_and_bootstrap_state(void);
 static int test_reopens_legacy_version_one_file(void);
-static int test_rejects_incomplete_lifecycle_files(void);
+static int test_recovers_incomplete_lifecycle_files(void);
 static int test_rejects_second_opener_during_initialization(void);
 static int test_rejects_concurrent_process_opener(const char *executable_path);
+static int test_recovers_after_initialization_process_death(const char *executable_path);
 static int test_vfs_fault_injection(void);
 static int test_lock_byte_gap_mapping(void);
 static int test_legacy_lock_boundary_containment(void);
 static int test_journal_mode_policy(void);
+static int test_hot_journal_recovery_after_process_death(const char *executable_path);
 #ifndef _WIN32
-static int test_process_death_leaves_initializing_file_rejected(void);
 static int test_abort_marks_opened_identity_recovery_required(void);
-static int test_hot_journal_recovery_after_process_death(void);
 #endif
 static int test_symlink_failure_preserves_path_identity(void);
 static int create_file_symlink(const char *target_path, const char *link_path);
 static int path_is_symlink(const char *path);
 static int initialization_child_main(const struct initialization_child_paths *paths);
+static int initialization_death_child_main(
+    const char *path,
+    enum mylite_file_initialization_test_event target_event
+);
+static void initialization_death_test_hook(
+    enum mylite_file_initialization_test_event event,
+    void *context
+);
+static int run_initialization_death_child(
+    const struct child_process_paths *paths,
+    enum mylite_file_initialization_test_event event
+);
+static int hot_journal_child_main(const char *path);
+static int run_hot_journal_child(const struct child_process_paths *paths);
 static int wait_for_path(const char *path);
 static int path_exists(const char *path);
 static void remove_related_files(const char *path);
@@ -104,6 +126,22 @@ int main(int argc, char **argv) {
             .release = argv[4],
         });
     }
+    if (argc == initialization_death_child_argument_count &&
+        strcmp(argv[1], "--initialization-death-child") == 0) {
+        long event = strtol(argv[3], NULL, decimal_radix);
+
+        if (event < MYLITE_FILE_INITIALIZATION_PAYLOAD_OPENED ||
+            event > MYLITE_FILE_INITIALIZATION_AFTER_LIFECYCLE_PUBLICATION) {
+            return 1;
+        }
+        return initialization_death_child_main(
+            argv[2],
+            (enum mylite_file_initialization_test_event)event
+        );
+    }
+    if (argc == hot_journal_child_argument_count && strcmp(argv[1], "--hot-journal-child") == 0) {
+        return hot_journal_child_main(argv[2]);
+    }
 
     failures += test_open_rejects_invalid_arguments();
     failures += test_create_new_file_with_preamble_and_shifted_payload();
@@ -111,17 +149,17 @@ int main(int argc, char **argv) {
     failures += test_rejects_invalid_truncated_and_plain_sqlite_files();
     failures += test_independent_file_backed_handles_and_bootstrap_state();
     failures += test_reopens_legacy_version_one_file();
-    failures += test_rejects_incomplete_lifecycle_files();
+    failures += test_recovers_incomplete_lifecycle_files();
     failures += test_rejects_second_opener_during_initialization();
     failures += test_rejects_concurrent_process_opener(argv[0]);
+    failures += test_recovers_after_initialization_process_death(argv[0]);
     failures += test_vfs_fault_injection();
     failures += test_lock_byte_gap_mapping();
     failures += test_legacy_lock_boundary_containment();
     failures += test_journal_mode_policy();
+    failures += test_hot_journal_recovery_after_process_death(argv[0]);
 #ifndef _WIN32
-    failures += test_process_death_leaves_initializing_file_rejected();
     failures += test_abort_marks_opened_identity_recovery_required();
-    failures += test_hot_journal_recovery_after_process_death();
 #endif
     failures += test_symlink_failure_preserves_path_identity();
 
@@ -456,12 +494,18 @@ static int test_reopens_legacy_version_one_file(void) {
     return failures;
 }
 
-static int test_rejects_incomplete_lifecycle_files(void) {
+static int test_recovers_incomplete_lifecycle_files(void) {
+    static const unsigned char corrupt_header_byte = 'X';
+
     unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char header_byte = 0U;
     unsigned char state = MYLITE_FILE_LIFECYCLE_INITIALIZING;
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    long invalid_size = 0;
     long stored_size = 0;
+    int stored_value = 0;
     int failures = 0;
 
     if (mylite_test_make_path(path, sizeof(path), "empty_existing") != 0) {
@@ -494,31 +538,130 @@ static int test_rejects_incomplete_lifecycle_files(void) {
         expect_long(stored_size, MYLITE_FILE_PREAMBLE_SIZE, "preamble-only file remains unchanged");
     remove_related_files(path);
 
+    if (mylite_test_make_path(path, sizeof(path), "initializing_preamble_only") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
+    failures += write_file_bytes(path, preamble, sizeof(preamble));
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "recover initializing preamble-only file"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_single_text_equals(sqlite, "PRAGMA integrity_check", "ok");
+    }
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += mylite_test_expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "preamble-only recovery publishes committed state"
+    );
+    remove_related_files(path);
+
     if (mylite_test_make_path(path, sizeof(path), "lifecycle") != 0) {
         return failures + 1;
     }
     remove_related_files(path);
     failures +=
         mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "create lifecycle file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(
+            sqlite,
+            "CREATE TABLE lifecycle_marker(value INTEGER);"
+            "INSERT INTO lifecycle_marker(value) VALUES (73)"
+        );
+    }
     mylite_close(database);
     database = NULL;
 
     failures += write_file_at(path, MYLITE_FILE_LIFECYCLE_STATE_OFFSET, &state, sizeof(state));
     failures += mylite_test_expect_int(
         mylite_open(path, &database),
-        MYLITE_ERROR,
-        "reject initializing file"
+        MYLITE_OK,
+        "recover initialized payload from initializing state"
     );
-    failures += mylite_test_expect_true(database == NULL, "initializing file leaves output null");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_single_int(sqlite, "SELECT value FROM lifecycle_marker", &stored_value);
+    }
+    failures += mylite_test_expect_int(
+        stored_value,
+        reopen_marker_value,
+        "initializing-state recovery preserves payload"
+    );
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += mylite_test_expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "initializing-state recovery publishes committed state"
+    );
+
     state = MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED;
     failures += write_file_at(path, MYLITE_FILE_LIFECYCLE_STATE_OFFSET, &state, sizeof(state));
     failures += mylite_test_expect_int(
         mylite_open(path, &database),
+        MYLITE_OK,
+        "recover initialized payload from recovery-required state"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        stored_value = 0;
+        failures += query_single_int(sqlite, "SELECT value FROM lifecycle_marker", &stored_value);
+    }
+    failures += mylite_test_expect_int(
+        stored_value,
+        reopen_marker_value,
+        "recovery-required open preserves payload"
+    );
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += mylite_test_expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "recovery-required open publishes committed state"
+    );
+
+    failures += file_size(path, &invalid_size);
+    state = MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED;
+    failures += write_file_at(path, MYLITE_FILE_LIFECYCLE_STATE_OFFSET, &state, sizeof(state));
+    failures += write_file_at(
+        path,
+        MYLITE_FILE_SQLITE_PAYLOAD_OFFSET,
+        &corrupt_header_byte,
+        sizeof(corrupt_header_byte)
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
         MYLITE_ERROR,
-        "reject recovery-required file"
+        "reject invalid unpublished payload"
     );
     failures +=
-        mylite_test_expect_true(database == NULL, "recovery-required file leaves output null");
+        mylite_test_expect_true(database == NULL, "invalid unpublished payload output stays null");
+    failures += file_size(path, &stored_size);
+    failures +=
+        expect_long(stored_size, invalid_size, "invalid unpublished payload is not truncated");
+    failures +=
+        read_file_at(path, MYLITE_FILE_SQLITE_PAYLOAD_OFFSET, &header_byte, sizeof(header_byte));
+    failures += mylite_test_expect_int(
+        (int)header_byte,
+        (int)corrupt_header_byte,
+        "invalid unpublished payload is not rewritten"
+    );
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += mylite_test_expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
+        "invalid unpublished payload remains recovery required"
+    );
 
     remove_related_files(path);
     return failures;
@@ -555,6 +698,19 @@ static int test_rejects_second_opener_during_initialization(void) {
         (int)mylite_file_preamble_lifecycle_state(preamble),
         MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
         "aborted owner marks recovery required"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open(path, &second),
+        MYLITE_OK,
+        "recover after initialization owner aborts"
+    );
+    mylite_close(second);
+    second = NULL;
+    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+    failures += mylite_test_expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "post-abort recovery publishes committed state"
     );
 
     remove_related_files(path);
@@ -655,6 +811,13 @@ static int test_rejects_concurrent_process_opener(const char *executable_path) {
 #endif
     }
 
+    failures += mylite_test_expect_int(
+        mylite_open(path, &second),
+        MYLITE_OK,
+        "recover after concurrent initialization owner exits"
+    );
+    mylite_close(second);
+    second = NULL;
     (void)remove(ready_path);
     (void)remove(release_path);
     remove_related_files(path);
@@ -690,40 +853,42 @@ static int test_vfs_fault_injection(void) {
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_WRITE, 1U);
     failures += mylite_test_expect_int(
         mylite_open(path, &database),
-        MYLITE_ERROR,
-        "inject preamble write failure"
+        MYLITE_OK,
+        "recover from one-shot preamble write failure"
     );
-    failures += mylite_test_expect_true(database == NULL, "write failure leaves output null");
     failures += mylite_test_expect_true(
         mylite_storage_vfs_test_fault_was_triggered(),
         "write failpoint triggered"
     );
+    mylite_close(database);
+    database = NULL;
     mylite_storage_vfs_test_clear_fault();
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
     failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
-        MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
-        "write failure marks recovery required"
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "write failure recovery publishes committed state"
     );
     remove_related_files(path);
 
     mylite_storage_vfs_test_set_fault(MYLITE_STORAGE_VFS_FAULT_SYNC, 1U);
     failures += mylite_test_expect_int(
         mylite_open(path, &database),
-        MYLITE_ERROR,
-        "inject preamble sync failure"
+        MYLITE_OK,
+        "recover from one-shot preamble sync failure"
     );
-    failures += mylite_test_expect_true(database == NULL, "sync failure leaves output null");
     failures += mylite_test_expect_true(
         mylite_storage_vfs_test_fault_was_triggered(),
         "sync failpoint triggered"
     );
+    mylite_close(database);
+    database = NULL;
     mylite_storage_vfs_test_clear_fault();
     failures += read_file_at(path, 0L, preamble, sizeof(preamble));
     failures += mylite_test_expect_int(
         (int)mylite_file_preamble_lifecycle_state(preamble),
-        MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
-        "sync failure marks recovery required"
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "sync failure recovery publishes committed state"
     );
     remove_related_files(path);
 
@@ -1104,63 +1269,157 @@ static int test_journal_mode_policy(void) {
     return failures;
 }
 
-#ifndef _WIN32
-static int test_process_death_leaves_initializing_file_rejected(void) {
+static int test_recovers_after_initialization_process_death(const char *executable_path) {
+    static const char create_database_sql[] = "CREATE DATABASE recovered";
+    static const char use_database_sql[] = "USE recovered";
+    static const char create_table_sql[] = "CREATE TABLE viability (id INT)";
+
+    static const enum mylite_file_initialization_test_event events[] = {
+        MYLITE_FILE_INITIALIZATION_PAYLOAD_OPENED,
+        MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_ACTIVE,
+        MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_COMMITTED,
+        MYLITE_FILE_INITIALIZATION_BEFORE_LIFECYCLE_PUBLICATION,
+        MYLITE_FILE_INITIALIZATION_AFTER_LIFECYCLE_PUBLICATION,
+    };
+
     unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    char base_path[test_path_capacity];
     char path[test_path_capacity];
     mylite_db *database = NULL;
-    pid_t child = 0;
-    int child_status = 0;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int catalog_state_count = 0;
+    int recovered_table_count = 0;
     int failures = 0;
+    int written = 0;
 
-    if (mylite_test_make_path(path, sizeof(path), "initialization_process_death") != 0) {
+    if (mylite_test_make_path(base_path, sizeof(base_path), "initialization_process_death") != 0) {
         return 1;
     }
-    remove_related_files(path);
 
-    child = fork();
-    if (child == 0) {
-        sqlite3 *initializing = NULL;
-        int rc = mylite_storage_open_sqlite_payload(path, &initializing);
+    for (size_t index = 0U; index < sizeof(events) / sizeof(events[0U]); ++index) {
+        enum mylite_file_initialization_test_event event = events[index];
+        enum mylite_file_lifecycle_state expected_interrupted_state =
+            event == MYLITE_FILE_INITIALIZATION_AFTER_LIFECYCLE_PUBLICATION
+                ? MYLITE_FILE_LIFECYCLE_COMMITTED
+                : MYLITE_FILE_LIFECYCLE_INITIALIZING;
 
-        _exit(rc == MYLITE_OK && initializing != NULL ? 0 : 1);
-    }
-    if (child < 0) {
-        fprintf(stderr, "fork initialization owner failed\n");
+        written = snprintf(path, sizeof(path), "%s-%d", base_path, (int)event);
+        if (written < 0 || (size_t)written >= sizeof(path)) {
+            failures += 1;
+            continue;
+        }
         remove_related_files(path);
-        return 1;
-    }
-    if (waitpid(child, &child_status, 0) != child) {
-        fprintf(stderr, "wait for initialization owner failed\n");
-        failures += 1;
-    } else {
-        failures += mylite_test_expect_true(WIFEXITED(child_status), "initialization owner exited");
-        if (WIFEXITED(child_status)) {
+
+        failures += run_initialization_death_child(
+            &(const struct child_process_paths){
+                .executable = executable_path,
+                .database = path,
+            },
+            event
+        );
+        failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+        failures += mylite_test_expect_int(
+            (int)mylite_file_preamble_lifecycle_state(preamble),
+            (int)expected_interrupted_state,
+            "process death preserves expected lifecycle state"
+        );
+        if (event == MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_ACTIVE) {
             failures += mylite_test_expect_int(
-                WEXITSTATUS(child_status),
-                0,
-                "initialization owner opened payload"
+                file_exists_with_suffix(path, "-journal"),
+                1,
+                "catalog transaction death leaves rollback journal"
             );
         }
+
+        failures += mylite_test_expect_int(
+            mylite_open(path, &database),
+            MYLITE_OK,
+            "recover after initialization process death"
+        );
+        sqlite = mylite_connection_sqlite_for_test(database);
+        if (sqlite != NULL) {
+            failures += query_single_text_equals(sqlite, "PRAGMA integrity_check", "ok");
+            failures += query_single_int(
+                sqlite,
+                "SELECT count(*) FROM _mylite_catalog_state",
+                &catalog_state_count
+            );
+        }
+        failures +=
+            mylite_test_expect_int(catalog_state_count, 1, "recovered catalog state is complete");
+        if (database != NULL) {
+            failures += mylite_test_expect_int(
+                mylite_execute(
+                    database,
+                    create_database_sql,
+                    sizeof(create_database_sql) - 1U,
+                    &result
+                ),
+                MYLITE_OK,
+                "create database after initialization recovery"
+            );
+            mylite_result_free(result);
+            result = NULL;
+            failures += mylite_test_expect_int(
+                mylite_execute(database, use_database_sql, sizeof(use_database_sql) - 1U, &result),
+                MYLITE_OK,
+                "select database after initialization recovery"
+            );
+            mylite_result_free(result);
+            result = NULL;
+            failures += mylite_test_expect_int(
+                mylite_execute(database, create_table_sql, sizeof(create_table_sql) - 1U, &result),
+                MYLITE_OK,
+                "create table after initialization recovery"
+            );
+            mylite_result_free(result);
+            result = NULL;
+        }
+        mylite_close(database);
+        database = NULL;
+        catalog_state_count = 0;
+
+        failures += read_file_at(path, 0L, preamble, sizeof(preamble));
+        failures += mylite_test_expect_int(
+            (int)mylite_file_preamble_lifecycle_state(preamble),
+            MYLITE_FILE_LIFECYCLE_COMMITTED,
+            "process-death recovery publishes committed state"
+        );
+        failures += mylite_test_expect_int(
+            file_exists_with_suffix(path, "-journal"),
+            0,
+            "process-death recovery clears rollback journal"
+        );
+        failures += mylite_test_expect_int(
+            mylite_open(path, &database),
+            MYLITE_OK,
+            "reopen database written after initialization recovery"
+        );
+        sqlite = mylite_connection_sqlite_for_test(database);
+        if (sqlite != NULL) {
+            failures += query_single_text_equals(sqlite, "PRAGMA integrity_check", "ok");
+            failures += query_single_int(
+                sqlite,
+                "SELECT count(*) FROM _mylite_catalog_tables WHERE name = 'viability'",
+                &recovered_table_count
+            );
+        }
+        failures += mylite_test_expect_int(
+            recovered_table_count,
+            1,
+            "post-recovery table remains cataloged after reopen"
+        );
+        mylite_close(database);
+        database = NULL;
+        recovered_table_count = 0;
+
+        remove_related_files(path);
     }
-
-    failures += read_file_at(path, 0L, preamble, sizeof(preamble));
-    failures += mylite_test_expect_int(
-        (int)mylite_file_preamble_lifecycle_state(preamble),
-        MYLITE_FILE_LIFECYCLE_INITIALIZING,
-        "process death preserves initializing state"
-    );
-    failures += mylite_test_expect_int(
-        mylite_open(path, &database),
-        MYLITE_ERROR,
-        "reject initializer process-death file"
-    );
-    failures += mylite_test_expect_true(database == NULL, "process-death file leaves output null");
-
-    remove_related_files(path);
     return failures;
 }
 
+#ifndef _WIN32
 static int test_abort_marks_opened_identity_recovery_required(void) {
     static const unsigned char replacement[] = "replacement database path";
 
@@ -1297,14 +1556,10 @@ static int path_is_symlink(const char *path) {
 #endif
 }
 
-#ifndef _WIN32
-
-static int test_hot_journal_recovery_after_process_death(void) {
+static int test_hot_journal_recovery_after_process_death(const char *executable_path) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     sqlite3 *sqlite = NULL;
-    pid_t child = 0;
-    int child_status = 0;
     int changed_rows = -1;
     int failures = 0;
 
@@ -1328,45 +1583,10 @@ static int test_hot_journal_recovery_after_process_death(void) {
     mylite_close(database);
     database = NULL;
 
-    child = fork();
-    if (child == 0) {
-        mylite_db *child_database = NULL;
-        sqlite3 *child_sqlite = NULL;
-        int rc = mylite_open(path, &child_database);
-
-        if (rc == MYLITE_OK) {
-            child_sqlite = mylite_connection_sqlite_for_test(child_database);
-            rc = sqlite3_exec(
-                child_sqlite,
-                "PRAGMA cache_size=1;"
-                "PRAGMA cache_spill=ON;"
-                "BEGIN IMMEDIATE;"
-                "UPDATE recovery_rows SET value = randomblob(4096);",
-                NULL,
-                NULL,
-                NULL
-            );
-        }
-        _exit(rc == SQLITE_OK ? 0 : 1);
-    }
-    if (child < 0) {
-        fprintf(stderr, "fork recovery writer failed\n");
-        remove_related_files(path);
-        return failures + 1;
-    }
-    if (waitpid(child, &child_status, 0) != child) {
-        fprintf(stderr, "wait for recovery writer failed\n");
-        failures += 1;
-    } else {
-        failures += mylite_test_expect_true(WIFEXITED(child_status), "recovery writer exited");
-        if (WIFEXITED(child_status)) {
-            failures += mylite_test_expect_int(
-                WEXITSTATUS(child_status),
-                0,
-                "recovery writer updated rows"
-            );
-        }
-    }
+    failures += run_hot_journal_child(&(const struct child_process_paths){
+        .executable = executable_path,
+        .database = path,
+    });
     failures += mylite_test_expect_int(
         file_exists_with_suffix(path, "-journal"),
         1,
@@ -1395,7 +1615,6 @@ static int test_hot_journal_recovery_after_process_death(void) {
     remove_related_files(path);
     return failures;
 }
-#endif
 
 static int initialization_child_main(const struct initialization_child_paths *paths) {
     sqlite3 *initializing = NULL;
@@ -1417,6 +1636,155 @@ static int initialization_child_main(const struct initialization_child_paths *pa
 
     mylite_storage_abort_sqlite_initialization(initializing);
     return sqlite3_close(initializing) == SQLITE_OK ? 0 : 1;
+}
+
+static int initialization_death_child_main(
+    const char *path,
+    enum mylite_file_initialization_test_event target_event
+) {
+    mylite_db *database = NULL;
+    int rc = MYLITE_OK;
+
+    mylite_connection_set_file_initialization_test_hook(
+        initialization_death_test_hook,
+        &target_event
+    );
+    rc = mylite_open(path, &database);
+    mylite_connection_set_file_initialization_test_hook(NULL, NULL);
+    mylite_close(database);
+
+    return rc == MYLITE_OK ? 1 : 2;
+}
+
+static void initialization_death_test_hook(
+    enum mylite_file_initialization_test_event event,
+    void *context
+) {
+    const enum mylite_file_initialization_test_event *target_event = context;
+
+    if (target_event != NULL && event == *target_event) {
+        _Exit(0);
+    }
+}
+
+static int run_initialization_death_child(
+    const struct child_process_paths *paths,
+    enum mylite_file_initialization_test_event event
+) {
+#ifdef _WIN32
+    char event_text[16];
+    intptr_t child_status = -1;
+    int written = snprintf(event_text, sizeof(event_text), "%d", (int)event);
+
+    if (written < 0 || (size_t)written >= sizeof(event_text)) {
+        return 1;
+    }
+    child_status = _spawnl(
+        _P_WAIT,
+        paths->executable,
+        paths->executable,
+        "--initialization-death-child",
+        paths->database,
+        event_text,
+        NULL
+    );
+    if (child_status == -1) {
+        fprintf(stderr, "spawn initialization death child failed\n");
+        return 1;
+    }
+    return mylite_test_expect_int(
+        (int)child_status,
+        0,
+        "initialization death child reached target boundary"
+    );
+#else
+    pid_t child = fork();
+    int child_status = 0;
+
+    (void)paths->executable;
+    if (child == 0) {
+        _exit(initialization_death_child_main(paths->database, event));
+    }
+    if (child < 0) {
+        fprintf(stderr, "fork initialization death child failed\n");
+        return 1;
+    }
+    if (waitpid(child, &child_status, 0) != child) {
+        fprintf(stderr, "wait for initialization death child failed\n");
+        return 1;
+    }
+    if (!WIFEXITED(child_status)) {
+        fprintf(stderr, "initialization death child did not exit normally\n");
+        return 1;
+    }
+    return mylite_test_expect_int(
+        WEXITSTATUS(child_status),
+        0,
+        "initialization death child reached target boundary"
+    );
+#endif
+}
+
+static int hot_journal_child_main(const char *path) {
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int rc = mylite_open(path, &database);
+
+    if (rc == MYLITE_OK) {
+        sqlite = mylite_connection_sqlite_for_test(database);
+        rc = sqlite3_exec(
+            sqlite,
+            "PRAGMA cache_size=1;"
+            "PRAGMA cache_spill=ON;"
+            "BEGIN IMMEDIATE;"
+            "UPDATE recovery_rows SET value = randomblob(4096);",
+            NULL,
+            NULL,
+            NULL
+        );
+    }
+
+    return rc == SQLITE_OK ? 0 : 1;
+}
+
+static int run_hot_journal_child(const struct child_process_paths *paths) {
+#ifdef _WIN32
+    intptr_t child_status = _spawnl(
+        _P_WAIT,
+        paths->executable,
+        paths->executable,
+        "--hot-journal-child",
+        paths->database,
+        NULL
+    );
+
+    if (child_status == -1) {
+        fprintf(stderr, "spawn hot-journal child failed\n");
+        return 1;
+    }
+    return mylite_test_expect_int((int)child_status, 0, "hot-journal child updated rows");
+#else
+    pid_t child = fork();
+    int child_status = 0;
+
+    (void)paths->executable;
+    if (child == 0) {
+        _exit(hot_journal_child_main(paths->database));
+    }
+    if (child < 0) {
+        fprintf(stderr, "fork hot-journal child failed\n");
+        return 1;
+    }
+    if (waitpid(child, &child_status, 0) != child) {
+        fprintf(stderr, "wait for hot-journal child failed\n");
+        return 1;
+    }
+    if (!WIFEXITED(child_status)) {
+        fprintf(stderr, "hot-journal child did not exit normally\n");
+        return 1;
+    }
+    return mylite_test_expect_int(WEXITSTATUS(child_status), 0, "hot-journal child updated rows");
+#endif
 }
 
 static int wait_for_path(const char *path) {

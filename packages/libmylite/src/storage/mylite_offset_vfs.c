@@ -13,6 +13,7 @@ struct mylite_offset_file {
     uint16_t format_version;
     bool shifts_offsets;
     bool initialization_owner;
+    bool initialization_lock_held;
     bool initialization_preamble_written;
 };
 
@@ -82,6 +83,8 @@ static bool file_shifts_offsets(int flags);
 static int prepare_main_database_file(struct mylite_offset_file *file, bool exclusive_create);
 static int initialize_new_main_database_file(struct mylite_offset_file *file);
 static int validate_existing_main_database_file(struct mylite_offset_file *file);
+static int acquire_initialization_lock(struct mylite_offset_file *file);
+static int release_initialization_lock(struct mylite_offset_file *file);
 static int validate_sector_alignment(struct mylite_offset_file *file);
 static int validate_sqlite_payload_header(struct mylite_offset_file *file);
 static int transition_initialization_state(
@@ -358,17 +361,30 @@ static int offset_file_size(sqlite3_file *file, sqlite3_int64 *out_size) {
 static int offset_lock(sqlite3_file *file, int lock_kind) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
 
+    if (offset_file->initialization_lock_held) {
+        return SQLITE_OK;
+    }
+
     return offset_file->inner_file->pMethods->xLock(offset_file->inner_file, lock_kind);
 }
 
 static int offset_unlock(sqlite3_file *file, int lock_kind) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
 
+    if (offset_file->initialization_lock_held) {
+        return SQLITE_OK;
+    }
+
     return offset_file->inner_file->pMethods->xUnlock(offset_file->inner_file, lock_kind);
 }
 
 static int offset_check_reserved_lock(sqlite3_file *file, int *out_reserved) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
+
+    if (offset_file->initialization_lock_held) {
+        *out_reserved = 0;
+        return SQLITE_OK;
+    }
 
     return offset_file->inner_file->pMethods->xCheckReservedLock(
         offset_file->inner_file,
@@ -622,7 +638,10 @@ static int initialize_new_main_database_file(struct mylite_offset_file *file) {
     }
 
     file->format_version = MYLITE_FILE_FORMAT_VERSION;
-    file->initialization_owner = true;
+    rc = acquire_initialization_lock(file);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
     mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
     if (inject_fault(MYLITE_STORAGE_VFS_FAULT_WRITE)) {
         return SQLITE_IOERR_WRITE;
@@ -642,6 +661,7 @@ static int initialize_new_main_database_file(struct mylite_offset_file *file) {
 
 static int validate_existing_main_database_file(struct mylite_offset_file *file) {
     unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    enum mylite_file_lifecycle_state lifecycle_state = MYLITE_FILE_LIFECYCLE_INVALID;
     sqlite3_int64 physical_size = 0;
     int rc = file->inner_file->pMethods->xFileSize(file->inner_file, &physical_size);
 
@@ -653,8 +673,11 @@ static int validate_existing_main_database_file(struct mylite_offset_file *file)
     }
     rc =
         file->inner_file->pMethods->xRead(file->inner_file, preamble, MYLITE_FILE_PREAMBLE_SIZE, 0);
-    if (rc != SQLITE_OK ||
-        mylite_file_preamble_lifecycle_state(preamble) != MYLITE_FILE_LIFECYCLE_COMMITTED) {
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    lifecycle_state = mylite_file_preamble_lifecycle_state(preamble);
+    if (lifecycle_state == MYLITE_FILE_LIFECYCLE_INVALID) {
         return SQLITE_NOTADB;
     }
     file->format_version = mylite_file_preamble_format_version(preamble);
@@ -662,7 +685,46 @@ static int validate_existing_main_database_file(struct mylite_offset_file *file)
         return SQLITE_NOTADB;
     }
 
+    if (lifecycle_state == MYLITE_FILE_LIFECYCLE_COMMITTED) {
+        return validate_sqlite_payload_header(file);
+    }
+
+    rc = acquire_initialization_lock(file);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    file->initialization_preamble_written = true;
+    if (physical_size == MYLITE_FILE_PREAMBLE_SIZE) {
+        return SQLITE_OK;
+    }
     return validate_sqlite_payload_header(file);
+}
+
+static int acquire_initialization_lock(struct mylite_offset_file *file) {
+    int rc = SQLITE_OK;
+
+    if (file->initialization_lock_held) {
+        return SQLITE_OK;
+    }
+    rc = file->inner_file->pMethods->xLock(file->inner_file, SQLITE_LOCK_EXCLUSIVE);
+    if (rc == SQLITE_OK) {
+        file->initialization_owner = true;
+        file->initialization_lock_held = true;
+    }
+    return rc;
+}
+
+static int release_initialization_lock(struct mylite_offset_file *file) {
+    int rc = SQLITE_OK;
+
+    if (!file->initialization_lock_held) {
+        return SQLITE_OK;
+    }
+    rc = file->inner_file->pMethods->xUnlock(file->inner_file, SQLITE_LOCK_NONE);
+    if (rc == SQLITE_OK) {
+        file->initialization_lock_held = false;
+    }
+    return rc;
 }
 
 static int validate_sector_alignment(struct mylite_offset_file *file) {
@@ -745,6 +807,7 @@ static int transition_initialization_state(
     rc = file->inner_file->pMethods->xSync(file->inner_file, SQLITE_SYNC_FULL);
     if (rc == SQLITE_OK) {
         file->initialization_owner = false;
+        rc = release_initialization_lock(file);
     }
 
     return rc;

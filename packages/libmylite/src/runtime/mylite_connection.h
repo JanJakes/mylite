@@ -345,6 +345,19 @@ enum {
     MYLITE_EXECUTION_REPLAN = -1,
 };
 
+enum mylite_file_initialization_test_event {
+    MYLITE_FILE_INITIALIZATION_PAYLOAD_OPENED = 1,
+    MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_ACTIVE = 2,
+    MYLITE_FILE_INITIALIZATION_CATALOG_TRANSACTION_COMMITTED = 3,
+    MYLITE_FILE_INITIALIZATION_BEFORE_LIFECYCLE_PUBLICATION = 4,
+    MYLITE_FILE_INITIALIZATION_AFTER_LIFECYCLE_PUBLICATION = 5,
+};
+
+typedef void (*mylite_file_initialization_test_hook)(
+    enum mylite_file_initialization_test_event event,
+    void *context
+);
+
 struct mylite_db {
     struct sqlite3 *sqlite;
     struct mylite_diagnostics diagnostics;
@@ -398,6 +411,13 @@ int mylite_connection_collect_processlist_sessions(
 void mylite_connection_publish_processlist_session(struct mylite_db *database);
 void mylite_connection_lock_processlist_registry_for_test(void);
 void mylite_connection_unlock_processlist_registry_for_test(void);
+void mylite_connection_set_file_initialization_test_hook(
+    mylite_file_initialization_test_hook hook,
+    void *context
+);
+void mylite_connection_notify_file_initialization_test_event(
+    enum mylite_file_initialization_test_event event
+);
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database);
 const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_state_for_test(

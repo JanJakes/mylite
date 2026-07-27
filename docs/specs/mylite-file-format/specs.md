@@ -34,9 +34,11 @@ All integer fields are big-endian. The SQLite payload begins at physical byte
 
 Lifecycle values are:
 
-- `1`: initialization is in progress and the file is not openable;
+- `1`: initialization is in progress and requires exclusive recovery ownership
+  before it is openable;
 - `2`: initialization is committed and the file may be opened;
-- `3`: recovery is required and ordinary open must reject the file.
+- `3`: recovery is required and requires exclusive recovery ownership before
+  validation.
 
 The magic text remains unchanged so format-family detection is stable; the
 numeric version field governs layout interpretation. Version 3 adds a second
@@ -78,9 +80,11 @@ exact-handle file-size and SQLite-header validation.
 - `created_with_file_format_version` in the catalog records provenance. A
   supported historical value is accepted and is not required to equal the
   current writer version.
-- Interrupted or failed version-2 or version-3 initialization is rejected deterministically;
-  automatic repair is deferred until payload and catalog recovery can be
-  proven safe.
+- Interrupted or failed version-2 or version-3 initialization is recoverable
+  only through the exact-handle exclusive protocol. Recovery never truncates or
+  removes the file: an empty logical payload may complete initialization, while
+  a nonempty payload must pass SQLite recovery and full MyLite catalog
+  validation before committed publication.
 
 ## Test Plan
 

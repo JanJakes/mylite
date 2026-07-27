@@ -345,16 +345,26 @@ static int plan_insert_rows(
         return MYLITE_ERROR;
     }
 
-    plan->row_count = mylite_sql_ast_node_child_count(row_list);
+    {
+        size_t row_count = mylite_sql_ast_node_child_count(row_list);
+
+        if (plan->rows != NULL && plan->row_count != row_count) {
+            set_runtime_error(database, "prepared INSERT row shape changed");
+            return MYLITE_ERROR;
+        }
+        plan->row_count = row_count;
+    }
     if (plan->row_count == 0U || plan->row_count > SIZE_MAX / sizeof(*plan->rows)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
-    plan->rows = calloc(plan->row_count, sizeof(*plan->rows));
     if (plan->rows == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+        plan->rows = calloc(plan->row_count, sizeof(*plan->rows));
+        if (plan->rows == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
     }
 
     row_node = child_at(row_list, 0U);
@@ -484,10 +494,12 @@ static int plan_insert_set_row(
     int rc = MYLITE_OK;
 
     plan->row_count = 1U;
-    plan->rows = calloc(1U, sizeof(*plan->rows));
     if (plan->rows == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+        plan->rows = calloc(1U, sizeof(*plan->rows));
+        if (plan->rows == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
     }
 
     rc = allocate_insert_row_values(database, plan, &plan->rows[0]);
@@ -531,11 +543,18 @@ static int allocate_insert_row_values(
         return MYLITE_NOMEM;
     }
 
-    out_row->values = calloc(plan->column_count, sizeof(*out_row->values));
     if (out_row->values == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+        out_row->values = calloc(plan->column_count, sizeof(*out_row->values));
+        if (out_row->values == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+    } else {
+        for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+            planned_value_deinit(&out_row->values[column_index]);
+        }
     }
+    out_row->generated_auto_increment = false;
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         int rc = allocate_insert_column_value(
             database,

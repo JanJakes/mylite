@@ -27,6 +27,59 @@ static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert 
     return validate_sqlite_parameter_count(statement, bind_index - 1);
 }
 
+static int execute_insert_plan_batch(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    struct insert_execution_counters *counters,
+    bool *out_constraint_fallback
+) {
+    int bind_index = 1;
+    int sqlite_rc = sqlite3_reset(statement);
+
+    *out_constraint_fallback = false;
+    if (sqlite_rc == SQLITE_OK) {
+        sqlite_rc = sqlite3_clear_bindings(statement);
+    }
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+        for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+            int rc = MYLITE_OK;
+
+            if (plan->columns[column_index].is_generated) {
+                continue;
+            }
+            rc = bind_planned_value_parameter(
+                statement,
+                bind_index,
+                &plan->rows[row_index].values[column_index]
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            if (bind_index == INT_MAX) {
+                return MYLITE_ERROR;
+            }
+            ++bind_index;
+        }
+    }
+    if (validate_sqlite_parameter_count(statement, bind_index - 1) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_status_is_constraint(sqlite_rc)) {
+        *out_constraint_fallback = true;
+        return MYLITE_ERROR;
+    }
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    counters->affected_rows += (int64_t)plan->row_count;
+    return MYLITE_OK;
+}
+
 static int step_insert_row(sqlite3_stmt *statement, int *out_sqlite_rc) {
     int sqlite_rc = sqlite3_step(statement);
 

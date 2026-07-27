@@ -226,7 +226,7 @@ static int execute_insert_select_row_scalar_insert(
         rc = plan_insert_string_key_values(database, &row_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = execute_insert_from_plan(database, &row_plan, result);
+        rc = execute_insert_from_plan(database, &row_plan, NULL, result);
     }
 
     return rc;

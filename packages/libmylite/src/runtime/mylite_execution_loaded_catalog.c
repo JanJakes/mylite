@@ -1297,6 +1297,7 @@ void mylite_execution_loaded_foreign_key_info_deinit(struct loaded_foreign_key_i
         return;
     }
     free(foreign_key->parts);
+    free(foreign_key->parent_lookup_sql);
     *foreign_key = (struct loaded_foreign_key_info){0};
 }
 

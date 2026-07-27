@@ -1517,6 +1517,7 @@ int mylite_catalog_update_table_updated_time(
     int64_t table_id,
     int64_t updated_time_utc_epoch
 ) {
+    struct mylite_catalog_table_updated_time_cache_entry *cache_entry = NULL;
     sqlite3_stmt *statement = NULL;
     int rc = mylite_catalog_validate_ready_database(database);
 
@@ -1529,6 +1530,12 @@ int mylite_catalog_update_table_updated_time(
     }
     if (updated_time_utc_epoch < 0) {
         return MYLITE_ERROR;
+    }
+    cache_entry = &database->catalog.table_updated_time_cache
+                       [(uint64_t)table_id % MYLITE_CATALOG_TABLE_UPDATED_TIME_CACHE_LIMIT];
+    if (cache_entry->valid && cache_entry->table_id == table_id &&
+        cache_entry->updated_time_utc_epoch == updated_time_utc_epoch) {
+        return MYLITE_OK;
     }
 
     rc = mylite_catalog_prepare_statement(
@@ -1550,7 +1557,28 @@ int mylite_catalog_update_table_updated_time(
     }
     rc = mylite_catalog_finalize_statement(statement, rc);
     if (rc == MYLITE_OK) {
+        *cache_entry = (struct mylite_catalog_table_updated_time_cache_entry){
+            .table_id = table_id,
+            .updated_time_utc_epoch = updated_time_utc_epoch,
+            .valid = true,
+        };
         mylite_catalog_table_cache_invalidate_entry(&database->catalog, table_id);
     }
     return rc;
+}
+
+bool mylite_catalog_table_updated_time_is_cached(
+    const struct mylite_db *database,
+    int64_t table_id,
+    int64_t updated_time_utc_epoch
+) {
+    const struct mylite_catalog_table_updated_time_cache_entry *cache_entry = NULL;
+
+    if (database == NULL || table_id <= 0 || updated_time_utc_epoch < 0) {
+        return false;
+    }
+    cache_entry = &database->catalog.table_updated_time_cache
+                       [(uint64_t)table_id % MYLITE_CATALOG_TABLE_UPDATED_TIME_CACHE_LIMIT];
+    return cache_entry->valid && cache_entry->table_id == table_id &&
+           cache_entry->updated_time_utc_epoch == updated_time_utc_epoch;
 }

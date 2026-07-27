@@ -79,6 +79,26 @@ static int load_insert_target_foreign_key_infos(
     struct mylite_db *database,
     struct planned_insert *plan
 );
+static int build_insert_foreign_key_parent_lookup_sql(
+    const struct loaded_foreign_key_info *foreign_key,
+    char **out_sql
+);
+static int build_guarded_insert_sql(const struct planned_insert *plan, char **out_sql);
+static int append_guarded_insert_foreign_key_match(
+    struct mylite_dynamic_string *string,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int append_guarded_insert_foreign_key_predicate(
+    struct mylite_dynamic_string *string,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int insert_physical_parameter_index(
+    const struct planned_insert *plan,
+    size_t column_index,
+    size_t *out_parameter_index
+);
 static int plan_insert_string_key_values(
     struct mylite_db *database,
     const struct planned_insert *plan
@@ -278,6 +298,19 @@ static int validate_insert_row_foreign_key(
     size_t row_index,
     bool *out_violates
 );
+static int insert_foreign_key_parent_tuple_exists(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key,
+    size_t row_index,
+    bool *out_exists
+);
+static int execute_guarded_insert_plan_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    struct insert_execution_counters *counters
+);
 static int execute_insert_plan_row(
     sqlite3_stmt *statement,
     const struct planned_insert *plan,
@@ -374,6 +407,23 @@ static int convert_dml_constant_scalar_value(
     bool warn_on_trailing_space_truncation,
     bool auto_increment_null_generates,
     bool allow_constant_arithmetic,
+    bool *out_handled,
+    struct planned_value *out_value
+);
+static int convert_dml_integer_parameter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool *out_handled,
+    struct planned_value *out_value
+);
+static int convert_dml_text_parameter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
     bool *out_handled,
     struct planned_value *out_value
 );

@@ -786,6 +786,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->sqlite_schema_generation = 0U;
     session->autocommit_enabled = true;
     session->user_transaction_active = false;
+    session->catalog_snapshot_synchronized = false;
     session->session_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
     session->session_transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
     session->has_next_transaction_isolation = false;

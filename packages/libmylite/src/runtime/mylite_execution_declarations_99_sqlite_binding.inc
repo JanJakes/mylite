@@ -1,5 +1,11 @@
 #ifndef MYLITE_EXECUTION_PARAMETER_BINDING_ONLY
 static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
+static int execute_insert_plan_batch(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    struct insert_execution_counters *counters,
+    bool *out_constraint_fallback
+);
 static int handle_insert_unique_key_conflict(
     struct mylite_db *database,
     int sqlite_step_rc,

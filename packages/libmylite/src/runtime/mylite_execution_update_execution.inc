@@ -2100,6 +2100,22 @@ static int touch_persistent_table_updated_time(
     int64_t affected_rows,
     bool force
 ) {
+    return touch_persistent_table_updated_time_at(
+        database,
+        table,
+        affected_rows,
+        force,
+        current_wall_clock_epoch()
+    );
+}
+
+static int touch_persistent_table_updated_time_at(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t affected_rows,
+    bool force,
+    int64_t updated_time_utc_epoch
+) {
     int rc = MYLITE_OK;
 
     if (table == NULL) {
@@ -2113,11 +2129,8 @@ static int touch_persistent_table_updated_time(
         return MYLITE_OK;
     }
 
-    rc = mylite_catalog_update_table_updated_time(
-        database,
-        table->table_id,
-        current_wall_clock_epoch()
-    );
+    rc =
+        mylite_catalog_update_table_updated_time(database, table->table_id, updated_time_utc_epoch);
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update table status metadata");
     }

@@ -96,12 +96,19 @@ struct sqlite3_stmt;
 
 enum {
     MYLITE_CATALOG_STATEMENT_CACHE_LIMIT = 64,
+    MYLITE_CATALOG_TABLE_UPDATED_TIME_CACHE_LIMIT = 16,
 };
 
 struct mylite_catalog_statement_cache_entry {
     char *sql;
     struct sqlite3_stmt *statement;
     bool in_use;
+};
+
+struct mylite_catalog_table_updated_time_cache_entry {
+    int64_t table_id;
+    int64_t updated_time_utc_epoch;
+    bool valid;
 };
 
 struct mylite_catalog {
@@ -116,6 +123,8 @@ struct mylite_catalog {
     bool descriptor_cache_is_suspended;
     bool has_observed_data_version;
     struct mylite_catalog_descriptor_cache *descriptor_cache;
+    struct mylite_catalog_table_updated_time_cache_entry
+        table_updated_time_cache[MYLITE_CATALOG_TABLE_UPDATED_TIME_CACHE_LIMIT];
     struct mylite_catalog_statement_cache_entry
         statement_cache[MYLITE_CATALOG_STATEMENT_CACHE_LIMIT];
     size_t statement_cache_count;
@@ -678,6 +687,11 @@ int mylite_catalog_update_table_auto_increment_status(
 );
 int mylite_catalog_update_table_updated_time(
     struct mylite_db *database,
+    int64_t table_id,
+    int64_t updated_time_utc_epoch
+);
+bool mylite_catalog_table_updated_time_is_cached(
+    const struct mylite_db *database,
     int64_t table_id,
     int64_t updated_time_utc_epoch
 );

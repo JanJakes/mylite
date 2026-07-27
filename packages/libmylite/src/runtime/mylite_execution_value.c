@@ -15,7 +15,9 @@ void planned_value_deinit(struct planned_value *value) {
         return;
     }
 
-    free(value->text);
+    if (!value->is_borrowed_text) {
+        free(value->text);
+    }
     *value = (struct planned_value){0};
 }
 
@@ -47,6 +49,7 @@ int copy_planned_value(
     planned_value_deinit(out_value);
     *out_value = *source;
     out_value->text = text;
+    out_value->is_borrowed_text = false;
     return MYLITE_OK;
 }
 

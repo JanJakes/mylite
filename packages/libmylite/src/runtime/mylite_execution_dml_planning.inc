@@ -187,10 +187,13 @@ static int plan_prepared_insert_dynamic_values(
 ) {
     int rc = MYLITE_OK;
 
-    if (database == NULL || statement == NULL || plan == NULL || plan->rows != NULL ||
-        plan->duplicate_update.assignments != NULL) {
+    if (database == NULL || statement == NULL || plan == NULL) {
         return MYLITE_MISUSE;
     }
+    planned_insert_duplicate_update_deinit(plan);
+    plan->generated_auto_increment = false;
+    plan->first_generated_auto_increment = 0;
+    plan->auto_increment_next_after_statement = plan->auto_increment_next;
     if (statement->kind == MYLITE_SQL_AST_INSERT_SET_STATEMENT ||
         statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
         rc = plan_insert_set_row(
@@ -255,10 +258,12 @@ static int load_insert_target_foreign_key_infos(
     struct mylite_db *database,
     struct planned_insert *plan
 ) {
+    int rc = MYLITE_OK;
+
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
-    return mylite_execution_load_table_foreign_key_infos(
+    rc = mylite_execution_load_table_foreign_key_infos(
         database,
         plan->table.table_id,
         plan->columns,
@@ -266,6 +271,248 @@ static int load_insert_target_foreign_key_infos(
         &plan->foreign_keys,
         &plan->foreign_key_count
     );
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        rc = build_insert_foreign_key_parent_lookup_sql(
+            &plan->foreign_keys[index],
+            &plan->foreign_keys[index].parent_lookup_sql
+        );
+    }
+    return rc;
+}
+
+static int build_insert_foreign_key_parent_lookup_sql(
+    const struct loaded_foreign_key_info *foreign_key,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    int rc = MYLITE_OK;
+
+    if (foreign_key == NULL || out_sql == NULL || foreign_key->part_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+    rc = mylite_dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            &string,
+            foreign_key->parent_table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " WHERE ");
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
+         ++part_index) {
+        const struct loaded_foreign_key_part *foreign_key_part = &foreign_key->parts[part_index];
+        struct loaded_index_part parent_part = {
+            .index_column =
+                {
+                    .column_id = foreign_key_part->foreign_key_column.parent_column_id,
+                    .ordinal_position = (int64_t)part_index + 1,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
+                },
+            .column = foreign_key_part->parent_column,
+            .column_index = foreign_key_part->child_column_index,
+        };
+
+        if (part_index != 0U) {
+            rc = mylite_dynamic_string_append(&string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(&string, &parent_part, NULL);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(&string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_parameter_sql(&string, &parent_part, part_index + 1U);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_guarded_insert_sql(const struct planned_insert *plan, char **out_sql) {
+    struct mylite_dynamic_string string;
+    size_t parameter_index = 1U;
+    bool has_previous = false;
+    int rc = MYLITE_OK;
+
+    if (!insert_plan_can_execute_with_foreign_key_guards(plan) || out_sql == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+    rc = mylite_dynamic_string_append(&string, "INSERT INTO ");
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_column_names(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, ") SELECT ");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (plan->columns[column_index].is_generated) {
+            continue;
+        }
+        if (has_previous) {
+            rc = mylite_dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(&string, parameter_index);
+        }
+        ++parameter_index;
+        has_previous = true;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " WHERE ");
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        if (index != 0U) {
+            rc = mylite_dynamic_string_append(&string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_guarded_insert_foreign_key_predicate(
+                &string,
+                plan,
+                &plan->foreign_keys[index]
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_guarded_insert_foreign_key_match(
+    struct mylite_dynamic_string *string,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
+         ++part_index) {
+        const struct loaded_foreign_key_part *foreign_key_part = &foreign_key->parts[part_index];
+        struct loaded_index_part parent_part = {
+            .index_column =
+                {
+                    .column_id = foreign_key_part->foreign_key_column.parent_column_id,
+                    .ordinal_position = (int64_t)part_index + 1,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
+                },
+            .column = foreign_key_part->parent_column,
+            .column_index = foreign_key_part->child_column_index,
+        };
+        size_t parameter_index = 0U;
+
+        rc = insert_physical_parameter_index(
+            plan,
+            foreign_key_part->child_column_index,
+            &parameter_index
+        );
+        if (rc == MYLITE_OK && part_index != 0U) {
+            rc = mylite_dynamic_string_append(string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(string, &parent_part, NULL);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_parameter_sql(string, &parent_part, parameter_index);
+        }
+    }
+    return rc;
+}
+
+static int append_guarded_insert_foreign_key_predicate(
+    struct mylite_dynamic_string *string,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    int rc = mylite_dynamic_string_append_char(string, '(');
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
+         ++part_index) {
+        size_t parameter_index = 0U;
+
+        rc = insert_physical_parameter_index(
+            plan,
+            foreign_key->parts[part_index].child_column_index,
+            &parameter_index
+        );
+        if (rc == MYLITE_OK && part_index != 0U) {
+            rc = mylite_dynamic_string_append(string, " OR ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, parameter_index);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " IS NULL");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " OR EXISTS (SELECT 1 FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(
+            string,
+            foreign_key->parent_table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_guarded_insert_foreign_key_match(string, plan, foreign_key);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " LIMIT 1))");
+    }
+    return rc;
+}
+
+static int insert_physical_parameter_index(
+    const struct planned_insert *plan,
+    size_t column_index,
+    size_t *out_parameter_index
+) {
+    size_t parameter_index = 1U;
+
+    if (plan == NULL || out_parameter_index == NULL || column_index >= plan->column_count ||
+        plan->columns[column_index].is_generated) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < column_index; ++index) {
+        if (!plan->columns[index].is_generated) {
+            ++parameter_index;
+        }
+    }
+    *out_parameter_index = parameter_index;
+    return MYLITE_OK;
 }
 
 static int initialize_insert_auto_increment_plan(
@@ -1444,6 +1691,19 @@ static void planned_insert_dynamic_deinit(struct planned_insert *plan) {
         }
     }
     free(plan->rows);
+    planned_insert_duplicate_update_deinit(plan);
+    plan->rows = NULL;
+    plan->row_count = 0U;
+    plan->auto_increment_next_after_statement = plan->auto_increment_next;
+    plan->first_generated_auto_increment = 0;
+    plan->generated_auto_increment = false;
+}
+
+static void planned_insert_duplicate_update_deinit(struct planned_insert *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
     for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
         mylite_sql_ast_snapshot_deinit(
             &plan->duplicate_update.assignments[index].assignment_value_syntax
@@ -1454,10 +1714,5 @@ static void planned_insert_dynamic_deinit(struct planned_insert *plan) {
         free(plan->duplicate_update.assignments[index].row_scalar_expression);
     }
     free(plan->duplicate_update.assignments);
-    plan->rows = NULL;
-    plan->row_count = 0U;
     plan->duplicate_update = (struct planned_insert_duplicate_update){0};
-    plan->auto_increment_next_after_statement = plan->auto_increment_next;
-    plan->first_generated_auto_increment = 0;
-    plan->generated_auto_increment = false;
 }

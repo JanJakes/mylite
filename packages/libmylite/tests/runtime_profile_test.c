@@ -757,7 +757,13 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
     );
     for (int value = 2; value <= 4; ++value) {
         int expected = value == 4 ? 1 : value;
-        const char *expected_text = expected == 1 ? "1" : expected == 2 ? "2" : "3";
+        const char *expected_text = "3";
+
+        if (expected == 1) {
+            expected_text = "1";
+        } else if (expected == 2) {
+            expected_text = "2";
+        }
 
         failures +=
             mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset integer cache query");
@@ -1122,6 +1128,12 @@ static int test_parameterized_prepared_plan_cache_profile(void) {
 }
 
 static int test_prepared_dml_plan_cache_profile(void) {
+    enum {
+        retained_insert_null_id = 5,
+        retained_insert_integer_id = 6,
+        retained_insert_integer_value = 42,
+        retained_insert_profile_hit_count = 5,
+    };
     struct mylite_profile_snapshot snapshot = {0};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -1207,6 +1219,37 @@ static int test_prepared_dml_plan_cache_profile(void) {
         failures +=
             mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute retained INSERT");
     }
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset NULL retained INSERT");
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, retained_insert_null_id),
+        MYLITE_OK,
+        "bind NULL row id"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_null(stmt, 1U),
+        MYLITE_OK,
+        "bind changed NULL INSERT value"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute NULL retained INSERT");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset integer retained INSERT");
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, retained_insert_integer_id),
+        MYLITE_OK,
+        "bind integer row id"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, retained_insert_integer_value),
+        MYLITE_OK,
+        "bind changed integer INSERT value"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "execute integer retained INSERT"
+    );
     failures += mylite_test_expect_int(
         mylite_profile_stop(database, &snapshot),
         MYLITE_OK,
@@ -1215,7 +1258,7 @@ static int test_prepared_dml_plan_cache_profile(void) {
     failures +=
         mylite_test_expect_true(snapshot.dml_plan_count == 0U, "retained INSERT plan build count");
     failures += mylite_test_expect_true(
-        snapshot.dml_plan_cache_hit_count == 3U,
+        snapshot.dml_plan_cache_hit_count == retained_insert_profile_hit_count,
         "retained INSERT plan hit count"
     );
     failures += mylite_test_expect_true(snapshot.parse_count == 0U, "retained INSERT parse count");
@@ -1231,9 +1274,30 @@ static int test_prepared_dml_plan_cache_profile(void) {
     );
     failures += mylite_test_expect_true(
         result != NULL && mylite_result_row_count(result) == 1U &&
-            strcmp(mylite_result_value_text(result, 0U, 0U), "4") == 0 &&
-            strcmp(mylite_result_value_text(result, 0U, 1U), "10") == 0,
+            strcmp(mylite_result_value_text(result, 0U, 0U), "6") == 0 &&
+            strcmp(mylite_result_value_text(result, 0U, 1U), "21") == 0,
         "retained INSERT uses rebound values"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT COUNT(*) FROM t WHERE (id = 5 AND value IS NULL) "
+            "OR (id = 6 AND value = '42')",
+            strlen(
+                "SELECT COUNT(*) FROM t WHERE (id = 5 AND value IS NULL) "
+                "OR (id = 6 AND value = '42')"
+            ),
+            &result
+        ),
+        MYLITE_OK,
+        "read changed-type retained INSERT results"
+    );
+    failures += mylite_test_expect_true(
+        result != NULL && mylite_result_row_count(result) == 1U &&
+            strcmp(mylite_result_value_text(result, 0U, 0U), "2") == 0,
+        "retained INSERT converts changed binding types"
     );
     mylite_result_free(result);
     result = NULL;
@@ -1534,8 +1598,8 @@ static int test_prepared_dml_plan_cache_profile(void) {
         "read retained DELETE results"
     );
     failures += mylite_test_expect_true(
-        result != NULL && strcmp(mylite_result_value_text(result, 0U, 0U), "2") == 0 &&
-            strcmp(mylite_result_value_text(result, 0U, 1U), "3") == 0,
+        result != NULL && strcmp(mylite_result_value_text(result, 0U, 0U), "4") == 0 &&
+            strcmp(mylite_result_value_text(result, 0U, 1U), "14") == 0,
         "retained DELETE uses rebound predicate"
     );
     mylite_result_free(result);

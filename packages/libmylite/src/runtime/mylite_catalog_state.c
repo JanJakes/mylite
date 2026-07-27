@@ -57,6 +57,7 @@ static int commit_catalog_transaction(sqlite3 *sqlite);
 static int rollback_catalog_transaction(struct mylite_db *database, int primary_rc);
 static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation);
 static void reset_descriptor_cache_state(struct mylite_catalog *catalog);
+static void clear_table_updated_time_cache(struct mylite_catalog *catalog);
 
 static const char *catalog_state_table_name(void);
 static const char *catalog_schemas_table_name(void);
@@ -127,6 +128,7 @@ void mylite_catalog_invalidate_descriptor_cache(struct mylite_db *database) {
     }
 
     reset_descriptor_cache_state(&database->catalog);
+    clear_table_updated_time_cache(&database->catalog);
     mylite_catalog_schema_table_cache_invalidate(&database->catalog);
     mylite_execution_table_columns_cache_invalidate(database);
     mylite_execution_table_key_metadata_cache_invalidate(database);
@@ -144,7 +146,13 @@ int mylite_catalog_synchronize_snapshot(struct mylite_db *database) {
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (!database->session.user_transaction_active) {
+        database->session.catalog_snapshot_synchronized = false;
+    } else if (database->session.catalog_snapshot_synchronized) {
+        return MYLITE_OK;
+    }
     if (!database->catalog.initialized) {
+        database->session.catalog_snapshot_synchronized = database->session.user_transaction_active;
         return MYLITE_OK;
     }
     rc = read_data_version(database->sqlite, &data_version);
@@ -153,6 +161,7 @@ int mylite_catalog_synchronize_snapshot(struct mylite_db *database) {
     }
     if (database->catalog.has_observed_data_version &&
         data_version == database->catalog.observed_data_version) {
+        database->session.catalog_snapshot_synchronized = database->session.user_transaction_active;
         return MYLITE_OK;
     }
 
@@ -166,11 +175,21 @@ int mylite_catalog_synchronize_snapshot(struct mylite_db *database) {
         mylite_catalog_invalidate_descriptor_cache(database);
     } else if (database->catalog.has_observed_data_version) {
         mylite_catalog_table_cache_invalidate_status(&database->catalog);
+        clear_table_updated_time_cache(&database->catalog);
     }
     database->catalog.observed_data_version = data_version;
     database->catalog.has_observed_data_version = true;
+    database->session.catalog_snapshot_synchronized = database->session.user_transaction_active;
 
     return MYLITE_OK;
+}
+
+static void clear_table_updated_time_cache(struct mylite_catalog *catalog) {
+    if (catalog == NULL) {
+        return;
+    }
+
+    memset(catalog->table_updated_time_cache, 0, sizeof(catalog->table_updated_time_cache));
 }
 
 void mylite_catalog_mutation_init(struct mylite_catalog_mutation *mutation) {

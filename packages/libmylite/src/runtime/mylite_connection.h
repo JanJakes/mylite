@@ -303,6 +303,7 @@ struct mylite_session_state {
     bool low_priority_updates;
     bool autocommit_enabled;
     bool user_transaction_active;
+    bool catalog_snapshot_synchronized;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;
     bool next_transaction_isolation_from_system_variable;

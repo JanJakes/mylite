@@ -1,8 +1,39 @@
+static int build_insert_sql_for_row_count(
+    const struct planned_insert *plan,
+    size_t row_count,
+    char **out_sql
+);
+static int append_insert_parameters_from(
+    struct mylite_dynamic_string *string,
+    size_t column_count,
+    size_t *parameter_index
+);
+
 int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
+    return build_insert_sql_for_row_count(plan, 1U, out_sql);
+}
+
+int build_insert_rows_sql(const struct planned_insert *plan, char **out_sql) {
+    if (plan == NULL || plan->row_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+    return build_insert_sql_for_row_count(plan, plan->row_count, out_sql);
+}
+
+static int build_insert_sql_for_row_count(
+    const struct planned_insert *plan,
+    size_t row_count,
+    char **out_sql
+) {
     struct mylite_dynamic_string string;
     size_t physical_column_count = count_physical_insert_columns(plan);
+    size_t parameter_index = 1U;
     int rc = MYLITE_OK;
 
+    if (plan == NULL || row_count == 0U || out_sql == NULL ||
+        (physical_column_count != 0U && row_count > SIZE_MAX / physical_column_count)) {
+        return MYLITE_MISUSE;
+    }
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
@@ -17,13 +48,21 @@ int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
         rc = append_insert_column_names(&string, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, ") VALUES (");
+        rc = mylite_dynamic_string_append(&string, ") VALUES ");
     }
-    if (rc == MYLITE_OK) {
-        rc = append_insert_parameters(&string, physical_column_count);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_char(&string, ')');
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        if (row_index != 0U) {
+            rc = mylite_dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(&string, '(');
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_insert_parameters_from(&string, physical_column_count, &parameter_index);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(&string, ')');
+        }
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -76,14 +115,28 @@ static size_t count_physical_insert_columns(const struct planned_insert *plan) {
 }
 
 int append_insert_parameters(struct mylite_dynamic_string *string, size_t column_count) {
+    size_t parameter_index = 1U;
+
+    return append_insert_parameters_from(string, column_count, &parameter_index);
+}
+
+static int append_insert_parameters_from(
+    struct mylite_dynamic_string *string,
+    size_t column_count,
+    size_t *parameter_index
+) {
     int rc = MYLITE_OK;
 
+    if (parameter_index == NULL || column_count > SIZE_MAX - *parameter_index) {
+        return MYLITE_NOMEM;
+    }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         if (column_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, column_index + 1U);
+            rc = append_numbered_parameter(string, *parameter_index);
+            ++(*parameter_index);
         }
     }
 

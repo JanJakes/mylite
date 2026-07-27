@@ -88,6 +88,7 @@ static int execute_start_transaction_statement_with_characteristics(
         );
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = true;
+            database->session.catalog_snapshot_synchronized = false;
             database->session.active_transaction_isolation = effective_isolation;
             database->session.active_transaction_read_only =
                 effective_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY;
@@ -252,6 +253,7 @@ static int begin_chained_transaction(
     );
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = true;
+        database->session.catalog_snapshot_synchronized = false;
         database->session.active_transaction_isolation = isolation;
         database->session.active_transaction_read_only =
             access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY;

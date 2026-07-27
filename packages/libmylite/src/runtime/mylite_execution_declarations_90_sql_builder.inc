@@ -731,6 +731,7 @@ int append_select_projection_column_sql(
     size_t column_index
 );
 int build_insert_sql(const struct planned_insert *plan, char **out_sql);
+int build_insert_rows_sql(const struct planned_insert *plan, char **out_sql);
 int append_insert_column_names(
     struct mylite_dynamic_string *string,
     const struct planned_insert *plan

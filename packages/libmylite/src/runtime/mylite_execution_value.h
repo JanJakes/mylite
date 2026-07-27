@@ -41,6 +41,7 @@ struct planned_value {
     bool is_blob;
     bool is_real;
     bool is_external_parameter;
+    bool is_borrowed_text;
     int64_t integer;
     double real;
     char *text;

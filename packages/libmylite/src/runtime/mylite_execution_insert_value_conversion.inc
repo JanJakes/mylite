@@ -157,6 +157,30 @@ static int convert_dml_constant_scalar_value(
     }
     *out_handled = true;
 
+    rc = convert_dml_integer_parameter(
+        database,
+        value_node,
+        column,
+        row_number,
+        ignore_errors,
+        out_handled,
+        out_value
+    );
+    if (rc != MYLITE_OK || *out_handled) {
+        return rc;
+    }
+    rc = convert_dml_text_parameter(
+        database,
+        value_node,
+        column,
+        row_number,
+        out_handled,
+        out_value
+    );
+    if (rc != MYLITE_OK || *out_handled) {
+        return rc;
+    }
+    *out_handled = true;
     rc = session_scalar_value(database, value_node, &cell);
     if (rc == MYLITE_OK) {
         rc = append_session_scalar_cell_warnings(database, &cell);
@@ -188,6 +212,132 @@ static int convert_dml_constant_scalar_value(
 
     session_scalar_cell_deinit(&cell);
     return rc;
+}
+
+static int convert_dml_integer_parameter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    bool *out_handled,
+    struct planned_value *out_value
+) {
+    static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    const struct mylite_stmt_binding *binding = NULL;
+    struct integer_column_range range = {0};
+    size_t parameter_index = 0U;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    *out_handled = false;
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_PARAMETER || database == NULL ||
+        database->active_bound_statement == NULL) {
+        return MYLITE_OK;
+    }
+    parameter_index = mylite_sql_ast_node_parameter_index(value_node);
+    if (parameter_index >= database->active_bound_statement->parameter_count) {
+        return MYLITE_MISUSE;
+    }
+    binding = &database->active_bound_statement->bindings[parameter_index];
+    if (binding->type != MYLITE_STMT_BINDING_INT64 ||
+        integer_range_for_column(NULL, column, NULL, &range) != MYLITE_OK) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (binding->scalar.int64_value < 0) {
+        is_negative = true;
+        magnitude = binding->scalar.int64_value == INT64_MIN
+                        ? int64_min_magnitude
+                        : (uint64_t)-binding->scalar.int64_value;
+    } else {
+        magnitude = (uint64_t)binding->scalar.int64_value;
+    }
+    planned_value_deinit(out_value);
+    out_value->is_external_parameter = true;
+    out_value->external_parameter_index = parameter_index;
+    rc = convert_integer_for_column_with_policy(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        row_number,
+        dml_allows_missing_default_adjustment(database, ignore_errors),
+        &out_value->integer
+    );
+    if (rc == MYLITE_OK) {
+        out_value->is_null = false;
+    }
+    return rc;
+}
+
+static int convert_dml_text_parameter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool *out_handled,
+    struct planned_value *out_value
+) {
+    static const unsigned char empty_text[] = "";
+    const struct mylite_stmt_binding *binding = NULL;
+    const unsigned char *text = NULL;
+    const struct text_family_type_info *text_info = NULL;
+    size_t character_count = 0U;
+    size_t declared_length = 0U;
+    size_t parameter_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_handled = false;
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_PARAMETER || database == NULL ||
+        database->active_bound_statement == NULL || column == NULL) {
+        return MYLITE_OK;
+    }
+    parameter_index = mylite_sql_ast_node_parameter_index(value_node);
+    if (parameter_index >= database->active_bound_statement->parameter_count) {
+        return MYLITE_MISUSE;
+    }
+    binding = &database->active_bound_statement->bindings[parameter_index];
+    if (binding->type != MYLITE_STMT_BINDING_TEXT ||
+        (!column_descriptor_is_varchar(column) && !column_descriptor_is_text_family(column)) ||
+        binding->size > (size_t)INT_MAX) {
+        return MYLITE_OK;
+    }
+    text = binding->size == 0U ? empty_text : binding->bytes;
+    if (text == NULL || memchr(text, '\0', binding->size) != NULL) {
+        return MYLITE_OK;
+    }
+    rc = validate_utf8_text((const char *)text, binding->size, &character_count);
+    if (rc != MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_varchar(column)) {
+        rc = varchar_length_for_column(database, column, &declared_length);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (character_count > declared_length) {
+            return MYLITE_OK;
+        }
+    } else {
+        text_info = text_family_type_info_for_logical_type(column->logical_type);
+        if (text_info == NULL || binding->size > text_info->maximum_length) {
+            return MYLITE_OK;
+        }
+    }
+
+    (void)row_number;
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){
+        .is_text = true,
+        .is_external_parameter = true,
+        .external_parameter_index = parameter_index,
+        .external_binding = binding,
+    };
+    *out_handled = true;
+    return MYLITE_OK;
 }
 
 static bool dml_value_is_constant_scalar_expression(

@@ -1,14 +1,36 @@
 static int execute_insert_from_plan(
     struct mylite_db *database,
     struct planned_insert *plan,
+    const char *prepared_sql,
     mylite_result *result
 ) {
     sqlite3_stmt *statement = NULL;
-    char *sql = NULL;
+    char *fallback_sql = NULL;
+    char *owned_sql = NULL;
+    const char *sql = prepared_sql;
     struct insert_execution_counters counters = {0};
     struct mylite_statement_transaction transaction = {0};
+    int64_t updated_time_utc_epoch = current_wall_clock_epoch();
+    bool execute_batch = insert_plan_can_execute_as_batch(database, plan);
+    bool execute_with_foreign_key_guards = insert_plan_can_execute_with_foreign_key_guards(plan);
     bool statement_is_cached = false;
-    int rc = build_insert_sql(plan, &sql);
+    bool use_sqlite_statement_atomicity = insert_execution_can_rely_on_sqlite_statement_atomicity(
+        database,
+        plan,
+        updated_time_utc_epoch
+    );
+    int rc = MYLITE_OK;
+
+    if (sql == NULL) {
+        if (execute_batch) {
+            rc = build_insert_rows_sql(plan, &owned_sql);
+        } else if (execute_with_foreign_key_guards) {
+            rc = build_guarded_insert_sql(plan, &owned_sql);
+        } else {
+            rc = build_insert_sql(plan, &owned_sql);
+        }
+        sql = owned_sql;
+    }
 
     if (rc == MYLITE_OK && plan->has_auto_increment) {
         rc = mylite_execution_ensure_persistent_auto_increment_high_water_slot(
@@ -16,7 +38,7 @@ static int execute_insert_from_plan(
             &plan->table
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !use_sqlite_statement_atomicity) {
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
@@ -32,7 +54,38 @@ static int execute_insert_from_plan(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = execute_insert_plan_rows(database, statement, plan, &counters);
+        bool constraint_fallback = false;
+
+        if (execute_batch) {
+            rc = execute_insert_plan_batch(statement, plan, &counters, &constraint_fallback);
+        } else if (execute_with_foreign_key_guards) {
+            rc = execute_guarded_insert_plan_row(database, statement, plan, &counters);
+        } else {
+            rc = execute_insert_plan_rows(database, statement, plan, &counters);
+        }
+        if (constraint_fallback) {
+            if (statement_is_cached) {
+                (void)finish_cached_sqlite_statement(database, statement, rc);
+            } else {
+                (void)finalize_sqlite_statement(statement, rc);
+            }
+            statement = NULL;
+            statement_is_cached = false;
+            rc = MYLITE_OK;
+            if (use_sqlite_statement_atomicity) {
+                rc = begin_statement_transaction(database, &transaction);
+            }
+            if (rc == MYLITE_OK) {
+                rc = build_insert_sql(plan, &fallback_sql);
+            }
+            if (rc == MYLITE_OK) {
+                rc = prepare_cached_sqlite_statement(database, fallback_sql, &statement);
+                statement_is_cached = rc == MYLITE_OK;
+            }
+            if (rc == MYLITE_OK) {
+                rc = execute_insert_plan_rows(database, statement, plan, &counters);
+            }
+        }
     }
     if (statement_is_cached) {
         rc = finish_cached_sqlite_statement(database, statement, rc);
@@ -49,11 +102,12 @@ static int execute_insert_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = touch_persistent_table_updated_time(
+        rc = touch_persistent_table_updated_time_at(
             database,
             &plan->table,
             counters.affected_rows,
-            false
+            false,
+            updated_time_utc_epoch
         );
     }
     if (rc == MYLITE_OK && plan->duplicate_update.has_clause) {
@@ -65,7 +119,8 @@ static int execute_insert_from_plan(
     if (rc != MYLITE_OK) {
         rc = rollback_statement_transaction(database, &transaction, rc);
     }
-    free(sql);
+    free(fallback_sql);
+    free(owned_sql);
     if (rc == MYLITE_OK && plan->has_auto_increment &&
         counters.auto_increment_next_after_rows != plan->auto_increment_next) {
         rc = mylite_execution_record_persistent_auto_increment_high_water(
@@ -104,6 +159,64 @@ static int execute_insert_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static bool insert_plan_can_execute_as_batch(
+    const struct mylite_db *database,
+    const struct planned_insert *plan
+) {
+    size_t physical_column_count = 0U;
+    int parameter_limit = 0;
+
+    if (database == NULL || database->sqlite == NULL || plan == NULL || plan->row_count <= 1U ||
+        plan->row_count > (size_t)INT64_MAX || plan->has_auto_increment || plan->ignore_errors ||
+        plan->replace_existing_rows || plan->duplicate_update.has_clause ||
+        plan->foreign_key_count != 0U) {
+        return false;
+    }
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (!plan->columns[column_index].is_generated) {
+            ++physical_column_count;
+        }
+    }
+    parameter_limit = sqlite3_limit(database->sqlite, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+    return physical_column_count != 0U && parameter_limit > 0 &&
+           plan->row_count <= (size_t)parameter_limit / physical_column_count;
+}
+
+static bool insert_plan_can_execute_with_foreign_key_guards(const struct planned_insert *plan) {
+    if (plan == NULL || plan->row_count != 1U || plan->foreign_key_count == 0U ||
+        plan->has_auto_increment || plan->ignore_errors || plan->replace_existing_rows ||
+        plan->duplicate_update.has_clause) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        if (plan->foreign_keys[index].parent_table.table_id == plan->table.table_id) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool insert_execution_can_rely_on_sqlite_statement_atomicity(
+    const struct mylite_db *database,
+    const struct planned_insert *plan,
+    int64_t updated_time_utc_epoch
+) {
+    if (database == NULL || plan == NULL || !database->session.user_transaction_active ||
+        plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE || plan->table.table_id <= 0 ||
+        (plan->row_count != 1U && !insert_plan_can_execute_as_batch(database, plan)) ||
+        plan->has_auto_increment || plan->ignore_errors || plan->replace_existing_rows ||
+        plan->duplicate_update.has_clause ||
+        (plan->foreign_key_count != 0U && !insert_plan_can_execute_with_foreign_key_guards(plan))) {
+        return false;
+    }
+
+    return mylite_catalog_table_updated_time_is_cached(
+        database,
+        plan->table.table_id,
+        updated_time_utc_epoch
+    );
 }
 
 static int rebase_insert_auto_increment_after_write_lock(
@@ -317,6 +430,7 @@ static int execute_load_data_file_rows(
 ) {
     struct mylite_dynamic_string field;
     struct load_data_row row = {0};
+    struct planned_insert_row insert_row = {0};
     uint64_t physical_row_number = 0U;
     size_t loaded_row_count = 0U;
     bool escape_pending = false;
@@ -354,6 +468,7 @@ static int execute_load_data_file_rows(
                     &row,
                     physical_row_number,
                     &loaded_row_count,
+                    &insert_row,
                     counters
                 );
             }
@@ -378,11 +493,13 @@ static int execute_load_data_file_rows(
                 &row,
                 physical_row_number,
                 &loaded_row_count,
+                &insert_row,
                 counters
             );
         }
     }
 
+    planned_insert_row_deinit(&insert_row, plan->insert.column_count);
     load_data_row_deinit(&row);
     mylite_dynamic_string_deinit(&field);
     if (rc == MYLITE_NOMEM) {
@@ -494,6 +611,11 @@ static int decode_load_data_field_text(
         *out_is_null = true;
         return MYLITE_OK;
     }
+    if (memchr(raw_text, '\\', raw_text_length) == NULL) {
+        *out_text = raw_text;
+        *out_text_length = raw_text_length;
+        return MYLITE_OK;
+    }
 
     mylite_dynamic_string_init(&decoded);
     for (size_t index = 0U; rc == MYLITE_OK && index < raw_text_length; ++index) {
@@ -557,6 +679,7 @@ static int process_load_data_row(
     const struct load_data_row *row,
     uint64_t physical_row_number,
     size_t *loaded_row_count,
+    struct planned_insert_row *insert_row,
     struct insert_execution_counters *counters
 ) {
     if (physical_row_number <= plan->ignore_line_count) {
@@ -573,6 +696,7 @@ static int process_load_data_row(
         statement,
         row,
         *loaded_row_count,
+        insert_row,
         counters
     );
 }
@@ -583,11 +707,11 @@ static int execute_load_data_import_row(
     sqlite3_stmt *statement,
     const struct load_data_row *input_row,
     size_t row_number,
+    struct planned_insert_row *row,
     struct insert_execution_counters *counters
 ) {
     struct planned_insert row_plan = plan->insert;
-    struct planned_insert_row row = {0};
-    int rc = convert_load_data_row_values(database, plan, input_row, row_number, &row);
+    int rc = convert_load_data_row_values(database, plan, input_row, row_number, row);
 
     if (rc == MYLITE_OK && insert_allows_implicit_default_adjustment(database, &plan->insert) &&
         row_number == 1U) {
@@ -599,7 +723,7 @@ static int execute_load_data_import_row(
         );
     }
     if (rc == MYLITE_OK) {
-        row_plan.rows = &row;
+        row_plan.rows = row;
         row_plan.row_count = 1U;
         row_plan.auto_increment_next = counters->auto_increment_next_after_rows;
         row_plan.auto_increment_next_after_statement = counters->auto_increment_next_after_rows;
@@ -612,7 +736,6 @@ static int execute_load_data_import_row(
         rc = execute_insert_plan_rows(database, statement, &row_plan, counters);
     }
 
-    planned_insert_row_deinit(&row, plan->insert.column_count);
     return rc;
 }
 
@@ -980,7 +1103,7 @@ static int convert_load_data_text_field(
     size_t row_number,
     struct planned_value *out_value
 ) {
-    char *text = copy_load_data_field_text(database, field);
+    char *text = field->text;
     struct char_text_conversion conversion = {
         .text = text,
         .text_length = field->text_length,
@@ -990,7 +1113,8 @@ static int convert_load_data_text_field(
     int rc = MYLITE_OK;
 
     if (text == NULL) {
-        return MYLITE_NOMEM;
+        set_runtime_error(database, "invalid LOAD DATA text field");
+        return MYLITE_ERROR;
     }
     if (column_descriptor_is_char(column)) {
         rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
@@ -1006,10 +1130,16 @@ static int convert_load_data_text_field(
         );
     }
     if (rc != MYLITE_OK) {
-        free(text);
         return rc;
     }
-    return assign_text_value(database, text, conversion.text_length, out_value);
+    *out_value = (struct planned_value){
+        .is_null = false,
+        .is_text = true,
+        .is_borrowed_text = true,
+        .text = text,
+        .text_length = conversion.text_length,
+    };
+    return MYLITE_OK;
 }
 
 static char *copy_load_data_field_text(
@@ -1332,89 +1462,92 @@ static int validate_insert_row_foreign_key(
     size_t row_index,
     bool *out_violates
 ) {
-    struct loaded_index_part *parent_parts = NULL;
-    struct planned_value *parent_values = NULL;
-    struct loaded_index_info parent_index = {0};
     bool parent_exists = false;
     int rc = MYLITE_OK;
 
     *out_violates = false;
-    if (foreign_key->part_count == 0U || row_index >= plan->row_count) {
+    if (foreign_key->part_count == 0U || foreign_key->parent_lookup_sql == NULL ||
+        row_index >= plan->row_count) {
         set_runtime_error(database, "invalid foreign-key insert descriptor");
         return MYLITE_ERROR;
     }
-    if (foreign_key->part_count > SIZE_MAX / sizeof(*parent_parts) ||
-        foreign_key->part_count > SIZE_MAX / sizeof(*parent_values)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
+    for (size_t part_index = 0U; part_index < foreign_key->part_count; ++part_index) {
+        const struct loaded_foreign_key_part *foreign_key_part = &foreign_key->parts[part_index];
+        size_t child_column_index = foreign_key_part->child_column_index;
 
-    parent_parts = calloc(foreign_key->part_count, sizeof(*parent_parts));
-    parent_values = calloc(foreign_key->part_count, sizeof(*parent_values));
-    if (parent_parts == NULL || parent_values == NULL) {
-        free(parent_parts);
-        free(parent_values);
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+        if (child_column_index >= plan->column_count) {
+            set_runtime_error(database, "foreign-key child column descriptor is stale");
+            return MYLITE_ERROR;
+        }
+        if (plan->rows[row_index].values[child_column_index].is_null) {
+            return MYLITE_OK;
+        }
     }
+    rc = insert_foreign_key_parent_tuple_exists(
+        database,
+        plan,
+        foreign_key,
+        row_index,
+        &parent_exists
+    );
+    if (rc == MYLITE_OK && !parent_exists) {
+        *out_violates = true;
+    }
+    return rc;
+}
+
+static int insert_foreign_key_parent_tuple_exists(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key,
+    size_t row_index,
+    bool *out_exists
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_exists = false;
+    rc = prepare_cached_sqlite_statement(database, foreign_key->parent_lookup_sql, &statement);
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
          ++part_index) {
-        const struct loaded_foreign_key_part *foreign_key_part = &foreign_key->parts[part_index];
-        const struct planned_value *child_value = NULL;
-        size_t child_column_index = 0U;
+        size_t child_column_index = foreign_key->parts[part_index].child_column_index;
 
-        rc = mylite_execution_find_column_index_by_id(
-            plan->columns,
-            plan->column_count,
-            &child_column_index,
-            foreign_key_part->foreign_key_column.child_column_id
-        );
-        if (rc != MYLITE_OK) {
-            set_runtime_error(database, "foreign-key child column descriptor is stale");
+        if (child_column_index >= plan->column_count || part_index >= (size_t)INT_MAX) {
             rc = MYLITE_ERROR;
             break;
         }
-
-        child_value = &plan->rows[row_index].values[child_column_index];
-        if (child_value->is_null) {
-            free(parent_parts);
-            free(parent_values);
-            return MYLITE_OK;
-        }
-        parent_parts[part_index] = (struct loaded_index_part){
-            .index_column =
-                {
-                    .column_id = foreign_key_part->foreign_key_column.parent_column_id,
-                    .ordinal_position = (int64_t)part_index + 1,
-                    .has_prefix_length = false,
-                    .prefix_length = 0,
-                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
-                },
-            .column = foreign_key_part->parent_column,
-            .column_index = part_index,
-        };
-        parent_values[part_index] = *child_value;
-    }
-    parent_index = (struct loaded_index_info){
-        .index = foreign_key->parent_index,
-        .parts = parent_parts,
-        .part_count = foreign_key->part_count,
-    };
-
-    if (rc == MYLITE_OK) {
-        rc = unique_key_tuple_exists(
-            database,
-            foreign_key->parent_table.physical_name,
-            &parent_index,
-            parent_values,
-            foreign_key->part_count,
-            &parent_exists
+        rc = bind_planned_value_parameter(
+            statement,
+            (int)part_index + 1,
+            &plan->rows[row_index].values[child_column_index]
         );
     }
-    free(parent_parts);
-    free(parent_values);
-    if (rc == MYLITE_OK && !parent_exists) {
-        *out_violates = true;
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_exists = true;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    return finish_cached_sqlite_statement(database, statement, rc);
+}
+
+static int execute_guarded_insert_plan_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    struct insert_execution_counters *counters
+) {
+    int rc = execute_insert_plan_row_with_retries(database, statement, plan, 0U, counters);
+
+    if (rc == MYLITE_OK && sqlite3_changes(database->sqlite) == 0) {
+        if (counters->affected_rows > 0) {
+            --counters->affected_rows;
+        }
+        set_no_referenced_row_error(database);
+        rc = MYLITE_ERROR;
     }
     return rc;
 }

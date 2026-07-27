@@ -735,7 +735,14 @@ static int reset_cursor_execution(mylite_stmt *stmt) {
         mylite_statement_context_deinit(&stmt->context);
         stmt->has_context = false;
     }
-    clear_cursor_select_plan_resources(stmt, rc);
+    if (stmt->returns_rows) {
+        clear_cursor_select_plan_resources(stmt, rc);
+    } else if (stmt->completed_result != NULL) {
+        mylite_result_free(stmt->reusable_command_result);
+        stmt->reusable_command_result = stmt->completed_result;
+        mylite_result_reset_command(stmt->reusable_command_result);
+        stmt->completed_result = NULL;
+    }
     stmt->row_count = 0U;
     mylite_statement_completion_reset(&stmt->completion);
     stmt->materialized_row_index = 0U;
@@ -2175,8 +2182,9 @@ static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
     stmt->metadata_result = NULL;
     mylite_result_free(stmt->completed_result);
     stmt->completed_result = NULL;
+    mylite_result_free(stmt->reusable_command_result);
+    stmt->reusable_command_result = NULL;
     stmt->has_materialized_rows = false;
-    mylite_statement_completion_reset(&stmt->completion);
     result_column_metadata_context_deinit(&stmt->metadata_context);
     stmt->metadata_context = result_column_metadata_context_init();
 }
@@ -2356,6 +2364,8 @@ static int release_cursor_statement_resources(mylite_stmt *stmt, int rc) {
     stmt->metadata_result = NULL;
     mylite_result_free(stmt->completed_result);
     stmt->completed_result = NULL;
+    mylite_result_free(stmt->reusable_command_result);
+    stmt->reusable_command_result = NULL;
     if (stmt->has_parse_result) {
         mylite_sql_parse_result_deinit(&stmt->parse_result);
         stmt->has_parse_result = false;

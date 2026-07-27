@@ -666,6 +666,7 @@ tests/runtime_update_multiple_assignments_test.c|internal|always
 tests/runtime_update_scalar_subquery_assignment_test.c|internal|always
 tests/runtime_update_subquery_predicates_test.c|internal|always
 tests/runtime_update_unix_timestamp_arithmetic_test.c|internal|always
+tests/runtime_write_metadata_lifecycle_test.c|internal-sqlite|always
 tests/runtime_user_variables_test.c|internal|always
 tests/runtime_utc_date_time_functions_test.c|internal|always
 tests/runtime_utility_diagnostics_placeholders_test.c|internal|always

@@ -548,3 +548,10 @@ static int touch_persistent_table_updated_time(
     int64_t affected_rows,
     bool force
 );
+static int touch_persistent_table_updated_time_at(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t affected_rows,
+    bool force,
+    int64_t updated_time_utc_epoch
+);

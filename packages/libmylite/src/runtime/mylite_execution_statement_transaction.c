@@ -126,6 +126,7 @@ int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *dat
     );
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = true;
+        database->session.catalog_snapshot_synchronized = false;
         database->session.active_transaction_isolation =
             database->session.has_next_transaction_isolation
                 ? database->session.next_transaction_isolation

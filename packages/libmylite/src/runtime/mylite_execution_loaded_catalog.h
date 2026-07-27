@@ -36,6 +36,7 @@ struct loaded_foreign_key_info {
     struct mylite_catalog_table_descriptor parent_table;
     struct mylite_catalog_index_descriptor parent_index;
     struct loaded_foreign_key_part *parts;
+    char *parent_lookup_sql;
     size_t part_count;
 };
 

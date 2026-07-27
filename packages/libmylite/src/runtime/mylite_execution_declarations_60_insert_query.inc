@@ -14,6 +14,7 @@ static int plan_prepared_insert_dynamic_values(
     struct planned_insert *plan
 );
 static void planned_insert_dynamic_deinit(struct planned_insert *plan);
+static void planned_insert_duplicate_update_deinit(struct planned_insert *plan);
 static int plan_load_data_infile(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -77,6 +78,7 @@ static int process_load_data_row(
     const struct load_data_row *row,
     uint64_t physical_row_number,
     size_t *loaded_row_count,
+    struct planned_insert_row *insert_row,
     struct insert_execution_counters *counters
 );
 static int execute_load_data_import_row(
@@ -85,6 +87,7 @@ static int execute_load_data_import_row(
     sqlite3_stmt *statement,
     const struct load_data_row *input_row,
     size_t row_number,
+    struct planned_insert_row *row,
     struct insert_execution_counters *counters
 );
 static int convert_load_data_row_values(
@@ -147,7 +150,18 @@ static void planned_insert_deinit(struct planned_insert *plan);
 static int execute_insert_from_plan(
     struct mylite_db *database,
     struct planned_insert *plan,
+    const char *prepared_sql,
     mylite_result *result
+);
+static bool insert_plan_can_execute_as_batch(
+    const struct mylite_db *database,
+    const struct planned_insert *plan
+);
+static bool insert_plan_can_execute_with_foreign_key_guards(const struct planned_insert *plan);
+static bool insert_execution_can_rely_on_sqlite_statement_atomicity(
+    const struct mylite_db *database,
+    const struct planned_insert *plan,
+    int64_t updated_time_utc_epoch
 );
 static int rebase_insert_auto_increment_after_write_lock(
     struct mylite_db *database,

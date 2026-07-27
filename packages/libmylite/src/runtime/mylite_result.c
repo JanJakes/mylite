@@ -35,6 +35,20 @@ int mylite_result_create(mylite_result **out_result) {
     return MYLITE_OK;
 }
 
+void mylite_result_reset_command(mylite_result *result) {
+    if (result == NULL) {
+        return;
+    }
+
+    free(result->info);
+    result->info = NULL;
+    result->affected_rows = 0;
+    result->insert_id = 0U;
+    result->warning_count = 0U;
+    result->has_found_row_count = false;
+    result->found_row_count = 0U;
+}
+
 void mylite_result_free(mylite_result *result) {
     if (result == NULL) {
         return;

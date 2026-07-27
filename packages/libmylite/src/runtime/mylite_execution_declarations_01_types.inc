@@ -2639,6 +2639,8 @@ struct mylite_analyzed_dml_plan {
         struct planned_update update;
         struct planned_delete delete;
     } plan;
+
+    char *insert_sql;
     struct mylite_dml_analysis_key key;
     enum mylite_stmt_binding_type *binding_types;
     size_t binding_type_count;
@@ -2675,6 +2677,7 @@ struct mylite_stmt {
     sqlite3_stmt *sqlite_statement;
     mylite_result *metadata_result;
     mylite_result *completed_result;
+    mylite_result *reusable_command_result;
     struct mylite_stmt_binding *bindings;
     uint64_t statement_id;
     unsigned int parse_modes;

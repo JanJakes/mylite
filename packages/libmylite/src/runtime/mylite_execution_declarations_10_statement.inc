@@ -32,6 +32,7 @@ static bool prepared_statement_requires_object_validation(
 static int validate_prepared_statement_objects(mylite_stmt *stmt);
 static int validate_prepared_select_statement_objects(mylite_stmt *stmt);
 static int execute_prepared_materialized_statement(mylite_stmt *stmt);
+static int acquire_prepared_dml_result(mylite_stmt *stmt, mylite_result **out_result);
 static bool prepared_dml_plan_reuse_is_enabled(mylite_stmt *stmt);
 static int ensure_prepared_dml_plan(
     mylite_stmt *stmt,

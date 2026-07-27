@@ -178,6 +178,8 @@ static int test_prepared_statement_source_variables_and_dml(void) {
     static const char *const no_backslash_escape_values[] = {"2"};
     static const char *const decimal_columns[] = {"v"};
     static const char *const decimal_values[] = {"-1.50", "1.00"};
+    static const char *const set_insert_columns[] = {"id", "v"};
+    static const char *const set_insert_values[] = {"10", "ten", "11", "eleven"};
     mylite_db *database = NULL;
     mylite_result *binary_result = NULL;
     int failures = mylite_test_make_path(path, sizeof(path), "prepared-source-dml");
@@ -280,6 +282,42 @@ static int test_prepared_statement_source_variables_and_dml(void) {
     );
     failures +=
         expect_statement_result(database, "DEALLOCATE PREPARE decimals", 0, "deallocate decimal");
+
+    failures +=
+        execute_statement_ok(database, "PREPARE set_insert FROM 'INSERT INTO t SET id = ?, v = ?'");
+    failures += execute_statement_ok(database, "SET @set_id = 10, @set_value = 'ten'");
+    failures += expect_statement_result(
+        database,
+        "EXECUTE set_insert USING @set_id, @set_value",
+        1,
+        "first SET insert"
+    );
+    failures += execute_statement_ok(database, "SET @set_id = 11, @set_value = 'eleven'");
+    failures += expect_statement_result(
+        database,
+        "EXECUTE set_insert USING @set_id, @set_value",
+        1,
+        "retained SET insert"
+    );
+    failures += expect_statement_result(
+        database,
+        "DEALLOCATE PREPARE set_insert",
+        0,
+        "deallocate SET insert"
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t WHERE id >= 10 ORDER BY id",
+            .columns = set_insert_columns,
+            .values = set_insert_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "retained SET insert readback",
+        }
+    );
 
     failures += execute_statement_ok(database, "SELECT UNHEX('610062') INTO @binary_value");
     failures += execute_statement_ok(database, "PREPARE binary_value FROM 'SELECT ? AS payload'");

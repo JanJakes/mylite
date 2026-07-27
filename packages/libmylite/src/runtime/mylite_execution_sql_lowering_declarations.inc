@@ -45,6 +45,7 @@ static int select_sql_work_stack_push(
 static void select_sql_work_stack_deinit(struct select_sql_work_stack *stack);
 
 int build_insert_sql(const struct planned_insert *plan, char **out_sql);
+int build_insert_rows_sql(const struct planned_insert *plan, char **out_sql);
 
 int append_insert_column_names(
     struct mylite_dynamic_string *string,

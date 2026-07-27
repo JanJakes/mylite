@@ -33,6 +33,7 @@ struct mylite_result {
 };
 
 int mylite_result_create(mylite_result **out_result);
+void mylite_result_reset_command(mylite_result *result);
 int mylite_result_append_column(mylite_result *result, const char *name);
 int mylite_result_append_column_descriptor(
     mylite_result *result,

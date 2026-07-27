@@ -129,6 +129,42 @@ load phases and all 57 scenarios, and ten system rows covering five scenarios
 on both engines. The CSV validator accepted all pairs; no checksum,
 operation-count, worker-error, or row-count mismatch occurred.
 
+## Final Qualification
+
+The combined candidate was rebuilt from the final source with Clang 19.1.7 and
+compared with the pre-change baseline on one pinned CPU using tmpfs databases.
+All 16 paired ABBA scenarios passed their robust regression thresholds. The
+principal combined-build results were:
+
+| Scenario | Baseline median | Candidate median | Change |
+| --- | ---: | ---: | ---: |
+| `runtime.wp_prepared_insert` | 197.166 us | 172.180 us | -12.7% |
+| `runtime.wp_prepared_delete` | 69.329 us | 60.416 us | -12.9% |
+| `runtime.cold_open` | 4.699 ms | 1.148 ms | -75.6% |
+| `runtime.reopen_query` | 5.111 ms | 1.499 ms | -70.7% |
+
+The regular WordPress frontend/write requests, prepared SELECT/UPDATE, parser,
+large `IN`, metadata, cache-saturation, and concurrent PROCESSLIST scenarios
+remained within their measured noise allowances.
+
+The final local qualification passed:
+
+- 689 Release, 689 Debug, and 689 ASan/UBSan core tests;
+- the focused TSan, allocator-fault, crash-recovery, and fuzz suites;
+- 697 PHP/core integration tests;
+- all 912 clang-tidy compile units and the formatting gate;
+- production static, PHP extension, and shared-ABI builds;
+- compatibility, MySQL expectation, performance, large-dataset, and release
+  tooling tests;
+- N-1 catalog creation, current migration, N-1 rejection, and current reopen.
+
+The final ownership review confirmed that retained DML analysis is
+statement-local, generation- and session-qualified, and released during
+statement teardown. Mutable values and diagnostics are rebuilt per execution.
+Integrity seals are published only in the catalog transaction that establishes
+the validated state; stale seals force validation before commit, and failed
+validation rolls back both catalog and physical-schema changes.
+
 ## Tasks
 
 - [x] Add retained DML analysis ownership, matching, and teardown.
@@ -143,5 +179,5 @@ operation-count, worker-error, or row-count mismatch occurred.
 - [x] Measure open-only and reopen-plus-query costs.
 - [x] Extend paired performance scenarios and tooling tests.
 - [x] Add scheduled large-dataset evidence without noisy absolute gates.
-- [ ] Run focused, full, sanitizer, static-analysis, and workflow validation.
-- [ ] Review ownership, invalidation, diagnostics, compatibility, and cleanup.
+- [x] Run focused, full, sanitizer, static-analysis, and workflow validation.
+- [x] Review ownership, invalidation, diagnostics, compatibility, and cleanup.

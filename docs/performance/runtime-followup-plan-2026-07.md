@@ -79,7 +79,7 @@ manifest gains:
 
 Raw samples, robust statistics, revisions, and environment metadata remain
 artifacts. Tool tests verify manifest parsing, threshold failures, noisy-run
-rejection, new baseline-only scenarios, missing candidate scenarios, and the
+rejection, new candidate-only scenarios, missing candidate scenarios, and the
 new scenario kinds. A weekly and manually configurable large-dataset job runs
 the complete native and system suites at 100,000 rows by default. These runs
 remain qualification artifacts rather than per-PR gates because hosted-runner

@@ -721,10 +721,31 @@ int mylite_catalog_delete_table_in_mutation(
         return rc;
     }
 
-    rc = mylite_catalog_delete_foreign_keys_for_related_table_from_sqlite(
+    rc = mylite_catalog_prepare_statement(
         database->sqlite,
-        table_id
+        "UPDATE _mylite_catalog_views "
+        "SET source_schema_id = 0, source_table_id = 0, "
+        "updated_catalog_generation = ?2 "
+        "WHERE source_table_id = ?1",
+        &statement
     );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_u64(statement, 2, mylite_catalog_mutation_generation(mutation));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_step_done(statement);
+    }
+    rc = mylite_catalog_finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_delete_foreign_keys_for_related_table_from_sqlite(
+            database->sqlite,
+            table_id
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_delete_check_constraints_for_table_from_sqlite(
             database->sqlite,
@@ -832,7 +853,28 @@ int mylite_catalog_delete_schema_in_mutation(
         return rc;
     }
 
-    rc = mylite_catalog_delete_foreign_keys_for_schema_from_sqlite(database->sqlite, schema_id);
+    rc = mylite_catalog_prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_views "
+        "SET source_schema_id = 0, source_table_id = 0, "
+        "updated_catalog_generation = ?2 "
+        "WHERE source_schema_id = ?1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_u64(statement, 2, mylite_catalog_mutation_generation(mutation));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_step_done(statement);
+    }
+    rc = mylite_catalog_finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_delete_foreign_keys_for_schema_from_sqlite(database->sqlite, schema_id);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_delete_check_constraints_for_schema_from_sqlite(
             database->sqlite,

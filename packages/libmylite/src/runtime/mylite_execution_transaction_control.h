@@ -109,6 +109,9 @@ int mylite_execution_prepare_statement_transaction_boundary(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 );
+bool mylite_execution_statement_requires_implicit_user_transaction_commit(
+    const struct mylite_sql_ast_node *statement
+);
 int mylite_execution_reject_read_only_persistent_write(
     struct mylite_db *database,
     const struct table_name_resolution *target,

@@ -38,7 +38,8 @@ static int execute_insert_from_plan(
             &plan->table
         );
     }
-    if (rc == MYLITE_OK && !use_sqlite_statement_atomicity) {
+    if (rc == MYLITE_OK &&
+        (!use_sqlite_statement_atomicity || database->write_plan_generation_guard_active)) {
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {

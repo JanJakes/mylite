@@ -55,6 +55,19 @@ static int apply_catalog_state(struct mylite_db *database, const struct mylite_c
 static int begin_catalog_transaction(sqlite3 *sqlite);
 static int commit_catalog_transaction(sqlite3 *sqlite);
 static int rollback_catalog_transaction(struct mylite_db *database, int primary_rc);
+static int begin_catalog_mutation_transaction(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation
+);
+static int commit_catalog_mutation_transaction(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation
+);
+static int rollback_catalog_mutation_transaction(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int primary_rc
+);
 static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation);
 static void reset_descriptor_cache_state(struct mylite_catalog *catalog);
 static void clear_table_updated_time_cache(struct mylite_catalog *catalog);
@@ -200,6 +213,7 @@ void mylite_catalog_mutation_init(struct mylite_catalog_mutation *mutation) {
     *mutation = (struct mylite_catalog_mutation){
         .active = false,
         .requires_integrity_validation = false,
+        .uses_savepoint = false,
         .next_generation = 0U,
     };
 }
@@ -212,6 +226,7 @@ void mylite_catalog_mutation_deinit(struct mylite_catalog_mutation *mutation) {
     *mutation = (struct mylite_catalog_mutation){
         .active = false,
         .requires_integrity_validation = false,
+        .uses_savepoint = false,
         .next_generation = 0U,
     };
 }
@@ -235,21 +250,25 @@ int mylite_catalog_begin_mutation(
         return MYLITE_MISUSE;
     }
 
-    rc = begin_catalog_transaction(database->sqlite);
+    rc = begin_catalog_mutation_transaction(database, mutation);
     if (rc != MYLITE_OK) {
         return rc;
     }
 
     rc = read_catalog_state(database->sqlite, &catalog);
     if (rc != MYLITE_OK) {
-        return rollback_catalog_transaction(database, rc);
+        return rollback_catalog_mutation_transaction(database, mutation, rc);
+    }
+    if (database->write_plan_generation_guard_active &&
+        catalog.generation != database->write_plan_catalog_generation) {
+        return rollback_catalog_mutation_transaction(database, mutation, MYLITE_EXECUTION_REPLAN);
     }
     rc = catalog_integrity_seal_matches(database->sqlite, &catalog, &seal_matches);
     if (rc != MYLITE_OK) {
-        return rollback_catalog_transaction(database, rc);
+        return rollback_catalog_mutation_transaction(database, mutation, rc);
     }
     if (catalog.generation == UINT64_MAX) {
-        rc = rollback_catalog_transaction(database, MYLITE_ERROR);
+        rc = rollback_catalog_mutation_transaction(database, mutation, MYLITE_ERROR);
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
@@ -281,14 +300,14 @@ int mylite_catalog_commit_mutation(
     if (rc == MYLITE_OK && mutation->requires_integrity_validation) {
         rc = mylite_catalog_validate_integrity(database->sqlite);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !database->defer_catalog_integrity_seal) {
         rc = mylite_catalog_publish_integrity_seal(database->sqlite, mutation->next_generation);
     }
     if (rc == MYLITE_OK) {
-        rc = commit_catalog_transaction(database->sqlite);
+        rc = commit_catalog_mutation_transaction(database, mutation);
     }
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(database, rc);
+        rc = rollback_catalog_mutation_transaction(database, mutation, rc);
         database->catalog.descriptor_cache_is_suspended = false;
         mylite_catalog_invalidate_descriptor_cache(database);
         mylite_catalog_mutation_deinit(mutation);
@@ -310,7 +329,7 @@ int mylite_catalog_rollback_mutation(
     int primary_rc
 ) {
     if (database != NULL && mutation != NULL && mutation->active) {
-        primary_rc = rollback_catalog_transaction(database, primary_rc);
+        primary_rc = rollback_catalog_mutation_transaction(database, mutation, primary_rc);
         database->catalog.descriptor_cache_is_suspended = false;
         mylite_catalog_invalidate_descriptor_cache(database);
     }
@@ -332,27 +351,32 @@ int mylite_catalog_begin_generation_change(
 ) {
     struct mylite_catalog catalog = {.initialized = false};
     bool seal_matches = false;
-    int rc = begin_catalog_transaction(database->sqlite);
+    int rc = MYLITE_OK;
 
     *out_change = (struct mylite_catalog_generation_change){0};
+    out_change->uses_savepoint = database->writer_stable_planning_transaction_active;
+    rc = mylite_catalog_execute_sql(
+        database->sqlite,
+        out_change->uses_savepoint ? "SAVEPOINT _mylite_catalog_generation" : "BEGIN IMMEDIATE"
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
 
     rc = read_catalog_state(database->sqlite, &catalog);
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(database, rc);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
     rc = catalog_integrity_seal_matches(database->sqlite, &catalog, &seal_matches);
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(database, rc);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
     if (catalog.generation == UINT64_MAX) {
-        return rollback_catalog_transaction(database, MYLITE_ERROR);
+        return mylite_catalog_abandon_generation_change(database, MYLITE_ERROR);
     }
 
     out_change->requires_integrity_validation = !seal_matches;
@@ -370,14 +394,17 @@ int mylite_catalog_finish_generation_change(
     if (rc == MYLITE_OK && change->requires_integrity_validation) {
         rc = mylite_catalog_validate_integrity(database->sqlite);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !database->defer_catalog_integrity_seal) {
         rc = mylite_catalog_publish_integrity_seal(database->sqlite, change->next_generation);
     }
     if (rc == MYLITE_OK) {
-        rc = commit_catalog_transaction(database->sqlite);
+        rc = mylite_catalog_execute_sql(
+            database->sqlite,
+            change->uses_savepoint ? "RELEASE SAVEPOINT _mylite_catalog_generation" : "COMMIT"
+        );
     }
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(database, rc);
+        rc = mylite_catalog_abandon_generation_change(database, rc);
         mylite_catalog_invalidate_descriptor_cache(database);
         return rc;
     }
@@ -390,6 +417,22 @@ int mylite_catalog_finish_generation_change(
 }
 
 int mylite_catalog_abandon_generation_change(struct mylite_db *database, int primary_rc) {
+    if (database->writer_stable_planning_transaction_active) {
+        int rc = mylite_catalog_execute_sql(
+            database->sqlite,
+            "ROLLBACK TO SAVEPOINT _mylite_catalog_generation"
+        );
+
+        if (rc == MYLITE_OK) {
+            rc = mylite_catalog_execute_sql(
+                database->sqlite,
+                "RELEASE SAVEPOINT _mylite_catalog_generation"
+            );
+        }
+        if (rc == MYLITE_OK) {
+            return primary_rc;
+        }
+    }
     return rollback_catalog_transaction(database, primary_rc);
 }
 
@@ -1042,6 +1085,54 @@ static int begin_catalog_transaction(sqlite3 *sqlite) {
 
 static int commit_catalog_transaction(sqlite3 *sqlite) {
     return mylite_catalog_execute_sql(sqlite, "COMMIT");
+}
+
+static int begin_catalog_mutation_transaction(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation
+) {
+    mutation->uses_savepoint = database->writer_stable_planning_transaction_active;
+    return mylite_catalog_execute_sql(
+        database->sqlite,
+        mutation->uses_savepoint ? "SAVEPOINT _mylite_catalog_mutation" : "BEGIN IMMEDIATE"
+    );
+}
+
+static int commit_catalog_mutation_transaction(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation
+) {
+    return mylite_catalog_execute_sql(
+        database->sqlite,
+        mutation->uses_savepoint ? "RELEASE SAVEPOINT _mylite_catalog_mutation" : "COMMIT"
+    );
+}
+
+static int rollback_catalog_mutation_transaction(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int primary_rc
+) {
+    int rc = MYLITE_OK;
+
+    if (!mutation->uses_savepoint) {
+        return rollback_catalog_transaction(database, primary_rc);
+    }
+
+    rc = mylite_catalog_execute_sql(
+        database->sqlite,
+        "ROLLBACK TO SAVEPOINT _mylite_catalog_mutation"
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_execute_sql(
+            database->sqlite,
+            "RELEASE SAVEPOINT _mylite_catalog_mutation"
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rollback_catalog_transaction(database, primary_rc);
+    }
+    return primary_rc;
 }
 
 static int rollback_catalog_transaction(struct mylite_db *database, int primary_rc) {

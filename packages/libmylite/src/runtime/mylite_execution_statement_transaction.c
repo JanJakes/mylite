@@ -32,7 +32,8 @@ int mylite_execution_begin_statement_transaction(
 
     transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
     transaction->active = false;
-    if (database->session.user_transaction_active) {
+    if (database->session.user_transaction_active ||
+        database->writer_stable_planning_transaction_active) {
         rc = mylite_execution_normalize_sqlite_control_rc(
             database,
             mylite_execution_execute_cached_sqlite_control_sql(
@@ -71,6 +72,40 @@ int mylite_execution_begin_statement_transaction(
     if (rc == MYLITE_OK) {
         transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
         transaction->active = true;
+        rc = mylite_catalog_synchronize_snapshot(database);
+    }
+    if (rc == MYLITE_OK && database->write_plan_generation_guard_active &&
+        database->session.catalog_generation != database->write_plan_catalog_generation) {
+        rc = mylite_execution_rollback_statement_transaction(
+            database,
+            transaction,
+            MYLITE_EXECUTION_REPLAN
+        );
+    }
+    return rc;
+}
+
+int mylite_execution_begin_writer_stable_planning_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    int rc = MYLITE_OK;
+
+    transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+    transaction->active = false;
+    rc = mylite_execution_normalize_sqlite_control_rc(
+        database,
+        mylite_execution_execute_cached_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+    );
+    if (rc == MYLITE_OK) {
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
+        transaction->active = true;
+        database->writer_stable_planning_transaction_active = true;
+        rc = mylite_catalog_synchronize_snapshot(database);
+    }
+    if (rc != MYLITE_OK) {
+        database->writer_stable_planning_transaction_active = false;
+        rc = mylite_execution_rollback_statement_transaction(database, transaction, rc);
     }
     return rc;
 }

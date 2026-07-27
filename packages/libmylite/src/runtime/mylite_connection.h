@@ -341,6 +341,10 @@ struct mylite_execution_statement_cache_entry {
     bool in_use;
 };
 
+enum {
+    MYLITE_EXECUTION_REPLAN = -1,
+};
+
 struct mylite_db {
     struct sqlite3 *sqlite;
     struct mylite_diagnostics diagnostics;
@@ -370,6 +374,10 @@ struct mylite_db {
     const struct mylite_session_prepared_statement *active_prepared_statement;
     bool cursor_plan_attempt_active;
     bool cursor_plan_attempt_unsupported;
+    bool write_plan_generation_guard_active;
+    bool writer_stable_planning_transaction_active;
+    bool defer_catalog_integrity_seal;
+    uint64_t write_plan_catalog_generation;
     bool transaction_state_uncertain;
     struct sqlite3_mutex *processlist_snapshot_mutex;
     struct mylite_processlist_session_snapshot processlist_snapshot;

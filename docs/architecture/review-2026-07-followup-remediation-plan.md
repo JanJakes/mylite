@@ -105,34 +105,34 @@ buildable and reviewable.
 
 ### `COR-01`: stale metadata-dependent write plans
 
-- [ ] Specify the writer-stable planning contract for persistent DDL, direct
+- [x] Specify the writer-stable planning contract for persistent DDL, direct
   DML, native prepared DML, SQL-level prepared DML, and autocommit-disabled
   first writes.
-- [ ] Decide on one central protocol:
+- [x] Decide on one central protocol:
   - acquire the persistent writer transaction before metadata synchronization
     and planning; or
   - bind plans to a durable catalog/schema generation and replan under the
     writer lock when it differs.
-- [ ] Prove that the selected protocol does not deadlock read transactions,
+- [x] Prove that the selected protocol does not deadlock read transactions,
   nested catalog operations, explicit transactions, or statement reset.
-- [ ] Apply the protocol to every persistent single-action ALTER path,
+- [x] Apply the protocol to every persistent single-action ALTER path,
   including `MODIFY`, `CHANGE`, `FORCE`, `ORDER BY`, CHECK, primary-key,
   index, rename, and physical-rebuild variants.
-- [ ] Apply it to INSERT, REPLACE, INSERT SET, INSERT SELECT, `LOAD DATA`,
+- [x] Apply it to INSERT, REPLACE, INSERT SET, INSERT SELECT, `LOAD DATA`,
   UPDATE, DELETE, joined DML, duplicate-key handling, and prepared-plan reuse.
-- [ ] Ensure temporary-table and multi-action ALTER paths retain their already
+- [x] Ensure temporary-table and multi-action ALTER paths retain their already
   valid locking behavior.
-- [ ] Recheck auto-increment reservation, foreign-key validation, duplicate-key
+- [x] Recheck auto-increment reservation, foreign-key validation, duplicate-key
   planning, generated expressions, defaults, and conversion modes after any
   replan.
-- [ ] Make structural DDL run full physical/catalog validation before
+- [x] Make structural DDL run full physical/catalog validation before
   publishing a new integrity seal.
-- [ ] Prevent a mutation from sealing a state derived from a plan older than
+- [x] Prevent a mutation from sealing a state derived from a plan older than
   the writer-stable generation.
 
 ### `COR-01` tests
 
-- [ ] Add a trace-hook barrier where handle B commits `ADD COLUMN` after handle
+- [x] Add a trace-hook barrier where handle B commits `ADD COLUMN` after handle
   A plans `MODIFY COLUMN` but before A's writer lock.
 - [ ] Assert exact catalog columns, physical columns, indexes, constraints,
   seal values, reopen behavior, and post-reopen reads/writes.

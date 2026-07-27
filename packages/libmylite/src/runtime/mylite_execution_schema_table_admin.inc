@@ -294,16 +294,15 @@ static int execute_truncate_from_plan(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     int sqlite_rc = SQLITE_OK;
     int rc = build_truncate_table_sql(plan, &sql);
 
     (void)result;
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+        rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = prepare_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
@@ -321,14 +320,10 @@ static int execute_truncate_from_plan(
         rc = touch_persistent_table_updated_time(database, &plan->table, 0, true);
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
-        mylite_catalog_invalidate_descriptor_cache(database);
+    if (rc != MYLITE_OK) {
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     free(sql);
 

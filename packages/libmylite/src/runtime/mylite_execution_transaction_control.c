@@ -281,3 +281,9 @@ const char *mylite_execution_transaction_read_only_show_text(
 #include "mylite_execution_statement_transaction_boundaries.inc"
 #include "mylite_execution_transaction_characteristics.inc"
 #include "mylite_execution_transaction_statements.inc"
+
+bool mylite_execution_statement_requires_implicit_user_transaction_commit(
+    const struct mylite_sql_ast_node *statement
+) {
+    return statement_requires_implicit_user_transaction_commit(statement);
+}

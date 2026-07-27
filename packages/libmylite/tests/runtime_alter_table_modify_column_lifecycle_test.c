@@ -61,10 +61,24 @@ struct expected_query {
     const char *context;
 };
 
+struct interleaved_schema_writer {
+    mylite_db *database;
+    const char *sql;
+    int rc;
+    bool triggered;
+};
+
 static int test_modify_column_success_persistence_and_dml(void);
 static int test_modify_column_text_family_replacement(void);
 static int test_modify_column_keyed_tables(void);
 static int test_modify_column_diagnostics_and_rollback(void);
+static int test_modify_column_replans_after_concurrent_ddl(void);
+static int execute_interleaved_schema_writer_before_begin(
+    unsigned int trace_kind,
+    void *context,
+    void *statement,
+    void *detail
+);
 static int test_modify_column_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -110,6 +124,7 @@ int main(void) {
     failures += test_modify_column_text_family_replacement();
     failures += test_modify_column_keyed_tables();
     failures += test_modify_column_diagnostics_and_rollback();
+    failures += test_modify_column_replans_after_concurrent_ddl();
     failures += test_modify_column_independent_handles();
 
     return failures == 0 ? 0 : 1;
@@ -1406,6 +1421,278 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     remove_related_files(path);
     return failures;
 }
+
+static int test_modify_column_replans_after_concurrent_ddl(void) {
+    static const char *const expected_columns[] = {
+        "a",
+        "bigint",
+        "YES",
+        "",
+        NULL,
+        "",
+        "b",
+        "int",
+        "YES",
+        "",
+        "7",
+        "",
+    };
+    char path[test_path_capacity];
+    struct interleaved_schema_writer writer = {
+        .sql = "ALTER TABLE t ADD COLUMN b INT DEFAULT 7",
+        .rc = MYLITE_ERROR,
+    };
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (mylite_test_make_path(path, sizeof(path), "concurrent_replan") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += mylite_test_expect_int(
+        mylite_open(path, &first),
+        MYLITE_OK,
+        "open first concurrent-replan handle"
+    );
+    failures += execute_ok(first, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(first, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(first, "CREATE TABLE t (a INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(first, "INSERT INTO t VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_open(path, &second),
+        MYLITE_OK,
+        "open second concurrent-replan handle"
+    );
+    failures += execute_ok(second, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    writer.database = second;
+    sqlite = mylite_connection_sqlite_for_test(first);
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(
+            sqlite,
+            SQLITE_TRACE_STMT,
+            execute_interleaved_schema_writer_before_begin,
+            &writer
+        ),
+        SQLITE_OK,
+        "install concurrent schema writer trace"
+    );
+    failures += expect_modify_ok(first, "ALTER TABLE t MODIFY COLUMN a BIGINT", 1);
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove concurrent schema writer trace"
+    );
+    failures += mylite_test_expect_true(writer.triggered, "concurrent schema writer triggered");
+    failures += mylite_test_expect_int(writer.rc, MYLITE_OK, "concurrent schema writer committed");
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM t",
+            .values = expected_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 2U,
+            .context = "replanned modify preserves concurrent column",
+        }
+    );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT a, b FROM t",
+            .values = (const char *const[]){"1", "7"},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "replanned modify preserves concurrent row shape",
+        }
+    );
+
+    failures += execute_ok(first, "CREATE TABLE direct_type_race (a INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(first, "INSERT INTO direct_type_race VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    writer.sql = "ALTER TABLE direct_type_race MODIFY COLUMN a BIGINT";
+    writer.rc = MYLITE_ERROR;
+    writer.triggered = false;
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(
+            sqlite,
+            SQLITE_TRACE_STMT,
+            execute_interleaved_schema_writer_before_begin,
+            &writer
+        ),
+        SQLITE_OK,
+        "install direct DML schema writer trace"
+    );
+    failures += execute_ok(first, "UPDATE direct_type_race SET a = 2147483648", &result);
+    failures += mylite_test_expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "direct DML replanned affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove direct DML schema writer trace"
+    );
+    failures += mylite_test_expect_int(
+        writer.rc,
+        MYLITE_OK,
+        "direct DML concurrent schema writer committed"
+    );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT a FROM direct_type_race",
+            .values = (const char *const[]){"2147483648"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "direct DML uses writer-stable type",
+        }
+    );
+
+    failures += execute_ok(first, "CREATE TABLE retained_type_race (a INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(first, "INSERT INTO retained_type_race VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            first,
+            "UPDATE retained_type_race SET a = ?",
+            strlen("UPDATE retained_type_race SET a = ?"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare retained DML before concurrent DDL"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, INT64_C(2147483648)),
+        MYLITE_OK,
+        "bind retained DML wide integer"
+    );
+    writer.sql = "ALTER TABLE retained_type_race MODIFY COLUMN a BIGINT";
+    writer.rc = MYLITE_ERROR;
+    writer.triggered = false;
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(
+            sqlite,
+            SQLITE_TRACE_STMT,
+            execute_interleaved_schema_writer_before_begin,
+            &writer
+        ),
+        SQLITE_OK,
+        "install retained DML schema writer trace"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "execute retained DML after concurrent DDL"
+    );
+    failures += mylite_test_expect_int64(
+        mylite_stmt_affected_rows(stmt),
+        1,
+        "retained DML replanned affected rows"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize retained DML");
+    stmt = NULL;
+    failures += mylite_test_expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove retained DML schema writer trace"
+    );
+    failures += mylite_test_expect_int(
+        writer.rc,
+        MYLITE_OK,
+        "retained DML concurrent schema writer committed"
+    );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT a FROM retained_type_race",
+            .values = (const char *const[]){"2147483648"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "retained DML uses writer-stable type",
+        }
+    );
+
+    mylite_close(second);
+    mylite_close(first);
+    second = NULL;
+    first = NULL;
+    failures += mylite_test_expect_int(
+        mylite_open(path, &first),
+        MYLITE_OK,
+        "reopen concurrent-replan file"
+    );
+    failures += execute_ok(first, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM t",
+            .values = expected_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 2U,
+            .context = "reopened replanned schema",
+        }
+    );
+
+    mylite_close(first);
+    remove_related_files(path);
+    return failures;
+}
+
+/* sqlite3_trace_v2 fixes this callback's opaque parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+static int execute_interleaved_schema_writer_before_begin(
+    unsigned int trace_kind,
+    void *context,
+    void *statement,
+    void *detail
+) {
+    struct interleaved_schema_writer *writer = context;
+    const char *sql = NULL;
+    mylite_result *result = NULL;
+
+    (void)detail;
+    if (trace_kind != SQLITE_TRACE_STMT || writer == NULL || writer->triggered ||
+        statement == NULL) {
+        return 0;
+    }
+    sql = sqlite3_sql((sqlite3_stmt *)statement);
+    if (sql == NULL || strcmp(sql, "BEGIN IMMEDIATE") != 0) {
+        return 0;
+    }
+
+    writer->triggered = true;
+    writer->rc = mylite_execute(writer->database, writer->sql, strlen(writer->sql), &result);
+    mylite_result_free(result);
+    return 0;
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int test_modify_column_independent_handles(void) {
     static const char *const first_columns[] = {"n", "bigint", "YES", "", NULL, ""};

@@ -107,6 +107,8 @@ static int test_table_select_synchronizes_catalog_once(void) {
     sqlite3 *sqlite = NULL;
     sqlite3_stmt *begin_statement = NULL;
     sqlite3_stmt *commit_statement = NULL;
+    int begin_runs_after_first_select = 0;
+    int commit_runs_after_first_select = 0;
     int failures = 0;
 
     if (mylite_test_make_path(path, sizeof(path), "single_catalog_sync") != 0) {
@@ -139,6 +141,14 @@ static int test_table_select_synchronizes_catalog_once(void) {
     commit_statement = find_cached_statement_equal(sqlite, "COMMIT");
     failures += mylite_test_expect_true(begin_statement != NULL, "cached SELECT BEGIN statement");
     failures += mylite_test_expect_true(commit_statement != NULL, "cached SELECT COMMIT statement");
+    if (begin_statement != NULL) {
+        begin_runs_after_first_select =
+            sqlite3_stmt_status(begin_statement, SQLITE_STMTSTATUS_RUN, 0);
+    }
+    if (commit_statement != NULL) {
+        commit_runs_after_first_select =
+            sqlite3_stmt_status(commit_statement, SQLITE_STMTSTATUS_RUN, 0);
+    }
 
     trace.data_version_count = 0U;
     failures += execute_ok(database, "SELECT id FROM items", &result);
@@ -160,14 +170,14 @@ static int test_table_select_synchronizes_catalog_once(void) {
     if (begin_statement != NULL) {
         failures += mylite_test_expect_int(
             sqlite3_stmt_status(begin_statement, SQLITE_STMTSTATUS_RUN, 0),
-            2,
+            begin_runs_after_first_select + 1,
             "cached SELECT BEGIN execution count"
         );
     }
     if (commit_statement != NULL) {
         failures += mylite_test_expect_int(
             sqlite3_stmt_status(commit_statement, SQLITE_STMTSTATUS_RUN, 0),
-            2,
+            commit_runs_after_first_select + 1,
             "cached SELECT COMMIT execution count"
         );
     }

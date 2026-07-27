@@ -163,20 +163,13 @@ static int execute_empty_statement(struct mylite_db *database, mylite_result **o
     return mylite_execution_session_program_execute_empty_statement(database, out_result);
 }
 
-static int validate_alter_table_algorithm_lock_options(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement
-) {
-    return mylite_execution_session_program_validate_alter_table_options(database, statement);
-}
-
-static int execute_non_prepared_statement(
+static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    return mylite_execution_session_program_execute_non_prepared_statement(
+    return mylite_execution_session_program_execute_parsed_statement(
         database,
         context,
         statement,

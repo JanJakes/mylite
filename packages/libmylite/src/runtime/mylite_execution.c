@@ -6,6 +6,7 @@
 
 #include "mylite_ast.h"
 #include "mylite_catalog.h"
+#include "mylite_catalog_internal.h"
 #include "mylite_catalog_string_pool.h"
 #include "mylite_collation.h"
 #include "mylite_connection.h"
@@ -3821,6 +3822,15 @@ int mylite_execution_session_program_execute_non_prepared_statement(
     mylite_result **out_result
 ) {
     return execute_non_prepared_statement(database, context, statement, out_result);
+}
+
+int mylite_execution_session_program_execute_parsed_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_parsed_statement(database, context, statement, out_result);
 }
 
 bool mylite_execution_session_program_statement_result_is_select(

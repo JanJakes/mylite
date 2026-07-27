@@ -38,6 +38,12 @@ The `baseline-sys-sys-config-triggers` slice extends
 `sys.sys_config` triggers. It does not add trigger execution, trigger DDL, or
 user-created trigger descriptors.
 
+Persisted direct single-table views retain their source schema/table names when
+the source is renamed or dropped. `VIEW_TABLE_USAGE` therefore remains a
+dependency snapshot for an invalidated view. MyLite tombstones the internal
+source IDs on source drop, validates that state on reopen, and continues to
+return the retained MySQL-shaped names.
+
 The `baseline-sys-version-view` slice extends `INFORMATION_SCHEMA.COLUMNS`,
 `TABLES`, `STATISTICS`, `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, and
 `TABLE_CONSTRAINTS_EXTENSIONS` with MySQL-shaped metadata for the supported

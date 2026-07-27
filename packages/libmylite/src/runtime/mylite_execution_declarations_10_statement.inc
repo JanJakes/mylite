@@ -6,7 +6,17 @@ static int execute_parsed_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_parsed_statement_attempt(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast_node *statement);
+static bool statement_requires_writer_stable_planning(const struct mylite_sql_ast_node *statement);
+static bool statement_requires_catalog_integrity_validation(
+    const struct mylite_sql_ast_node *statement
+);
 static int reject_poisoned_connection(struct mylite_db *database);
 static int reject_command_with_active_cursor(struct mylite_db *database);
 static int validate_stmt_binding_index(mylite_stmt *stmt, size_t index);

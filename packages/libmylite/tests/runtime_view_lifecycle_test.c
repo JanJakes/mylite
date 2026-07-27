@@ -860,6 +860,27 @@ static int test_view_persistence_and_preamble(void) {
             .context = "view table usage after source drop",
         }
     );
+    mylite_close(database);
+    database = NULL;
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen after dropping view source"
+    );
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query(
+        database,
+        (struct expected_result){
+            .sql = "SELECT VIEW_SCHEMA,VIEW_NAME,TABLE_SCHEMA,TABLE_NAME "
+                   "FROM INFORMATION_SCHEMA.VIEW_TABLE_USAGE "
+                   "WHERE VIEW_SCHEMA = 'app' AND VIEW_NAME = 'keep_v'",
+            .columns = usage_columns,
+            .values = usage_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "reopened view table usage after source drop",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_result){

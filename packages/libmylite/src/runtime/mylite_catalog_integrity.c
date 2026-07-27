@@ -78,6 +78,15 @@ int mylite_catalog_validate_integrity(sqlite3 *sqlite) {
     return rc;
 }
 
+int mylite_catalog_validate_mutation_integrity(sqlite3 *sqlite) {
+    int rc = sqlite == NULL ? MYLITE_MISUSE : validate_catalog_rows(sqlite);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_physical_schema(sqlite);
+    }
+    return rc;
+}
+
 static int validate_catalog_tables(sqlite3 *sqlite) {
     static const char *const state_columns[] = {
         "singleton_id",
@@ -694,9 +703,10 @@ static int validate_catalog_rows(sqlite3 *sqlite) {
         "LEFT JOIN _mylite_catalog_tables AS t ON t.table_id = v.table_id "
         "LEFT JOIN _mylite_catalog_schemas AS ss ON ss.schema_id = v.source_schema_id "
         "LEFT JOIN _mylite_catalog_tables AS st ON st.table_id = v.source_table_id "
-        "WHERE t.table_id IS NULL OR t.kind <> 3 OR ss.schema_id IS NULL OR st.table_id IS NULL "
-        "OR st.kind <> 1 OR st.schema_id <> v.source_schema_id "
-        "OR ss.name <> v.source_schema_name OR st.name <> v.source_table_name LIMIT 1",
+        "WHERE t.table_id IS NULL OR t.kind <> 3 "
+        "OR ((v.source_schema_id = 0) <> (v.source_table_id = 0)) "
+        "OR (v.source_table_id <> 0 AND (ss.schema_id IS NULL OR st.table_id IS NULL "
+        "OR st.kind <> 1 OR st.schema_id <> v.source_schema_id)) LIMIT 1",
         "SELECT 1 FROM _mylite_catalog_tables AS t "
         "LEFT JOIN _mylite_catalog_views AS v ON v.table_id = t.table_id "
         "WHERE t.kind = 3 AND v.table_id IS NULL LIMIT 1",
@@ -815,11 +825,7 @@ static int validate_physical_schema(sqlite3 *sqlite) {
         "JOIN _mylite_catalog_tables AS t ON t.table_id = c.table_id "
         "JOIN pragma_table_xinfo(t.physical_name) AS p ON p.name = c.name "
         "WHERE t.kind = 1 AND (UPPER(TRIM(p.type)) <> UPPER(TRIM(c.physical_type)) "
-        "OR (p.\"notnull\" <> CASE c.is_nullable WHEN 1 THEN 0 ELSE 1 END AND NOT ("
-        "c.is_nullable = 0 AND p.\"notnull\" = 0 AND EXISTS ("
-        "SELECT 1 FROM _mylite_catalog_indexes AS pki "
-        "JOIN _mylite_catalog_index_columns AS pkic ON pkic.index_id = pki.index_id "
-        "WHERE pki.table_id = c.table_id AND pki.kind = 1 AND pkic.column_id = c.column_id))) "
+        "OR (c.is_nullable = 1 AND p.\"notnull\" <> 0) "
         "OR p.hidden <> CASE WHEN c.is_generated = 0 THEN 0 "
         "WHEN c.generated_kind = 2 THEN 3 ELSE 2 END) LIMIT 1",
         "SELECT 1 FROM _mylite_catalog_columns AS c "

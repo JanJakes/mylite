@@ -1843,10 +1843,13 @@ static int validate_materialized_view(const struct mylite_catalog_view_descripto
             sizeof(view->collation_connection)
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && ((view->source_schema_id == 0) != (view->source_table_id == 0))) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && view->source_schema_id != 0) {
         rc = mylite_catalog_validate_positive_id(view->source_schema_id);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && view->source_table_id != 0) {
         rc = mylite_catalog_validate_positive_id(view->source_table_id);
     }
     if (rc == MYLITE_OK) {

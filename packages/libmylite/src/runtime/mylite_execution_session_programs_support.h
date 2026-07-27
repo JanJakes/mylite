@@ -37,6 +37,12 @@ int mylite_execution_session_program_execute_non_prepared_statement(
     const struct mylite_sql_ast_node *statement,
     struct mylite_result **out_result
 );
+int mylite_execution_session_program_execute_parsed_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_result **out_result
+);
 bool mylite_execution_session_program_statement_result_is_select(
     const struct mylite_sql_ast_node *statement,
     const struct mylite_result *result

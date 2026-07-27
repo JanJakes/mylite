@@ -786,7 +786,7 @@ static int execute_physical_alter_table_order_by(
     sqlite3_stmt *statement = NULL;
     char temporary_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     char *sql = NULL;
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     bool copy_failed = false;
     int64_t affected_rows = 0;
     int sqlite_rc = SQLITE_OK;
@@ -799,10 +799,9 @@ static int execute_physical_alter_table_order_by(
 
     *out_affected_rows = 0;
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+        rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = build_alter_table_order_create_sql(plan, temporary_physical_name, &sql);
     }
     if (rc == MYLITE_OK) {
@@ -850,14 +849,10 @@ static int execute_physical_alter_table_order_by(
     sql = NULL;
 
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
-        mylite_catalog_invalidate_descriptor_cache(database);
+    if (rc != MYLITE_OK) {
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     if (rc != MYLITE_OK && rc != MYLITE_NOMEM && copy_failed) {
         set_physical_sqlite_row_error(database);
@@ -877,7 +872,7 @@ static int execute_physical_alter_table_force(
     sqlite3_stmt *statement = NULL;
     char temporary_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     char *sql = NULL;
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     bool copy_failed = false;
     int sqlite_rc = SQLITE_OK;
     int rc = build_alter_table_force_temporary_physical_name(
@@ -888,10 +883,9 @@ static int execute_physical_alter_table_force(
     );
 
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+        rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = build_alter_table_force_create_sql(plan, temporary_physical_name, &sql);
     }
     if (rc == MYLITE_OK) {
@@ -937,14 +931,10 @@ static int execute_physical_alter_table_force(
     sql = NULL;
 
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
-        mylite_catalog_invalidate_descriptor_cache(database);
+    if (rc != MYLITE_OK) {
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     if (rc != MYLITE_OK && rc != MYLITE_NOMEM && copy_failed) {
         set_physical_sqlite_row_error(database);

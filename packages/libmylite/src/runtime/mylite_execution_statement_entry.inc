@@ -168,6 +168,13 @@ static int execute_parsed_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    struct mylite_diagnostics initial_diagnostics;
+    struct mylite_statement_transaction planning_transaction = {0};
+    bool requires_integrity_validation = statement_requires_catalog_integrity_validation(statement);
+    bool saved_defer_integrity_seal = database->defer_catalog_integrity_seal;
+    bool saved_guard_active = database->write_plan_generation_guard_active;
+    uint64_t saved_guard_generation = database->write_plan_catalog_generation;
+    bool owns_planning_transaction = false;
     int rc = MYLITE_OK;
 
     if (statement == NULL) {
@@ -180,20 +187,105 @@ static int execute_parsed_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!statement_defers_catalog_synchronization(statement)) {
-        rc = mylite_catalog_synchronize_snapshot(database);
+    if (statement_requires_writer_stable_planning(statement) &&
+        !database->session.user_transaction_active &&
+        !database->writer_stable_planning_transaction_active) {
+        if (!database->session.autocommit_enabled &&
+            !mylite_execution_statement_requires_implicit_user_transaction_commit(statement)) {
+            rc = mylite_execution_begin_autocommit_disabled_transaction(database);
+            if (rc == MYLITE_OK) {
+                rc = mylite_catalog_synchronize_snapshot(database);
+            }
+        } else {
+            rc = mylite_execution_begin_writer_stable_planning_transaction(
+                database,
+                &planning_transaction
+            );
+            owns_planning_transaction = rc == MYLITE_OK;
+        }
         if (rc != MYLITE_OK) {
             return rc;
         }
     }
-    {
+
+    mylite_diagnostics_init(&initial_diagnostics);
+    database->defer_catalog_integrity_seal =
+        saved_defer_integrity_seal || requires_integrity_validation;
+    rc = mylite_diagnostics_replace(&initial_diagnostics, mylite_connection_diagnostics(database));
+    while (rc == MYLITE_OK) {
+        if (!statement_defers_catalog_synchronization(statement)) {
+            rc = mylite_catalog_synchronize_snapshot(database);
+        }
+        if (rc != MYLITE_OK) {
+            break;
+        }
+
+        database->write_plan_generation_guard_active = true;
+        database->write_plan_catalog_generation = database->session.catalog_generation;
         rc = validate_alter_table_algorithm_lock_options(database, statement);
+        if (rc == MYLITE_OK) {
+            rc = execute_parsed_statement_attempt(database, context, statement, out_result);
+        }
+        database->write_plan_generation_guard_active = saved_guard_active;
+        database->write_plan_catalog_generation = saved_guard_generation;
+        if (rc != MYLITE_EXECUTION_REPLAN) {
+            break;
+        }
 
-        if (rc != MYLITE_OK) {
-            return rc;
+        mylite_result_free(*out_result);
+        *out_result = NULL;
+        rc = mylite_diagnostics_replace(
+            mylite_connection_diagnostics(database),
+            &initial_diagnostics
+        );
+    }
+    database->write_plan_generation_guard_active = saved_guard_active;
+    database->write_plan_catalog_generation = saved_guard_generation;
+    database->defer_catalog_integrity_seal = saved_defer_integrity_seal;
+    mylite_diagnostics_deinit(&initial_diagnostics);
+    if (owns_planning_transaction) {
+        database->writer_stable_planning_transaction_active = false;
+        if (rc == MYLITE_OK && requires_integrity_validation) {
+            rc = mylite_catalog_validate_mutation_integrity(database->sqlite);
+            if (rc != MYLITE_OK) {
+                set_physical_sqlite_error(database);
+            }
+        }
+        if (rc == MYLITE_OK && requires_integrity_validation) {
+            rc = mylite_catalog_publish_integrity_seal(
+                database->sqlite,
+                database->session.catalog_generation
+            );
+            if (rc != MYLITE_OK) {
+                set_physical_sqlite_error(database);
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_execution_commit_statement_transaction(database, &planning_transaction);
+            if (rc != MYLITE_OK) {
+                mylite_result_free(*out_result);
+                *out_result = NULL;
+            }
+        } else {
+            rc = mylite_execution_rollback_statement_transaction(
+                database,
+                &planning_transaction,
+                rc
+            );
         }
     }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
 
+static int execute_parsed_statement_attempt(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
     switch (statement->kind) {
     case MYLITE_SQL_AST_PREPARE_STATEMENT:
         return mylite_execution_execute_prepare_statement(database, statement, out_result);
@@ -314,6 +406,108 @@ static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast
         return statement_defers_catalog_synchronization(child_at(statement, 0U));
     }
     return false;
+}
+
+static bool statement_requires_writer_stable_planning(const struct mylite_sql_ast_node *statement) {
+    if (statement == NULL) {
+        return false;
+    }
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
+        return false;
+    default:
+        break;
+    }
+    if (mylite_execution_statement_requires_implicit_user_transaction_commit(statement)) {
+        return true;
+    }
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
+    case MYLITE_SQL_AST_LOAD_DATA_INFILE_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_CALL_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool statement_requires_catalog_integrity_validation(
+    const struct mylite_sql_ast_node *statement
+) {
+    if (statement == NULL) {
+        return false;
+    }
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_SCHEMA_DEFAULT_CHARSET_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_DROP_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_DROP_PROCEDURE_STATEMENT:
+    case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CONVERT_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+    case MYLITE_SQL_AST_CALL_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int execute_non_prepared_statement(

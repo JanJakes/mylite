@@ -2,6 +2,7 @@
 
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 #include "storage/mylite_file_open.h"
@@ -29,9 +30,52 @@ enum {
     crash_value_scale = 10,
     integer_text_capacity = 32,
     path_capacity = 1024,
-    path_slot_count = 8,
+    path_slot_count = 64,
     path_suffix_capacity = 16,
     sql_capacity = 512,
+    ddl_fault_table_column_count = 2,
+    ddl_fault_setup_row_count = 2,
+    ddl_fault_setup_id_sum = 3,
+    ddl_fault_setup_value_sum = 33,
+    catalog_integrity_column_count = 2,
+    catalog_previous_schema_version = MYLITE_CATALOG_SCHEMA_VERSION - 1,
+};
+
+enum ddl_fault_state {
+    ddl_fault_state_invalid = -1,
+    ddl_fault_state_pre = 0,
+    ddl_fault_state_post = 1,
+};
+
+enum ddl_fault_scenario_kind {
+    ddl_fault_create_table = 0,
+    ddl_fault_modify_column = 1,
+    ddl_fault_drop_table = 2,
+    ddl_fault_rename_table = 3,
+    ddl_fault_create_index = 4,
+    ddl_fault_drop_index = 5,
+    ddl_fault_truncate_table = 6,
+};
+
+struct ddl_fault_scenario {
+    enum ddl_fault_scenario_kind kind;
+    const char *name;
+    const char *sql;
+};
+
+struct fault_table_rows {
+    int count;
+    int id_sum;
+    int value_sum;
+};
+
+struct ddl_fault_observation {
+    int old_table_count;
+    int renamed_table_count;
+    int column_count;
+    int bigint_column_count;
+    int index_count;
+    struct fault_table_rows rows;
 };
 
 struct model_row {
@@ -72,14 +116,51 @@ static int assert_row_model(
 );
 static int assert_schema_model(mylite_db *database, const struct schema_model *model);
 static int run_ddl_fault_matrix(
+    const struct ddl_fault_scenario *scenario,
+    enum mylite_storage_vfs_fault_operation operation,
+    bool use_truncate_journal
+);
+static int setup_ddl_fault_scenario(mylite_db *database, const struct ddl_fault_scenario *scenario);
+static int classify_ddl_fault_state(
+    mylite_db *database,
+    const struct ddl_fault_scenario *scenario,
+    enum ddl_fault_state *out_state
+);
+static enum ddl_fault_state classify_create_table(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_modify_column(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_drop_table(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_rename_table(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_create_index(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_drop_index(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_truncate_table(const struct ddl_fault_observation *observation
+);
+static bool ddl_fault_has_original_int_table(const struct ddl_fault_observation *observation);
+static bool ddl_fault_has_renamed_int_table(const struct ddl_fault_observation *observation);
+static bool ddl_fault_has_setup_rows(const struct ddl_fault_observation *observation);
+static bool ddl_fault_has_no_rows(const struct ddl_fault_observation *observation);
+static int query_fault_table_rows(
+    mylite_db *database,
+    const char *table_name,
+    struct fault_table_rows *out_rows
+);
+static int assert_recovery_invariants(const char *path, mylite_db *database);
+static int query_catalog_generation(mylite_db *database, int *out_generation);
+static int query_integrity_seal_matches(sqlite3 *sqlite, bool *out_matches);
+static int configure_truncate_journal(mylite_db *database);
+static int close_after_fault(mylite_db *database);
+static int test_catalog_migration_fault_atomicity(void);
+static int run_catalog_migration_fault_matrix(
     enum mylite_storage_vfs_fault_operation operation,
     const char *operation_name
 );
+static int setup_downgraded_catalog(const char *path);
+static int classify_catalog_migration_state(sqlite3 *sqlite, enum ddl_fault_state *out_state);
 static int prepare_path(char path[path_capacity]);
 static int register_path(const char *path);
 static void cleanup_paths(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
+static int file_exists_with_suffix(const char *path, const char *suffix);
 static int process_id(void);
 static int reopen_database(const char *path, mylite_db **database);
 static int open_model_database(const char *path, mylite_db **database);
@@ -90,6 +171,13 @@ static int execute_transaction(
 );
 static int query_single_int(sqlite3 *sqlite, const char *sql, int *out_value);
 static int query_single_text(sqlite3 *sqlite, const char *sql, const char *expected);
+static int query_single_text_value(
+    sqlite3 *sqlite,
+    const char *sql,
+    char *destination,
+    size_t destination_size
+);
+static int query_sqlite_ints(sqlite3 *sqlite, const char *sql, struct fault_table_rows *out_values);
 static int expect_true(bool condition, const char *context);
 
 int main(void) {
@@ -336,10 +424,66 @@ static int wait_for_crash_child(pid_t child) {
 #endif
 
 static int test_ddl_fault_atomicity(void) {
+    static const struct ddl_fault_scenario scenarios[] = {
+        {
+            .kind = ddl_fault_create_table,
+            .name = "create-table",
+            .sql = "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT NOT NULL)",
+        },
+        {
+            .kind = ddl_fault_modify_column,
+            .name = "modify-column-rebuild",
+            .sql = "ALTER TABLE fault_table MODIFY value BIGINT NOT NULL",
+        },
+        {
+            .kind = ddl_fault_drop_table,
+            .name = "drop-table",
+            .sql = "DROP TABLE fault_table",
+        },
+        {
+            .kind = ddl_fault_rename_table,
+            .name = "rename-table",
+            .sql = "ALTER TABLE fault_table RENAME TO fault_table_renamed",
+        },
+        {
+            .kind = ddl_fault_create_index,
+            .name = "create-index",
+            .sql = "CREATE INDEX fault_index ON fault_table(value)",
+        },
+        {
+            .kind = ddl_fault_drop_index,
+            .name = "drop-index",
+            .sql = "DROP INDEX fault_index ON fault_table",
+        },
+        {
+            .kind = ddl_fault_truncate_table,
+            .name = "truncate-table",
+            .sql = "TRUNCATE TABLE fault_table",
+        },
+    };
+    const struct ddl_fault_scenario *modify_column_scenario = NULL;
     int failures = 0;
 
-    failures += run_ddl_fault_matrix(MYLITE_STORAGE_VFS_FAULT_WRITE, "write");
-    failures += run_ddl_fault_matrix(MYLITE_STORAGE_VFS_FAULT_SYNC, "sync");
+    for (size_t index = 0U; index < sizeof(scenarios) / sizeof(scenarios[0U]); ++index) {
+        if (scenarios[index].kind == ddl_fault_modify_column) {
+            modify_column_scenario = &scenarios[index];
+        }
+        failures += run_ddl_fault_matrix(&scenarios[index], MYLITE_STORAGE_VFS_FAULT_WRITE, false);
+        failures += run_ddl_fault_matrix(&scenarios[index], MYLITE_STORAGE_VFS_FAULT_SYNC, false);
+    }
+    failures += expect_true(
+        modify_column_scenario != NULL,
+        "fault matrix includes a rebuilding DDL scenario"
+    );
+    if (modify_column_scenario != NULL) {
+        failures +=
+            run_ddl_fault_matrix(modify_column_scenario, MYLITE_STORAGE_VFS_FAULT_DELETE, false);
+        failures +=
+            run_ddl_fault_matrix(modify_column_scenario, MYLITE_STORAGE_VFS_FAULT_CLOSE, false);
+        failures +=
+            run_ddl_fault_matrix(modify_column_scenario, MYLITE_STORAGE_VFS_FAULT_TRUNCATE, true);
+    }
+    failures += test_catalog_migration_fault_atomicity();
     return failures;
 }
 
@@ -509,11 +653,14 @@ static int assert_schema_model(mylite_db *database, const struct schema_model *m
 }
 
 static int run_ddl_fault_matrix(
+    const struct ddl_fault_scenario *scenario,
     enum mylite_storage_vfs_fault_operation operation,
-    const char *operation_name
+    bool use_truncate_journal
 ) {
     char path[path_capacity];
     size_t operation_call_count = 0U;
+    int expected_post_generation = 0;
+    int expected_pre_generation = 0;
     int failures = 0;
 
     failures += prepare_path(path);
@@ -524,21 +671,32 @@ static int run_ddl_fault_matrix(
     {
         mylite_db *database = NULL;
         mylite_result *result = NULL;
+        enum ddl_fault_state state = ddl_fault_state_invalid;
+        int close_rc = MYLITE_OK;
 
         failures +=
-            mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, operation_name);
+            mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, scenario->name);
+        failures += setup_ddl_fault_scenario(database, scenario);
+        failures += query_catalog_generation(database, &expected_pre_generation);
+        if (use_truncate_journal) {
+            failures += configure_truncate_journal(database);
+        }
         mylite_storage_vfs_test_set_fault(operation, SIZE_MAX);
         failures += mylite_test_expect_int(
-            mylite_execute(
-                database,
-                "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT)",
-                sizeof("CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT)") - 1U,
-                &result
-            ),
+            mylite_execute(database, scenario->sql, strlen(scenario->sql), &result),
             MYLITE_OK,
             "measure non-faulted DDL"
         );
         mylite_result_free(result);
+        failures += classify_ddl_fault_state(database, scenario, &state);
+        failures += mylite_test_expect_int(
+            state,
+            ddl_fault_state_post,
+            "measurement DDL reaches complete post-state"
+        );
+        failures += query_catalog_generation(database, &expected_post_generation);
+        close_rc = close_after_fault(database);
+        database = NULL;
         failures += expect_true(
             !mylite_storage_vfs_test_fault_was_triggered(),
             "measurement DDL does not trigger fault"
@@ -546,69 +704,633 @@ static int run_ddl_fault_matrix(
         operation_call_count = mylite_storage_vfs_test_matching_call_count();
         failures += expect_true(operation_call_count > 0U, "DDL reaches measured VFS operation");
         mylite_storage_vfs_test_clear_fault();
-        mylite_close(database);
+        failures +=
+            mylite_test_expect_int(close_rc, MYLITE_OK, "measurement database close succeeds");
     }
 
     for (size_t fail_on_call = 1U; fail_on_call <= operation_call_count; ++fail_on_call) {
         mylite_db *database = NULL;
         mylite_result *result = NULL;
-        sqlite3 *sqlite = NULL;
+        enum ddl_fault_state reopened_state = ddl_fault_state_invalid;
+        enum ddl_fault_state second_reopen_state = ddl_fault_state_invalid;
         bool fault_triggered = false;
-        int catalog_table_count = -1;
-        int physical_table_count = -1;
+        int recovered_generation = 0;
 
         remove_related_files(path);
         failures +=
-            mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, operation_name);
+            mylite_test_expect_int(open_model_database(path, &database), MYLITE_OK, scenario->name);
+        failures += setup_ddl_fault_scenario(database, scenario);
+        if (use_truncate_journal) {
+            failures += configure_truncate_journal(database);
+        }
         mylite_storage_vfs_test_set_fault(operation, fail_on_call);
-        (void)mylite_execute(
-            database,
-            "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT)",
-            sizeof("CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT)") - 1U,
-            &result
-        );
+        (void)mylite_execute(database, scenario->sql, strlen(scenario->sql), &result);
         mylite_result_free(result);
+        (void)close_after_fault(database);
+        database = NULL;
         fault_triggered = mylite_storage_vfs_test_fault_was_triggered();
         mylite_storage_vfs_test_clear_fault();
-        mylite_close(database);
-        database = NULL;
 
         failures += mylite_test_expect_int(
             open_model_database(path, &database),
             MYLITE_OK,
             "reopen DDL fault file"
         );
-        sqlite = mylite_connection_sqlite_for_test(database);
-        if (sqlite == NULL) {
-            failures += 1;
-        } else {
-            failures += query_single_int(
-                sqlite,
-                "SELECT count(*) FROM _mylite_catalog_tables WHERE name = 'fault_table'",
-                &catalog_table_count
-            );
-            failures += query_single_int(
-                sqlite,
-                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' "
-                "AND name NOT GLOB '_mylite_catalog_*' AND name NOT GLOB 'sqlite_*'",
-                &physical_table_count
-            );
-            failures += query_single_text(sqlite, "PRAGMA integrity_check", "ok");
-        }
+        failures += classify_ddl_fault_state(database, scenario, &reopened_state);
         failures += expect_true(
-            catalog_table_count == 0 || catalog_table_count == 1,
-            "faulted DDL catalog state is pre or post"
+            reopened_state == ddl_fault_state_pre || reopened_state == ddl_fault_state_post,
+            "faulted DDL reopens in a complete pre or post state"
         );
-        failures += mylite_test_expect_int(
-            physical_table_count,
-            catalog_table_count,
-            "faulted DDL physical/catalog atomicity"
+        failures += query_catalog_generation(database, &recovered_generation);
+        failures += expect_true(
+            (reopened_state == ddl_fault_state_pre &&
+             recovered_generation == expected_pre_generation) ||
+                (reopened_state == ddl_fault_state_post &&
+                 recovered_generation == expected_post_generation),
+            "faulted DDL generation matches the classified state"
         );
+        failures += assert_recovery_invariants(path, database);
         failures += expect_true(fault_triggered, "measured DDL fault is triggered");
+        failures += reopen_database(path, &database);
+        failures += classify_ddl_fault_state(database, scenario, &second_reopen_state);
+        failures += mylite_test_expect_int(
+            second_reopen_state,
+            reopened_state,
+            "second reopen preserves the recovered DDL state"
+        );
+        failures += assert_recovery_invariants(path, database);
         mylite_close(database);
     }
 
     remove_related_files(path);
+    return failures;
+}
+
+static int setup_ddl_fault_scenario(
+    mylite_db *database,
+    const struct ddl_fault_scenario *scenario
+) {
+    int failures = 0;
+
+    if (scenario->kind == ddl_fault_create_table) {
+        return 0;
+    }
+    failures += execute_ok(
+        database,
+        "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT NOT NULL)"
+    );
+    failures += execute_ok(database, "INSERT INTO fault_table VALUES (1, 11), (2, 22)");
+    if (scenario->kind == ddl_fault_drop_index) {
+        failures += execute_ok(database, "CREATE INDEX fault_index ON fault_table(value)");
+    }
+    return failures;
+}
+
+static int classify_ddl_fault_state(
+    mylite_db *database,
+    const struct ddl_fault_scenario *scenario,
+    enum ddl_fault_state *out_state
+) {
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+    const char *row_table_name = "fault_table";
+    struct ddl_fault_observation observation = {0};
+    int failures = 0;
+
+    *out_state = ddl_fault_state_invalid;
+    if (sqlite == NULL) {
+        return 1;
+    }
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM _mylite_catalog_tables WHERE name = 'fault_table'",
+        &observation.old_table_count
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM _mylite_catalog_tables WHERE name = 'fault_table_renamed'",
+        &observation.renamed_table_count
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM _mylite_catalog_columns AS c "
+        "JOIN _mylite_catalog_tables AS t ON t.table_id = c.table_id "
+        "WHERE t.name IN ('fault_table', 'fault_table_renamed')",
+        &observation.column_count
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM _mylite_catalog_columns AS c "
+        "JOIN _mylite_catalog_tables AS t ON t.table_id = c.table_id "
+        "WHERE t.name IN ('fault_table', 'fault_table_renamed') "
+        "AND c.name = 'value' AND c.logical_type = 'BIGINT'",
+        &observation.bigint_column_count
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM _mylite_catalog_indexes AS i "
+        "JOIN _mylite_catalog_tables AS t ON t.table_id = i.table_id "
+        "WHERE t.name IN ('fault_table', 'fault_table_renamed') "
+        "AND i.name = 'fault_index'",
+        &observation.index_count
+    );
+    if (failures != 0) {
+        return failures;
+    }
+
+    if (observation.renamed_table_count == 1 && observation.old_table_count == 0) {
+        row_table_name = "fault_table_renamed";
+    }
+    if (observation.old_table_count + observation.renamed_table_count == 1) {
+        failures += query_fault_table_rows(database, row_table_name, &observation.rows);
+    }
+    if (failures != 0) {
+        return failures;
+    }
+
+    switch (scenario->kind) {
+    case ddl_fault_create_table:
+        *out_state = classify_create_table(&observation);
+        break;
+    case ddl_fault_modify_column:
+        *out_state = classify_modify_column(&observation);
+        break;
+    case ddl_fault_drop_table:
+        *out_state = classify_drop_table(&observation);
+        break;
+    case ddl_fault_rename_table:
+        *out_state = classify_rename_table(&observation);
+        break;
+    case ddl_fault_create_index:
+        *out_state = classify_create_index(&observation);
+        break;
+    case ddl_fault_drop_index:
+        *out_state = classify_drop_index(&observation);
+        break;
+    case ddl_fault_truncate_table:
+        *out_state = classify_truncate_table(&observation);
+        break;
+    }
+    return failures;
+}
+
+static enum ddl_fault_state classify_create_table(const struct ddl_fault_observation *observation) {
+    if (observation->old_table_count == 0 && observation->renamed_table_count == 0 &&
+        observation->column_count == 0 && observation->bigint_column_count == 0 &&
+        observation->index_count == 0 && ddl_fault_has_no_rows(observation)) {
+        return ddl_fault_state_pre;
+    }
+    if (ddl_fault_has_original_int_table(observation) && observation->index_count == 0 &&
+        ddl_fault_has_no_rows(observation)) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static enum ddl_fault_state classify_modify_column(const struct ddl_fault_observation *observation
+) {
+    if (observation->old_table_count != 1 || observation->renamed_table_count != 0 ||
+        observation->column_count != ddl_fault_table_column_count ||
+        observation->index_count != 0 || !ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_invalid;
+    }
+    if (observation->bigint_column_count == 0) {
+        return ddl_fault_state_pre;
+    }
+    if (observation->bigint_column_count == 1) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static enum ddl_fault_state classify_drop_table(const struct ddl_fault_observation *observation) {
+    if (ddl_fault_has_original_int_table(observation) && observation->index_count == 0 &&
+        ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_pre;
+    }
+    if (observation->old_table_count == 0 && observation->renamed_table_count == 0 &&
+        observation->column_count == 0 && observation->bigint_column_count == 0 &&
+        observation->index_count == 0 && ddl_fault_has_no_rows(observation)) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static enum ddl_fault_state classify_rename_table(const struct ddl_fault_observation *observation) {
+    if (ddl_fault_has_original_int_table(observation) && observation->index_count == 0 &&
+        ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_pre;
+    }
+    if (ddl_fault_has_renamed_int_table(observation) && observation->index_count == 0 &&
+        ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static enum ddl_fault_state classify_create_index(const struct ddl_fault_observation *observation) {
+    if (!ddl_fault_has_original_int_table(observation) || !ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_invalid;
+    }
+    if (observation->index_count == 0) {
+        return ddl_fault_state_pre;
+    }
+    if (observation->index_count == 1) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static enum ddl_fault_state classify_drop_index(const struct ddl_fault_observation *observation) {
+    if (!ddl_fault_has_original_int_table(observation) || !ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_invalid;
+    }
+    if (observation->index_count == 1) {
+        return ddl_fault_state_pre;
+    }
+    if (observation->index_count == 0) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static enum ddl_fault_state classify_truncate_table(const struct ddl_fault_observation *observation
+) {
+    if (!ddl_fault_has_original_int_table(observation) || observation->index_count != 0) {
+        return ddl_fault_state_invalid;
+    }
+    if (ddl_fault_has_setup_rows(observation)) {
+        return ddl_fault_state_pre;
+    }
+    if (ddl_fault_has_no_rows(observation)) {
+        return ddl_fault_state_post;
+    }
+    return ddl_fault_state_invalid;
+}
+
+static bool ddl_fault_has_original_int_table(const struct ddl_fault_observation *observation) {
+    return observation->old_table_count == 1 && observation->renamed_table_count == 0 &&
+           observation->column_count == ddl_fault_table_column_count &&
+           observation->bigint_column_count == 0;
+}
+
+static bool ddl_fault_has_renamed_int_table(const struct ddl_fault_observation *observation) {
+    return observation->old_table_count == 0 && observation->renamed_table_count == 1 &&
+           observation->column_count == ddl_fault_table_column_count &&
+           observation->bigint_column_count == 0;
+}
+
+static bool ddl_fault_has_setup_rows(const struct ddl_fault_observation *observation) {
+    return observation->rows.count == ddl_fault_setup_row_count &&
+           observation->rows.id_sum == ddl_fault_setup_id_sum &&
+           observation->rows.value_sum == ddl_fault_setup_value_sum;
+}
+
+static bool ddl_fault_has_no_rows(const struct ddl_fault_observation *observation) {
+    return observation->rows.count == 0 && observation->rows.id_sum == 0 &&
+           observation->rows.value_sum == 0;
+}
+
+static int query_fault_table_rows(
+    mylite_db *database,
+    const char *table_name,
+    struct fault_table_rows *out_rows
+) {
+    enum { physical_name_capacity = 128 };
+
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+    char physical_name[physical_name_capacity];
+    char sql[sql_capacity];
+    int failures = 0;
+    int written = 0;
+
+    if (sqlite == NULL) {
+        return 1;
+    }
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "SELECT physical_name FROM _mylite_catalog_tables WHERE name = '%s'",
+        table_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        return 1;
+    }
+    failures += query_single_text_value(sqlite, sql, physical_name, sizeof(physical_name));
+    if (failures != 0) {
+        return failures;
+    }
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "SELECT count(*), COALESCE(SUM(id), 0), COALESCE(SUM(value), 0) FROM \"%s\"",
+        physical_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        return failures + 1;
+    }
+    failures += query_sqlite_ints(sqlite, sql, out_rows);
+    return failures;
+}
+
+static int assert_recovery_invariants(const char *path, mylite_db *database) {
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+    bool seal_matches = false;
+    int scratch_object_count = -1;
+    int failures = 0;
+
+    if (sqlite == NULL) {
+        return 1;
+    }
+    failures += query_single_text(sqlite, "PRAGMA integrity_check", "ok");
+    failures += query_integrity_seal_matches(sqlite, &seal_matches);
+    failures += expect_true(seal_matches, "recovered database integrity seal matches");
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM sqlite_schema WHERE "
+        "name GLOB '_mylite_user_table_*_modify_*' OR "
+        "name GLOB '_mylite_user_table_*_order_*' OR "
+        "name GLOB '_mylite_user_table_*_force_*' OR "
+        "name GLOB '_mylite_user_table_*_check_*' OR "
+        "name GLOB '_mylite_catalog_*_v[0-9]*'",
+        &scratch_object_count
+    );
+    failures += mylite_test_expect_int(
+        scratch_object_count,
+        0,
+        "recovered database has no persistent scratch objects"
+    );
+    failures += mylite_test_expect_int(
+        file_exists_with_suffix(path, "-journal"),
+        0,
+        "recovered database has no rollback journal"
+    );
+    return failures;
+}
+
+static int query_catalog_generation(mylite_db *database, int *out_generation) {
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+
+    if (sqlite == NULL) {
+        return 1;
+    }
+    return query_single_int(
+        sqlite,
+        "SELECT catalog_generation FROM _mylite_catalog_state",
+        out_generation
+    );
+}
+
+static int query_integrity_seal_matches(sqlite3 *sqlite, bool *out_matches) {
+    int catalog_generation = 0;
+    int integrity_generation = 0;
+    int integrity_schema_version = 0;
+    int sqlite_schema_version = 0;
+    int failures = 0;
+
+    *out_matches = false;
+    failures += query_single_int(
+        sqlite,
+        "SELECT catalog_generation FROM _mylite_catalog_state",
+        &catalog_generation
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT integrity_catalog_generation FROM _mylite_catalog_state",
+        &integrity_generation
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT integrity_sqlite_schema_version FROM _mylite_catalog_state",
+        &integrity_schema_version
+    );
+    failures += query_single_int(sqlite, "PRAGMA main.schema_version", &sqlite_schema_version);
+    if (failures == 0) {
+        *out_matches = integrity_generation != 0 && integrity_generation == catalog_generation &&
+                       integrity_schema_version == sqlite_schema_version;
+    }
+    return failures;
+}
+
+static int configure_truncate_journal(mylite_db *database) {
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+
+    if (sqlite == NULL) {
+        return 1;
+    }
+    return query_single_text(sqlite, "PRAGMA journal_mode=TRUNCATE", "truncate");
+}
+
+static int close_after_fault(mylite_db *database) {
+    int rc = mylite_close_checked(database);
+
+    if (rc != MYLITE_OK) {
+        mylite_close(database);
+    }
+    return rc;
+}
+
+static int test_catalog_migration_fault_atomicity(void) {
+    int failures = 0;
+
+    failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_WRITE, "write");
+    failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_SYNC, "sync");
+    failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_DELETE, "delete");
+    failures += run_catalog_migration_fault_matrix(MYLITE_STORAGE_VFS_FAULT_CLOSE, "close");
+    return failures;
+}
+
+static int run_catalog_migration_fault_matrix(
+    enum mylite_storage_vfs_fault_operation operation,
+    const char *operation_name
+) {
+    char path[path_capacity];
+    size_t operation_call_count = 0U;
+    int failures = prepare_path(path);
+
+    if (failures != 0) {
+        return failures;
+    }
+
+    {
+        mylite_db *database = NULL;
+        int close_rc = MYLITE_OK;
+
+        failures += setup_downgraded_catalog(path);
+        mylite_storage_vfs_test_set_fault(operation, SIZE_MAX);
+        failures += mylite_test_expect_int(
+            mylite_open(path, &database),
+            MYLITE_OK,
+            "measure non-faulted catalog migration"
+        );
+        close_rc = close_after_fault(database);
+        database = NULL;
+        failures += expect_true(
+            !mylite_storage_vfs_test_fault_was_triggered(),
+            "measurement migration does not trigger fault"
+        );
+        operation_call_count = mylite_storage_vfs_test_matching_call_count();
+        failures += expect_true(
+            operation_call_count > 0U,
+            "catalog migration reaches measured VFS operation"
+        );
+        mylite_storage_vfs_test_clear_fault();
+        failures += mylite_test_expect_int(
+            close_rc,
+            MYLITE_OK,
+            "measurement migration database close succeeds"
+        );
+    }
+
+    for (size_t fail_on_call = 1U; fail_on_call <= operation_call_count; ++fail_on_call) {
+        mylite_db *database = NULL;
+        sqlite3 *raw_sqlite = NULL;
+        enum ddl_fault_state migration_state = ddl_fault_state_invalid;
+        struct fault_table_rows rows = {0};
+        bool fault_triggered = false;
+
+        failures += setup_downgraded_catalog(path);
+        mylite_storage_vfs_test_set_fault(operation, fail_on_call);
+        (void)mylite_open(path, &database);
+        if (database != NULL) {
+            (void)close_after_fault(database);
+            database = NULL;
+        }
+        fault_triggered = mylite_storage_vfs_test_fault_was_triggered();
+        mylite_storage_vfs_test_clear_fault();
+        failures += expect_true(fault_triggered, operation_name);
+
+        failures += mylite_test_expect_int(
+            mylite_storage_open_sqlite_payload(path, &raw_sqlite),
+            MYLITE_OK,
+            "open faulted catalog migration without remigrating"
+        );
+        if (raw_sqlite != NULL) {
+            failures += classify_catalog_migration_state(raw_sqlite, &migration_state);
+            failures += query_single_text(raw_sqlite, "PRAGMA integrity_check", "ok");
+            failures += mylite_test_expect_int(
+                sqlite3_close(raw_sqlite),
+                SQLITE_OK,
+                "close raw migration inspection"
+            );
+            raw_sqlite = NULL;
+        }
+        failures += expect_true(
+            migration_state == ddl_fault_state_pre || migration_state == ddl_fault_state_post,
+            "faulted catalog migration is complete pre or post state"
+        );
+
+        failures += mylite_test_expect_int(
+            open_model_database(path, &database),
+            MYLITE_OK,
+            "converge faulted catalog migration"
+        );
+        failures += assert_recovery_invariants(path, database);
+        failures += query_fault_table_rows(database, "fault_table", &rows);
+        failures += mylite_test_expect_int(
+            rows.count,
+            ddl_fault_setup_row_count,
+            "migration recovery preserves row count"
+        );
+        failures += mylite_test_expect_int(
+            rows.id_sum,
+            ddl_fault_setup_id_sum,
+            "migration recovery preserves row ids"
+        );
+        failures += mylite_test_expect_int(
+            rows.value_sum,
+            ddl_fault_setup_value_sum,
+            "migration recovery preserves values"
+        );
+        mylite_close(database);
+    }
+
+    remove_related_files(path);
+    return failures;
+}
+
+static int setup_downgraded_catalog(const char *path) {
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    char sql[sql_capacity];
+    int failures = 0;
+    int written = 0;
+
+    remove_related_files(path);
+    failures += mylite_test_expect_int(
+        open_model_database(path, &database),
+        MYLITE_OK,
+        "create catalog migration source"
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE fault_table(id INT NOT NULL PRIMARY KEY, value INT NOT NULL)"
+    );
+    failures += execute_ok(database, "INSERT INTO fault_table VALUES (1, 11), (2, 22)");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite == NULL) {
+        failures += 1;
+    } else {
+        failures += mylite_test_remove_catalog_integrity_seal(sqlite);
+        if (failures == 0) {
+            written = snprintf(
+                sql,
+                sizeof(sql),
+                "UPDATE _mylite_catalog_state "
+                "SET schema_version = %d, minimum_reader_schema_version = %d",
+                catalog_previous_schema_version,
+                catalog_previous_schema_version
+            );
+            if (written < 0 || (size_t)written >= sizeof(sql) ||
+                sqlite3_exec(sqlite, sql, NULL, NULL, NULL) != SQLITE_OK) {
+                failures += 1;
+            }
+        }
+    }
+    mylite_close(database);
+    return failures;
+}
+
+static int classify_catalog_migration_state(sqlite3 *sqlite, enum ddl_fault_state *out_state) {
+    int schema_version = 0;
+    int integrity_column_count = 0;
+    int integrity_trigger_count = 0;
+    int scratch_object_count = 0;
+    int failures = 0;
+
+    *out_state = ddl_fault_state_invalid;
+    failures += query_single_int(
+        sqlite,
+        "SELECT schema_version FROM _mylite_catalog_state",
+        &schema_version
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM pragma_table_info('_mylite_catalog_state') "
+        "WHERE name IN ('integrity_catalog_generation', 'integrity_sqlite_schema_version')",
+        &integrity_column_count
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM sqlite_schema WHERE type = 'trigger' "
+        "AND name GLOB '_mylite_integrity_*'",
+        &integrity_trigger_count
+    );
+    failures += query_single_int(
+        sqlite,
+        "SELECT count(*) FROM sqlite_schema WHERE name = '_mylite_catalog_state_v38'",
+        &scratch_object_count
+    );
+    if (failures != 0 || scratch_object_count != 0) {
+        return failures;
+    }
+    if (schema_version == catalog_previous_schema_version && integrity_column_count == 0 &&
+        integrity_trigger_count == 0) {
+        *out_state = ddl_fault_state_pre;
+    } else if (schema_version == MYLITE_CATALOG_SCHEMA_VERSION &&
+               integrity_column_count == catalog_integrity_column_count &&
+               integrity_trigger_count > 0) {
+        *out_state = ddl_fault_state_post;
+    }
     return failures;
 }
 
@@ -674,6 +1396,22 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written >= 0 && (size_t)written < sizeof(related_path)) {
         (void)remove(related_path);
     }
+}
+
+static int file_exists_with_suffix(const char *path, const char *suffix) {
+    char related_path[path_capacity + path_suffix_capacity];
+    FILE *file = NULL;
+    int written = snprintf(related_path, sizeof(related_path), "%s%s", path, suffix);
+
+    if (written < 0 || (size_t)written >= sizeof(related_path)) {
+        return 0;
+    }
+    file = fopen(related_path, "rb");
+    if (file == NULL) {
+        return 0;
+    }
+    (void)fclose(file);
+    return 1;
 }
 
 static int process_id(void) {
@@ -768,6 +1506,62 @@ static int query_single_text(sqlite3 *sqlite, const char *sql, const char *expec
         failures += 1;
     }
     sqlite3_finalize(statement);
+    return failures;
+}
+
+static int query_single_text_value(
+    sqlite3 *sqlite,
+    const char *sql,
+    char *destination,
+    size_t destination_size
+) {
+    sqlite3_stmt *statement = NULL;
+    const unsigned char *value = NULL;
+    int rc = sqlite3_prepare_v2(sqlite, sql, -1, &statement, NULL);
+    int failures = 0;
+    int written = 0;
+
+    destination[0] = '\0';
+    if (rc != SQLITE_OK || sqlite3_step(statement) != SQLITE_ROW) {
+        fprintf(stderr, "%s: SQLite text query failed: %s\n", sql, sqlite3_errmsg(sqlite));
+        sqlite3_finalize(statement);
+        return 1;
+    }
+    value = sqlite3_column_text(statement, 0);
+    if (value == NULL) {
+        failures += 1;
+    } else {
+        written = snprintf(destination, destination_size, "%s", (const char *)value);
+        if (written < 0 || (size_t)written >= destination_size) {
+            failures += 1;
+        }
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        failures += 1;
+    }
+    return failures;
+}
+
+static int query_sqlite_ints(
+    sqlite3 *sqlite,
+    const char *sql,
+    struct fault_table_rows *out_values
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(sqlite, sql, -1, &statement, NULL);
+    int failures = 0;
+
+    if (rc != SQLITE_OK || sqlite3_step(statement) != SQLITE_ROW) {
+        fprintf(stderr, "%s: SQLite integer query failed: %s\n", sql, sqlite3_errmsg(sqlite));
+        sqlite3_finalize(statement);
+        return 1;
+    }
+    out_values->count = sqlite3_column_int(statement, 0);
+    out_values->id_sum = sqlite3_column_int(statement, 1);
+    out_values->value_sum = sqlite3_column_int(statement, 2);
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        failures += 1;
+    }
     return failures;
 }
 

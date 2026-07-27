@@ -27,10 +27,13 @@ They do not replay an already completed step.
 
 ## Failure Behavior
 
-A migration failure leaves the exact pre-migration catalog and physical SQLite
-schema. Opening reports the original migration error. Recovery never treats an
-intermediate schema version as current, and integrity sealing occurs only after
-the whole chain succeeds.
+A migration failure before outer commit leaves the exact pre-migration catalog
+and physical SQLite schema. An I/O failure at the commit boundary may leave
+either that complete pre-state or the complete committed post-state; the
+[durable DDL fault-atomicity contract](durable-ddl-fault-atomicity.md) defines
+the required recovery checks. Opening reports the original migration error.
+Recovery never treats an intermediate schema version as current, and integrity
+sealing occurs only after the whole chain succeeds.
 
 Thread and process regression tests synchronize immediately after the old
 version read and before writer-lock acquisition. Both openers must succeed,

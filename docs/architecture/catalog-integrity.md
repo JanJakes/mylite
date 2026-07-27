@@ -48,6 +48,9 @@ logical and physical change, advances the catalog generation, validates
 structural mutations, and publishes the new seal. A failure rolls back the
 physical change, catalog rows, generation, and seal together.
 
+The exact durable outcomes for commit-adjacent I/O failures are defined by the
+[durable DDL fault-atomicity contract](durable-ddl-fault-atomicity.md).
+
 The validation cost is linear in catalog metadata and physical object count.
 MyLite accepts that existing-file open cost in exchange for deterministic
 corruption detection and no additional hashing dependency.

@@ -179,10 +179,10 @@ buildable and reviewable.
   when the exact owned inode is proven to contain no committed user state.
 - [x] Test process death at every initialization transaction, payload sync,
   catalog commit, and lifecycle-byte publication boundary.
-- [ ] Extend VFS fault coverage from CREATE TABLE to rebuilding ALTER,
+- [x] Extend VFS fault coverage from CREATE TABLE to rebuilding ALTER,
   DROP/RENAME, index DDL, migrations, truncate, delete, and close.
 - [ ] Run hot-journal and process-death recovery on POSIX and Windows.
-- [ ] Assert exact pre-operation or post-operation state, no temporary physical
+- [x] Assert exact pre-operation or post-operation state, no temporary physical
   objects, valid seals, and successful SQLite integrity checks after reopen.
 
 ### Phase 1 closure

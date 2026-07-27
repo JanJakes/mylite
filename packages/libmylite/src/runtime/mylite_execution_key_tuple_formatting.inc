@@ -216,22 +216,12 @@ static int format_key_part_value(
     char *destination,
     size_t destination_size
 ) {
-    static const unsigned char empty_text[] = "";
-
     struct planned_value external_value;
 
     if (part == NULL || value == NULL || destination == NULL || destination_size == 0U) {
         return MYLITE_ERROR;
     }
-    if (value->is_text && value->external_binding != NULL &&
-        value->external_binding->type == MYLITE_STMT_BINDING_TEXT) {
-        external_value = *value;
-        external_value.text =
-            (char *)(value->external_binding->size == 0U ? empty_text
-                                                         : value->external_binding->bytes);
-        external_value.text_length = value->external_binding->size;
-        value = &external_value;
-    }
+    value = resolve_external_text_key_value(value, &external_value);
     if (value->is_blob && loaded_index_part_uses_binary_key_display(part)) {
         return format_blob_key_part_value(part, value, true, destination, destination_size);
     }
@@ -317,11 +307,13 @@ static int format_key_value(
     char *destination,
     size_t destination_size
 ) {
+    struct planned_value external_value;
     int written = 0;
 
     if (value == NULL || destination == NULL || destination_size == 0U) {
         return MYLITE_ERROR;
     }
+    value = resolve_external_text_key_value(value, &external_value);
     if (value->is_null) {
         written = snprintf(destination, destination_size, "NULL");
     } else if (value->is_text) {
@@ -346,6 +338,24 @@ static int format_key_value(
     }
 
     return MYLITE_OK;
+}
+
+static const struct planned_value *resolve_external_text_key_value(
+    const struct planned_value *value,
+    struct planned_value *storage
+) {
+    static const unsigned char empty_text[] = "";
+
+    if (value == NULL || storage == NULL || !value->is_text || value->external_binding == NULL ||
+        value->external_binding->type != MYLITE_STMT_BINDING_TEXT) {
+        return value;
+    }
+
+    *storage = *value;
+    storage->text =
+        (char *)(value->external_binding->size == 0U ? empty_text : value->external_binding->bytes);
+    storage->text_length = value->external_binding->size;
+    return storage;
 }
 
 static bool loaded_index_part_uses_binary_key_display(const struct loaded_index_part *part) {

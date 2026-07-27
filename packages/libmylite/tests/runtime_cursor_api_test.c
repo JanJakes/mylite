@@ -2680,6 +2680,7 @@ static int test_native_prepared_multirow_dml(void) {
     static const char upsert_sql[] =
         "INSERT INTO people (job, age, name) VALUES (?, ?, ?), (?, ?, ?) "
         "ON DUPLICATE KEY UPDATE job = VALUES(job), age = VALUES(age), name = VALUES(name)";
+    static const char update_sql[] = "UPDATE people SET name = ? WHERE job = ?";
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -2833,6 +2834,46 @@ static int test_native_prepared_multirow_dml(void) {
             .sql = "SELECT age FROM people WHERE job = 'Speaker'",
             .expected = "32",
             .context = "multirow upsert updated row",
+        }
+    );
+
+    stmt = NULL;
+    failures += mylite_test_expect_int(
+        mylite_prepare(database, update_sql, strlen(update_sql), &stmt),
+        MYLITE_OK,
+        "prepare duplicate-key UPDATE"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "Meredith", strlen("Meredith")),
+        MYLITE_OK,
+        "bind duplicate-key UPDATE name"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 1U, "Presenter", strlen("Presenter")),
+        MYLITE_OK,
+        "bind duplicate-key UPDATE predicate"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ERROR,
+        "execute duplicate-key UPDATE"
+    );
+    failures += mylite_test_expect_int(
+        mylite_errcode(database),
+        mysql_error_duplicate_key,
+        "duplicate-key UPDATE diagnostic"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize duplicate-key UPDATE"
+    );
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT name FROM people WHERE job = 'Presenter'",
+            .expected = "Tiffany",
+            .context = "duplicate-key UPDATE remains atomic",
         }
     );
     failures += execute_ok(database, "ROLLBACK");

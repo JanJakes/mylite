@@ -488,6 +488,10 @@ static int format_key_value(
     char *destination,
     size_t destination_size
 );
+static const struct planned_value *resolve_external_text_key_value(
+    const struct planned_value *value,
+    struct planned_value *storage
+);
 static bool loaded_index_part_uses_binary_key_display(const struct loaded_index_part *part);
 static size_t binary_key_display_byte_count(
     const struct loaded_index_part *part,

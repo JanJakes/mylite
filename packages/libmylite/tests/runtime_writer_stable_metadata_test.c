@@ -11,11 +11,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#  include <process.h>
+typedef intptr_t child_process;
+#else
+#  include <sys/wait.h>
+#  include <unistd.h>
+typedef pid_t child_process;
+#endif
+
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     sql_capacity = 4096,
     sqlite_use_nul_terminated_string = -1,
+    process_child_argument_count = 6,
+    process_child_ddl_argument = 5,
+    process_exec_failure_status = 127,
+    process_stress_round_count = 32,
+    path_wait_attempt_count = 10000,
+    path_wait_sleep_ms = 1,
 };
 
 struct writer_race {
@@ -27,7 +42,46 @@ struct writer_race {
     bool metadata_seen_before_writer_lock;
 };
 
+struct process_writer_race {
+    const char *ready_path;
+    const char *done_path;
+    int barrier_rc;
+    bool writer_triggered;
+    bool writer_lock_seen;
+    bool metadata_seen_before_writer_lock;
+};
+
 static int test_writer_stable_dml_matrix(void);
+static int test_writer_stable_process_stress(const char *executable_path);
+static int process_stress_child_main(
+    const char *database_path,
+    const char *ready_path,
+    const char *done_path,
+    const char *ddl
+);
+static int run_process_stress_round(
+    mylite_db *database,
+    const char *database_path,
+    const char *executable_path,
+    const char *ready_path,
+    const char *done_path,
+    int round
+);
+static int spawn_process_stress_child(
+    const char *executable_path,
+    const char *database_path,
+    const char *ready_path,
+    const char *done_path,
+    const char *ddl,
+    child_process *out_child
+);
+static int wait_process_stress_child(child_process child);
+static int execute_process_writer_before_first_lock(
+    unsigned int trace_kind,
+    void *context,
+    void *statement,
+    void *detail
+);
 static int setup_dml_matrix(mylite_db *database);
 static int run_direct_dml_matrix(mylite_db *database, mylite_db *writer, const char *import_path);
 static int run_prepared_dml_matrix(mylite_db *database, mylite_db *writer);
@@ -73,11 +127,25 @@ static int expect_sqlite_text(
     const char *context
 );
 static int write_text_file(const char *path, const char *contents);
+static int wait_for_path(const char *path);
+static int path_exists(const char *path);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 
-int main(void) {
-    return test_writer_stable_dml_matrix() == 0 ? 0 : 1;
+int main(int argc, char **argv) {
+    int failures = 0;
+
+    if (argc == process_child_argument_count && strcmp(argv[1], "--writer-child") == 0) {
+        return process_stress_child_main(
+            argv[2],
+            argv[3],
+            argv[4],
+            argv[process_child_ddl_argument]
+        );
+    }
+    failures += test_writer_stable_dml_matrix();
+    failures += test_writer_stable_process_stress(argv[0]);
+    return failures == 0 ? 0 : 1;
 }
 
 static int test_writer_stable_dml_matrix(void) {
@@ -136,6 +204,338 @@ static int test_writer_stable_dml_matrix(void) {
     (void)remove(import_path);
     return failures;
 }
+
+static int test_writer_stable_process_stress(const char *executable_path) {
+    char database_path[test_path_capacity];
+    char ready_path[test_path_capacity];
+    char done_path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+    int written = 0;
+
+    if (mylite_test_make_path(database_path, sizeof(database_path), "writer-stable-process") != 0) {
+        return 1;
+    }
+    written = snprintf(ready_path, sizeof(ready_path), "%s-ready", database_path);
+    failures += mylite_test_expect_true(
+        written >= 0 && (size_t)written < sizeof(ready_path),
+        "build process-stress ready path"
+    );
+    written = snprintf(done_path, sizeof(done_path), "%s-done", database_path);
+    failures += mylite_test_expect_true(
+        written >= 0 && (size_t)written < sizeof(done_path),
+        "build process-stress done path"
+    );
+    remove_related_files(database_path);
+    (void)remove(ready_path);
+    (void)remove(done_path);
+
+    failures += mylite_test_expect_int(
+        mylite_open(database_path, &database),
+        MYLITE_OK,
+        "open writer-stable process database"
+    );
+    if (database != NULL) {
+        failures += execute_ok(database, "CREATE DATABASE app");
+        failures += execute_ok(database, "USE app");
+        failures +=
+            execute_ok(database, "CREATE TABLE process_race (id INT PRIMARY KEY, value INT)");
+        failures += execute_ok(database, "INSERT INTO process_race VALUES (1, 0)");
+    }
+
+    for (int round = 0; round < process_stress_round_count && failures == 0; ++round) {
+        failures += run_process_stress_round(
+            database,
+            database_path,
+            executable_path,
+            ready_path,
+            done_path,
+            round
+        );
+    }
+    if (database != NULL && failures == 0) {
+        failures += expect_scalar(database, "SELECT value FROM process_race", "32");
+        failures += expect_scalar(
+            database,
+            "SELECT COUNT(*) FROM information_schema.STATISTICS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'process_race' "
+            "AND INDEX_NAME = 'idx_process_race'",
+            "0"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_open(database_path, &database),
+        MYLITE_OK,
+        "reopen writer-stable process database"
+    );
+    if (database != NULL) {
+        sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+
+        failures += execute_ok(database, "USE app");
+        failures += expect_scalar(database, "SELECT value FROM process_race", "32");
+        failures += expect_sqlite_int(
+            sqlite,
+            "SELECT integrity_catalog_generation = catalog_generation "
+            "AND integrity_sqlite_schema_version = "
+            "(SELECT schema_version FROM pragma_schema_version) "
+            "FROM _mylite_catalog_state WHERE singleton_id = 1",
+            1,
+            "process-stress integrity seal matches durable state"
+        );
+        failures += expect_sqlite_text(
+            sqlite,
+            "PRAGMA integrity_check",
+            "ok",
+            "process-stress SQLite integrity"
+        );
+    }
+
+    mylite_close(database);
+    (void)remove(ready_path);
+    (void)remove(done_path);
+    remove_related_files(database_path);
+    return failures;
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+static int process_stress_child_main(
+    const char *database_path,
+    const char *ready_path,
+    const char *done_path,
+    const char *ddl
+) {
+    mylite_db *database = NULL;
+    int failures = wait_for_path(ready_path);
+
+    if (failures == 0) {
+        failures += mylite_test_expect_int(
+            mylite_open(database_path, &database),
+            MYLITE_OK,
+            "open process-stress DDL child"
+        );
+    }
+    if (database != NULL) {
+        failures += execute_ok(database, "USE app");
+        failures += execute_ok(database, ddl);
+    }
+    mylite_close(database);
+    failures += write_text_file(done_path, "");
+    return failures == 0 ? 0 : 1;
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+static int run_process_stress_round(
+    mylite_db *database,
+    const char *database_path,
+    const char *executable_path,
+    const char *ready_path,
+    const char *done_path,
+    int round
+) {
+    static const char add_index_sql[] =
+        "ALTER TABLE process_race ADD INDEX idx_process_race (value)";
+    static const char drop_index_sql[] = "ALTER TABLE process_race DROP INDEX idx_process_race";
+    char update_sql[sql_capacity];
+    const char *ddl = round % 2 == 0 ? add_index_sql : drop_index_sql;
+    child_process child = (child_process)-1;
+    struct process_writer_race race = {
+        .ready_path = ready_path,
+        .done_path = done_path,
+    };
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(database);
+    mylite_result *result = NULL;
+    bool trace_installed = false;
+    int failures = 0;
+    int rc = MYLITE_ERROR;
+    int written = snprintf(
+        update_sql,
+        sizeof(update_sql),
+        "UPDATE process_race SET value = %d WHERE id = 1",
+        round + 1
+    );
+
+    failures += mylite_test_expect_true(
+        written >= 0 && (size_t)written < sizeof(update_sql),
+        "build process-stress update"
+    );
+    (void)remove(ready_path);
+    (void)remove(done_path);
+    if (failures == 0) {
+        failures += spawn_process_stress_child(
+            executable_path,
+            database_path,
+            ready_path,
+            done_path,
+            ddl,
+            &child
+        );
+    }
+    if (failures == 0 && sqlite != NULL) {
+        failures += mylite_test_expect_int(
+            sqlite3_trace_v2(
+                sqlite,
+                SQLITE_TRACE_STMT,
+                execute_process_writer_before_first_lock,
+                &race
+            ),
+            SQLITE_OK,
+            "install process-stress trace"
+        );
+        trace_installed = failures == 0;
+    } else if (sqlite == NULL) {
+        failures++;
+    }
+    if (failures == 0) {
+        rc = mylite_execute(database, update_sql, strlen(update_sql), &result);
+        if (rc != MYLITE_OK) {
+            fprintf(
+                stderr,
+                "process-stress DML failed in round %d: rc=%d err=%d state=%s msg=%s\n",
+                round,
+                rc,
+                mylite_errcode(database),
+                mylite_sqlstate(database),
+                mylite_errmsg(database)
+            );
+        }
+        failures += mylite_test_expect_int(rc, MYLITE_OK, "process-stress DML");
+    }
+    mylite_result_free(result);
+    if (trace_installed) {
+        failures += mylite_test_expect_int(
+            sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+            SQLITE_OK,
+            "remove process-stress trace"
+        );
+    }
+    if (!race.writer_triggered && child != (child_process)-1) {
+        failures += write_text_file(ready_path, "");
+    }
+    if (child != (child_process)-1) {
+        failures += wait_process_stress_child(child);
+    }
+    failures += mylite_test_expect_true(race.writer_lock_seen, "process-stress writer lock");
+    failures += mylite_test_expect_true(race.writer_triggered, "process-stress DDL trigger");
+    failures += mylite_test_expect_int(race.barrier_rc, 0, "process-stress DDL barrier");
+    failures += mylite_test_expect_true(
+        !race.metadata_seen_before_writer_lock,
+        "process-stress planning follows writer lock"
+    );
+    (void)remove(ready_path);
+    (void)remove(done_path);
+    return failures;
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+static int spawn_process_stress_child(
+    const char *executable_path,
+    const char *database_path,
+    const char *ready_path,
+    const char *done_path,
+    const char *ddl,
+    child_process *out_child
+) {
+#ifdef _WIN32
+    *out_child = _spawnl(
+        _P_NOWAIT,
+        executable_path,
+        executable_path,
+        "--writer-child",
+        database_path,
+        ready_path,
+        done_path,
+        ddl,
+        NULL
+    );
+#else
+    *out_child = fork();
+    if (*out_child == 0) {
+        (void)execl(
+            executable_path,
+            executable_path,
+            "--writer-child",
+            database_path,
+            ready_path,
+            done_path,
+            ddl,
+            (char *)NULL
+        );
+        _exit(process_exec_failure_status);
+    }
+#endif
+    if (*out_child == (child_process)-1) {
+        fprintf(stderr, "spawn process-stress DDL child failed\n");
+        return 1;
+    }
+    return 0;
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+static int wait_process_stress_child(child_process child) {
+    int status = -1;
+    int failures = 0;
+
+#ifdef _WIN32
+    failures += mylite_test_expect_true(
+        _cwait(&status, child, 0) != -1,
+        "wait for process-stress DDL child"
+    );
+    failures += mylite_test_expect_int(status, 0, "process-stress DDL child status");
+#else
+    failures += mylite_test_expect_true(
+        waitpid(child, &status, 0) == child,
+        "wait for process-stress DDL child"
+    );
+    failures += mylite_test_expect_true(WIFEXITED(status), "process-stress DDL child exited");
+    if (WIFEXITED(status)) {
+        failures +=
+            mylite_test_expect_int(WEXITSTATUS(status), 0, "process-stress DDL child status");
+    }
+#endif
+    return failures;
+}
+
+/* sqlite3_trace_v2 fixes this callback's opaque parameter order. */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+static int execute_process_writer_before_first_lock(
+    unsigned int trace_kind,
+    void *context,
+    void *statement,
+    void *detail
+) {
+    struct process_writer_race *race = context;
+    const char *sql = NULL;
+
+    (void)detail;
+    if (trace_kind != SQLITE_TRACE_STMT || race == NULL || statement == NULL) {
+        return 0;
+    }
+    sql = sqlite3_sql((sqlite3_stmt *)statement);
+    if (sql == NULL) {
+        return 0;
+    }
+    if (!race->writer_lock_seen && strstr(sql, "_mylite_catalog_") != NULL) {
+        race->metadata_seen_before_writer_lock = true;
+    }
+    if (race->writer_triggered || strcmp(sql, "BEGIN IMMEDIATE") != 0) {
+        return 0;
+    }
+
+    race->writer_lock_seen = true;
+    race->writer_triggered = true;
+    race->barrier_rc = write_text_file(race->ready_path, "");
+    if (race->barrier_rc == 0) {
+        race->barrier_rc = wait_for_path(race->done_path);
+    }
+    return 0;
+}
+
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 static int setup_dml_matrix(mylite_db *database) {
     static const char *const statements[] = {
@@ -835,6 +1235,27 @@ static int write_text_file(const char *path, const char *contents) {
 }
 
 // NOLINTEND(bugprone-easily-swappable-parameters)
+
+static int wait_for_path(const char *path) {
+    for (int attempt = 0; attempt < path_wait_attempt_count; ++attempt) {
+        if (path_exists(path)) {
+            return 0;
+        }
+        (void)sqlite3_sleep(path_wait_sleep_ms);
+    }
+    fprintf(stderr, "timed out waiting for barrier path: %s\n", path);
+    return 1;
+}
+
+static int path_exists(const char *path) {
+    FILE *file = fopen(path, "rb");
+
+    if (file == NULL) {
+        return 0;
+    }
+    (void)fclose(file);
+    return 1;
+}
 
 static void remove_related_files(const char *path) {
     (void)remove(path);

@@ -105,3 +105,10 @@ generated columns, and foreign keys. The test then verifies symmetric
 catalog/physical column and index correspondence, constraint metadata and
 enforcement, matching integrity-seal values, reopen reads, post-reopen writes,
 and SQLite integrity.
+
+The same gate runs 32 additional cross-process rounds. A child process commits
+alternating index creation and removal after the parent traces its first writer
+lock but before the lock is acquired. Every parent write must observe the
+child's generation, and the final database must reopen with the expected row,
+index state, integrity seal, and SQLite integrity result. The test carries the
+`concurrency` label and runs under the TSan qualification build.

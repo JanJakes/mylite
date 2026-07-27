@@ -141,7 +141,7 @@ buildable and reviewable.
   family.
 - [x] Cover direct and retained prepared plans, statement reset, explicit
   transactions, autocommit off, and the first deferred write.
-- [ ] Run the concurrency matrix under TSan and repeated multi-process stress.
+- [x] Run the concurrency matrix under TSan and repeated multi-process stress.
 - [x] Add a release-gate test that fails if planning can precede the
   writer-stable catalog snapshot for a metadata-dependent write.
 

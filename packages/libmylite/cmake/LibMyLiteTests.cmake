@@ -174,6 +174,7 @@ set_tests_properties(
   libmylite.runtime.catalog_migration_concurrency
   libmylite.runtime.show_processlist_introspection
   libmylite.runtime.transaction_lifecycle
+  libmylite.runtime.writer_stable_metadata
   PROPERTIES
     LABELS "runtime;concurrency"
     RESOURCE_LOCK mylite_concurrency

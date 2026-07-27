@@ -216,8 +216,21 @@ static int format_key_part_value(
     char *destination,
     size_t destination_size
 ) {
+    static const unsigned char empty_text[] = "";
+
+    struct planned_value external_value;
+
     if (part == NULL || value == NULL || destination == NULL || destination_size == 0U) {
         return MYLITE_ERROR;
+    }
+    if (value->is_text && value->external_binding != NULL &&
+        value->external_binding->type == MYLITE_STMT_BINDING_TEXT) {
+        external_value = *value;
+        external_value.text =
+            (char *)(value->external_binding->size == 0U ? empty_text
+                                                         : value->external_binding->bytes);
+        external_value.text_length = value->external_binding->size;
+        value = &external_value;
     }
     if (value->is_blob && loaded_index_part_uses_binary_key_display(part)) {
         return format_blob_key_part_value(part, value, true, destination, destination_size);

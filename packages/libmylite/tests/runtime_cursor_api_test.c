@@ -40,6 +40,7 @@ enum {
     retained_sql_value = 17,
     recovered_insert_id = 5,
     update_arithmetic_delta = 10,
+    mysql_error_duplicate_key = 1062,
 };
 
 static const double native_double_binding_value = 1.25;
@@ -89,6 +90,7 @@ static int expect_native_prepared_row(
 static int test_native_prepared_owns_resolution_context(void);
 static int test_native_prepared_owns_sql_text(void);
 static int test_native_prepared_dml_bindings(void);
+static int test_native_prepared_multirow_dml(void);
 static int test_buffered_prepared_statement_releases_connection(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_statement_surface(void);
@@ -126,6 +128,7 @@ int main(void) {
     failures += test_native_prepared_owns_resolution_context();
     failures += test_native_prepared_owns_sql_text();
     failures += test_native_prepared_dml_bindings();
+    failures += test_native_prepared_multirow_dml();
     failures += test_buffered_prepared_statement_releases_connection();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_statement_surface();
@@ -2655,6 +2658,186 @@ static int test_native_prepared_dml_bindings(void) {
 
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int test_native_prepared_multirow_dml(void) {
+    enum {
+        duplicate_first_age = 63,
+        duplicate_second_age = 17,
+        duplicate_second_job_parameter = 5,
+        duplicate_third_name_parameter = 6,
+        duplicate_third_age_parameter = 7,
+        duplicate_third_job_parameter = 8,
+        duplicate_third_age = 75,
+        upsert_insert_age = 31,
+        upsert_update_name_parameter = 5,
+        upsert_update_age = 32,
+    };
+
+    static const char duplicate_sql[] =
+        "INSERT INTO people (name, age, job) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)";
+    static const char upsert_sql[] =
+        "INSERT INTO people (job, age, name) VALUES (?, ?, ?), (?, ?, ?) "
+        "ON DUPLICATE KEY UPDATE job = VALUES(job), age = VALUES(age), name = VALUES(name)";
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open multirow DML");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE people (name VARCHAR(32) UNIQUE, age INT, job VARCHAR(32) UNIQUE)"
+    );
+    failures += execute_ok(database, "START TRANSACTION");
+    failures += execute_ok(database, "INSERT INTO people VALUES ('John', 30, 'Speaker')");
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(database, duplicate_sql, strlen(duplicate_sql), &stmt),
+        MYLITE_OK,
+        "prepare duplicate multirow INSERT"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "Elvis", strlen("Elvis")),
+        MYLITE_OK,
+        "bind duplicate row one name"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, duplicate_first_age),
+        MYLITE_OK,
+        "bind duplicate row one age"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 2U, "Singer", strlen("Singer")),
+        MYLITE_OK,
+        "bind duplicate row one job"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 3U, "John", strlen("John")),
+        MYLITE_OK,
+        "bind duplicate row two name"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 4U, duplicate_second_age),
+        MYLITE_OK,
+        "bind duplicate row two age"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(
+            stmt,
+            duplicate_second_job_parameter,
+            "Consultant",
+            strlen("Consultant")
+        ),
+        MYLITE_OK,
+        "bind duplicate row two job"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, duplicate_third_name_parameter, "Frank", strlen("Frank")),
+        MYLITE_OK,
+        "bind duplicate row three name"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, duplicate_third_age_parameter, duplicate_third_age),
+        MYLITE_OK,
+        "bind duplicate row three age"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, duplicate_third_job_parameter, "Bass", strlen("Bass")),
+        MYLITE_OK,
+        "bind duplicate row three job"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ERROR,
+        "execute duplicate multirow INSERT"
+    );
+    failures += mylite_test_expect_int(
+        mylite_errcode(database),
+        mysql_error_duplicate_key,
+        "duplicate multirow INSERT diagnostic"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize duplicate multirow INSERT"
+    );
+    stmt = NULL;
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT COUNT(*) FROM people",
+            .expected = "1",
+            .context = "duplicate multirow INSERT remains atomic",
+        }
+    );
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(database, upsert_sql, strlen(upsert_sql), &stmt),
+        MYLITE_OK,
+        "prepare multirow upsert"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 0U, "Presenter", strlen("Presenter")),
+        MYLITE_OK,
+        "bind upsert insert job"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 1U, upsert_insert_age),
+        MYLITE_OK,
+        "bind upsert insert age"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 2U, "Tiffany", strlen("Tiffany")),
+        MYLITE_OK,
+        "bind upsert insert name"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, 3U, "Speaker", strlen("Speaker")),
+        MYLITE_OK,
+        "bind upsert update job"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 4U, upsert_update_age),
+        MYLITE_OK,
+        "bind upsert update age"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_text(stmt, upsert_update_name_parameter, "Meredith", strlen("Meredith")),
+        MYLITE_OK,
+        "bind upsert update name"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "execute multirow upsert");
+    failures += mylite_test_expect_int64(
+        mylite_stmt_affected_rows(stmt),
+        3,
+        "multirow upsert affected rows"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize multirow upsert");
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT COUNT(*) FROM people",
+            .expected = "2",
+            .context = "multirow upsert row count",
+        }
+    );
+    failures += expect_query_scalar_text(
+        database,
+        (struct expected_query_scalar_text){
+            .sql = "SELECT age FROM people WHERE job = 'Speaker'",
+            .expected = "32",
+            .context = "multirow upsert updated row",
+        }
+    );
+    failures += execute_ok(database, "ROLLBACK");
+
+    mylite_close(database);
     return failures;
 }
 

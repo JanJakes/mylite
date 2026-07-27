@@ -134,15 +134,15 @@ buildable and reviewable.
 
 - [x] Add a trace-hook barrier where handle B commits `ADD COLUMN` after handle
   A plans `MODIFY COLUMN` but before A's writer lock.
-- [ ] Assert exact catalog columns, physical columns, indexes, constraints,
+- [x] Assert exact catalog columns, physical columns, indexes, constraints,
   seal values, reopen behavior, and post-reopen reads/writes.
-- [ ] Cover stale type conversion, index changes, nullability, defaults,
+- [x] Cover stale type conversion, index changes, nullability, defaults,
   generated columns, foreign keys, and duplicate-key targets for every DML
   family.
-- [ ] Cover direct and retained prepared plans, statement reset, explicit
+- [x] Cover direct and retained prepared plans, statement reset, explicit
   transactions, autocommit off, and the first deferred write.
 - [ ] Run the concurrency matrix under TSan and repeated multi-process stress.
-- [ ] Add a release-gate test that fails if planning can precede the
+- [x] Add a release-gate test that fails if planning can precede the
   writer-stable catalog snapshot for a metadata-dependent write.
 
 ### `COR-02`: concurrent migration convergence

@@ -56,3 +56,52 @@ orphaned catalog IDs and remains valid after reopen.
 Temporary-table operations use the same statement-entry generation guard.
 They can be conservatively retried after unrelated persistent DDL, but they do
 not publish persistent catalog state.
+
+## Generation Consumer Audit
+
+Every cached object that depends on durable metadata is keyed by the catalog
+generation, the SQLite schema generation, or both:
+
+- statement entry synchronizes the connection snapshot and captures the
+  execution generation before analysis;
+- statement transactions and catalog mutations compare that captured
+  generation after entering their stable transaction and before mutation;
+- retained DML and `SELECT` analysis keys reject plans from an older catalog or
+  SQLite schema generation;
+- table descriptors, loaded-catalog entries, and cached internal SQLite
+  statements validate their generation before reuse.
+
+Generation comparisons are equality checks against the complete captured key.
+No consumer treats a larger or smaller value as compatible, and a stale
+consumer cannot advance the durable generation.
+
+## Integrity-Seal Publication Audit
+
+An integrity seal can become current only at these completed-state boundaries:
+
+- initial catalog creation, for generation one;
+- an independently complete catalog mutation;
+- successful open or migration after full catalog and physical validation;
+- outer structural-statement completion after all nested physical and catalog
+  changes have been assembled and validated.
+
+Private staged catalog-generation helpers invalidate the seal and leave it
+invalid. They do not publish a seal because test and bootstrap callers may
+assemble descriptors and physical schema in separate transactions. A later
+validated open is responsible for resealing that complete state.
+
+## Release Gates
+
+`runtime_writer_stable_metadata_test.c` installs a SQLite statement-trace
+barrier on the writing handle. A second handle commits DDL when the first
+`BEGIN IMMEDIATE` is traced but before it acquires the writer lock. The test
+fails if any internal catalog query was traced before that lock boundary.
+
+The matrix covers direct `INSERT`, `REPLACE`, `UPDATE`, `DELETE`, joined DML,
+duplicate-key update, `LOAD DATA`, native retained DML after reset, SQL-level
+prepared DML, autocommit-disabled first writes, and explicit transactions. The
+interleavings and writes exercise types, indexes, nullability, defaults,
+generated columns, and foreign keys. The test then verifies symmetric
+catalog/physical column and index correspondence, constraint metadata and
+enforcement, matching integrity-seal values, reopen reads, post-reopen writes,
+and SQLite integrity.

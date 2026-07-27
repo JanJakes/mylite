@@ -1285,10 +1285,8 @@ static int test_prepared_dml_plan_cache_profile(void) {
             database,
             "SELECT COUNT(*) FROM t WHERE (id = 5 AND value IS NULL) "
             "OR (id = 6 AND value = '42')",
-            strlen(
-                "SELECT COUNT(*) FROM t WHERE (id = 5 AND value IS NULL) "
-                "OR (id = 6 AND value = '42')"
-            ),
+            strlen("SELECT COUNT(*) FROM t WHERE (id = 5 AND value IS NULL) "
+                   "OR (id = 6 AND value = '42')"),
             &result
         ),
         MYLITE_OK,

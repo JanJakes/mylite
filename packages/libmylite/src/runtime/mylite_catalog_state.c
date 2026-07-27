@@ -32,9 +32,12 @@ enum catalog_state_select_column_index {
     catalog_state_select_file_format_version_column = 4,
 };
 
+static mylite_catalog_migration_prelock_test_hook migration_prelock_test_hook = NULL;
+static void *migration_prelock_test_hook_context = NULL;
+
 static int ensure_catalog_schema(struct mylite_db *database);
 static int load_existing_catalog(struct mylite_db *database);
-static int migrate_catalog_schema(struct mylite_db *database, const struct mylite_catalog *catalog);
+static int migrate_catalog_schema(struct mylite_db *database);
 static int initialize_catalog_schema(struct mylite_db *database);
 static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count);
 static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog);
@@ -102,6 +105,14 @@ void mylite_catalog_deinit(struct mylite_catalog *catalog) {
         free(catalog->statement_cache[index].sql);
     }
     memset(catalog, 0, sizeof(*catalog));
+}
+
+void mylite_catalog_set_migration_prelock_test_hook(
+    mylite_catalog_migration_prelock_test_hook hook,
+    void *context
+) {
+    migration_prelock_test_hook = hook;
+    migration_prelock_test_hook_context = context;
 }
 
 int mylite_catalog_initialize_file_backed(struct mylite_db *database) {
@@ -463,7 +474,10 @@ static int load_existing_catalog(struct mylite_db *database) {
     int rc = read_catalog_state(database->sqlite, &catalog);
 
     if (rc == MYLITE_OK && catalog.schema_version < MYLITE_CATALOG_SCHEMA_VERSION) {
-        rc = migrate_catalog_schema(database, &catalog);
+        if (migration_prelock_test_hook != NULL) {
+            migration_prelock_test_hook(migration_prelock_test_hook_context);
+        }
+        rc = migrate_catalog_schema(database);
     }
     if (rc == MYLITE_OK) {
         rc = read_catalog_state(database->sqlite, &catalog);
@@ -485,21 +499,36 @@ static int load_existing_catalog(struct mylite_db *database) {
     return apply_catalog_state(database, &catalog);
 }
 
-static int migrate_catalog_schema(
-    struct mylite_db *database,
-    const struct mylite_catalog *catalog
-) {
-    uint32_t schema_version = catalog->schema_version;
-    int rc = MYLITE_OK;
+static int migrate_catalog_schema(struct mylite_db *database) {
+    struct mylite_catalog catalog = {.initialized = false};
+    uint32_t schema_version = 0U;
+    int rc = begin_catalog_transaction(database->sqlite);
 
+    if (rc == MYLITE_OK) {
+        rc = read_catalog_state(database->sqlite, &catalog);
+    }
+    if (rc == MYLITE_OK) {
+        schema_version = catalog.schema_version;
+    }
     while (rc == MYLITE_OK && schema_version < MYLITE_CATALOG_SCHEMA_VERSION) {
         rc = mylite_catalog_migrate_schema_one_step(database->sqlite, &schema_version);
     }
     if (rc == MYLITE_OK && schema_version == MYLITE_CATALOG_SCHEMA_VERSION) {
-        return MYLITE_OK;
+        rc = read_catalog_state(database->sqlite, &catalog);
+    }
+    if (rc == MYLITE_OK && schema_version == MYLITE_CATALOG_SCHEMA_VERSION) {
+        rc = validate_and_seal_catalog_in_transaction(database->sqlite, &catalog);
+    }
+    if (rc == MYLITE_OK && schema_version == MYLITE_CATALOG_SCHEMA_VERSION) {
+        rc = commit_catalog_transaction(database->sqlite);
+    } else if (rc == MYLITE_OK) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rollback_catalog_transaction(database, rc);
     }
 
-    return rc == MYLITE_OK ? MYLITE_ERROR : rc;
+    return MYLITE_OK;
 }
 
 static int initialize_catalog_schema(struct mylite_db *database) {

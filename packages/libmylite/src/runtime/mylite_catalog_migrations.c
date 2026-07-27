@@ -79,7 +79,7 @@ static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite);
 static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite);
 static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite);
 static int migrate_catalog_schema_v37_to_v38(sqlite3 *sqlite);
-static int rollback_catalog_transaction(sqlite3 *sqlite, int primary_rc);
+static int rollback_catalog_migration_step(sqlite3 *sqlite, int primary_rc);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version) {
     uint32_t next_schema_version = 0U;
@@ -249,18 +249,18 @@ int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
 }
 
 static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_columns "
                              "ADD COLUMN default_kind INTEGER NOT NULL DEFAULT 0;"
                              "ALTER TABLE _mylite_catalog_columns "
                              "ADD COLUMN default_integer INTEGER;"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 2, minimum_reader_schema_version = 2;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -269,7 +269,7 @@ static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v2_to_v3(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v2;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -298,11 +298,11 @@ static int migrate_catalog_schema_v2_to_v3(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v2;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 3, minimum_reader_schema_version = 3;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -311,7 +311,7 @@ static int migrate_catalog_schema_v2_to_v3(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v3_to_v4(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v3;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -341,11 +341,11 @@ static int migrate_catalog_schema_v3_to_v4(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v3;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 4, minimum_reader_schema_version = 4;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -353,7 +353,7 @@ static int migrate_catalog_schema_v3_to_v4(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v4_to_v5(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "CREATE TABLE _mylite_catalog_indexes ("
                              "index_id INTEGER PRIMARY KEY,"
                              "table_id INTEGER NOT NULL,"
@@ -380,11 +380,11 @@ static int migrate_catalog_schema_v4_to_v5(sqlite3 *sqlite) {
                              ");"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 5, minimum_reader_schema_version = 5;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -392,7 +392,7 @@ static int migrate_catalog_schema_v4_to_v5(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v5_to_v6(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_tables "
                              "ADD COLUMN auto_increment_next INTEGER NOT NULL DEFAULT 1;"
                              "ALTER TABLE _mylite_catalog_columns "
@@ -400,11 +400,11 @@ static int migrate_catalog_schema_v5_to_v6(sqlite3 *sqlite) {
                              "CHECK(is_auto_increment IN (0, 1));"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 6, minimum_reader_schema_version = 6;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -413,7 +413,7 @@ static int migrate_catalog_schema_v5_to_v6(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v6_to_v7(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v6;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -445,11 +445,11 @@ static int migrate_catalog_schema_v6_to_v7(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v6;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 7, minimum_reader_schema_version = 7;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -458,7 +458,7 @@ static int migrate_catalog_schema_v6_to_v7(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v7;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -490,11 +490,11 @@ static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v7;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 8, minimum_reader_schema_version = 8;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -503,7 +503,7 @@ static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_indexes RENAME TO _mylite_catalog_indexes_v8;"
         "CREATE TABLE _mylite_catalog_indexes ("
         "index_id INTEGER PRIMARY KEY,"
@@ -526,11 +526,11 @@ static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_indexes_v8;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 9, minimum_reader_schema_version = 9;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -539,16 +539,16 @@ static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v9_to_v10(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_index_columns "
         "ADD COLUMN prefix_length INTEGER CHECK(prefix_length IS NULL OR prefix_length > 0);"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 10, minimum_reader_schema_version = 10;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -557,7 +557,7 @@ static int migrate_catalog_schema_v9_to_v10(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v10_to_v11(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v10;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -589,11 +589,11 @@ static int migrate_catalog_schema_v10_to_v11(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v10;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 11, minimum_reader_schema_version = 11;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -602,7 +602,7 @@ static int migrate_catalog_schema_v10_to_v11(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v11_to_v12(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v11;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -637,11 +637,11 @@ static int migrate_catalog_schema_v11_to_v12(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v11;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 12, minimum_reader_schema_version = 12;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -650,7 +650,7 @@ static int migrate_catalog_schema_v11_to_v12(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v12_to_v13(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_tables "
         "ADD COLUMN default_charset TEXT NOT NULL DEFAULT '" MYLITE_CATALOG_DEFAULT_TABLE_CHARSET
         "';"
@@ -659,11 +659,11 @@ static int migrate_catalog_schema_v12_to_v13(sqlite3 *sqlite) {
         "'" MYLITE_CATALOG_DEFAULT_TABLE_COLLATION "';"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 13, minimum_reader_schema_version = 13;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -671,7 +671,7 @@ static int migrate_catalog_schema_v12_to_v13(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "CREATE TABLE IF NOT EXISTS _mylite_catalog_foreign_keys ("
                              "foreign_key_id INTEGER PRIMARY KEY,"
                              "child_table_id INTEGER NOT NULL,"
@@ -704,11 +704,11 @@ static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite) {
                              ");"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 14, minimum_reader_schema_version = 14;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -717,7 +717,7 @@ static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v14;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -753,11 +753,11 @@ static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v14;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 15, minimum_reader_schema_version = 15;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -765,18 +765,18 @@ static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_columns "
                              "ADD COLUMN character_set_name TEXT NOT NULL DEFAULT '';"
                              "ALTER TABLE _mylite_catalog_columns "
                              "ADD COLUMN collation_name TEXT NOT NULL DEFAULT '';"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 16, minimum_reader_schema_version = 16;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -784,17 +784,17 @@ static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_index_columns "
                              "ADD COLUMN sort_direction INTEGER NOT NULL DEFAULT 1 "
                              "CHECK(sort_direction IN (1, 2));"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 17, minimum_reader_schema_version = 17;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -803,7 +803,7 @@ static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "CREATE TABLE IF NOT EXISTS _mylite_catalog_check_constraints ("
         "check_constraint_id INTEGER PRIMARY KEY,"
         "table_id INTEGER NOT NULL,"
@@ -824,11 +824,11 @@ static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite) {
         ");"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 18, minimum_reader_schema_version = 18;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -837,7 +837,7 @@ static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v18_to_v19(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_indexes RENAME TO _mylite_catalog_indexes_v18;"
         "CREATE TABLE _mylite_catalog_indexes ("
         "index_id INTEGER PRIMARY KEY,"
@@ -860,11 +860,11 @@ static int migrate_catalog_schema_v18_to_v19(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_indexes_v18;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 19, minimum_reader_schema_version = 19;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -872,7 +872,7 @@ static int migrate_catalog_schema_v18_to_v19(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v19_to_v20(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_tables "
                              "ADD COLUMN fulltext_doc_id_initialized INTEGER NOT NULL DEFAULT 0 "
                              "CHECK(fulltext_doc_id_initialized IN (0, 1));"
@@ -883,11 +883,11 @@ static int migrate_catalog_schema_v19_to_v20(sqlite3 *sqlite) {
                              ");"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 20, minimum_reader_schema_version = 20;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -895,7 +895,7 @@ static int migrate_catalog_schema_v19_to_v20(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v20_to_v21(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_tables "
                              "ADD COLUMN created_time_utc_epoch INTEGER NOT NULL DEFAULT 0 "
                              "CHECK(created_time_utc_epoch >= 0);"
@@ -904,11 +904,11 @@ static int migrate_catalog_schema_v20_to_v21(sqlite3 *sqlite) {
                              "CHECK(updated_time_utc_epoch >= 0);"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 21, minimum_reader_schema_version = 21;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -917,7 +917,7 @@ static int migrate_catalog_schema_v20_to_v21(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v21_to_v22(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_schemas "
         "ADD COLUMN default_charset TEXT NOT NULL DEFAULT '" MYLITE_CATALOG_DEFAULT_TABLE_CHARSET
         "';"
@@ -926,11 +926,11 @@ static int migrate_catalog_schema_v21_to_v22(sqlite3 *sqlite) {
         "'" MYLITE_CATALOG_DEFAULT_TABLE_COLLATION "';"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 22, minimum_reader_schema_version = 22;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -938,17 +938,17 @@ static int migrate_catalog_schema_v21_to_v22(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v22_to_v23(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_indexes "
                              "ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1 "
                              "CHECK(is_visible IN (0, 1));"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 23, minimum_reader_schema_version = 23;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -956,16 +956,16 @@ static int migrate_catalog_schema_v22_to_v23(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v23_to_v24(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_tables "
                              "ADD COLUMN comment TEXT NOT NULL DEFAULT '';"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 24, minimum_reader_schema_version = 24;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -974,18 +974,18 @@ static int migrate_catalog_schema_v23_to_v24(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_indexes ADD COLUMN comment TEXT NOT NULL DEFAULT '';"
         "ALTER TABLE _mylite_catalog_indexes "
         "ADD COLUMN show_create_explicit_btree INTEGER NOT NULL DEFAULT 0 "
         "CHECK(show_create_explicit_btree IN (0, 1));"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 25, minimum_reader_schema_version = 25;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -993,16 +993,16 @@ static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v25_to_v26(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_columns "
                              "ADD COLUMN comment TEXT NOT NULL DEFAULT '';"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 26, minimum_reader_schema_version = 26;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1011,7 +1011,7 @@ static int migrate_catalog_schema_v25_to_v26(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v26_to_v27(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_indexes RENAME TO _mylite_catalog_indexes_v26;"
         "CREATE TABLE _mylite_catalog_indexes ("
         "index_id INTEGER PRIMARY KEY,"
@@ -1040,11 +1040,11 @@ static int migrate_catalog_schema_v26_to_v27(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_indexes_v26;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 27, minimum_reader_schema_version = 27;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1053,7 +1053,7 @@ static int migrate_catalog_schema_v26_to_v27(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v27_to_v28(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v27;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -1092,11 +1092,11 @@ static int migrate_catalog_schema_v27_to_v28(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v27;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 28, minimum_reader_schema_version = 28;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1105,7 +1105,7 @@ static int migrate_catalog_schema_v27_to_v28(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v28_to_v29(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v28;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -1145,11 +1145,11 @@ static int migrate_catalog_schema_v28_to_v29(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v28;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 29, minimum_reader_schema_version = 29;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1157,7 +1157,7 @@ static int migrate_catalog_schema_v28_to_v29(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_columns "
                              "ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0 "
                              "CHECK(is_generated IN (0, 1));"
@@ -1170,11 +1170,11 @@ static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite) {
                              "ADD COLUMN sqlite_generation_expression TEXT NOT NULL DEFAULT '';"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 30, minimum_reader_schema_version = 30;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1183,7 +1183,7 @@ static int migrate_catalog_schema_v29_to_v30(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_tables "
         "ADD COLUMN row_format_option TEXT NOT NULL DEFAULT '';"
         "ALTER TABLE _mylite_catalog_tables "
@@ -1204,11 +1204,11 @@ static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite) {
         "CHECK(stats_sample_pages BETWEEN 0 AND 65535);"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 31, minimum_reader_schema_version = 30;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1217,7 +1217,7 @@ static int migrate_catalog_schema_v30_to_v31(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_tables RENAME TO _mylite_catalog_tables_v31;"
         "CREATE TABLE _mylite_catalog_tables ("
         "table_id INTEGER PRIMARY KEY,"
@@ -1282,11 +1282,11 @@ static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
         ");"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 32, minimum_reader_schema_version = 32;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1294,17 +1294,17 @@ static int migrate_catalog_schema_v31_to_v32(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v32_to_v33(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "ALTER TABLE _mylite_catalog_tables "
                              "ADD COLUMN auto_increment_status INTEGER NOT NULL DEFAULT 0 "
                              "CHECK(auto_increment_status >= 0);"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 33, minimum_reader_schema_version = 33;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1313,7 +1313,7 @@ static int migrate_catalog_schema_v32_to_v33(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v33;"
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
@@ -1360,11 +1360,11 @@ static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite) {
         "DROP TABLE _mylite_catalog_columns_v33;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 34, minimum_reader_schema_version = 34;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1373,7 +1373,7 @@ static int migrate_catalog_schema_v33_to_v34(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "ALTER TABLE _mylite_catalog_tables "
         "ADD COLUMN min_rows INTEGER NOT NULL DEFAULT 0 CHECK(min_rows >= 0);"
         "ALTER TABLE _mylite_catalog_tables "
@@ -1385,11 +1385,11 @@ static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite) {
         "CHECK(delay_key_write IN (-1, 0, 1));"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 35, minimum_reader_schema_version = 35;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1398,16 +1398,16 @@ static int migrate_catalog_schema_v34_to_v35(sqlite3 *sqlite) {
 
 static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite) {
     static const char *sql =
-        "BEGIN IMMEDIATE;"
+        "SAVEPOINT _mylite_catalog_migration_step;"
         "CREATE INDEX IF NOT EXISTS _mylite_catalog_foreign_keys_parent_table_id "
         "ON _mylite_catalog_foreign_keys(parent_table_id, foreign_key_id);"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 36, minimum_reader_schema_version = 35;"
-        "COMMIT;";
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1415,14 +1415,14 @@ static int migrate_catalog_schema_v35_to_v36(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite) {
-    static const char *sql = "BEGIN IMMEDIATE;"
+    static const char *sql = "SAVEPOINT _mylite_catalog_migration_step;"
                              "UPDATE _mylite_catalog_state "
                              "SET schema_version = 37, minimum_reader_schema_version = 37;"
-                             "COMMIT;";
+                             "RELEASE SAVEPOINT _mylite_catalog_migration_step;";
     int rc = mylite_catalog_execute_sql(sqlite, sql);
 
     if (rc != MYLITE_OK) {
-        rc = rollback_catalog_transaction(sqlite, rc);
+        rc = rollback_catalog_migration_step(sqlite, rc);
         return rc;
     }
 
@@ -1430,7 +1430,7 @@ static int migrate_catalog_schema_v36_to_v37(sqlite3 *sqlite) {
 }
 
 static int migrate_catalog_schema_v37_to_v38(sqlite3 *sqlite) {
-    int rc = mylite_catalog_execute_sql(sqlite, "BEGIN IMMEDIATE");
+    int rc = mylite_catalog_execute_sql(sqlite, "SAVEPOINT _mylite_catalog_migration_step");
 
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_execute_sql(
@@ -1461,21 +1461,28 @@ static int migrate_catalog_schema_v37_to_v38(sqlite3 *sqlite) {
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_execute_sql(sqlite, "COMMIT");
+        rc = mylite_catalog_execute_sql(sqlite, "RELEASE SAVEPOINT _mylite_catalog_migration_step");
     }
     if (rc != MYLITE_OK) {
-        return rollback_catalog_transaction(sqlite, rc);
+        return rollback_catalog_migration_step(sqlite, rc);
     }
     return MYLITE_OK;
 }
 
-static int rollback_catalog_transaction(sqlite3 *sqlite, int primary_rc) {
+static int rollback_catalog_migration_step(sqlite3 *sqlite, int primary_rc) {
     int sqlite_rc = SQLITE_MISUSE;
 
     if (sqlite == NULL) {
         return primary_rc;
     }
 
-    sqlite_rc = sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL);
+    sqlite_rc = sqlite3_exec(
+        sqlite,
+        "ROLLBACK TO SAVEPOINT _mylite_catalog_migration_step;"
+        "RELEASE SAVEPOINT _mylite_catalog_migration_step",
+        NULL,
+        NULL,
+        NULL
+    );
     return sqlite_rc == SQLITE_OK ? primary_rc : mylite_sqlite_status_to_mylite(sqlite_rc);
 }

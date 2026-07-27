@@ -147,12 +147,12 @@ buildable and reviewable.
 
 ### `COR-02`: concurrent migration convergence
 
-- [ ] Move durable schema-version discovery under the migration writer lock.
-- [ ] Define whether the complete migration chain uses one transaction or
+- [x] Move durable schema-version discovery under the migration writer lock.
+- [x] Define whether the complete migration chain uses one transaction or
   rereads and converges after each serialized step.
-- [ ] Make every migration safely accept a winner's already-committed result.
-- [ ] Add two-handle and two-process barriers for N-1 to current migration.
-- [ ] Require both openers to succeed against one validated current-format
+- [x] Make every migration safely accept a winner's already-committed result.
+- [x] Add two-handle and two-process barriers for N-1 to current migration.
+- [x] Require both openers to succeed against one validated current-format
   file, with no partial migration, spurious corruption error, or stale handle.
 - [ ] Repeat migration tests under crash and write/sync/truncate failpoints.
 

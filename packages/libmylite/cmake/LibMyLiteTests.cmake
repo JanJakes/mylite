@@ -171,6 +171,7 @@ set_tests_properties(
     TIMEOUT 180
 )
 set_tests_properties(
+  libmylite.runtime.catalog_migration_concurrency
   libmylite.runtime.show_processlist_introspection
   libmylite.runtime.transaction_lifecycle
   PROPERTIES

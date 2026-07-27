@@ -103,6 +103,7 @@ tests/runtime_builtin_schema_write_access_test.c|internal|always
 tests/runtime_calendar_date_functions_test.c|internal|always
 tests/runtime_case_operator_test.c|internal|always
 tests/runtime_catalog_foundation_test.c|internal-sqlite|always
+tests/runtime_catalog_migration_concurrency_test.c|internal-sqlite|always
 tests/runtime_ceil_floor_functions_test.c|internal|always
 tests/runtime_char_function_test.c|internal|always
 tests/runtime_char_type_test.c|internal|always

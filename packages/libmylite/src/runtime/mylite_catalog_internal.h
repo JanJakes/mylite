@@ -58,6 +58,8 @@ struct mylite_catalog_table_descriptor_input {
     int64_t updated_time_utc_epoch;
 };
 
+typedef void (*mylite_catalog_migration_prelock_test_hook)(void *context);
+
 void mylite_catalog_schema_table_cache_invalidate(struct mylite_catalog *catalog);
 void mylite_catalog_table_cache_invalidate(struct mylite_catalog *catalog);
 void mylite_catalog_table_cache_invalidate_status(struct mylite_catalog *catalog);
@@ -77,6 +79,10 @@ void mylite_catalog_cache_foreign_key_roles(
 );
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
+void mylite_catalog_set_migration_prelock_test_hook(
+    mylite_catalog_migration_prelock_test_hook hook,
+    void *context
+);
 int mylite_catalog_validate_integrity(sqlite3 *sqlite);
 int mylite_catalog_validate_mutation_integrity(sqlite3 *sqlite);
 int mylite_catalog_create_integrity_seal_triggers(sqlite3 *sqlite);

@@ -116,3 +116,8 @@ With strict mysqli reporting this is a `mysqli_sql_exception`; with reporting
 disabled the operation returns `false` and publishes the same fields on the
 connection or statement. Ordinary buffered `query()` results never own the
 connection and may remain unread across later commands.
+
+The same readiness check covers ping, stat, refresh, server debug-info, and
+kill operations. Matching mysqli's reporting behavior, busy ping and kill
+operations throw in strict mode, while busy stat, refresh, and debug-info
+operations return `false` and publish the 2014 fields on the connection.

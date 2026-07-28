@@ -45,3 +45,5 @@ buffered, freed, reset, re-executed on the same statement, or closed.
 Disallowed commands fail with error `2014`, SQLSTATE `HY000`, and MySQL's
 commands-out-of-sync message without consuming the active result. Prepared
 `result_metadata()` returns field metadata without releasing that ownership.
+The busy check also precedes ping, stat, refresh, server debug-info, and kill
+operations.

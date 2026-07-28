@@ -56,6 +56,10 @@ Observed direct-query transitions:
   fetch had to observe end-of-data;
 - exhausting or freeing the unbuffered result released the connection;
 - `commit()` and `autocommit()` failed while an unbuffered result was active;
+- ping, stat, refresh, server debug-info, and kill operations failed with 2014
+  while preserving the unbuffered result; under strict reporting, ping and
+  kill threw while stat, refresh, and debug-info returned `false` and
+  published the connection diagnostic;
 - the failed command did not destroy the pending result, which could still be
   buffered, fetched, or freed before a successful recovery command;
 - ordinary `query()` with its default buffered mode allowed a following
@@ -238,6 +242,8 @@ No new dependency is permitted.
   results;
 - buffered direct result followed by another command while unread;
 - query, commit, and autocommit attempts in busy states;
+- ping, stat, refresh, server debug-info, and kill attempts, including their
+  strict-reporting return/exception distinction;
 - report-off return/error properties and strict exception fields;
 - prepared unread and partial results;
 - prepared store/get, free, reset, close, same-owner re-execute, and
@@ -257,13 +263,15 @@ supports it.
 
 ## Implementation and qualification
 
-Implemented by `44daa2f5f`. The adapter records the connection state and an
-identity-checked active owner, keeps direct unbuffered results and prepared
-statements responsible for their native cursor lifetime, and rejects unrelated
-commands before they can clear pending state. Prepared execution steps only
-far enough to establish row availability; explicit buffering consumes the
-remaining cursor, while `result_metadata()` builds a metadata-only result
-without releasing the statement owner.
+Implemented by `44daa2f5f` and completed by the release-review fix
+`0277ee818`. The adapter records the connection state and an identity-checked
+active owner, keeps direct unbuffered results and prepared statements
+responsible for their native cursor lifetime, and rejects unrelated commands
+before they can clear pending state. Prepared execution steps only far enough
+to establish row availability; explicit buffering consumes the remaining
+cursor, while `result_metadata()` builds a metadata-only result without
+releasing the statement owner. The same readiness gate covers non-SQL server
+command families while preserving mysqli's strict-reporting distinction.
 
 Qualification evidence:
 
@@ -271,6 +279,8 @@ Qualification evidence:
   transaction, metadata, diagnostic, cleanup, and recovery matrix;
 - all eight mysqli/PDO tests pass in the warnings-as-errors PHP developer
   build;
+- all 701 Release tests pass, including nine PHP extension tests and the full
+  native, install, crash, and fault-injection suite;
 - all nine PHP extension tests pass under ASan/UBSan with the matching Clang
   ASan runtime preloaded for the host PHP executable;
 - the modified C translation units pass focused clang-tidy with warnings

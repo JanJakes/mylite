@@ -294,7 +294,8 @@ The corresponding POSIX paths passed locally.
 - [x] Cover procedural and object APIs, direct and prepared statements,
   commit/autocommit, strict exception mode, and cleanup ordering.
 
-`API-01` implementation evidence at `44daa2f5f`:
+`API-01` implementation evidence at `44daa2f5f`, with release-review
+completion at `0277ee818`:
 
 - The explicit `READY`, `DIRECT_PENDING`, `DIRECT_UNBUFFERED`, and
   `PREPARED_UNBUFFERED` states use identity-checked owners and reject
@@ -304,10 +305,13 @@ The corresponding POSIX paths passed locally.
   partial/final/EOF fetches, materialized utility results, prepared
   store/get/metadata/fetch behavior, same- and different-statement execution,
   zero-row results, commit/autocommit rejection, rollback integrity, and
-  free/reset/close/destructor recovery.
+  free/reset/close/destructor recovery. It also covers ping, stat, refresh,
+  server debug-info, and kill operations with MySQL's return/exception
+  distinction.
 - All eight mysqli/PDO developer tests pass. All nine PHP extension tests pass
   under ASan/UBSan with the matching Clang runtime preloaded for the host PHP
-  executable. Focused clang-tidy and repository formatting gates pass.
+  executable. All 701 Release tests pass, and focused clang-tidy plus
+  repository formatting gates pass.
 
 ### `API-02` and `API-05`: statement-owned diagnostics and warnings
 

@@ -914,7 +914,7 @@ static int test_bit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near ')'",
+            .message_part = "near '))'",
         }
     );
     failures += execute_error(

@@ -580,6 +580,7 @@ tests/runtime_string_row_scalar_update_contexts_test.c|internal|always
 tests/runtime_string_search_functions_test.c|internal|always
 tests/runtime_string_slice_functions_test.c|internal|always
 tests/runtime_sum_aggregate_test.c|internal-sqlite|always
+tests/runtime_syntax_error_diagnostics_test.c|internal-sql|always
 tests/runtime_sys_helper_functions_test.c|internal|always
 tests/runtime_sys_host_summary_by_file_io_type_views_test.c|internal|always
 tests/runtime_sys_host_summary_by_file_io_views_test.c|internal|always

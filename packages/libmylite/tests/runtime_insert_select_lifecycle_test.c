@@ -770,7 +770,7 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax near",
+            .message_part = "near ', 'default-id' FROM DUAL'",
         }
     );
     failures += execute_error(

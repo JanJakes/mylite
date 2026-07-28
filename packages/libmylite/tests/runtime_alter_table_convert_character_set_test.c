@@ -658,7 +658,7 @@ static int test_convert_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '='",
+            .message_part = "near '=utf8mb4'",
         }
     );
     failures += execute_error(

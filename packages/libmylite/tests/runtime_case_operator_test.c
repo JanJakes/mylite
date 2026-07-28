@@ -524,7 +524,7 @@ static int test_case_operator_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'CASE'",
+            .message_part = "near 'CASE WHEN 1 THEN 2 ELSE 3 END'",
         }
     );
 

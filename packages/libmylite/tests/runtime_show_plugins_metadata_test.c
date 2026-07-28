@@ -542,7 +542,7 @@ static int test_show_plugins_and_information_schema_plugins(void) {
             .sql = "SHOW PLUGINS LIKE 'InnoDB'",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'LIKE'",
+            .message_part = "near 'LIKE 'InnoDB''",
         }
     );
     failures += expect_error(
@@ -551,7 +551,7 @@ static int test_show_plugins_and_information_schema_plugins(void) {
             .sql = "SHOW PLUGINS WHERE Name = 'InnoDB'",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'WHERE'",
+            .message_part = "near 'WHERE Name = 'InnoDB''",
         }
     );
     failures += expect_error(
@@ -569,7 +569,7 @@ static int test_show_plugins_and_information_schema_plugins(void) {
             .sql = "SHOW PLUGINS FROM mysql",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'FROM'",
+            .message_part = "near 'FROM mysql'",
         }
     );
     failures += expect_statement_ok(database, "CREATE DATABASE app");

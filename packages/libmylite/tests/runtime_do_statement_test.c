@@ -353,7 +353,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '&&'",
+            .message_part = "near '&& 0'",
         }
     );
     failures += execute_error(
@@ -362,7 +362,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '||'",
+            .message_part = "near '|| 0'",
         }
     );
     failures += execute_error(
@@ -389,7 +389,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "end of input",
+            .message_part = "near '' at line 1",
         }
     );
     failures += execute_error(
@@ -398,7 +398,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'FROM'",
+            .message_part = "near 'FROM DUAL'",
         }
     );
     failures += execute_error(
@@ -407,7 +407,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'AS'",
+            .message_part = "near 'AS x'",
         }
     );
 

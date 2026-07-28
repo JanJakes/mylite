@@ -372,7 +372,7 @@ static int test_descending_key_part_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '.'",
+            .message_part = "near '.a DESC))'",
         }
     );
     failures += execute_error(
@@ -381,7 +381,7 @@ static int test_descending_key_part_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '.'",
+            .message_part = "near '.a DESC))'",
         }
     );
 

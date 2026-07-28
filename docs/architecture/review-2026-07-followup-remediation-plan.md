@@ -617,14 +617,31 @@ ledger gates; and the 12,397,476-byte production archive.
 
 ### `SQL-02`: bounded recovery work and memory
 
-- [ ] Measure peak allocations, bytes, lexer passes, callbacks, and runtime for
+- [x] Measure peak allocations, bytes, lexer passes, callbacks, and runtime for
   flat and shallow malformed input through at least 65,536 tokens and 1 MiB.
-- [ ] Define parser work, token, depth, and memory budgets proportional to
+- [x] Define parser work, token, depth, and memory budgets proportional to
   accepted input size.
-- [ ] Avoid allocating full per-token indexes unless a retry requires them.
-- [ ] Stop retries deterministically when the budget is exhausted and return
+- [x] Avoid allocating full per-token indexes unless a retry requires them.
+- [x] Stop retries deterministically when the budget is exhausted and return
   the specified diagnostic.
-- [ ] Add scaling and fuzz regression gates.
+- [x] Add scaling and fuzz regression gates.
+
+`SQL-02` is closed by the independently authored specification and MySQL
+fixture at `c452e451b`, implementation at `00398814f` and `b2eecd116`, and
+release qualification at `3397926ab`. Recovery now stores at most 65,536
+tokens, indexes at most 512 parenthesis levels, permits four lexer passes and
+eight callbacks, and enforces a proportional live-workspace allowance capped
+at 8 MiB. Parenthesis indexes are lazy, deterministic budget exhaustion
+preserves public `1064` / `42000` syntax diagnostics, and actual allocation
+failure retains `MYLITE_NOMEM` / `HY001`.
+
+Qualification covered all 47 parser suites in Development, Debug-CI, Release,
+and ASan/UBSan with leak detection; the focused deterministic allocator
+profile; all 38 pinned MySQL 8.4.9 parser fixtures; 10,000 seeded parser-fuzzer
+executions including inputs above one MiB; full LLVM 19 static analysis;
+formatting, ABI, install-consumer, and compatibility-ledger gates; structured
+scaling through 65,536 tokens and one MiB; and the 12,412,232-byte production
+archive.
 
 ### `SQL-03`, `SQL-04`, and `SQL-05`: spans, diagnostics, and nesting limits
 

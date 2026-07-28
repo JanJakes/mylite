@@ -46,13 +46,14 @@ struct process_hook_context {
     const char *release_path;
 };
 
+struct migration_child_options {
+    const char *database_path;
+    struct process_hook_context hook;
+};
+
 static int test_two_handle_migration_converges(void);
 static int test_two_process_migration_converges(const char *executable_path);
-static int migration_child_main(
-    const char *database_path,
-    const char *ready_path,
-    const char *release_path
-);
+static int migration_child_main(const struct migration_child_options *options);
 static void await_thread_barrier(void *context);
 static void await_process_release(void *context);
 #ifdef _WIN32
@@ -74,7 +75,12 @@ int main(int argc, char **argv) {
     int failures = 0;
 
     if (argc == child_argument_count && strcmp(argv[1], "--migration-child") == 0) {
-        return migration_child_main(argv[2], argv[3], argv[4]);
+        const struct migration_child_options options = {
+            .database_path = argv[2],
+            .hook = {.ready_path = argv[3], .release_path = argv[4]},
+        };
+
+        return migration_child_main(&options);
     }
 
     failures += test_two_handle_migration_converges();
@@ -227,7 +233,12 @@ static int test_two_process_migration_converges(const char *executable_path) {
 #else
         children[index] = fork();
         if (children[index] == 0) {
-            _exit(migration_child_main(path, ready_paths[index], release_path));
+            const struct migration_child_options options = {
+                .database_path = path,
+                .hook = {.ready_path = ready_paths[index], .release_path = release_path},
+            };
+
+            _exit(migration_child_main(&options));
         }
 #endif
         if (children[index] == -1) {
@@ -286,21 +297,14 @@ static int test_two_process_migration_converges(const char *executable_path) {
     return failures;
 }
 
-static int migration_child_main(
-    const char *database_path,
-    const char *ready_path,
-    const char *release_path
-) {
-    struct process_hook_context hook = {
-        .ready_path = ready_path,
-        .release_path = release_path,
-    };
+static int migration_child_main(const struct migration_child_options *options) {
+    struct process_hook_context hook = options->hook;
     mylite_db *database = NULL;
     int failures = 0;
 
     mylite_catalog_set_migration_prelock_test_hook(await_process_release, &hook);
     failures += mylite_test_expect_int(
-        mylite_open(database_path, &database),
+        mylite_open(options->database_path, &database),
         MYLITE_OK,
         "child catalog migration open"
     );

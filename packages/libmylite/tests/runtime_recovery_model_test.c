@@ -130,14 +130,12 @@ static int classify_ddl_fault_state(
     enum ddl_fault_state *out_state
 );
 static enum ddl_fault_state classify_create_table(const struct ddl_fault_observation *observation);
-static enum ddl_fault_state classify_modify_column(const struct ddl_fault_observation *observation);
+static enum ddl_fault_state classify_modify_column(const struct ddl_fault_observation *state);
 static enum ddl_fault_state classify_drop_table(const struct ddl_fault_observation *observation);
 static enum ddl_fault_state classify_rename_table(const struct ddl_fault_observation *observation);
 static enum ddl_fault_state classify_create_index(const struct ddl_fault_observation *observation);
 static enum ddl_fault_state classify_drop_index(const struct ddl_fault_observation *observation);
-static enum ddl_fault_state classify_truncate_table(
-    const struct ddl_fault_observation *observation
-);
+static enum ddl_fault_state classify_truncate_table(const struct ddl_fault_observation *state);
 static bool ddl_fault_has_original_int_table(const struct ddl_fault_observation *observation);
 static bool ddl_fault_has_renamed_int_table(const struct ddl_fault_observation *observation);
 static bool ddl_fault_has_setup_rows(const struct ddl_fault_observation *observation);
@@ -930,18 +928,16 @@ static enum ddl_fault_state classify_create_table(const struct ddl_fault_observa
     return ddl_fault_state_invalid;
 }
 
-static enum ddl_fault_state classify_modify_column(
-    const struct ddl_fault_observation *observation
-) {
-    if (observation->old_table_count != 1 || observation->renamed_table_count != 0 ||
-        observation->column_count != ddl_fault_table_column_count ||
-        observation->index_count != 0 || !ddl_fault_has_setup_rows(observation)) {
+static enum ddl_fault_state classify_modify_column(const struct ddl_fault_observation *state) {
+    if (state->old_table_count != 1 || state->renamed_table_count != 0 ||
+        state->column_count != ddl_fault_table_column_count || state->index_count != 0 ||
+        !ddl_fault_has_setup_rows(state)) {
         return ddl_fault_state_invalid;
     }
-    if (observation->bigint_column_count == 0) {
+    if (state->bigint_column_count == 0) {
         return ddl_fault_state_pre;
     }
-    if (observation->bigint_column_count == 1) {
+    if (state->bigint_column_count == 1) {
         return ddl_fault_state_post;
     }
     return ddl_fault_state_invalid;
@@ -998,16 +994,14 @@ static enum ddl_fault_state classify_drop_index(const struct ddl_fault_observati
     return ddl_fault_state_invalid;
 }
 
-static enum ddl_fault_state classify_truncate_table(
-    const struct ddl_fault_observation *observation
-) {
-    if (!ddl_fault_has_original_int_table(observation) || observation->index_count != 0) {
+static enum ddl_fault_state classify_truncate_table(const struct ddl_fault_observation *state) {
+    if (!ddl_fault_has_original_int_table(state) || state->index_count != 0) {
         return ddl_fault_state_invalid;
     }
-    if (ddl_fault_has_setup_rows(observation)) {
+    if (ddl_fault_has_setup_rows(state)) {
         return ddl_fault_state_pre;
     }
-    if (ddl_fault_has_no_rows(observation)) {
+    if (ddl_fault_has_no_rows(state)) {
         return ddl_fault_state_post;
     }
     return ddl_fault_state_invalid;
@@ -1624,10 +1618,9 @@ static int classify_catalog_migration_state(sqlite3 *sqlite, enum ddl_fault_stat
     if (schema_version == catalog_previous_schema_version && integrity_column_count == 0 &&
         integrity_trigger_count == 0) {
         *out_state = ddl_fault_state_pre;
-    } else if (
-        schema_version == MYLITE_CATALOG_SCHEMA_VERSION &&
-        integrity_column_count == catalog_integrity_column_count && integrity_trigger_count > 0
-    ) {
+    } else if (schema_version == MYLITE_CATALOG_SCHEMA_VERSION &&
+               integrity_column_count == catalog_integrity_column_count &&
+               integrity_trigger_count > 0) {
         *out_state = ddl_fault_state_post;
     }
     return failures;

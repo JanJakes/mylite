@@ -696,8 +696,8 @@ claim-0695	e10ba501cc00efcb	mysql	docs/specs/baseline-checksum-table/specs.md	pa
 claim-0696	8e901068fdaf7977	application	docs/specs/php-extension-packages/specs.md	-	-	packages/php-ext-mylite/tests/core_api_test.php	pr-application:php-extensions
 claim-0697	cd3e305bb090a67e	application	docs/specs/wordpress-phpunit-mysqli-harness/specs.md	-	-	tools/wordpress-phpunit-mysqli-mylite	pr-application:wordpress-phpunit
 claim-0698	318190f900a6fc15	application	docs/specs/drupal-phpunit-mysqli-harness/specs.md	-	-	tools/drupal-phpunit-mysqli-mylite	pr-application:drupal-phpunit
-claim-0699	46b4205876118552	application	docs/specs/laravel-phpunit-pdo-harness/specs.md	-	-	tools/laravel-phpunit-pdo-mylite	pr-application:laravel-phpunit
-claim-0700	4d4c03d0cc5e2d29	application	docs/specs/doctrine-phpunit-pdo-harness/specs.md	-	-	tools/doctrine-phpunit-pdo-mylite	pr-application:doctrine-phpunit
+claim-0699	bb85e3552793f639	application	docs/specs/php-framework-driver-packages/specs.md;docs/specs/laravel-phpunit-pdo-harness/specs.md	-	-	tools/laravel-phpunit-pdo-mylite	pr-application:laravel-phpunit
+claim-0700	394bdd9b1016d7e1	application	docs/specs/php-framework-driver-packages/specs.md;docs/specs/doctrine-phpunit-pdo-harness/specs.md	-	-	tools/doctrine-phpunit-pdo-mylite	pr-application:doctrine-phpunit
 claim-0701	ed3c259cdf9210c4	application	docs/specs/mediawiki-phpunit-mysqli-harness/specs.md	-	-	tools/mediawiki-phpunit-mysqli-mylite	pr-application:mediawiki-phpunit
 claim-0702	b57cf1be9af91bf3	adapter	docs/specs/mysqli-pending-result-state-machine/specs.md	packages/libmylite/tests/mysql_mysqli_pending_result_state_expectations.sh	-	packages/php-ext-mysqli-mylite/tests/mysqli_pending_result_state.php	pr-application:php-extensions;nightly-mysql
 claim-0703	ba99788d842276d2	adapter	docs/specs/statement-diagnostics-warning-snapshots/specs.md	packages/libmylite/tests/mysql_statement_diagnostics_warning_snapshots_expectations.sh	-	packages/php-ext-mysqli-mylite/tests/mysqli_warnings.php;packages/php-ext-pdo-mylite/tests/pdo_statement_diagnostics.php	pr-application:php-extensions;nightly-mysql

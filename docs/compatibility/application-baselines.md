@@ -9,8 +9,8 @@ they do not replace feature-level MySQL 8.4.9 comparison tests.
 | PHP extension packages | ✅ | `php-ci` builds and runs package-local CTest coverage for the core `mylite` module, the MyLite-backed `mysqli` replacement, and the `pdo_mylite` PDO driver on Linux. |
 | WordPress PHPUnit through mysqli | ✅ | CI runs the full upstream WordPress PHPUnit suite at the pinned `MYLITE_WORDPRESS_REF` through the MyLite-backed `mysqli` module and a single `.mylite` database file. |
 | Drupal database PHPUnit through mysqli | ✅ | CI runs Drupal 11.3.11 database-relevant PHPUnit coverage: core Database kernel tests, core Database unit tests, Drupal's `mysqli` driver kernel tests, and the `mysqli` named-placeholder converter unit test. |
-| Laravel PDO bridge suite | ✅ | CI runs a MyLite-owned Laravel 12.62.0 bridge suite over schema builder, query builder, transactions, and Eloquent relations through `pdo_mylite`. |
-| Doctrine DBAL and ORM PDO bridge suites | ✅ | CI runs MyLite-owned Doctrine DBAL 4.4.3 and ORM 3.6.7 bridge suites over DBAL schema/query/transaction paths and ORM entity/DQL/rollback paths through `pdo_mylite`. |
+| Laravel installable PDO driver | ✅ | CI installs `mylite/laravel-driver` into a fresh Laravel 12 application through Composer package discovery and tests configured migrations, metadata, query-builder typing, exception conversion, transactions, and Eloquent hydration/relations. |
+| Doctrine DBAL and ORM installable PDO driver | ✅ | CI installs `mylite/doctrine-dbal-driver` into a fresh Composer application with DBAL 4.4.3 and ORM 3.6.7 and tests documented driver configuration, platform/schema/query/exception/transaction paths, and ORM schema/hydration/rollback paths. |
 | MediaWiki database PHPUnit through mysqli | ✅ | CI installs MediaWiki REL1_42 against MyLite and runs MediaWiki database PHPUnit paths `tests/phpunit/includes/db` and `tests/phpunit/structure/DatabaseIntegrationTest.php` through the MyLite-backed `mysqli` module. |
 
 ## Interpretation
@@ -29,8 +29,8 @@ passes after that feature-level work.
 ## Exclusions
 
 - no claim of stock `mysqli`, mysqlnd, PDO MySQL, or MySQL wire-protocol parity;
-- no claim that generated bridge suites cover full upstream Laravel or
-  Doctrine test suites;
+- no claim that the generated application suites cover full upstream Laravel
+  or Doctrine test suites;
 - no claim that unselected Drupal or MediaWiki tests pass;
 - no claim about third-party WordPress, Drupal, Laravel, Doctrine, or
   MediaWiki extensions;

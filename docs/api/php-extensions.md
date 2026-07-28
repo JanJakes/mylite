@@ -8,6 +8,14 @@ MyLite has three opt-in PHP extension packages:
 | `packages/php-ext-mysqli-mylite` | `mysqli` | Drop-in mysqli replacement for PHP processes launched without stock mysqli. |
 | `packages/php-ext-pdo-mylite` | `pdo_mylite` | PDO driver registered as `mylite`. |
 
+It also provides two installable Composer integrations on top of
+`pdo_mylite`:
+
+| Package | Composer name | Purpose |
+| --- | --- | --- |
+| `packages/php-laravel-mylite` | `mylite/laravel-driver` | Package-discovered Laravel 12 `mylite` database connection. |
+| `packages/php-doctrine-mylite` | `mylite/doctrine-dbal-driver` | Doctrine DBAL 4.4 driver selected through `driverClass`. |
+
 Build them with:
 
 ```sh
@@ -64,9 +72,10 @@ tools/doctrine-phpunit-pdo-mylite
 tools/mediawiki-phpunit-mysqli-mylite
 ```
 
-Laravel and Doctrine run MyLite-owned bridge suites against upstream framework
-dependencies through `pdo_mylite`. MediaWiki runs the selected upstream
-database PHPUnit paths through the mysqli replacement.
+Laravel and Doctrine install their respective local Composer packages into
+fresh applications and run configured MyLite-owned suites through
+`pdo_mylite`. MediaWiki runs the selected upstream database PHPUnit paths
+through the mysqli replacement.
 
 For mysqli callers, pass the `.mylite` file as a socket path, as a path-like
 host, or as `localhost:/path/to/file.mylite` for WordPress-style DB host

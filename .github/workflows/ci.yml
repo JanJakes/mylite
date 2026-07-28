@@ -479,7 +479,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      MYLITE_LARAVEL_REF: f7e61eb1e0e06a38996802b769bce9127aec227c
+      MYLITE_LARAVEL_REF: 945f4e5a9fd3695dc0ee512f497c650fb82cfbb8
+      MYLITE_LARAVEL_FRAMEWORK_VERSION: 12.62.0
       MYLITE_LARAVEL_CMAKE_BUILD_TYPE: Release
 
     steps:
@@ -494,7 +495,7 @@ jobs:
       - name: Build Laravel PHPUnit Docker image
         run: tools/laravel-phpunit-pdo-mylite image
 
-      - name: Fetch Laravel test checkout
+      - name: Fetch fresh Laravel application
         run: tools/laravel-phpunit-pdo-mylite fetch-laravel
 
       - name: Build MyLite PHP extensions
@@ -511,7 +512,7 @@ jobs:
         run: |
           du -sh \
             build/laravel-tests.mylite \
-            build/laravel-framework \
+            build/laravel-application \
             build/laravel-mylite-tests \
             build/laravel-php-mylite \
             2>/dev/null || true
@@ -523,8 +524,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      MYLITE_DOCTRINE_DBAL_REF: 61e730f1658814821a85f2402c945f3883407dec
-      MYLITE_DOCTRINE_ORM_REF: bc217c0e19c3a9eadfa67697143b87c9ba01272c
+      MYLITE_DOCTRINE_DBAL_VERSION: 4.4.3
+      MYLITE_DOCTRINE_ORM_VERSION: 3.6.7
       MYLITE_DOCTRINE_CMAKE_BUILD_TYPE: Release
 
     steps:
@@ -539,8 +540,8 @@ jobs:
       - name: Build Doctrine PHPUnit Docker image
         run: tools/doctrine-phpunit-pdo-mylite image
 
-      - name: Fetch Doctrine test checkouts
-        run: tools/doctrine-phpunit-pdo-mylite fetch-doctrine
+      - name: Initialize fresh Doctrine application
+        run: tools/doctrine-phpunit-pdo-mylite initialize-application
 
       - name: Build MyLite PHP extensions
         run: tools/doctrine-phpunit-pdo-mylite build-extensions
@@ -557,8 +558,7 @@ jobs:
           du -sh \
             build/doctrine-dbal-tests.mylite \
             build/doctrine-orm-tests.mylite \
-            build/doctrine-dbal \
-            build/doctrine-orm \
+            build/doctrine-mylite-application \
             build/doctrine-mylite-tests \
             build/doctrine-php-mylite \
             2>/dev/null || true

@@ -2,9 +2,8 @@
 
 ## Status
 
-Specified. Implementation and qualification are pending. This feature replaces
-the test-local Laravel and Doctrine PDO bridges and closes review finding
-API-07.
+Implemented and qualified. This feature replaces the test-local Laravel and
+Doctrine PDO bridges and closes review finding API-07.
 
 ## Sources
 
@@ -117,6 +116,11 @@ the package normally:
 Application code must not construct a PDO or connection resolver to use this
 configuration.
 
+Laravel's connector defaults explicitly disable emulated prepares. PDO MyLite
+uses native MyLite bindings and therefore accepts and reports
+`PDO::ATTR_EMULATE_PREPARES` only as `false`; attempts to enable emulation
+return failure.
+
 ## Doctrine DBAL Driver
 
 The Doctrine package provides:
@@ -217,12 +221,13 @@ PHP, and test selections. It does not claim:
 
 ## Qualification
 
-Before this row becomes supported:
-
-- both package Composer manifests must validate;
-- both fresh-application runners must pass in their pinned Release containers;
-- the existing PHP adapter, Laravel, and Doctrine gates must remain green;
-- source scans must prove that generated tests contain no local driver class;
-- documentation and application claims must name the package and exact test
-  boundary;
-- the compatibility-claim validator must pass.
+- Both package Composer manifests validate strictly with their required
+  extensions loaded.
+- The pinned fresh Laravel application passes 3 tests and 25 assertions in its
+  Release container.
+- The pinned fresh Doctrine application passes 2 DBAL tests with 22 assertions
+  and its ORM test with 8 assertions in its Release container.
+- Both runners scan generated source and fail if a test-local connection bridge
+  is introduced.
+- Package-origin reflection assertions, documentation, application claims, and
+  CI mappings identify the installed integration and exact test boundary.

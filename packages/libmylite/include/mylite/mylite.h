@@ -157,8 +157,9 @@ MYLITE_API int mylite_prepare(
 /*
  * Prepared statements are caller-owned until finalize. They retain their own
  * SQL text and are registered with the database until finalized or detached by
- * database close. Buffered statements release the connection before rows are
- * consumed.
+ * database close. Preparation does not retain an execution transaction,
+ * snapshot, or active cursor. The first step starts streaming execution.
+ * Buffered statements release the connection before rows are consumed.
  */
 MYLITE_API int mylite_prepare_buffered(
     mylite_db *database,

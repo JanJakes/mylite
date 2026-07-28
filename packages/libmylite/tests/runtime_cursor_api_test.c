@@ -24,6 +24,7 @@ enum {
     mysql_int_display_length = 11,
     mysql_varchar_20_display_length = 80,
     mysql_error_commands_out_of_sync = 2014,
+    mysql_error_table_does_not_exist = 1146,
     sql_text_capacity = 128,
     cache_budget_sql_capacity = 4096,
     cache_budget_table_count = 40,
@@ -557,6 +558,7 @@ static int test_cursor_read_transaction_lifecycle(void) {
     mylite_db *database = NULL;
     mylite_db *writer_database = NULL;
     mylite_stmt *constant_stmt = NULL;
+    mylite_stmt *parameterized_stmt = NULL;
     mylite_stmt *stmt = NULL;
     mylite_stmt *blocked_stmt = NULL;
     mylite_result *blocked_result = NULL;
@@ -618,17 +620,111 @@ static int test_cursor_read_transaction_lifecycle(void) {
     failures += mylite_test_expect_int(
         mylite_prepare(
             database,
-            "SELECT id FROM items ORDER BY id",
-            strlen("SELECT id FROM items ORDER BY id"),
+            "SELECT ? AS value",
+            strlen("SELECT ? AS value"),
+            &parameterized_stmt
+        ),
+        MYLITE_OK,
+        "prepare lazy parameterized constant cursor"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "parameterized constant prepare leaves SQLite autocommit active"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(parameterized_stmt, 0U, 8),
+        MYLITE_OK,
+        "bind lazy parameterized constant cursor"
+    );
+    failures += execute_ok(database, "SET @after_parameterized_constant_prepare = 1");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(parameterized_stmt),
+        MYLITE_ROW,
+        "lazy parameterized constant cursor first row"
+    );
+    failures +=
+        expect_cursor_text(parameterized_stmt, 0U, "8", "lazy parameterized constant cursor value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(parameterized_stmt),
+        MYLITE_DONE,
+        "lazy parameterized constant cursor done"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(parameterized_stmt),
+        MYLITE_OK,
+        "finalize lazy parameterized constant cursor"
+    );
+    parameterized_stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items WHERE id = ?",
+            strlen("SELECT id FROM items WHERE id = ?"),
+            &parameterized_stmt
+        ),
+        MYLITE_OK,
+        "prepare lazy parameterized cursor"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "parameterized prepare leaves SQLite autocommit active"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(parameterized_stmt, 0U, 2),
+        MYLITE_OK,
+        "bind lazy parameterized cursor"
+    );
+    failures += execute_ok(database, "SET @after_parameterized_prepare = 1");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(parameterized_stmt),
+        MYLITE_ROW,
+        "lazy parameterized cursor first row"
+    );
+    failures += expect_cursor_text(parameterized_stmt, 0U, "2", "lazy parameterized cursor value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(parameterized_stmt),
+        MYLITE_DONE,
+        "lazy parameterized cursor done"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(parameterized_stmt),
+        MYLITE_OK,
+        "finalize lazy parameterized cursor"
+    );
+    parameterized_stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT * FROM items ORDER BY id",
+            strlen("SELECT * FROM items ORDER BY id"),
             &stmt
         ),
         MYLITE_OK,
         "prepare read transaction cursor"
     );
+    failures += mylite_test_expect_size(
+        mylite_stmt_column_count(stmt),
+        1U,
+        "prepare-time cursor metadata column count"
+    );
     failures += mylite_test_expect_int(
         sqlite3_get_autocommit(sqlite),
         1,
         "table prepare leaves SQLite autocommit active"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_reset(stmt),
+        MYLITE_OK,
+        "reset table cursor before first step"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "reset before first step leaves SQLite autocommit active"
     );
     failures += mylite_test_expect_int(
         mylite_prepare(
@@ -641,11 +737,42 @@ static int test_cursor_read_transaction_lifecycle(void) {
         "allow second prepare before first step"
     );
     failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "SELECT * FROM missing_after_prepare",
+            strlen("SELECT * FROM missing_after_prepare"),
+            &blocked_result
+        ),
+        MYLITE_ERROR,
+        "intervening command reports its own diagnostic"
+    );
+    failures += mylite_test_expect_true(
+        blocked_result == NULL,
+        "failed intervening command leaves result null"
+    );
+    failures += mylite_test_expect_int(
+        mylite_errcode(database),
+        mysql_error_table_does_not_exist,
+        "intervening command error code"
+    );
+    failures +=
+        mylite_test_expect_text(mylite_sqlstate(database), "42S02", "intervening command SQLSTATE");
+    failures += mylite_test_expect_int(
         mylite_stmt_finalize(blocked_stmt),
         MYLITE_OK,
         "finalize second unexecuted cursor"
     );
     blocked_stmt = NULL;
+    failures += mylite_test_expect_int(
+        mylite_errcode(database),
+        mysql_error_table_does_not_exist,
+        "unexecuted finalize preserves intervening error code"
+    );
+    failures += mylite_test_expect_text(
+        mylite_sqlstate(database),
+        "42S02",
+        "unexecuted finalize preserves intervening SQLSTATE"
+    );
     failures += execute_ok(database, "UPDATE items SET id = id");
     failures += mylite_test_expect_int(
         mylite_open(path, &writer_database),
@@ -662,6 +789,16 @@ static int test_cursor_read_transaction_lifecycle(void) {
     );
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "read transaction first row");
+    failures += mylite_test_expect_size(
+        mylite_stmt_column_count(stmt),
+        2U,
+        "first step refreshes cursor metadata after compatible DDL"
+    );
+    failures += mylite_test_expect_text(
+        mylite_stmt_column_name(stmt, 1U),
+        "marker",
+        "first step exposes added column metadata"
+    );
     failures += expect_cursor_text(stmt, 0U, "1", "read transaction first value");
     failures +=
         mylite_test_expect_int(sqlite3_get_autocommit(sqlite), 0, "cursor read transaction active");
@@ -708,6 +845,39 @@ static int test_cursor_read_transaction_lifecycle(void) {
         1,
         "early finalize ends transaction"
     );
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT marker FROM items ORDER BY id",
+            strlen("SELECT marker FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare cursor before incompatible DDL"
+    );
+    failures += execute_ok(writer_database, "ALTER TABLE items DROP COLUMN marker");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ERROR,
+        "first step reports incompatible post-prepare DDL"
+    );
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        "Unknown column",
+        "post-prepare DDL diagnostic"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_reset(stmt),
+        MYLITE_OK,
+        "reset failed post-prepare DDL execution"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize failed post-prepare DDL cursor"
+    );
+    stmt = NULL;
 
     failures += mylite_test_expect_int(
         mylite_prepare(
@@ -785,6 +955,48 @@ static int test_cursor_read_transaction_lifecycle(void) {
         mylite_test_expect_int(sqlite3_get_autocommit(sqlite), 1, "rollback ends user transaction");
 
     failures += execute_ok(database, "SET autocommit = 0");
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items WHERE id = ?",
+            strlen("SELECT id FROM items WHERE id = ?"),
+            &parameterized_stmt
+        ),
+        MYLITE_OK,
+        "prepare parameterized cursor with autocommit disabled"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "parameterized prepare defers autocommit-disabled transaction"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(parameterized_stmt),
+        MYLITE_OK,
+        "finalize unexecuted parameterized cursor with autocommit disabled"
+    );
+    parameterized_stmt = NULL;
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "UPDATE items SET id = id WHERE id = ?",
+            strlen("UPDATE items SET id = id WHERE id = ?"),
+            &parameterized_stmt
+        ),
+        MYLITE_OK,
+        "prepare DML with autocommit disabled"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "DML prepare defers autocommit-disabled transaction"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(parameterized_stmt),
+        MYLITE_OK,
+        "finalize unexecuted DML with autocommit disabled"
+    );
+    parameterized_stmt = NULL;
     failures += mylite_test_expect_int(
         mylite_prepare(
             database,
@@ -3165,6 +3377,34 @@ static int test_cursor_prepare_statement_surface(void) {
         mylite_errmsg(database),
         "Unknown column 'missing_column'",
         "cursor planning diagnostic"
+    );
+
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM missing_table",
+            strlen("SELECT id FROM missing_table"),
+            &stmt
+        ),
+        MYLITE_ERROR,
+        "preserve missing-table prepare error"
+    );
+    failures +=
+        mylite_test_expect_true(stmt == NULL, "missing-table prepare leaves null statement");
+    failures += mylite_test_expect_int(
+        mylite_errcode(database),
+        mysql_error_table_does_not_exist,
+        "missing-table prepare error code"
+    );
+    failures += mylite_test_expect_text(
+        mylite_sqlstate(database),
+        "42S02",
+        "missing-table prepare SQLSTATE"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(mylite_connection_sqlite_for_test(database)),
+        1,
+        "failed prepare leaves SQLite autocommit active"
     );
 
     failures += mylite_test_expect_int(

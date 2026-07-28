@@ -242,6 +242,7 @@ static int test_parser_retry_profile(void) {
 }
 
 static int test_cursor_profile(void) {
+    struct mylite_profile_snapshot prepare_snapshot = {0};
     struct mylite_profile_snapshot snapshot = {0};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -303,6 +304,38 @@ static int test_cursor_profile(void) {
         MYLITE_OK,
         "prepare cursor profile query"
     );
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &prepare_snapshot),
+        MYLITE_OK,
+        "stop cursor prepare profile"
+    );
+    failures += mylite_test_expect_true(
+        prepare_snapshot.statement_count == 1U,
+        "cursor prepare statement count"
+    );
+    failures += mylite_test_expect_true(
+        prepare_snapshot.normalization_count == 1U,
+        "cursor prepare normalization count"
+    );
+    failures +=
+        mylite_test_expect_true(prepare_snapshot.parse_count == 1U, "cursor prepare parse count");
+    failures += mylite_test_expect_true(
+        prepare_snapshot.select_plan_count == 1U,
+        "cursor prepare plan count"
+    );
+    failures += mylite_test_expect_true(
+        prepare_snapshot.select_plan_cache_hit_count == 0U,
+        "cursor prepare plan hit count"
+    );
+    failures += mylite_test_expect_true(
+        prepare_snapshot.select_lowering_count == 0U,
+        "cursor prepare lowering count"
+    );
+    failures += mylite_test_expect_int(
+        mylite_profile_start(database),
+        MYLITE_OK,
+        "start cursor execution profile"
+    );
     do {
         rc = mylite_stmt_step(stmt);
     } while (rc == MYLITE_ROW);
@@ -317,14 +350,13 @@ static int test_cursor_profile(void) {
         MYLITE_OK,
         "stop cursor profile"
     );
-    failures += mylite_test_expect_true(snapshot.statement_count == 1U, "cursor statement count");
-    failures += mylite_test_expect_true(snapshot.statement_api_ns > 0U, "cursor prepare time");
+    failures += mylite_test_expect_true(snapshot.statement_count == 0U, "cursor statement count");
     failures +=
-        mylite_test_expect_true(snapshot.normalization_count == 1U, "cursor normalization count");
-    failures += mylite_test_expect_true(snapshot.parse_count == 1U, "cursor parse count");
-    failures += mylite_test_expect_true(snapshot.select_plan_count == 1U, "cursor plan count");
+        mylite_test_expect_true(snapshot.normalization_count == 0U, "cursor normalization count");
+    failures += mylite_test_expect_true(snapshot.parse_count == 0U, "cursor parse count");
+    failures += mylite_test_expect_true(snapshot.select_plan_count == 0U, "cursor plan count");
     failures += mylite_test_expect_true(
-        snapshot.select_plan_cache_hit_count == 0U,
+        snapshot.select_plan_cache_hit_count == 1U,
         "cursor plan hit count"
     );
     failures +=

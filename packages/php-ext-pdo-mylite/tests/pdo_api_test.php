@@ -60,6 +60,30 @@ expect_true($stmt->columnCount() === 1, 'prepared SELECT column count mismatch')
 expect_true($stmt->fetch() === ['name' => 'Grace'], 'prepared SELECT row mismatch');
 expect_true($stmt->fetch() === false, 'prepared SELECT should be exhausted');
 
+expect_true(
+    $pdo->exec('CREATE TABLE lazy_people (id INT PRIMARY KEY, name VARCHAR(32))') >= 0,
+    'lazy-prepare table creation failed'
+);
+expect_true(
+    $pdo->exec("INSERT INTO lazy_people VALUES (1, 'Before')") === 1,
+    'lazy-prepare seed failed'
+);
+$lazySelect = $pdo->prepare('SELECT id, name FROM lazy_people ORDER BY id');
+expect_true($lazySelect instanceof PDOStatement, 'lazy SELECT prepare failed');
+expect_true(
+    $pdo->exec("UPDATE lazy_people SET name = 'After' WHERE id = 1") === 1,
+    'same-connection command after lazy SELECT prepare failed'
+);
+expect_true(
+    $pdo->exec("INSERT INTO lazy_people VALUES (2, 'New')") === 1,
+    'same-connection insert after lazy SELECT prepare failed'
+);
+expect_true($lazySelect->execute(), 'lazy SELECT execution failed');
+expect_true($lazySelect->fetchAll() === [
+    ['id' => '1', 'name' => 'After'],
+    ['id' => '2', 'name' => 'New'],
+], 'lazy SELECT did not observe post-prepare writes');
+
 $byReference = $pdo->prepare('SELECT name FROM people WHERE id = ?');
 $personId = 1;
 expect_true($byReference->bindParam(1, $personId, PDO::PARAM_INT), 'bindParam failed');

@@ -2702,6 +2702,7 @@ struct mylite_stmt {
     bool dml_plan_reusable;
     bool sqlite_statement_is_cached;
     bool current_row_available;
+    bool execution_started;
     bool done;
 };
 

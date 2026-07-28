@@ -20,6 +20,36 @@ $value = 200;
 expect_true($insert->execute(), 'execute second insert');
 
 expect_true(
+    $mysqli->query('CREATE TABLE lazy_items (id INT PRIMARY KEY, value VARCHAR(20))'),
+    'create lazy-prepare table'
+);
+expect_true(
+    $mysqli->query("INSERT INTO lazy_items VALUES (1, 'before')"),
+    'seed lazy-prepare table'
+);
+$lazySelect = $mysqli->prepare('SELECT id, value FROM lazy_items ORDER BY id');
+if (!$lazySelect instanceof mysqli_stmt) {
+    throw new RuntimeException('lazy SELECT prepare');
+}
+expect_true(
+    $mysqli->query("UPDATE lazy_items SET value = 'after' WHERE id = 1"),
+    'same-link command after lazy SELECT prepare'
+);
+expect_true(
+    $mysqli->query("INSERT INTO lazy_items VALUES (2, 'new')"),
+    'same-link insert after lazy SELECT prepare'
+);
+expect_true($lazySelect->execute(), 'execute lazy SELECT');
+expect_same(
+    [
+        ['id' => '1', 'value' => 'after'],
+        ['id' => '2', 'value' => 'new'],
+    ],
+    $lazySelect->get_result()->fetch_all(MYSQLI_ASSOC),
+    'lazy SELECT observes post-prepare writes'
+);
+
+expect_true(
     $mysqli->query('CREATE TABLE generated_items (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(20))'),
     'create generated table'
 );

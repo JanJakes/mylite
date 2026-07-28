@@ -24,6 +24,10 @@ int mylite_execution_begin_read_statement_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction
 );
+int mylite_execution_begin_prepare_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+);
 int mylite_execution_begin_writer_stable_planning_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction
@@ -52,6 +56,13 @@ static inline int begin_read_statement_transaction(
     struct mylite_statement_transaction *transaction
 ) {
     return mylite_execution_begin_read_statement_transaction(database, transaction);
+}
+
+static inline int begin_prepare_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    return mylite_execution_begin_prepare_transaction(database, transaction);
 }
 
 static inline int commit_statement_transaction(

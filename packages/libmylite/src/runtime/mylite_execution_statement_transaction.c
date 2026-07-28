@@ -139,6 +139,30 @@ int mylite_execution_begin_read_statement_transaction(
     return rc;
 }
 
+int mylite_execution_begin_prepare_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    int rc = MYLITE_OK;
+
+    transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+    transaction->active = false;
+    if (sqlite3_get_autocommit(database->sqlite) == 0) {
+        return mylite_catalog_synchronize_snapshot(database);
+    }
+
+    rc = mylite_execution_normalize_sqlite_control_rc(
+        database,
+        mylite_execution_execute_cached_sqlite_control_sql(database, "BEGIN")
+    );
+    if (rc == MYLITE_OK) {
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
+        transaction->active = true;
+        rc = mylite_catalog_synchronize_snapshot(database);
+    }
+    return rc;
+}
+
 int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *database) {
     bool read_only = false;
     int rc = MYLITE_OK;

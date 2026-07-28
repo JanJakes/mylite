@@ -86,6 +86,7 @@ struct json_parser {
     size_t length;
     size_t position;
     struct mylite_json_normalize_result result;
+    bool exceeded_depth;
 };
 
 struct json_writer {

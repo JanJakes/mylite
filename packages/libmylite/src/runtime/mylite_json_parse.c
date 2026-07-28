@@ -302,6 +302,7 @@ static int parse_stack_push(
     struct json_value *container
 ) {
     if (stack->count >= json_max_nesting_depth) {
+        parser->exceeded_depth = true;
         return mylite_json_internal_parser_unsupported(parser, parser->position);
     }
     stack->frames[stack->count] = (struct json_parse_frame){.container = container};

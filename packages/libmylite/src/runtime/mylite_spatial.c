@@ -50,6 +50,7 @@ enum {
     mysql_error_incorrect_type_for_argument = 3064,
     mysql_error_invalid_geohash = 1411,
     mysql_error_invalid_json_text_in_function = 3141,
+    mysql_error_json_document_too_deep = 3157,
     mysql_error_invalid_geojson_missing_member = 3070,
     mysql_error_invalid_geojson_data = 3072,
     mysql_error_parameter_exceeds_max_points = 3134,
@@ -126,6 +127,7 @@ struct spatial_wkt_parser {
     size_t offset;
     const char *function_name;
     struct mylite_spatial_error *error;
+    size_t geometry_depth;
 };
 
 struct spatial_geometry_view {
@@ -212,6 +214,7 @@ struct geojson_parse_context {
     bool strip_extra_dimensions;
     const char *function_name;
     struct mylite_spatial_error *error;
+    size_t geometry_depth;
 };
 
 struct spatial_type_name {
@@ -747,6 +750,7 @@ static int set_invalid_json_text_error(
     const struct mylite_json_normalize_result *result,
     const char *function_name
 );
+static int set_json_document_too_deep_error(struct mylite_spatial_error *error);
 static int set_invalid_geojson_missing_member_error(
     struct mylite_spatial_error *error,
     const char *member,
@@ -980,7 +984,8 @@ static int validate_wkb_at(
     struct spatial_wkb_cursor *cursor,
     enum mylite_spatial_geometry_type *out_type,
     struct mylite_spatial_error *error,
-    const char *function_name
+    const char *function_name,
+    size_t depth
 );
 static enum mylite_spatial_geometry_type collection_expected_nested_type(
     enum mylite_spatial_geometry_type type
@@ -1965,6 +1970,12 @@ static int append_geojson_geometry_as_wkt(
     struct spatial_buffer *out_wkt,
     bool *out_is_null
 );
+static int append_geojson_geometry_as_wkt_at(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt,
+    bool *out_is_null
+);
 static int append_geojson_feature_as_wkt(
     const struct json_value *value,
     struct geojson_parse_context *context,
@@ -2019,6 +2030,11 @@ static int parse_wkt_to_internal(
     struct mylite_spatial_error *error
 );
 static int parse_wkt_geometry(
+    struct spatial_wkt_parser *parser,
+    struct spatial_buffer *out_wkb,
+    enum mylite_spatial_geometry_type *out_type
+);
+static int parse_wkt_geometry_at(
     struct spatial_wkt_parser *parser,
     struct spatial_buffer *out_wkb,
     enum mylite_spatial_geometry_type *out_type
@@ -2602,6 +2618,12 @@ static int evaluate_from_geojson(
     rc = mylite_json_internal_parse_document(&parser, &value);
     if (rc != MYLITE_OK) {
         mylite_json_internal_value_deinit(&value);
+        if (rc == MYLITE_NOMEM) {
+            return set_nomem_error(error);
+        }
+        if (parser.exceeded_depth) {
+            return set_json_document_too_deep_error(error);
+        }
         return set_invalid_json_text_error(
             error,
             &parser.result,
@@ -2772,6 +2794,9 @@ static int evaluate_sequence_constructor(
     }
     if (rc == 0 && result_type == MYLITE_SPATIAL_GEOMETRY_LINESTRING && argument_count < 2U) {
         rc = set_invalid_gis_data_error(error, mylite_spatial_function_name(kind));
+    }
+    if (rc == 0) {
+        rc = validate_wkb(wkb.bytes, wkb.size, NULL, error, mylite_spatial_function_name(kind));
     }
     if (rc == 0) {
         rc = append_internal_prefix(&internal, 0U);
@@ -3588,7 +3613,7 @@ static int evaluate_geometry_n(
         size_t start = cursor.offset;
         enum mylite_spatial_geometry_type nested_type = MYLITE_SPATIAL_GEOMETRY_NONE;
 
-        rc = validate_wkb_at(&cursor, &nested_type, error, mylite_spatial_function_name(kind));
+        rc = validate_wkb_at(&cursor, &nested_type, error, mylite_spatial_function_name(kind), 1U);
         if (rc == 0 && index == requested_index) {
             unsigned char *bytes = NULL;
             size_t byte_count = 0U;
@@ -6072,6 +6097,15 @@ static int set_invalid_json_text_error(
         ),
         mylite_json_invalid_text_error_message(result),
         result == NULL ? 0U : result->position
+    );
+}
+
+static int set_json_document_too_deep_error(struct mylite_spatial_error *error) {
+    return set_spatial_error(
+        error,
+        mysql_error_json_document_too_deep,
+        "22032",
+        "The JSON document exceeds the maximum depth."
     );
 }
 
@@ -12653,7 +12687,8 @@ static int validate_wkb(
     if (wkb == NULL || wkb_size < spatial_wkb_header_size) {
         return set_invalid_gis_data_error(error, function_name);
     }
-    if (validate_wkb_at(&cursor, &type, error, function_name) != 0 || cursor.offset != wkb_size) {
+    if (validate_wkb_at(&cursor, &type, error, function_name, 1U) != 0 ||
+        cursor.offset != wkb_size) {
         if (error != NULL && error->code != 0) {
             return -1;
         }
@@ -12669,13 +12704,18 @@ static int validate_wkb_at(
     struct spatial_wkb_cursor *cursor,
     enum mylite_spatial_geometry_type *out_type,
     struct mylite_spatial_error *error,
-    const char *function_name
+    const char *function_name,
+    size_t depth
 ) {
     bool little_endian = false;
     enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
     uint32_t count = 0U;
-    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+    int rc = 0;
 
+    if (depth == 0U || depth > MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
     if (rc != 0) {
         return rc;
     }
@@ -12713,7 +12753,7 @@ static int validate_wkb_at(
             enum mylite_spatial_geometry_type expected_nested_type =
                 collection_expected_nested_type(type);
 
-            rc = validate_wkb_at(cursor, &nested_type, error, function_name);
+            rc = validate_wkb_at(cursor, &nested_type, error, function_name, depth + 1U);
             if (rc == 0 && expected_nested_type != MYLITE_SPATIAL_GEOMETRY_NONE &&
                 nested_type != expected_nested_type) {
                 rc = set_invalid_gis_data_error(error, function_name);
@@ -13579,6 +13619,23 @@ static int append_geojson_geometry_as_wkt(
     struct spatial_buffer *out_wkt,
     bool *out_is_null
 ) {
+    int rc = 0;
+
+    if (context->geometry_depth >= MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    ++context->geometry_depth;
+    rc = append_geojson_geometry_as_wkt_at(value, context, out_wkt, out_is_null);
+    --context->geometry_depth;
+    return rc;
+}
+
+static int append_geojson_geometry_as_wkt_at(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt,
+    bool *out_is_null
+) {
     const struct json_value *type = geojson_member_value(value, "type");
     const struct json_value *coordinates = geojson_member_value(value, "coordinates");
     const struct json_value *geometries = geojson_member_value(value, "geometries");
@@ -14119,6 +14176,9 @@ static int parse_wkt_to_internal(
     spatial_buffer_deinit(&wkb);
     if (rc != 0) {
         spatial_buffer_deinit(&internal);
+        if (error != NULL && error->code == 0 && !error->is_nomem) {
+            return set_nomem_error(error);
+        }
         return rc;
     }
     *out_bytes = internal.bytes;
@@ -14128,6 +14188,22 @@ static int parse_wkt_to_internal(
 }
 
 static int parse_wkt_geometry(
+    struct spatial_wkt_parser *parser,
+    struct spatial_buffer *out_wkb,
+    enum mylite_spatial_geometry_type *out_type
+) {
+    int rc = 0;
+
+    if (parser->geometry_depth >= MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH) {
+        return set_invalid_gis_data_error(parser->error, parser->function_name);
+    }
+    ++parser->geometry_depth;
+    rc = parse_wkt_geometry_at(parser, out_wkb, out_type);
+    --parser->geometry_depth;
+    return rc;
+}
+
+static int parse_wkt_geometry_at(
     struct spatial_wkt_parser *parser,
     struct spatial_buffer *out_wkb,
     enum mylite_spatial_geometry_type *out_type

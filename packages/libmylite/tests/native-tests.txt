@@ -517,6 +517,7 @@ tests/runtime_sign_function_test.c|internal|always
 tests/runtime_small_integer_types_test.c|internal|always
 tests/runtime_soundex_function_test.c|internal|always
 tests/runtime_spatial_basic_functions_test.c|internal|always
+tests/runtime_spatial_bounded_geometry_nesting_test.c|internal|always
 tests/runtime_spatial_collect_aggregate_test.c|internal|always
 tests/runtime_spatial_constructive_operator_functions_test.c|internal|always
 tests/runtime_spatial_contains_within_functions_test.c|internal|always

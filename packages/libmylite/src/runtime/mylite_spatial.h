@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+enum {
+    MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH = 50,
+};
+
 enum mylite_spatial_geometry_type {
     MYLITE_SPATIAL_GEOMETRY_NONE = 0,
     MYLITE_SPATIAL_GEOMETRY_POINT = 1,

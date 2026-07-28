@@ -201,7 +201,13 @@ static void spatial_collect_final(sqlite3_context *context) {
         sqlite3_result_error_nomem(context);
         return;
     }
-    if (rc != MYLITE_OK || byte_count > (size_t)INT_MAX) {
+    if (rc != MYLITE_OK || !mylite_spatial_geometry_bytes_are_valid(bytes, byte_count)) {
+        spatial_collect_state_deinit(state);
+        free(bytes);
+        spatial_collect_set_invalid_geometry_error(context);
+        return;
+    }
+    if (byte_count > (size_t)INT_MAX) {
         spatial_collect_state_deinit(state);
         free(bytes);
         spatial_collect_set_runtime_error(context, "MyLite ST_Collect result is too large");

@@ -54,7 +54,7 @@ mylite_add_fuzzer(
   mylite_geometry_fuzzer
   fuzz/geometry_fuzzer.c
   geometry
-  65536
+  262144
   10000
 )
 mylite_add_fuzzer(

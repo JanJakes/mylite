@@ -2,20 +2,62 @@
 
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_spatial.h"
 #include "runtime/mylite_test_allocator.h"
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-enum { allocation_sweep_limit = 512 };
+enum {
+    allocation_sweep_limit = 512,
+    spatial_allocation_sweep_limit = 2048,
+    spatial_internal_srid_size = 4,
+    spatial_wkb_collection_header_size = 9,
+    spatial_wkb_collection_count_offset = 5,
+    spatial_wkb_point_size = 21,
+    spatial_byte_bit_count = 8,
+    spatial_byte_mask = 0xff,
+    mysql_error_parse = 1064,
+    mysql_error_invalid_gis_data = 3037,
+};
+
+struct generated_bytes {
+    unsigned char *bytes;
+    size_t size;
+};
 
 static int test_open_failure_is_scoped_and_recoverable(void);
 static int test_execute_failure_preserves_handle(void);
 static int test_warning_snapshot_failure_preserves_handle(void);
 static int test_cursor_failure_completes_and_resets(void);
 static int test_materialized_cursor_reexecution_failure_recovers(void);
+static int test_spatial_depth_allocation_failures(void);
+static int expect_spatial_allocation_sweep(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    bool should_succeed,
+    const char *context
+);
+static int expect_spatial_terminal_result(
+    int rc,
+    const struct mylite_spatial_result *result,
+    const struct mylite_spatial_error *error,
+    bool should_succeed,
+    const char *context
+);
+static struct generated_bytes make_nested_internal_geometry(size_t wrapper_count);
+static char *make_nested_text(
+    const char *prefix,
+    const char *terminal,
+    const char *suffix,
+    size_t wrapper_count
+);
+static void write_u32_le(unsigned char *destination, uint32_t value);
 static int expect_true(bool actual, const char *context);
 
 int main(void) {
@@ -26,6 +68,7 @@ int main(void) {
     failures += test_materialized_cursor_reexecution_failure_recovers();
     failures += test_execute_failure_preserves_handle();
     failures += test_warning_snapshot_failure_preserves_handle();
+    failures += test_spatial_depth_allocation_failures();
     mylite_test_allocator_clear();
     return failures == 0 ? 0 : 1;
 }
@@ -446,7 +489,7 @@ static int test_warning_snapshot_failure_preserves_handle(void) {
             );
             failures += mylite_test_expect_int(
                 mylite_errcode(database),
-                1064,
+                mysql_error_parse,
                 "warning expression allocation fallback diagnostic"
             );
         }
@@ -476,6 +519,240 @@ static int test_warning_snapshot_failure_preserves_handle(void) {
     mylite_close(database);
     mylite_test_allocator_clear();
     return failures;
+}
+
+static int test_spatial_depth_allocation_failures(void) {
+    struct generated_bytes at_limit =
+        make_nested_internal_geometry(MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH - 1U);
+    char *wkt_at_limit = make_nested_text(
+        "GEOMETRYCOLLECTION(",
+        "POINT(0 0)",
+        ")",
+        MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH - 1U
+    );
+    char *wkt_above_limit = make_nested_text(
+        "GEOMETRYCOLLECTION(",
+        "POINT(0 0)",
+        ")",
+        MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH
+    );
+    char *geojson_at_limit = make_nested_text(
+        "{\"type\":\"GeometryCollection\",\"geometries\":[",
+        "{\"type\":\"Point\",\"coordinates\":[0,0]}",
+        "]}",
+        MYLITE_SPATIAL_MAX_GEOMETRY_DEPTH - 1U
+    );
+    int failures = 0;
+
+    if (at_limit.bytes == NULL || wkt_at_limit == NULL || wkt_above_limit == NULL ||
+        geojson_at_limit == NULL) {
+        failures = 1;
+        goto cleanup;
+    }
+    {
+        struct mylite_spatial_argument argument = {
+            .bytes = wkt_at_limit,
+            .byte_count = strlen(wkt_at_limit),
+        };
+
+        failures += expect_spatial_allocation_sweep(
+            MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMTEXT,
+            &argument,
+            1U,
+            true,
+            "depth-50 WKT allocation sweep"
+        );
+    }
+    {
+        struct mylite_spatial_argument argument = {
+            .bytes = wkt_above_limit,
+            .byte_count = strlen(wkt_above_limit),
+        };
+
+        failures += expect_spatial_allocation_sweep(
+            MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMTEXT,
+            &argument,
+            1U,
+            false,
+            "depth-51 WKT allocation sweep"
+        );
+    }
+    {
+        struct mylite_spatial_argument argument = {
+            .bytes = at_limit.bytes + spatial_internal_srid_size,
+            .byte_count = at_limit.size - spatial_internal_srid_size,
+        };
+
+        failures += expect_spatial_allocation_sweep(
+            MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMWKB,
+            &argument,
+            1U,
+            true,
+            "depth-50 WKB allocation sweep"
+        );
+    }
+    {
+        struct mylite_spatial_argument argument = {
+            .bytes = geojson_at_limit,
+            .byte_count = strlen(geojson_at_limit),
+        };
+
+        failures += expect_spatial_allocation_sweep(
+            MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON,
+            &argument,
+            1U,
+            true,
+            "depth-50 GeoJSON allocation sweep"
+        );
+    }
+    {
+        struct mylite_spatial_argument argument = {
+            .bytes = at_limit.bytes,
+            .byte_count = at_limit.size,
+        };
+
+        failures += expect_spatial_allocation_sweep(
+            MYLITE_SPATIAL_FUNCTION_ST_CENTROID,
+            &argument,
+            1U,
+            true,
+            "depth-50 geometry-tree allocation sweep"
+        );
+    }
+
+cleanup:
+    free(at_limit.bytes);
+    free(wkt_at_limit);
+    free(wkt_above_limit);
+    free(geojson_at_limit);
+    mylite_test_allocator_clear();
+    return failures;
+}
+
+static int expect_spatial_allocation_sweep(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    bool should_succeed,
+    const char *context
+) {
+    bool completed_sweep = false;
+    int failures = 0;
+
+    for (size_t allocation_index = 0U; allocation_index < spatial_allocation_sweep_limit;
+         ++allocation_index) {
+        struct mylite_spatial_result result = {0};
+        struct mylite_spatial_error error = {0};
+        int rc = MYLITE_OK;
+
+        mylite_test_allocator_fail_after(allocation_index);
+        rc = mylite_spatial_evaluate(kind, arguments, argument_count, &result, &error);
+        if (!mylite_test_allocator_was_triggered()) {
+            failures +=
+                expect_spatial_terminal_result(rc, &result, &error, should_succeed, context);
+            mylite_spatial_result_deinit(&result);
+            completed_sweep = true;
+            mylite_test_allocator_clear();
+            break;
+        }
+
+        failures += mylite_test_expect_int(rc, -1, context);
+        failures += expect_true(error.is_nomem, context);
+        failures += mylite_test_expect_int(result.kind, MYLITE_SPATIAL_RESULT_NULL, context);
+        mylite_spatial_result_deinit(&result);
+        mylite_test_allocator_clear();
+
+        result = (struct mylite_spatial_result){0};
+        error = (struct mylite_spatial_error){0};
+        rc = mylite_spatial_evaluate(kind, arguments, argument_count, &result, &error);
+        failures += expect_spatial_terminal_result(rc, &result, &error, should_succeed, context);
+        mylite_spatial_result_deinit(&result);
+    }
+
+    failures += expect_true(completed_sweep, context);
+    mylite_test_allocator_clear();
+    return failures;
+}
+
+static int expect_spatial_terminal_result(
+    int rc,
+    const struct mylite_spatial_result *result,
+    const struct mylite_spatial_error *error,
+    bool should_succeed,
+    const char *context
+) {
+    int failures = mylite_test_expect_int(rc, should_succeed ? 0 : -1, context);
+
+    if (should_succeed) {
+        failures += expect_true(result->kind != MYLITE_SPATIAL_RESULT_NULL, context);
+    } else {
+        failures += mylite_test_expect_int(error->code, mysql_error_invalid_gis_data, context);
+        failures += expect_true(!error->is_nomem, context);
+        failures += mylite_test_expect_int(result->kind, MYLITE_SPATIAL_RESULT_NULL, context);
+    }
+    return failures;
+}
+
+static struct generated_bytes make_nested_internal_geometry(size_t wrapper_count) {
+    size_t total_size = spatial_internal_srid_size + spatial_wkb_point_size +
+                        (wrapper_count * spatial_wkb_collection_header_size);
+    unsigned char *bytes = calloc(total_size, 1U);
+    size_t offset = spatial_internal_srid_size;
+
+    if (bytes == NULL) {
+        return (struct generated_bytes){0};
+    }
+    for (size_t index = 0U; index < wrapper_count; ++index) {
+        bytes[offset] = 1U;
+        write_u32_le(bytes + offset + 1U, MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION);
+        write_u32_le(bytes + offset + spatial_wkb_collection_count_offset, 1U);
+        offset += spatial_wkb_collection_header_size;
+    }
+    bytes[offset] = 1U;
+    write_u32_le(bytes + offset + 1U, MYLITE_SPATIAL_GEOMETRY_POINT);
+    return (struct generated_bytes){.bytes = bytes, .size = total_size};
+}
+
+static char *make_nested_text(
+    const char *prefix,
+    const char *terminal,
+    const char *suffix,
+    size_t wrapper_count
+) {
+    size_t prefix_size = strlen(prefix);
+    size_t terminal_size = strlen(terminal);
+    size_t suffix_size = strlen(suffix);
+    size_t size = 0U;
+    size_t offset = 0U;
+    char *text = NULL;
+
+    if (wrapper_count > (SIZE_MAX - terminal_size - 1U) / (prefix_size + suffix_size)) {
+        return NULL;
+    }
+    size = terminal_size + (wrapper_count * (prefix_size + suffix_size));
+    text = malloc(size + 1U);
+    if (text == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < wrapper_count; ++index) {
+        memcpy(text + offset, prefix, prefix_size);
+        offset += prefix_size;
+    }
+    memcpy(text + offset, terminal, terminal_size);
+    offset += terminal_size;
+    for (size_t index = 0U; index < wrapper_count; ++index) {
+        memcpy(text + offset, suffix, suffix_size);
+        offset += suffix_size;
+    }
+    text[offset] = '\0';
+    return text;
+}
+
+static void write_u32_le(unsigned char *destination, uint32_t value) {
+    for (size_t index = 0U; index < sizeof(value); ++index) {
+        destination[index] =
+            (unsigned char)((value >> (index * spatial_byte_bit_count)) & spatial_byte_mask);
+    }
 }
 
 static int expect_true(bool actual, const char *context) {

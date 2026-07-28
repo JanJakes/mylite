@@ -1,6 +1,9 @@
 add_library(mylite_php_pdo_extension MODULE
   src/php_pdo_mylite.c
 )
+target_include_directories(mylite_php_pdo_extension PRIVATE
+  "${PROJECT_SOURCE_DIR}/packages/php-ext-common"
+)
 target_link_libraries(mylite_php_pdo_extension PRIVATE MyLite::headers)
 add_dependencies(mylite_php_pdo_extension mylite_php_extension)
 target_compile_definitions(mylite_php_pdo_extension PRIVATE COMPILE_DL_PDO_MYLITE=1)

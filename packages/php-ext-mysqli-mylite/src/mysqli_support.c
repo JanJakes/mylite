@@ -3,6 +3,7 @@
 #endif
 
 #include "mysqli_extension.h"
+#include "php_mylite_native_value.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -93,7 +94,8 @@ static bool mylite_mysqli_buffer_cursor_result(
     mylite_stmt *native_stmt,
     zval *out_result,
     bool finalize_statement,
-    bool current_row_pending
+    bool current_row_pending,
+    bool native_types
 );
 static void mylite_mysqli_capture_result_warnings(
     mylite_mysqli_link *link,
@@ -1185,7 +1187,7 @@ bool mylite_mysqli_link_execute_query(
     }
 
     mylite_mysqli_link_clear_last_result(link);
-    if (!mylite_mysqli_buffer_cursor_result(link, native_stmt, out_result, true, false)) {
+    if (!mylite_mysqli_buffer_cursor_result(link, native_stmt, out_result, true, false, true)) {
         return false;
     }
     if (Z_TYPE_P(out_result) == IS_OBJECT) {
@@ -1540,7 +1542,7 @@ static bool mylite_mysqli_execute_buffered_cursor_sql(
     if (profile_enabled) {
         buffer_start_ns = mylite_mysqli_profile_now_ns();
     }
-    if (!mylite_mysqli_buffer_cursor_result(link, native_stmt, out_result, true, false)) {
+    if (!mylite_mysqli_buffer_cursor_result(link, native_stmt, out_result, true, false, false)) {
         if (profile_enabled) {
             buffer_ns = mylite_mysqli_profile_elapsed_ns(buffer_start_ns);
             mylite_mysqli_profile_record(
@@ -1683,7 +1685,7 @@ static bool mylite_mysqli_link_take_pending_cursor_result(
         if (MYLITE_MYSQLI_G(profile_enabled)) {
             buffer_start_ns = mylite_mysqli_profile_now_ns();
         }
-        ok = mylite_mysqli_buffer_cursor_result(link, native_stmt, out_result, true, false);
+        ok = mylite_mysqli_buffer_cursor_result(link, native_stmt, out_result, true, false, false);
         if (MYLITE_MYSQLI_G(profile_enabled)) {
             buffer_ns = mylite_mysqli_profile_elapsed_ns(buffer_start_ns);
         }
@@ -2045,7 +2047,8 @@ static bool mylite_mysqli_buffer_cursor_result(
     mylite_stmt *native_stmt,
     zval *out_result,
     bool finalize_statement,
-    bool current_row_pending
+    bool current_row_pending,
+    bool native_types
 ) {
     int status = current_row_pending ? MYLITE_ROW : mylite_stmt_step(native_stmt);
     size_t column_count = mylite_stmt_column_count(native_stmt);
@@ -2161,7 +2164,17 @@ static bool mylite_mysqli_buffer_cursor_result(
                 if (byte_count > result->fields[column].max_length) {
                     result->fields[column].max_length = byte_count;
                 }
-                ZVAL_STRINGL(value, bytes == NULL ? "" : (const char *)bytes, byte_count);
+                if (native_types) {
+                    mylite_php_native_value_to_zval(
+                        mylite_stmt_column_type(native_stmt, column),
+                        bytes,
+                        byte_count,
+                        false,
+                        value
+                    );
+                } else {
+                    ZVAL_STRINGL(value, bytes == NULL ? "" : (const char *)bytes, byte_count);
+                }
             }
         }
         result->row_count++;
@@ -2755,7 +2768,13 @@ static int mylite_mysqli_stmt_copy_current_row(mylite_mysqli_stmt *stmt) {
             const void *bytes = mylite_stmt_value_bytes(stmt->native_stmt, column);
             size_t byte_count = mylite_stmt_value_size(stmt->native_stmt, column);
 
-            ZVAL_STRINGL(target_value, bytes == NULL ? "" : (const char *)bytes, byte_count);
+            mylite_php_native_value_to_zval(
+                mylite_stmt_column_type(stmt->native_stmt, column),
+                bytes,
+                byte_count,
+                false,
+                target_value
+            );
         }
     }
     return MYLITE_OK;
@@ -2770,7 +2789,8 @@ static bool mylite_mysqli_stmt_buffer_current_result(mylite_mysqli_stmt *stmt) {
             stmt->native_stmt,
             &result,
             false,
-            stmt->current_row_pending
+            stmt->current_row_pending,
+            true
         )) {
         mylite_mysqli_set_stmt_error(stmt, link->error_code, link->sqlstate, ZSTR_VAL(link->error));
         mylite_mysqli_report_stmt_error(stmt);

@@ -6,6 +6,7 @@ add_library(mylite_php_mysqli_extension MODULE
 )
 target_include_directories(mylite_php_mysqli_extension PRIVATE
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+  "${PROJECT_SOURCE_DIR}/packages/php-ext-common"
 )
 target_link_libraries(mylite_php_mysqli_extension PRIVATE MyLite::headers)
 add_dependencies(mylite_php_mysqli_extension mylite_php_extension)

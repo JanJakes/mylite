@@ -12,6 +12,8 @@
 
 #include <mylite/mylite.h>
 
+#include "php_mylite_native_value.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -381,8 +383,10 @@ static int pdo_mylite_get_attribute(pdo_dbh_t *dbh, zend_long attr, zval *return
     (void)dbh;
     switch (attr) {
     case PDO_ATTR_CLIENT_VERSION:
-    case PDO_ATTR_SERVER_VERSION:
         ZVAL_STRING(return_value, mylite_version());
+        return 1;
+    case PDO_ATTR_SERVER_VERSION:
+        ZVAL_STRING(return_value, mylite_server_version());
         return 1;
     case PDO_ATTR_DRIVER_NAME:
         ZVAL_STRING(return_value, "mylite");
@@ -510,13 +514,15 @@ static int pdo_mylite_stmt_get_col(
         }
     } else {
         const void *bytes = mylite_stmt_value_bytes(statement_data->native, (size_t)column);
-        ZVAL_STRINGL(
-            result,
-            bytes == NULL ? "" : (const char *)bytes,
-            mylite_stmt_value_size(statement_data->native, (size_t)column)
+        mylite_php_native_value_to_zval(
+            mylite_stmt_column_type(statement_data->native, (size_t)column),
+            bytes,
+            mylite_stmt_value_size(statement_data->native, (size_t)column),
+            stmt->dbh->stringify != 0,
+            result
         );
         if (type != NULL) {
-            *type = PDO_PARAM_STR;
+            *type = Z_TYPE_P(result) == IS_LONG ? PDO_PARAM_INT : PDO_PARAM_STR;
         }
     }
     return 1;

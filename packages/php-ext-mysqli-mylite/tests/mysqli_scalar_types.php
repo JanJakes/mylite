@@ -7,7 +7,7 @@ expect_true(
     $mysqli->query(
         'CREATE TABLE typed_values (' .
         'signed_value BIGINT, unsigned_value BIGINT UNSIGNED, tiny_value TINYINT, ' .
-        'unsigned_int INT UNSIGNED, bit_value BIT(8), float_value FLOAT, ' .
+        'unsigned_int INT UNSIGNED, bit_value BIT(8), wide_bit_value BIT(64), float_value FLOAT, ' .
         'double_value DOUBLE, decimal_value DECIMAL(20,4), binary_value VARBINARY(8), ' .
         'text_value VARCHAR(8), null_value INT NULL)'
     ),
@@ -17,7 +17,9 @@ expect_true(
     $mysqli->query(
         "INSERT INTO typed_values VALUES (" .
         "-9223372036854775808, 9223372036854775807, -128, 4294967295, " .
-        "b'10100101', 1.25, -2.5, 1234567890123456.2500, UNHEX('610062'), 'text', NULL)"
+        "b'10100101', " .
+        "b'1111111111111111111111111111111111111111111111111111111111111111', " .
+        "1.25, -2.5, 1234567890123456.2500, UNHEX('610062'), 'text', NULL)"
     ),
     'insert typed row'
 );
@@ -28,6 +30,7 @@ $native = [
     'tiny_value' => -128,
     'unsigned_int' => 4294967295,
     'bit_value' => 165,
+    'wide_bit_value' => '18446744073709551615',
     'float_value' => 1.25,
     'double_value' => -2.5,
     'decimal_value' => '1234567890123456.2500',
@@ -36,25 +39,30 @@ $native = [
     'null_value' => null,
 ];
 
+$directValues = [
+    'signed_value' => '-9223372036854775808',
+    'unsigned_value' => '9223372036854775807',
+    'tiny_value' => '-128',
+    'unsigned_int' => '4294967295',
+    'bit_value' => "\xa5",
+    'wide_bit_value' => str_repeat("\xff", 8),
+    'float_value' => '1.25',
+    'double_value' => '-2.5',
+    'decimal_value' => '1234567890123456.2500',
+    'binary_value' => "a\0b",
+    'text_value' => 'text',
+    'null_value' => null,
+];
+
 $direct = $mysqli->query('SELECT * FROM typed_values');
-expect_same(
-    [
-        'signed_value' => '-9223372036854775808',
-        'unsigned_value' => '9223372036854775807',
-        'tiny_value' => '-128',
-        'unsigned_int' => '4294967295',
-        'bit_value' => "\xa5",
-        'float_value' => '1.25',
-        'double_value' => '-2.5',
-        'decimal_value' => '1234567890123456.2500',
-        'binary_value' => "a\0b",
-        'text_value' => 'text',
-        'null_value' => null,
-    ],
-    $direct->fetch_assoc(),
-    'direct scalar policy remains unchanged'
-);
+expect_same($directValues, $direct->fetch_assoc(), 'buffered direct scalar policy');
 $direct->free();
+
+expect_true($mysqli->real_query('SELECT * FROM typed_values'), 'unbuffered direct query');
+$unbuffered = $mysqli->use_result();
+expect_same($directValues, $unbuffered->fetch_assoc(), 'unbuffered direct scalar policy');
+expect_same(null, $unbuffered->fetch_assoc(), 'unbuffered direct end');
+$unbuffered->free();
 
 $prepared = $mysqli->prepare('SELECT * FROM typed_values');
 expect_true($prepared->execute(), 'prepared execute');

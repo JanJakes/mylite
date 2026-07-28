@@ -43,14 +43,16 @@ $pdo->exec('USE app');
 $pdo->exec(
     'CREATE TABLE typed_values (' .
     'signed_value BIGINT, unsigned_value BIGINT UNSIGNED, tiny_value TINYINT, ' .
-    'unsigned_int INT UNSIGNED, bit_value BIT(8), float_value FLOAT, ' .
+    'unsigned_int INT UNSIGNED, bit_value BIT(8), wide_bit_value BIT(64), float_value FLOAT, ' .
     'double_value DOUBLE, decimal_value DECIMAL(20,4), binary_value VARBINARY(8), ' .
     'text_value VARCHAR(8), null_value INT NULL)'
 );
 $pdo->exec(
     "INSERT INTO typed_values VALUES (" .
     "-9223372036854775808, 9223372036854775807, -128, 4294967295, " .
-    "b'10100101', 1.25, -2.5, 1234567890123456.2500, UNHEX('610062'), 'text', NULL)"
+    "b'10100101', " .
+    "b'1111111111111111111111111111111111111111111111111111111111111111', " .
+    "1.25, -2.5, 1234567890123456.2500, UNHEX('610062'), 'text', NULL)"
 );
 
 $native = [
@@ -59,6 +61,7 @@ $native = [
     'tiny_value' => -128,
     'unsigned_int' => 4294967295,
     'bit_value' => 165,
+    'wide_bit_value' => '18446744073709551615',
     'float_value' => 1.25,
     'double_value' => -2.5,
     'decimal_value' => '1234567890123456.2500',
@@ -72,6 +75,7 @@ $strings = [
     'tiny_value' => '-128',
     'unsigned_int' => '4294967295',
     'bit_value' => '165',
+    'wide_bit_value' => '18446744073709551615',
     'float_value' => '1.25',
     'double_value' => '-2.5',
     'decimal_value' => '1234567890123456.2500',

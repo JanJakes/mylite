@@ -213,7 +213,7 @@ $statement = $mysqli->prepare('SELECT id FROM pending_items ORDER BY id');
 $statement->execute();
 $statement->bind_result($id);
 expect_true($statement->fetch(), 'prepared partial fetch');
-expect_same('1', $id, 'prepared first id');
+expect_same(1, $id, 'prepared first id');
 expect_out_of_sync(
     static fn(): mysqli_result|bool => $mysqli->query('SELECT 26'),
     'prepared partial result'

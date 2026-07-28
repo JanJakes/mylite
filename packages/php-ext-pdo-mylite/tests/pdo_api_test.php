@@ -80,8 +80,8 @@ expect_true(
 );
 expect_true($lazySelect->execute(), 'lazy SELECT execution failed');
 expect_true($lazySelect->fetchAll() === [
-    ['id' => '1', 'name' => 'After'],
-    ['id' => '2', 'name' => 'New'],
+    ['id' => 1, 'name' => 'After'],
+    ['id' => 2, 'name' => 'New'],
 ], 'lazy SELECT did not observe post-prepare writes');
 
 expect_true(
@@ -226,10 +226,10 @@ expect_true($prepareFailed || $missingStatement === false, 'missing table should
 $stream = $pdo->prepare('SELECT id, name FROM people ORDER BY id');
 expect_true($stream->execute(), 'streaming SELECT failed');
 expect_true($stream->columnCount() === 2, 'streaming SELECT column count mismatch');
-expect_true($stream->fetch(PDO::FETCH_NUM) === ['1', 'Ada'], 'streaming SELECT first row mismatch');
+expect_true($stream->fetch(PDO::FETCH_NUM) === [1, 'Ada'], 'streaming SELECT first row mismatch');
 expect_true($stream->closeCursor(), 'streaming SELECT closeCursor failed');
 expect_true($stream->execute(), 'streaming SELECT re-execute failed');
-expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '1', 'name' => 'Ada'], 'streaming SELECT re-execute row mismatch');
+expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => 1, 'name' => 'Ada'], 'streaming SELECT re-execute row mismatch');
 
 $scrollPrepareRejected = false;
 try {
@@ -253,14 +253,14 @@ try {
 }
 expect_true($orientationRejected, 'absolute fetch orientation must be rejected');
 expect_true(
-    $orientationStatement->fetch(PDO::FETCH_ASSOC) === ['id' => '1'],
+    $orientationStatement->fetch(PDO::FETCH_ASSOC) === ['id' => 1],
     'rejected orientation must not consume the pending row'
 );
 
 expect_true($pdo->beginTransaction(), 'beginTransaction failed');
 expect_true($pdo->exec("INSERT INTO people VALUES (3, 'Katherine')") === 1, 'transaction INSERT failed');
 expect_true($pdo->rollBack(), 'rollBack failed');
-expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '2', 'name' => 'Grace'], 'buffered SELECT unread row mismatch');
+expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => 2, 'name' => 'Grace'], 'buffered SELECT unread row mismatch');
 expect_true($pdo->query('SELECT COUNT(*) AS total FROM people')->fetch() === ['total' => '2'], 'rollback count mismatch');
 
 $quotedPayload = "A\0\n\r\\'\"\x1aB";
@@ -296,7 +296,7 @@ $releasedStatement = $statementFirstPdo->prepare('SELECT 1');
 unset($releasedStatement);
 gc_collect_cycles();
 expect_true(
-    $statementFirstPdo->query('SELECT 2')->fetchColumn() === '2',
+    $statementFirstPdo->query('SELECT 2')->fetchColumn() === 2,
     'PDO connection failed after statement-first destruction'
 );
 unset($statementFirstPdo);

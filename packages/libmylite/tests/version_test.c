@@ -18,12 +18,8 @@ int main(void) {
         return 1;
     }
     if (mylite_open_memory(&database) != MYLITE_OK ||
-        mylite_execute(
-            database,
-            "SELECT VERSION()",
-            strlen("SELECT VERSION()"),
-            &result
-        ) != MYLITE_OK ||
+        mylite_execute(database, "SELECT VERSION()", strlen("SELECT VERSION()"), &result) !=
+            MYLITE_OK ||
         mylite_result_row_count(result) != 1U ||
         strcmp(mylite_result_value_text(result, 0U, 0U), server_version) != 0) {
         fprintf(stderr, "SQL-visible version does not match %s\n", server_version);

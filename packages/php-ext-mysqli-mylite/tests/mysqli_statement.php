@@ -42,8 +42,8 @@ expect_true(
 expect_true($lazySelect->execute(), 'execute lazy SELECT');
 expect_same(
     [
-        ['id' => '1', 'value' => 'after'],
-        ['id' => '2', 'value' => 'new'],
+        ['id' => 1, 'value' => 'after'],
+        ['id' => 2, 'value' => 'new'],
     ],
     $lazySelect->get_result()->fetch_all(MYSQLI_ASSOC),
     'lazy SELECT observes post-prepare writes'
@@ -152,19 +152,19 @@ $outId = null;
 $outValue = null;
 expect_true(mysqli_stmt_bind_result($select, $outId, $outValue), 'bind result');
 expect_true(mysqli_stmt_fetch($select), 'fetch first');
-expect_same('1', $outId, 'first id');
-expect_same('100', $outValue, 'first value');
+expect_same(1, $outId, 'first id');
+expect_same(100, $outValue, 'first value');
 
 $min = 2;
 expect_true(mysqli_stmt_execute($select), 'execute select again');
 expect_same(
-    ['id' => '2', 'value' => '200'],
+    ['id' => 2, 'value' => 200],
     mysqli_stmt_get_result($select)->fetch_assoc(),
     'second execution result'
 );
 
 $result = $mysqli->execute_query('SELECT value FROM items WHERE id = ?', [2]);
-expect_same(['value' => '200'], $result->fetch_assoc(), 'execute_query result');
+expect_same(['value' => 200], $result->fetch_assoc(), 'execute_query result');
 
 $update = $mysqli->prepare('UPDATE items SET value = ? WHERE id >= ?');
 $updatedValue = 100;

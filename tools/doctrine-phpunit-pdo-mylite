@@ -279,7 +279,6 @@ final class DoctrineDbalMyLiteTest extends TestCase
             'driverClass' => MyLiteDbalDriver::class,
             'path' => $dbPath,
             'dbname' => 'doctrine_dbal_tests',
-            'serverVersion' => '8.4.9',
         ]);
     }
 
@@ -452,7 +451,6 @@ final class DoctrineOrmMyLiteTest extends TestCase
             'driverClass' => MyLiteOrmDriver::class,
             'path' => $dbPath,
             'dbname' => 'doctrine_orm_tests',
-            'serverVersion' => '8.4.9',
         ]);
         $this->entityManager = new EntityManager($this->connection, $config);
 

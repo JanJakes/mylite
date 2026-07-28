@@ -643,11 +643,30 @@ formatting, ABI, install-consumer, and compatibility-ledger gates; structured
 scaling through 65,536 tokens and one MiB; and the 12,412,232-byte production
 archive.
 
-### `SQL-03`, `SQL-04`, and `SQL-05`: spans, diagnostics, and nesting limits
+### `SQL-03`: retry AST payload spans
 
-- [ ] Rebase and validate width, length, precision, scale, and every other
+- [x] Rebase and validate width, length, precision, scale, and every other
   embedded AST payload span, not only each node's primary span.
-- [ ] Assert full-source snapshot invariants for retry-produced ASTs.
+- [x] Assert full-source snapshot invariants for retry-produced ASTs.
+
+`SQL-03` is closed by the independently authored specification and MySQL
+fixture at `423b0696d`, implementation at `28a4352b9`, and release
+qualification at `6851a37e0`. One exhaustive node-kind registry now drives
+AST-wide validation, atomic source-length rebasing, and owned snapshot cloning
+for every primary and type-payload source span. Retry-produced ASTs cannot
+publish mixed prefix/full-source lengths, and snapshots retain no pointers into
+the caller's SQL buffer.
+
+Qualification covered all 48 parser suites in Development, Debug-CI, Release,
+and ASan/UBSan with leak detection; focused deterministic allocator profiles;
+all 39 pinned MySQL 8.4.9 parser fixtures; 10,000 seeded parser-fuzzer
+executions including structured inputs above one MiB; full LLVM 19 static
+analysis across 925 translation units; formatting, ABI, install-consumer,
+pkg-config, and compatibility-ledger gates; and the 12,413,104-byte production
+archive.
+
+### `SQL-04` and `SQL-05`: diagnostics and nesting limits
+
 - [ ] Remove unchecked `size_t` to `int` diagnostic precision casts and cap
   copied token text to the diagnostic buffer budget.
 - [ ] Differentially verify complete syntax-error code, SQLSTATE, and message

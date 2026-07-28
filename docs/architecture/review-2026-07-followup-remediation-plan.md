@@ -544,22 +544,49 @@ formatting, and focused static analysis.
 
 ### `SEM-01`: robust topology and metric behavior
 
-- [ ] Replace the fixed absolute spatial epsilon with robust/adaptive
+- [x] Replace the fixed absolute spatial epsilon with robust/adaptive
   orientation and segment predicates.
-- [ ] Never clamp a positive metric distance to zero solely because it is
+- [x] Never clamp a positive metric distance to zero solely because it is
   small.
-- [ ] Differentially test below/at/above `1e-12` for point-line, line-line,
+- [x] Differentially test below/at/above `1e-12` for point-line, line-line,
   polygon boundary, intersection, disjointness, containment, and distance.
-- [ ] Repeat cases after translation and scaling to catch coordinate-magnitude
+- [x] Repeat cases after translation and scaling to catch coordinate-magnitude
   dependence.
-- [ ] Review every topology predicate that derives truth from distance zero.
+- [x] Review every topology predicate that derives truth from distance zero.
+
+`SEM-01` is closed by the independently authored specification at
+`c02605a5e`, implementation at `59cb296c2`, sanitizer-link correction at
+`5bf072cc7`, and release qualification at `8bfb3a8aa`. The global absolute
+epsilon is gone. An adaptive binary64 orientation filter falls back to
+fixed-width exact signed arithmetic for uncertain determinants, while exact
+coordinate bounds drive segment, boundary, validity, simplicity, convex-hull,
+and relation decisions. Metric paths preserve positive represented distances,
+and intersects, disjoint, and touches no longer infer truth from a thresholded
+distance.
+
+Qualification covered all 21 spatial-related native suites in Development,
+Debug-CI, Release, and ASan/UBSan with leak detection; 22 pinned MySQL 8.4.9
+spatial fixtures; the 22-test deterministic fault profile; 10,000 seeded
+geometry-fuzzer executions; ABI, install-consumer, formatting, and focused
+static-analysis gates; and the 12,396,396-byte production archive. The SEC02
+production benchmark retained near-linear candidate growth, examining 138,119
+candidates at 64K vertices instead of 2,147,385,344 exhaustive pairs.
 
 ### Phase 3 closure
 
-- [ ] Run all spatial native and MySQL expectation suites, large-input fuzzing,
+- [x] Run all spatial native and MySQL expectation suites, large-input fuzzing,
   ASan/UBSan, and structured performance tests.
-- [ ] Update spatial specifications and compatibility rows to match measured
+- [x] Update spatial specifications and compatibility rows to match measured
   values, metadata, limits, and diagnostics.
+
+Phase 3 is closed with all three spatial remediations release-qualified. The
+depth-50 nesting budget bounds recursive geometry work, scalable validation
+adds deterministic cancellation and work limits, and robust represented-value
+predicates remove coordinate-magnitude-dependent topology. The complete
+spatial matrix passes native, MySQL 8.4.9, sanitizer, fault, fuzz, ABI, size,
+and structured-scaling gates. The three focused compatibility rows are green;
+the broad spatial family remains yellow for its separately documented SRS,
+topology-surface, search, and extreme-ratio MySQL-artifact gaps.
 
 ## Phase 4: SQL Front-end Failure Handling And Resource Bounds
 

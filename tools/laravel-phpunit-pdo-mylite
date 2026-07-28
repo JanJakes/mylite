@@ -436,7 +436,8 @@ run_laravel_phpunit_suite() {
   mkdir -p "${MYLITE_LARAVEL_CMAKE_BUILD_DIR}"
   write_laravel_application_suite
 
-  if grep -Eq 'new[[:space:]]+(\\?PDO|MySqlConnection)|ConnectionResolver' \
+  if grep -Eq \
+      'class[[:space:]]+[[:alnum:]_]*(Connector|Connection)|new[[:space:]]+(\\?PDO|MySqlConnection)|ConnectionResolver' \
       "${MYLITE_LARAVEL_SUITE_DIR}/LaravelMyLiteApplicationTest.php"; then
     printf '%s\n' "generated Laravel suite contains a test-local connection bridge" >&2
     return 1

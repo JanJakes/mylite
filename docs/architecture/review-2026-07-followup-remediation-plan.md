@@ -389,10 +389,10 @@ release-review completion at `d5005f606`:
 - [x] Define and implement buffered PDO SELECT `rowCount()` compatibility.
 - [x] Expose a stable public connection ID and make mysqli `thread_id` match
   `CONNECTION_ID()` across multiple handles.
-- [ ] Replace Laravel and Doctrine test-only bridge wiring with supported
+- [x] Replace Laravel and Doctrine test-only bridge wiring with supported
   connector/driver packages, or explicitly scope those baselines as adapters
   rather than drop-in integrations.
-- [ ] Test fresh framework applications through normal configuration,
+- [x] Test fresh framework applications through normal configuration,
   migrations, hydration, metadata, exception conversion, and transactions.
 
 `API-06` implementation evidence at `6dc01dcea`, with release-review
@@ -413,6 +413,30 @@ completion at `6bea75a55`:
   developer-tree tests, all 15 Release adapter tests, and all 15 ASan/UBSan
   adapter tests pass. Exact ABI, LLVM 19 formatting/static-analysis, and all
   production artifact size gates pass.
+
+`API-07` implementation evidence at `511b0237d`, with fresh-application
+qualification at `1ec0c22fe`:
+
+- Independent `mylite/laravel-driver` and
+  `mylite/doctrine-dbal-driver` Composer packages provide supported framework
+  extension points without adding either framework to the other package or to
+  MyLite's native runtime.
+- Laravel package discovery resolves a normal configured `mylite` connection
+  in a fresh application pinned to skeleton commit `945f4e5a9` and Framework
+  12.62.0. Stock and MyLite-owned migrations plus 3 tests and 25 assertions
+  cover package origin, metadata, typed query results, unique-constraint
+  conversion, rollback, and Eloquent hydration and relations.
+- A fresh Composer application pinned to Doctrine DBAL 4.4.3 and ORM 3.6.7
+  selects the installed driver through `driverClass`. The DBAL gate passes
+  2 tests and 22 assertions, and the ORM gate passes 1 test and 8 assertions,
+  covering platform selection, metadata, typed query results, exception
+  conversion, transactions, `SchemaTool`, identity generation, DQL hydration,
+  and reload.
+- PDO MyLite accepts Laravel's required native-prepare attribute only as
+  `false`; the focused PDO suite passes in the developer and ASan/UBSan builds.
+  Both Composer manifests validate strictly, package PHP sources lint, the
+  runners pass ShellCheck and reject test-local connectors/drivers, and the
+  compatibility ledger verifies 704 green claims against 800 MySQL fixtures.
 
 ### `SEC-03`: length-aware database paths
 

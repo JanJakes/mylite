@@ -537,7 +537,8 @@ run_doctrine_phpunit_suites() {
   mkdir -p "${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}"
   write_doctrine_phpunit_suite
 
-  if grep -Eq 'extends[[:space:]]+AbstractMySQLDriver|new[[:space:]]+\\?PDO' \
+  if grep -Eq \
+      'class[[:space:]]+[[:alnum:]_]*Driver|extends[[:space:]]+AbstractMySQLDriver|implements[^\\{]*Driver|new[[:space:]]+\\?PDO' \
       "${MYLITE_DOCTRINE_SUITE_DIR}"/*.php; then
     printf '%s\n' "generated Doctrine suite contains a test-local DBAL driver" >&2
     return 1

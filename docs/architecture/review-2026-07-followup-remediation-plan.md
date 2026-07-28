@@ -187,11 +187,28 @@ buildable and reviewable.
 
 ### Phase 1 closure
 
-- [ ] Run all catalog, DDL, DML, transaction, concurrency, migration,
+- [x] Run all catalog, DDL, DML, transaction, concurrency, migration,
   recovery, failpoint, TSan, ASan/UBSan, and application suites.
-- [ ] Independently review every plan-generation comparison and seal-publication
+- [x] Independently review every plan-generation comparison and seal-publication
   site.
-- [ ] Update storage, transaction, prepared-plan, and file-format documentation.
+- [x] Update storage, transaction, prepared-plan, and file-format documentation.
+
+Linux qualification evidence for the Phase 1 implementation at `a099ea52e`:
+
+- Native: 692/692 tests passed, including four concurrency tests and the
+  complete crash/fault-injection recovery model.
+- ASan/UBSan: 692/692 tests passed; TSan: 4/4 concurrency tests passed.
+- Repository-wide `clang-format` and `clang-tidy` gates passed.
+- WordPress: 29,248 tests and 3,440,328 assertions passed, with 86 upstream
+  PHPUnit deprecation warnings and 94 skips.
+- Drupal: 559 tests and 2,340 assertions passed, with 8 skips.
+- Laravel: 2 tests and 12 assertions passed.
+- Doctrine DBAL and ORM: 2 tests and 15 assertions passed.
+- MediaWiki: 35 tests and 852 assertions passed, with 1 skip.
+
+The remaining unchecked Phase 1 item requires the existing Windows CI job to
+execute the hot-journal and initialization process-death paths for this commit.
+The corresponding POSIX paths passed locally.
 
 ## Phase 2: Prepared Statements, Results, Diagnostics, And PHP Parity
 

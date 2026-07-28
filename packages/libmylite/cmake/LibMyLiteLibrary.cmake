@@ -202,6 +202,7 @@ add_library(mylite
   src/runtime/mylite_spatial.c
   src/runtime/mylite_spatial_collect_aggregate.c
   src/runtime/mylite_spatial_functions.c
+  src/runtime/mylite_spatial_robust.c
   src/runtime/mylite_statement_context.c
   src/runtime/mylite_statistical_aggregate.c
   src/runtime/mylite_system_functions.c

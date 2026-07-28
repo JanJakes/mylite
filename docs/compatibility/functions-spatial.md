@@ -35,6 +35,12 @@ broad phases, deterministic resource ceilings, explicit
 `mylite_interrupt()` cancellation, and session `max_execution_time` polling;
 see the
 [scalable and cancellable spatial validation specification](../specs/scalable-cancellable-spatial-validation/specs.md).
+Shared SRID-0 topology decisions use exact represented-coordinate equality,
+an adaptive orientation filter with a fixed-width exact binary64 fallback,
+exact segment bounds, and non-expanded validation AABBs. Cartesian distance
+aggregation preserves positive values below `1e-12`, and relation predicates
+do not derive intersection from a metric tolerance; see the
+[robust spatial topology and metrics specification](../specs/robust-spatial-topology-metrics/specs.md).
 It does not yet implement a general SRS catalog, full topology predicate
 coverage, general constructive geometry operations, coordinate transformation
 pipelines, nonzero buffer construction, or physical spatial search.
@@ -71,8 +77,8 @@ pipelines, nonzero buffer construction, or physical spatial search.
 | `ST_Crosses()` | 🟡 | SRID-0 object-shape crosses for Point, LineString, Polygon, and child-decomposed collections; full DE-9IM coverage and geographic SRS deferred |
 | `ST_Difference()` | 🟡 | Point/MultiPoint set difference with SRID preservation; general topology deferred |
 | `ST_Dimension()` | ✅ | Return SRID-0 geometry dimension |
-| `ST_Disjoint()` | ✅ | SRID-0 object-shape disjoint predicate for representable geometry values |
-| `ST_Distance()` | 🟡 | Cartesian SRID-0 geometry distance; geographic distance and unit conversion deferred |
+| `ST_Disjoint()` | ✅ | Exact represented-coordinate SRID-0 object-shape disjoint predicate |
+| `ST_Distance()` | 🟡 | Non-clamped Cartesian SRID-0 geometry distance; geographic distance and unit conversion deferred |
 | `ST_Distance_Sphere()` | ✅ | SRID-0 spherical distance for Point and MultiPoint |
 | `ST_EndPoint()` | ✅ | Return LineString end point |
 | `ST_Envelope()` | ✅ | Return SRID-0 geometry envelope |
@@ -90,7 +96,7 @@ pipelines, nonzero buffer construction, or physical spatial search.
 | `ST_HausdorffDistance()` | ✅ | Directed SRID-0 discrete Hausdorff distance for supported Point/MultiPoint and LineString/MultiLineString combinations |
 | `ST_InteriorRingN()` | ✅ | Return one-based Polygon interior ring |
 | `ST_Intersection()` | 🟡 | Point/MultiPoint set intersection with SRID preservation; general topology deferred |
-| `ST_Intersects()` | ✅ | SRID-0 object-shape intersects predicate for representable geometry values |
+| `ST_Intersects()` | ✅ | Exact represented-coordinate SRID-0 object-shape intersects predicate |
 | `ST_IsClosed()` | ✅ | Return LineString/MultiLineString closed state |
 | `ST_IsEmpty()` | ✅ | Return empty geometry collection state |
 | `ST_IsSimple()` | ✅ | SRID-0 simplicity check for representable geometry values |

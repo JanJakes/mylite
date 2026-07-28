@@ -2,6 +2,7 @@
 
 #include "mylite_json_internal.h"
 #include "mylite_numeric_locale.h"
+#include "mylite_spatial_robust.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -94,9 +95,9 @@ enum spatial_buffer_strategy_code {
 };
 
 static const double spatial_shoelace_area_divisor = 2.0;
-static const double spatial_distance_epsilon = 0.000000000001;
 static const double spatial_midpoint_divisor = 2.0;
 static const double spatial_centroid_denominator_multiplier = 3.0;
+static const double spatial_interpolation_roundoff_guard = 8.0 * DBL_EPSILON;
 static const double spatial_distance_sphere_default_radius = 6370986.0;
 static const double spatial_degrees_to_radians_divisor = 180.0;
 static const double spatial_haversine_half_divisor = 2.0;
@@ -1523,6 +1524,26 @@ static double distance_polygon_to_polygon(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right
 );
+static bool relation_geometry_intersects(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool relation_simple_geometries_intersect(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool relation_lines_intersect(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool relation_line_intersects_polygon_surface(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_distance_geometry *polygon
+);
+static bool relation_polygons_intersect(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
 static bool relation_geometry_contains(
     const struct spatial_distance_geometry *container,
     const struct spatial_distance_geometry *content
@@ -1922,12 +1943,11 @@ static bool point_on_segment(
     const struct spatial_point *point,
     const struct spatial_segment *segment
 );
-static double point_cross_product(
+static int spatial_orientation_sign(
     const struct spatial_point *origin,
     const struct spatial_point *left,
     const struct spatial_point *right
 );
-static bool double_near_zero(double value);
 static void distance_consider(double candidate, double *io_distance, bool *io_has_distance);
 static int wkb_swap_xy_at(
     struct spatial_wkb_cursor *cursor,
@@ -4384,7 +4404,7 @@ static int evaluate_buffer(
     if (is_null) {
         return assign_null_result(out_result);
     }
-    if (double_near_zero(distance)) {
+    if (distance == 0.0) {
         return assign_copied_bytes_result(
             out_result,
             MYLITE_SPATIAL_RESULT_GEOMETRY,
@@ -4741,11 +4761,9 @@ static int evaluate_relation_predicate(
     struct spatial_distance_geometry left_geometry = {0};
     struct spatial_distance_geometry right_geometry = {0};
     bool is_null = false;
-    bool has_distance = false;
     bool intersects = false;
     bool contains = false;
     bool touches = false;
-    double distance = 0.0;
     int rc = read_two_geometry_arguments(
         kind,
         arguments,
@@ -4838,18 +4856,10 @@ static int evaluate_relation_predicate(
             distance_geometry_deinit(&right_geometry);
             return assign_null_result(out_result);
         }
-        rc = distance_between_geometries(&left_geometry, &right_geometry, &distance, &has_distance);
-        if (rc == 0 && has_distance && double_near_zero(distance)) {
-            touches = !relation_geometry_interiors_intersect(&left_geometry, &right_geometry);
-        }
+        touches = relation_geometry_intersects(&left_geometry, &right_geometry) &&
+                  !relation_geometry_interiors_intersect(&left_geometry, &right_geometry);
         distance_geometry_deinit(&left_geometry);
         distance_geometry_deinit(&right_geometry);
-        if (rc != 0) {
-            return rc;
-        }
-        if (!has_distance) {
-            return assign_null_result(out_result);
-        }
         return assign_integer_result(out_result, touches ? 1 : 0);
     }
     if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_OVERLAPS) {
@@ -4880,17 +4890,13 @@ static int evaluate_relation_predicate(
         return assign_integer_result(out_result, contains ? 1 : 0);
     }
     if (rc == 0) {
-        rc = distance_between_geometries(&left_geometry, &right_geometry, &distance, &has_distance);
+        intersects = relation_geometry_intersects(&left_geometry, &right_geometry);
     }
     distance_geometry_deinit(&left_geometry);
     distance_geometry_deinit(&right_geometry);
     if (rc != 0) {
         return rc;
     }
-    if (!has_distance) {
-        return assign_null_result(out_result);
-    }
-    intersects = double_near_zero(distance);
     if (kind == MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS) {
         return assign_integer_result(out_result, intersects ? 1 : 0);
     }
@@ -8436,7 +8442,7 @@ static int centroid_polygon_value(
         weighted_x += sign * ring_area * ring_centroid.coordinate_x;
         weighted_y += sign * ring_area * ring_centroid.coordinate_y;
     }
-    if (double_near_zero(total_area) || total_area < 0.0) {
+    if (total_area == 0.0 || total_area < 0.0) {
         return set_invalid_gis_data_error(error, function_name);
     }
     *out_centroid = (struct spatial_point){
@@ -8474,7 +8480,7 @@ static int centroid_ring_value(
         centroid_x_numerator += (current->coordinate_x + next->coordinate_x) * cross;
         centroid_y_numerator += (current->coordinate_y + next->coordinate_y) * cross;
     }
-    if (double_near_zero(twice_area)) {
+    if (twice_area == 0.0) {
         return set_invalid_gis_data_error(error, function_name);
     }
     *out_centroid = (struct spatial_point){
@@ -8730,11 +8736,11 @@ static bool spatial_ring_has_noncollinear_points(const struct spatial_distance_r
             }
             for (uint32_t right_index = left_index + 1U; right_index < ring->point_count;
                  ++right_index) {
-                if (!double_near_zero(point_cross_product(
+                if (spatial_orientation_sign(
                         &ring->points[origin_index],
                         &ring->points[left_index],
                         &ring->points[right_index]
-                    ))) {
+                    ) != 0) {
                     return true;
                 }
             }
@@ -8875,7 +8881,7 @@ static bool convex_hull_turn_is_clockwise_or_collinear(
     const struct spatial_point *middle,
     const struct spatial_point *candidate
 ) {
-    return point_cross_product(origin, middle, candidate) <= spatial_distance_epsilon;
+    return spatial_orientation_sign(origin, middle, candidate) <= 0;
 }
 
 static int simplify_geometry(
@@ -10464,7 +10470,7 @@ static bool validity_multipolygon_is_valid(
         for (size_t right_index = left_index + 1U; right_index < entry_count; ++right_index) {
             const struct spatial_validation_component_entry *right = &entries[right_index];
 
-            if (right->min_x > left->max_x + spatial_distance_epsilon) {
+            if (right->min_x > left->max_x) {
                 break;
             }
             if (!spatial_validation_record_candidate_check(validation)) {
@@ -10621,7 +10627,7 @@ static bool validity_polygon_holes_are_valid(
             struct spatial_point left_point = {0};
             struct spatial_point right_point = {0};
 
-            if (right->min_x > left->max_x + spatial_distance_epsilon) {
+            if (right->min_x > left->max_x) {
                 break;
             }
             if (!spatial_validation_record_candidate_check(validation)) {
@@ -10703,12 +10709,10 @@ static enum spatial_point_ring_relation validity_point_ring_relation(
         }
         if ((current_point->coordinate_y > point->coordinate_y) !=
             (previous_point->coordinate_y > point->coordinate_y)) {
-            double crossing_x = ((previous_point->coordinate_x - current_point->coordinate_x) *
-                                 (point->coordinate_y - current_point->coordinate_y) /
-                                 (previous_point->coordinate_y - current_point->coordinate_y)) +
-                                current_point->coordinate_x;
+            int orientation = spatial_orientation_sign(previous_point, current_point, point);
+            bool edge_moves_up = current_point->coordinate_y > previous_point->coordinate_y;
 
-            if (point->coordinate_x < crossing_x) {
+            if ((orientation > 0) == edge_moves_up) {
                 inside = !inside;
             }
         }
@@ -10780,7 +10784,7 @@ static bool validity_polygons_intersect_invalidly(
         for (size_t right_index = left_index + 1U; right_index < entry_count; ++right_index) {
             const struct spatial_validation_component_entry *right_entry = &entries[right_index];
 
-            if (right_entry->min_x > left_entry->max_x + spatial_distance_epsilon) {
+            if (right_entry->min_x > left_entry->max_x) {
                 break;
             }
             if (left_entry->group == right_entry->group) {
@@ -10897,7 +10901,7 @@ static bool validity_ring_segments_intersect_invalidly(
             struct spatial_segment left_segment_value = {0};
             struct spatial_segment right_segment_value = {0};
 
-            if (right_entry->min_x > left_entry->max_x + spatial_distance_epsilon) {
+            if (right_entry->min_x > left_entry->max_x) {
                 break;
             }
             if (!spatial_validation_record_candidate_check(validation)) {
@@ -10991,11 +10995,9 @@ static bool validity_component_entries_can_intersect(
     const struct spatial_validation_component_entry *left,
     const struct spatial_validation_component_entry *right
 ) {
-    return left != NULL && right != NULL &&
-           left->min_x <= right->max_x + spatial_distance_epsilon &&
-           left->max_x + spatial_distance_epsilon >= right->min_x &&
-           left->min_y <= right->max_y + spatial_distance_epsilon &&
-           left->max_y + spatial_distance_epsilon >= right->min_y;
+    return left != NULL && right != NULL && left->min_x <= right->max_x &&
+           left->max_x >= right->min_x && left->min_y <= right->max_y &&
+           left->max_y >= right->min_y;
 }
 
 static bool validity_build_segment_entries(
@@ -11072,8 +11074,7 @@ static bool validity_segment_entries_can_intersect(
     const struct spatial_validation_segment_entry *left,
     const struct spatial_validation_segment_entry *right
 ) {
-    return left->min_y <= right->max_y + spatial_distance_epsilon &&
-           left->max_y + spatial_distance_epsilon >= right->min_y;
+    return left->min_y <= right->max_y && left->max_y >= right->min_y;
 }
 
 static bool validity_segment_entries_are_adjacent(
@@ -11330,7 +11331,7 @@ static double distance_line_to_line(
             struct spatial_segment right_segment = line_segment(right, right_index);
             double candidate = distance_segment_to_segment(&left_segment, &right_segment);
 
-            if (double_near_zero(candidate)) {
+            if (candidate == 0.0) {
                 return 0.0;
             }
             distance_consider(candidate, &distance, &has_distance);
@@ -11392,6 +11393,125 @@ static double distance_polygon_to_polygon(
         }
     }
     return has_distance ? distance : DBL_MAX;
+}
+
+static bool relation_geometry_intersects(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (left == NULL || right == NULL || distance_geometry_is_empty(left) ||
+        distance_geometry_is_empty(right)) {
+        return false;
+    }
+    if (distance_geometry_is_collection(left)) {
+        for (uint32_t index = 0U; index < left->child_count; ++index) {
+            if (relation_geometry_intersects(&left->children[index], right)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (distance_geometry_is_collection(right)) {
+        for (uint32_t index = 0U; index < right->child_count; ++index) {
+            if (relation_geometry_intersects(left, &right->children[index])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return relation_simple_geometries_intersect(left, right);
+}
+
+static bool relation_simple_geometries_intersect(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    switch (left->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return spatial_points_are_equal(&left->point, &right->point);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return simplicity_point_is_on_line(&left->point, right);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return polygon_contains_point_surface(right, &left->point);
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return simplicity_point_is_on_line(&right->point, left);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return relation_lines_intersect(left, right);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return relation_line_intersects_polygon_surface(left, right);
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return polygon_contains_point_surface(left, &right->point);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return relation_line_intersects_polygon_surface(right, left);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return relation_polygons_intersect(left, right);
+        }
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool relation_lines_intersect(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (!line_has_segment(left) || !line_has_segment(right)) {
+        return false;
+    }
+    for (uint32_t left_index = 0U; left_index + 1U < left->point_count; ++left_index) {
+        struct spatial_segment left_segment = line_segment(left, left_index);
+
+        for (uint32_t right_index = 0U; right_index + 1U < right->point_count; ++right_index) {
+            struct spatial_segment right_segment = line_segment(right, right_index);
+
+            if (segments_intersect(&left_segment, &right_segment)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool relation_line_intersects_polygon_surface(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_distance_geometry *polygon
+) {
+    for (uint32_t index = 0U; index < line->point_count; ++index) {
+        if (polygon_contains_point_surface(polygon, &line->points[index])) {
+            return true;
+        }
+    }
+    return line_intersects_polygon(line, polygon);
+}
+
+static bool relation_polygons_intersect(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (polygon_rings_intersect(left, right)) {
+        return true;
+    }
+    if (left->ring_count > 0U && left->rings[0].point_count > 0U &&
+        polygon_contains_point_surface(right, &left->rings[0].points[0])) {
+        return true;
+    }
+    return right->ring_count > 0U && right->rings[0].point_count > 0U &&
+           polygon_contains_point_surface(left, &right->rings[0].points[0]);
 }
 
 static bool relation_geometry_contains(
@@ -11817,7 +11937,7 @@ static bool relation_collinear_segments_overlap_with_length(
     double overlap_min = fmax(left_min, right_min);
     double overlap_max = fmin(left_max, right_max);
 
-    return overlap_max - overlap_min > spatial_distance_epsilon;
+    return overlap_max > overlap_min;
 }
 
 static bool relation_segment_intersection_endpoint_has_line_interiors(
@@ -12189,8 +12309,8 @@ static bool relation_segments_overlap_collinearly(
     const struct spatial_segment *right
 ) {
     if (left == NULL || right == NULL ||
-        !double_near_zero(point_cross_product(&left->start, &left->end, &right->start)) ||
-        !double_near_zero(point_cross_product(&left->start, &left->end, &right->end))) {
+        spatial_orientation_sign(&left->start, &left->end, &right->start) != 0 ||
+        spatial_orientation_sign(&left->start, &left->end, &right->end) != 0) {
         return false;
     }
     return point_on_segment(&left->start, right) || point_on_segment(&left->end, right) ||
@@ -12265,12 +12385,10 @@ static enum spatial_point_ring_relation point_ring_relation(
         }
         if ((current_point->coordinate_y > point->coordinate_y) !=
             (previous_point->coordinate_y > point->coordinate_y)) {
-            double crossing_x = ((previous_point->coordinate_x - current_point->coordinate_x) *
-                                 (point->coordinate_y - current_point->coordinate_y) /
-                                 (previous_point->coordinate_y - current_point->coordinate_y)) +
-                                current_point->coordinate_x;
+            int orientation = spatial_orientation_sign(previous_point, current_point, point);
+            bool edge_moves_up = current_point->coordinate_y > previous_point->coordinate_y;
 
-            if (point->coordinate_x < crossing_x) {
+            if ((orientation > 0) == edge_moves_up) {
                 inside = !inside;
             }
         }
@@ -12355,7 +12473,7 @@ static double distance_line_to_ring(
             double candidate =
                 distance_segment_to_segment(&line_segment_value, &ring_segment_value);
 
-            if (double_near_zero(candidate)) {
+            if (candidate == 0.0) {
                 return 0.0;
             }
             distance_consider(candidate, &distance, &has_distance);
@@ -12381,7 +12499,7 @@ static double distance_ring_to_ring(
             struct spatial_segment right_segment = ring_segment(right, right_index);
             double candidate = distance_segment_to_segment(&left_segment, &right_segment);
 
-            if (double_near_zero(candidate)) {
+            if (candidate == 0.0) {
                 return 0.0;
             }
             distance_consider(candidate, &distance, &has_distance);
@@ -12436,16 +12554,33 @@ static double distance_point_to_segment(
 ) {
     double delta_x = segment->end.coordinate_x - segment->start.coordinate_x;
     double delta_y = segment->end.coordinate_y - segment->start.coordinate_y;
-    double length_squared = (delta_x * delta_x) + (delta_y * delta_y);
+    double scale = fmax(fabs(delta_x), fabs(delta_y));
     double position = 0.0;
     struct spatial_point projected = segment->start;
 
-    if (double_near_zero(length_squared)) {
+    if (point_on_segment(point, segment)) {
+        return 0.0;
+    }
+    if (scale == 0.0) {
         return distance_point_to_point(point, &segment->start);
     }
-    position = (((point->coordinate_x - segment->start.coordinate_x) * delta_x) +
-                ((point->coordinate_y - segment->start.coordinate_y) * delta_y)) /
-               length_squared;
+    {
+        double scaled_delta_x = delta_x / scale;
+        double scaled_delta_y = delta_y / scale;
+        double scaled_length_squared =
+            (scaled_delta_x * scaled_delta_x) + (scaled_delta_y * scaled_delta_y);
+        double scaled_offset_x = (point->coordinate_x - segment->start.coordinate_x) / scale;
+        double scaled_offset_y = (point->coordinate_y - segment->start.coordinate_y) / scale;
+        double projection = 0.0;
+
+        if (scaled_delta_x != 0.0) {
+            projection += scaled_offset_x * scaled_delta_x;
+        }
+        if (scaled_delta_y != 0.0) {
+            projection += scaled_offset_y * scaled_delta_y;
+        }
+        position = projection / scaled_length_squared;
+    }
     if (position <= 0.0) {
         return distance_point_to_point(point, &segment->start);
     }
@@ -12454,7 +12589,11 @@ static double distance_point_to_segment(
     }
     projected.coordinate_x = segment->start.coordinate_x + (position * delta_x);
     projected.coordinate_y = segment->start.coordinate_y + (position * delta_y);
-    return distance_point_to_point(point, &projected);
+    {
+        double distance = distance_point_to_point(point, &projected);
+
+        return distance == 0.0 ? DBL_TRUE_MIN : distance;
+    }
 }
 
 static double distance_segment_to_segment(
@@ -12481,58 +12620,58 @@ static double distance_point_to_point(
     double delta_x = left->coordinate_x - right->coordinate_x;
     double delta_y = left->coordinate_y - right->coordinate_y;
 
-    return sqrt((delta_x * delta_x) + (delta_y * delta_y));
+    return hypot(delta_x, delta_y);
 }
 
 static bool segments_intersect(
     const struct spatial_segment *left,
     const struct spatial_segment *right
 ) {
-    double left_start = point_cross_product(&left->start, &left->end, &right->start);
-    double left_end = point_cross_product(&left->start, &left->end, &right->end);
-    double right_start = point_cross_product(&right->start, &right->end, &left->start);
-    double right_end = point_cross_product(&right->start, &right->end, &left->end);
+    int left_start = spatial_orientation_sign(&left->start, &left->end, &right->start);
+    int left_end = spatial_orientation_sign(&left->start, &left->end, &right->end);
+    int right_start = spatial_orientation_sign(&right->start, &right->end, &left->start);
+    int right_end = spatial_orientation_sign(&right->start, &right->end, &left->end);
 
     if (point_on_segment(&right->start, left) || point_on_segment(&right->end, left) ||
         point_on_segment(&left->start, right) || point_on_segment(&left->end, right)) {
         return true;
     }
-    return ((left_start > spatial_distance_epsilon && left_end < -spatial_distance_epsilon) ||
-            (left_start < -spatial_distance_epsilon && left_end > spatial_distance_epsilon)) &&
-           ((right_start > spatial_distance_epsilon && right_end < -spatial_distance_epsilon) ||
-            (right_start < -spatial_distance_epsilon && right_end > spatial_distance_epsilon));
+    return ((left_start > 0 && left_end < 0) || (left_start < 0 && left_end > 0)) &&
+           ((right_start > 0 && right_end < 0) || (right_start < 0 && right_end > 0));
 }
 
 static bool point_on_segment(
     const struct spatial_point *point,
     const struct spatial_segment *segment
 ) {
-    if (!double_near_zero(point_cross_product(&segment->start, &segment->end, point))) {
+    if (spatial_orientation_sign(&segment->start, &segment->end, point) != 0) {
         return false;
     }
-    return point->coordinate_x >= fmin(segment->start.coordinate_x, segment->end.coordinate_x) -
-                                      spatial_distance_epsilon &&
-           point->coordinate_x <= fmax(segment->start.coordinate_x, segment->end.coordinate_x) +
-                                      spatial_distance_epsilon &&
-           point->coordinate_y >= fmin(segment->start.coordinate_y, segment->end.coordinate_y) -
-                                      spatial_distance_epsilon &&
-           point->coordinate_y <= fmax(segment->start.coordinate_y, segment->end.coordinate_y) +
-                                      spatial_distance_epsilon;
+    return point->coordinate_x >= fmin(segment->start.coordinate_x, segment->end.coordinate_x) &&
+           point->coordinate_x <= fmax(segment->start.coordinate_x, segment->end.coordinate_x) &&
+           point->coordinate_y >= fmin(segment->start.coordinate_y, segment->end.coordinate_y) &&
+           point->coordinate_y <= fmax(segment->start.coordinate_y, segment->end.coordinate_y);
 }
 
-static double point_cross_product(
+static int spatial_orientation_sign(
     const struct spatial_point *origin,
     const struct spatial_point *left,
     const struct spatial_point *right
 ) {
-    return ((left->coordinate_x - origin->coordinate_x) *
-            (right->coordinate_y - origin->coordinate_y)) -
-           ((left->coordinate_y - origin->coordinate_y) *
-            (right->coordinate_x - origin->coordinate_x));
-}
+    const struct mylite_spatial_robust_point robust_origin = {
+        .coordinate_x = origin->coordinate_x,
+        .coordinate_y = origin->coordinate_y,
+    };
+    const struct mylite_spatial_robust_point robust_left = {
+        .coordinate_x = left->coordinate_x,
+        .coordinate_y = left->coordinate_y,
+    };
+    const struct mylite_spatial_robust_point robust_right = {
+        .coordinate_x = right->coordinate_x,
+        .coordinate_y = right->coordinate_y,
+    };
 
-static bool double_near_zero(double value) {
-    return fabs(value) <= spatial_distance_epsilon;
+    return mylite_spatial_orientation_sign(&robust_origin, &robust_left, &robust_right);
 }
 
 static void distance_consider(double candidate, double *io_distance, bool *io_has_distance) {
@@ -12540,7 +12679,7 @@ static void distance_consider(double candidate, double *io_distance, bool *io_ha
         io_has_distance == NULL) {
         return;
     }
-    if (double_near_zero(candidate)) {
+    if (candidate == 0.0) {
         *io_distance = 0.0;
         *io_has_distance = true;
         return;
@@ -13054,7 +13193,7 @@ static struct spatial_point line_point_at_distance(
     for (uint32_t index = 0U; index + 1U < point_count; ++index) {
         double segment_length = distance_point_to_point(&points[index], &points[index + 1U]);
 
-        if (double_near_zero(segment_length)) {
+        if (segment_length == 0.0) {
             continue;
         }
         if (traversed + segment_length >= target_distance) {
@@ -13098,8 +13237,8 @@ static int interpolated_line_points(
     }
     *out_points = NULL;
     *out_point_count = 0U;
-    if (fraction > 0.0 && !double_near_zero(total_length)) {
-        double raw_point_count = floor((1.0 + spatial_distance_epsilon) / fraction);
+    if (fraction > 0.0 && total_length != 0.0) {
+        double raw_point_count = floor((1.0 + spatial_interpolation_roundoff_guard) / fraction);
 
         if (!isfinite(raw_point_count) || raw_point_count < 1.0 ||
             raw_point_count > (double)UINT32_MAX) {
@@ -13117,13 +13256,14 @@ static int interpolated_line_points(
     if (points == NULL) {
         return set_nomem_error(error);
     }
-    if (fraction == 0.0 || double_near_zero(total_length)) {
+    if (fraction == 0.0 || total_length == 0.0) {
         points[0] = line_point_at_distance(line_points, line_point_count, 0.0);
     } else {
         for (uint32_t index = 0U; index < point_count; ++index) {
             double current_fraction = fraction * (double)(index + 1U);
 
-            if (current_fraction > 1.0 && current_fraction <= 1.0 + spatial_distance_epsilon) {
+            if (current_fraction > 1.0 &&
+                current_fraction <= 1.0 + spatial_interpolation_roundoff_guard) {
                 current_fraction = 1.0;
             }
             points[index] = line_point_at_distance(

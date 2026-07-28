@@ -530,6 +530,7 @@ tests/runtime_spatial_index_metadata_test.c|internal-sqlite|always
 tests/runtime_spatial_latitude_longitude_functions_test.c|internal|always
 tests/runtime_spatial_measure_accessor_functions_test.c|internal|always
 tests/runtime_spatial_overlaps_function_test.c|internal|always
+tests/runtime_spatial_robust_topology_metrics_test.c|internal|always
 tests/runtime_spatial_simplicity_function_test.c|internal|always
 tests/runtime_spatial_simplify_function_test.c|internal|always
 tests/runtime_spatial_touches_function_test.c|internal|always

@@ -121,3 +121,32 @@ The same readiness check covers ping, stat, refresh, server debug-info, and
 kill operations. Matching mysqli's reporting behavior, busy ping and kill
 operations throw in strict mode, while busy stat, refresh, and debug-info
 operations return `false` and publish the 2014 fields on the connection.
+
+## Statement diagnostics and warning snapshots
+
+PDO keeps database-handle and statement diagnostics separate. A failed
+statement publishes its SQLSTATE, native error code, and copied message only
+through that statement's `errorInfo()`. Later connection work or work on
+another statement does not replace it. A successful statement execution clears
+only that statement's record, while successful direct database work clears only
+the database-handle record.
+
+The mysqli replacement copies each completed operation's retained warning
+records into adapter-owned state. Direct buffered results, direct unbuffered
+results after end-of-data, and prepared statements therefore expose real FIFO
+warning chains through both the object-oriented and procedural warning APIs.
+The connection and prepared statement retain independent copies. The
+connection's `warning_count` reports the total generated count even when
+`max_error_count` caps the retained records available for iteration.
+
+Each returned `mysqli_warning` object owns a separate copy of its chain.
+Calling `next()` advances the same object's `errno`, `sqlstate`, and `message`
+properties. Later queries, statement reset or re-execution, and statement or
+connection close do not change or invalidate an already returned warning
+object.
+
+The native API provides equivalent statement diagnostic accessors and
+caller-owned indexed warning copies. Direct result handles also retain warning
+records independently from later connection activity. See
+[statement diagnostics and warning snapshots](../specs/statement-diagnostics-warning-snapshots/specs.md)
+for the exact ABI, ownership, and lifetime contract.

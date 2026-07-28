@@ -2,10 +2,10 @@
 
 ## Status
 
-This feature specifies statement-owned error diagnostics and iterable warning
-snapshots across the native MyLite API, PDO MyLite, and the mysqli replacement.
-It closes review findings API-02 and API-05 without changing SQL syntax or
-expanding the set of warnings MyLite produces.
+This feature implements and qualifies statement-owned error diagnostics and
+iterable warning snapshots across the native MyLite API, PDO MyLite, and the
+mysqli replacement. It closes review findings API-02 and API-05 without
+changing SQL syntax or expanding the set of warnings MyLite produces.
 
 ## Sources
 
@@ -249,3 +249,25 @@ only when the warning object is destroyed.
 | mysqli MyLite | direct OO/procedural warnings; prepared OO/procedural warnings; count publication; FIFO `next()`; warning-free replacement; reset; re-execution; close lifetime |
 | Qualification | Release/Debug tests, ASan/UBSan lifecycle loops and allocation failure, installed-header/manifest ABI checks, formatters, static analysis, extension suites |
 
+## Qualification
+
+The MySQL 8.4.9 expectation fixture passes for PDO handle separation, two live
+statement failures, intervening success, direct warning order, prepared
+multirow warnings, reset and re-execution, and warning-object lifetime after
+close.
+
+The native regression suite covers independent live statement errors, direct
+and prepared warning records, total versus retained counts, counted-only
+warnings, reset and re-execution, caller-owned copies, close and finalize
+lifetime, and invalid indexed access. The deterministic allocator-failpoint
+sweep verifies all-or-nothing warning snapshot publication, recovery after
+failure, and the absence of partial warning lists.
+
+All focused native diagnostics tests pass in Debug, Release, and ASan/UBSan
+builds. All ten mysqli and PDO extension tests pass in the developer build and
+under ASan/UBSan. The complete Release suite passes all 693 tests.
+
+The installed header and symbol manifest match the public ABI exactly. The
+production static library is 12,353,256 bytes against the 15,000,000-byte
+limit. Repository formatting and focused clang-tidy checks pass for every
+changed first-party compilation unit with warnings treated as errors.

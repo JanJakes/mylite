@@ -315,16 +315,32 @@ completion at `0277ee818`:
 
 ### `API-02` and `API-05`: statement-owned diagnostics and warnings
 
-- [ ] Add additive native ABI accessors for statement error code, SQLSTATE,
+- [x] Add additive native ABI accessors for statement error code, SQLSTATE,
   message, warning count, and indexed warning records.
-- [ ] Define snapshot ownership and lifetime independently from later
+- [x] Define snapshot ownership and lifetime independently from later
   connection or statement activity.
-- [ ] Store PDO native error code/message on each statement and make
+- [x] Store PDO native error code/message on each statement and make
   `errorInfo()` select the correct statement or connection record.
-- [ ] Implement mysqli prepared warning counts and real warning iteration
+- [x] Implement mysqli prepared warning counts and real warning iteration
   rather than placeholder code/message values.
-- [ ] Test two simultaneously live failing statements, an intervening success,
+- [x] Test two simultaneously live failing statements, an intervening success,
   multirow warning chains, reset, re-execution, and connection close.
+
+`API-02` and `API-05` implementation evidence at `1445aee86`:
+
+- The additive native ABI exposes independent statement diagnostics, total and
+  retained warning counts, and caller-owned indexed warning copies. Direct
+  results deep-own their warning snapshots, including counted-only warnings.
+- PDO stores native error code and copied message on the handle whose operation
+  failed. mysqli copies connection and statement warning lists and gives each
+  returned warning object an independently owned FIFO chain.
+- The MySQL 8.4.9 fixture, native API regression, deterministic allocator
+  failpoint sweep, and all mysqli/PDO extension tests cover simultaneous live
+  failures, intervening success, direct and prepared multi-warning chains,
+  capping, reset, re-execution, invalid access, and close lifetime.
+- All 693 Release tests pass. Focused Debug, Release, and ASan/UBSan native
+  tests, all ten developer and ASan/UBSan PHP extension tests, exact ABI gates,
+  formatting, focused clang-tidy, and the production size gate pass.
 
 ### `API-03` and `API-04`: PHP scalar types and server identity
 

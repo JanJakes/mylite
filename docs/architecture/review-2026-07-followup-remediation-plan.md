@@ -261,7 +261,8 @@ The corresponding POSIX paths passed locally.
   distinguishable.
 - [x] Cover repeated reset/finalize under ASan/UBSan and allocation failpoints.
 
-`PREP-02` implementation evidence at `1dd11000e` and `6e0b820c1`:
+`PREP-02` implementation evidence at `1dd11000e`, `6e0b820c1`, and
+`e17af78c4`:
 
 - One AST-derived capability now controls native prepared dispatch, query
   completion semantics, result ownership, and reset for streaming,
@@ -279,6 +280,9 @@ The corresponding POSIX paths passed locally.
 - The production shared-library ABI matches both public manifests. The
   production static archive is 12,347,862 bytes against the 15,000,000-byte
   gate.
+- All 692 native tests passed, including the complete crash/fault-injection
+  recovery model. The repository-wide clang-tidy gate passed for 915
+  first-party compilation units with warnings treated as errors.
 
 ### `API-01`: mysqli pending-result state machine
 

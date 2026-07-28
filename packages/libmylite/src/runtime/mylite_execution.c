@@ -87,6 +87,7 @@
 #include "mylite_regexp.h"
 #include "mylite_result.h"
 #include "mylite_spatial.h"
+#include "mylite_spatial_functions.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_completion.h"
 #include "mylite_statement_context.h"

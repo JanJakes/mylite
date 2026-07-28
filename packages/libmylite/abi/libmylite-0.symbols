@@ -5,6 +5,7 @@ mylite_errcode
 mylite_errmsg
 mylite_execute
 mylite_execute_transaction_control
+mylite_interrupt
 mylite_open
 mylite_open_memory
 mylite_open_memory_with_diagnostic

@@ -29,6 +29,9 @@ add_executable(mylite_spatial_validity_benchmark EXCLUDE_FROM_ALL
   benchmarks/mylite_spatial_validity_benchmark.c
 )
 target_link_libraries(mylite_spatial_validity_benchmark PRIVATE MyLite::mylite)
+if(UNIX AND NOT APPLE)
+  target_link_libraries(mylite_spatial_validity_benchmark PRIVATE m)
+endif()
 target_include_directories(mylite_spatial_validity_benchmark PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )

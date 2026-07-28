@@ -170,6 +170,34 @@ struct mylite_spatial_error {
     bool is_nomem;
 };
 
+enum mylite_spatial_work_status {
+    MYLITE_SPATIAL_WORK_CONTINUE = 0,
+    MYLITE_SPATIAL_WORK_INTERRUPTED = 1,
+    MYLITE_SPATIAL_WORK_DEADLINE_EXCEEDED = 2,
+};
+
+typedef enum mylite_spatial_work_status (*mylite_spatial_work_check_fn)(void *context);
+
+struct mylite_spatial_work_statistics {
+    uint64_t indexed_segment_count;
+    uint64_t candidate_check_count;
+    uint64_t control_check_count;
+    uint64_t peak_index_bytes;
+};
+
+struct mylite_spatial_work_limits {
+    uint64_t maximum_segment_count;
+    uint64_t maximum_index_bytes;
+    uint64_t maximum_candidate_count;
+};
+
+struct mylite_spatial_work_control {
+    mylite_spatial_work_check_fn check;
+    void *context;
+    struct mylite_spatial_work_statistics *statistics;
+    const struct mylite_spatial_work_limits *limits;
+};
+
 bool mylite_spatial_function_kind_from_name(
     const char *name,
     size_t name_size,
@@ -189,6 +217,14 @@ int mylite_spatial_evaluate(
     size_t argument_count,
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *out_error
+);
+int mylite_spatial_evaluate_with_control(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *out_error,
+    const struct mylite_spatial_work_control *control
 );
 void mylite_spatial_result_deinit(struct mylite_spatial_result *result);
 

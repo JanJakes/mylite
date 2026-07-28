@@ -152,6 +152,12 @@ MYLITE_API void mylite_close(mylite_db *database);
  * detached and are valid only for finalize.
  */
 MYLITE_API int mylite_close_checked(mylite_db *database);
+/*
+ * Request interruption of work currently running on database. This is the
+ * only operation that may be called from another thread for the same handle.
+ * The caller must keep the handle open until this call returns.
+ */
+MYLITE_API void mylite_interrupt(mylite_db *database);
 /* Returns the stable nonzero identity of a live database handle, or zero for NULL. */
 MYLITE_API uint64_t mylite_connection_id(const mylite_db *database);
 /* Nonzero enables MySQL CLIENT_FOUND_ROWS affected-row semantics for UPDATE. */

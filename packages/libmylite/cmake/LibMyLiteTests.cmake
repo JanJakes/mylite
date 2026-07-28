@@ -48,6 +48,10 @@ function(mylite_add_manifest_test source profile condition)
 
   add_executable("${target}" ${target_sources})
   target_link_libraries("${target}" PRIVATE mylite_test_support)
+  if(source_stem STREQUAL "runtime_spatial_validation_scaling_cancellation_test" AND
+     UNIX AND NOT APPLE)
+    target_link_libraries("${target}" PRIVATE m)
+  endif()
 
   if(profile STREQUAL "sqlite")
     target_link_libraries("${target}" PRIVATE MyLite::sqlite)

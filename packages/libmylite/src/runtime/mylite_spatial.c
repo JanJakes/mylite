@@ -47,6 +47,16 @@ enum {
     spatial_geojson_default_max_dec_digits = 15,
     spatial_buffer_max_argument_count = 5,
     spatial_max_points_in_geometry = 65536,
+    spatial_validation_max_segment_count = 1048576,
+    spatial_validation_max_index_bytes = 64 * 1024 * 1024,
+    spatial_validation_min_candidate_count = 1048576,
+    spatial_validation_max_candidate_count = 67108864,
+    spatial_validation_candidate_multiplier = 256,
+    spatial_validation_sequential_poll_interval = 4096,
+    spatial_validation_candidate_poll_interval = 1024,
+    mysql_error_out_of_resources = 1041,
+    mysql_error_query_interrupted = 1317,
+    mysql_error_max_execution_time_exceeded = 3024,
     mysql_error_incorrect_type_for_argument = 3064,
     mysql_error_invalid_geohash = 1411,
     mysql_error_invalid_json_text_in_function = 3141,
@@ -155,6 +165,28 @@ struct spatial_segment {
     struct spatial_point end;
 };
 
+enum spatial_validation_status {
+    SPATIAL_VALIDATION_OK = 0,
+    SPATIAL_VALIDATION_NOMEM = 1,
+    SPATIAL_VALIDATION_INTERRUPTED = 2,
+    SPATIAL_VALIDATION_DEADLINE_EXCEEDED = 3,
+    SPATIAL_VALIDATION_RESOURCE_LIMIT = 4,
+};
+
+struct spatial_validation_context {
+    const struct mylite_spatial_work_control *control;
+    enum spatial_validation_status status;
+    uint64_t indexed_segment_count;
+    uint64_t candidate_check_count;
+    uint64_t candidate_limit;
+    uint64_t temporary_index_bytes;
+    uint64_t peak_index_bytes;
+    uint64_t maximum_segment_count;
+    uint64_t maximum_index_bytes;
+    uint64_t sequential_operation_count;
+    uint64_t control_check_count;
+};
+
 struct spatial_distance_ring {
     struct spatial_point *points;
     uint32_t point_count;
@@ -169,6 +201,26 @@ struct spatial_distance_geometry {
     uint32_t ring_count;
     struct spatial_distance_geometry *children;
     uint32_t child_count;
+};
+
+struct spatial_validation_segment_entry {
+    const struct spatial_distance_ring *ring;
+    double min_x;
+    double min_y;
+    double max_x;
+    double max_y;
+    uint32_t segment_index;
+    uint32_t group;
+};
+
+struct spatial_validation_component_entry {
+    const struct spatial_distance_ring *ring;
+    double min_x;
+    double min_y;
+    double max_x;
+    double max_y;
+    uint32_t index;
+    uint32_t group;
 };
 
 struct spatial_point_collection {
@@ -430,14 +482,16 @@ static int evaluate_is_valid(
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
     struct mylite_spatial_result *out_result,
-    struct mylite_spatial_error *error
+    struct mylite_spatial_error *error,
+    const struct mylite_spatial_work_control *control
 );
 static int evaluate_validate(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
     struct mylite_spatial_result *out_result,
-    struct mylite_spatial_error *error
+    struct mylite_spatial_error *error,
+    const struct mylite_spatial_work_control *control
 );
 static int evaluate_is_closed(
     enum mylite_spatial_function_kind kind,
@@ -1679,37 +1733,135 @@ static bool simplicity_point_is_on_line(
     const struct spatial_point *point,
     const struct spatial_distance_geometry *line
 );
-static bool validity_geometry_is_valid(const struct spatial_distance_geometry *geometry);
-static bool validity_point_is_valid(const struct spatial_point *point);
-static bool validity_line_is_valid(const struct spatial_point *points, uint32_t point_count);
-static bool validity_polygon_is_valid(const struct spatial_distance_geometry *polygon);
-static bool validity_ring_is_valid(const struct spatial_distance_ring *ring);
-static bool validity_ring_is_simple(const struct spatial_distance_ring *ring);
-static bool validity_ring_segments_intersect_invalidly(
-    const struct spatial_distance_ring *ring,
-    uint32_t left_index,
-    uint32_t right_index
+static int spatial_validation_error(
+    const struct spatial_validation_context *validation,
+    struct mylite_spatial_error *error
 );
-static bool validity_polygon_holes_are_valid(const struct spatial_distance_geometry *polygon);
+static void spatial_validation_context_init(
+    struct spatial_validation_context *validation,
+    const struct spatial_distance_geometry *geometry,
+    const struct mylite_spatial_work_control *control
+);
+static bool spatial_validation_count_geometry_segments(
+    struct spatial_validation_context *validation,
+    const struct spatial_distance_geometry *geometry
+);
+static bool spatial_validation_count_ring_segments(
+    struct spatial_validation_context *validation,
+    const struct spatial_distance_ring *ring
+);
+static bool spatial_validation_record_sequential_operation(
+    struct spatial_validation_context *validation
+);
+static bool spatial_validation_record_candidate_check(struct spatial_validation_context *validation
+);
+static bool spatial_validation_reserve_index_bytes(
+    struct spatial_validation_context *validation,
+    size_t byte_count
+);
+static void spatial_validation_release_index_bytes(
+    struct spatial_validation_context *validation,
+    size_t byte_count
+);
+static bool spatial_validation_check_control(struct spatial_validation_context *validation);
+static void spatial_validation_publish_statistics(struct spatial_validation_context *validation);
+static bool validity_geometry_is_valid(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_validation_context *validation
+);
+static bool validity_multipolygon_is_valid(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_validation_context *validation
+);
+static bool validity_point_is_valid(const struct spatial_point *point);
+static bool validity_line_is_valid(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    struct spatial_validation_context *validation
+);
+static bool validity_polygon_is_valid(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_validation_context *validation
+);
+static bool validity_ring_is_valid(
+    const struct spatial_distance_ring *ring,
+    struct spatial_validation_context *validation
+);
+static bool validity_ring_is_simple(
+    const struct spatial_distance_ring *ring,
+    struct spatial_validation_context *validation
+);
+static bool validity_polygon_holes_are_valid(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_validation_context *validation
+);
+static struct spatial_point validity_ring_representative_point(
+    const struct spatial_distance_ring *ring
+);
 static bool validity_ring_point_is_inside_or_on_boundary(
     const struct spatial_distance_ring *ring,
-    const struct spatial_point *point
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
 );
 static bool validity_ring_contains_point_interior(
     const struct spatial_distance_ring *ring,
-    const struct spatial_point *point
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
+);
+static enum spatial_point_ring_relation validity_point_ring_relation(
+    const struct spatial_distance_ring *ring,
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
 );
 static bool validity_rings_intersect_invalidly(
     const struct spatial_distance_ring *left,
-    const struct spatial_distance_ring *right
+    const struct spatial_distance_ring *right,
+    struct spatial_validation_context *validation
 );
 static bool validity_polygons_intersect_invalidly(
     const struct spatial_distance_geometry *left,
-    const struct spatial_distance_geometry *right
+    const struct spatial_distance_geometry *right,
+    struct spatial_validation_context *validation
 );
 static bool validity_polygon_contains_point_interior(
     const struct spatial_distance_geometry *polygon,
-    const struct spatial_point *point
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
+);
+static bool validity_ring_segments_intersect_invalidly(
+    const struct spatial_distance_ring *left,
+    const struct spatial_distance_ring *right,
+    bool same_ring,
+    struct spatial_validation_context *validation
+);
+static bool validity_build_component_entry(
+    struct spatial_validation_component_entry *entry,
+    const struct spatial_distance_ring *ring,
+    uint32_t index,
+    uint32_t group,
+    struct spatial_validation_context *validation
+);
+static int validity_compare_component_entries(const void *left, const void *right);
+static bool validity_component_entries_can_intersect(
+    const struct spatial_validation_component_entry *left,
+    const struct spatial_validation_component_entry *right
+);
+static bool validity_build_segment_entries(
+    struct spatial_validation_segment_entry *entries,
+    const struct spatial_distance_ring *ring,
+    uint32_t group,
+    size_t *offset,
+    struct spatial_validation_context *validation
+);
+static int validity_compare_segment_entries(const void *left, const void *right);
+static int validity_compare_double(double left, double right);
+static bool validity_segment_entries_can_intersect(
+    const struct spatial_validation_segment_entry *left,
+    const struct spatial_validation_segment_entry *right
+);
+static bool validity_segment_entries_are_adjacent(
+    const struct spatial_validation_segment_entry *left,
+    const struct spatial_validation_segment_entry *right
 );
 static bool validity_segment_intersection_is_invalid(
     const struct spatial_segment *left, // NOLINT(bugprone-easily-swappable-parameters)
@@ -2196,6 +2348,24 @@ int mylite_spatial_evaluate(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *out_error
 ) {
+    return mylite_spatial_evaluate_with_control(
+        kind,
+        arguments,
+        argument_count,
+        out_result,
+        out_error,
+        NULL
+    );
+}
+
+int mylite_spatial_evaluate_with_control(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *out_error,
+    const struct mylite_spatial_work_control *control
+) {
     if (out_result == NULL) {
         return set_spatial_error(
             out_error,
@@ -2254,9 +2424,9 @@ int mylite_spatial_evaluate(
     case MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE:
         return evaluate_is_simple(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ISVALID:
-        return evaluate_is_valid(kind, arguments, argument_count, out_result, out_error);
+        return evaluate_is_valid(kind, arguments, argument_count, out_result, out_error, control);
     case MYLITE_SPATIAL_FUNCTION_ST_VALIDATE:
-        return evaluate_validate(kind, arguments, argument_count, out_result, out_error);
+        return evaluate_validate(kind, arguments, argument_count, out_result, out_error, control);
     case MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED:
         return evaluate_is_closed(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES:
@@ -3333,10 +3503,12 @@ static int evaluate_is_valid(
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
     struct mylite_spatial_result *out_result,
-    struct mylite_spatial_error *error
+    struct mylite_spatial_error *error,
+    const struct mylite_spatial_work_control *control
 ) {
     struct spatial_geometry_view geometry = {0};
     struct spatial_distance_geometry decoded = {0};
+    struct spatial_validation_context validation = {0};
     bool is_null = false;
     bool is_valid = false;
     int rc =
@@ -3353,8 +3525,15 @@ static int evaluate_is_valid(
     if (rc != 0) {
         return rc;
     }
-    is_valid = validity_geometry_is_valid(&decoded);
+    spatial_validation_context_init(&validation, &decoded, control);
+    if (validation.status == SPATIAL_VALIDATION_OK) {
+        is_valid = validity_geometry_is_valid(&decoded, &validation);
+    }
     distance_geometry_deinit(&decoded);
+    spatial_validation_publish_statistics(&validation);
+    if (validation.status != SPATIAL_VALIDATION_OK) {
+        return spatial_validation_error(&validation, error);
+    }
     return assign_integer_result(out_result, is_valid ? 1 : 0);
 }
 
@@ -3363,10 +3542,12 @@ static int evaluate_validate(
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
     struct mylite_spatial_result *out_result,
-    struct mylite_spatial_error *error
+    struct mylite_spatial_error *error,
+    const struct mylite_spatial_work_control *control
 ) {
     struct spatial_geometry_view geometry = {0};
     struct spatial_distance_geometry decoded = {0};
+    struct spatial_validation_context validation = {0};
     bool is_null = false;
     bool is_valid = false;
     int rc =
@@ -3383,8 +3564,15 @@ static int evaluate_validate(
     if (rc != 0) {
         return rc;
     }
-    is_valid = validity_geometry_is_valid(&decoded);
+    spatial_validation_context_init(&validation, &decoded, control);
+    if (validation.status == SPATIAL_VALIDATION_OK) {
+        is_valid = validity_geometry_is_valid(&decoded, &validation);
+    }
     distance_geometry_deinit(&decoded);
+    spatial_validation_publish_statistics(&validation);
+    if (validation.status != SPATIAL_VALIDATION_OK) {
+        return spatial_validation_error(&validation, error);
+    }
     if (!is_valid) {
         return assign_null_result(out_result);
     }
@@ -9442,7 +9630,6 @@ static int distance_geometry_read(
     case MYLITE_SPATIAL_GEOMETRY_POLYGON:
         rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
         if (rc == 0) {
-            out_geometry->ring_count = count;
             if (count > 0U) {
                 if (spatial_u32_count_exceeds_allocation_limit((struct spatial_allocation_request){
                         .count = count,
@@ -9455,6 +9642,7 @@ static int distance_geometry_read(
                     return set_nomem_error(error);
                 }
             }
+            out_geometry->ring_count = count;
         }
         for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
             uint32_t point_count = 0U;
@@ -9565,7 +9753,6 @@ static int distance_geometry_read_children(
     if (rc != 0) {
         return rc;
     }
-    out_geometry->child_count = count;
     if (count == 0U) {
         return 0;
     }
@@ -9579,6 +9766,7 @@ static int distance_geometry_read_children(
     if (out_geometry->children == NULL) {
         return set_nomem_error(error);
     }
+    out_geometry->child_count = count;
     for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
         rc = distance_geometry_read(cursor, &out_geometry->children[index], error, function_name);
         if (rc == 0 && expected_type != MYLITE_SPATIAL_GEOMETRY_NONE &&
@@ -9633,7 +9821,7 @@ static bool simplicity_line_is_simple(const struct spatial_point *points, uint32
     bool closed = false;
     uint32_t segment_count = 0U;
 
-    if (!validity_line_is_valid(points, point_count)) {
+    if (!validity_line_is_valid(points, point_count, NULL)) {
         return false;
     }
     for (uint32_t index = 1U; index < point_count; ++index) {
@@ -9794,7 +9982,7 @@ static bool simplicity_point_polygon_intersection_invalid(
     const struct spatial_point *point,
     const struct spatial_distance_geometry *polygon
 ) {
-    return validity_polygon_contains_point_interior(polygon, point);
+    return validity_polygon_contains_point_interior(polygon, point, NULL);
 }
 
 static bool simplicity_line_pair_intersects_invalidly(
@@ -9837,7 +10025,7 @@ static bool simplicity_line_polygon_intersection_invalid(
         return false;
     }
     for (uint32_t index = 0U; index < line->point_count; ++index) {
-        if (validity_polygon_contains_point_interior(polygon, &line->points[index])) {
+        if (validity_polygon_contains_point_interior(polygon, &line->points[index], NULL)) {
             return true;
         }
     }
@@ -9856,11 +10044,11 @@ static bool simplicity_polygon_polygon_intersection_invalid(
     const struct spatial_distance_geometry *right
 ) {
     if (left->ring_count > 0U && left->rings[0].point_count > 0U &&
-        validity_polygon_contains_point_interior(right, &left->rings[0].points[0])) {
+        validity_polygon_contains_point_interior(right, &left->rings[0].points[0], NULL)) {
         return true;
     }
     if (right->ring_count > 0U && right->rings[0].point_count > 0U &&
-        validity_polygon_contains_point_interior(left, &right->rings[0].points[0])) {
+        validity_polygon_contains_point_interior(left, &right->rings[0].points[0], NULL)) {
         return true;
     }
     return false;
@@ -9877,7 +10065,7 @@ static bool simplicity_segment_midpoint_is_polygon_interior(
             (segment->start.coordinate_y + segment->end.coordinate_y) / spatial_midpoint_divisor,
     };
 
-    return validity_polygon_contains_point_interior(polygon, &midpoint);
+    return validity_polygon_contains_point_interior(polygon, &midpoint, NULL);
 }
 
 static bool simplicity_line_segments_share_boundary_point(
@@ -9941,7 +10129,263 @@ static bool simplicity_point_is_on_line(
     return false;
 }
 
-static bool validity_geometry_is_valid(const struct spatial_distance_geometry *geometry) {
+static int spatial_validation_error(
+    const struct spatial_validation_context *validation,
+    struct mylite_spatial_error *error
+) {
+    if (validation == NULL) {
+        return set_spatial_error(
+            error,
+            mysql_error_out_of_resources,
+            "HY000",
+            "Out of resources while validating spatial geometry"
+        );
+    }
+    switch (validation->status) {
+    case SPATIAL_VALIDATION_NOMEM:
+        return set_nomem_error(error);
+    case SPATIAL_VALIDATION_INTERRUPTED:
+        return set_spatial_error(
+            error,
+            mysql_error_query_interrupted,
+            "70100",
+            "Query execution was interrupted"
+        );
+    case SPATIAL_VALIDATION_DEADLINE_EXCEEDED:
+        return set_spatial_error(
+            error,
+            mysql_error_max_execution_time_exceeded,
+            "HY000",
+            "Query execution was interrupted, maximum statement execution time exceeded"
+        );
+    case SPATIAL_VALIDATION_RESOURCE_LIMIT:
+        return set_spatial_error(
+            error,
+            mysql_error_out_of_resources,
+            "HY000",
+            "Out of resources while validating spatial geometry"
+        );
+    case SPATIAL_VALIDATION_OK:
+        break;
+    }
+    return 0;
+}
+
+static void spatial_validation_context_init(
+    struct spatial_validation_context *validation,
+    const struct spatial_distance_geometry *geometry,
+    const struct mylite_spatial_work_control *control
+) {
+    const struct mylite_spatial_work_limits *limits = control == NULL ? NULL : control->limits;
+    uint64_t candidate_limit = 0U;
+
+    if (validation == NULL) {
+        return;
+    }
+    *validation = (struct spatial_validation_context){
+        .control = control,
+        .status = SPATIAL_VALIDATION_OK,
+        .maximum_segment_count = limits != NULL && limits->maximum_segment_count != 0U
+                                     ? limits->maximum_segment_count
+                                     : spatial_validation_max_segment_count,
+        .maximum_index_bytes = limits != NULL && limits->maximum_index_bytes != 0U
+                                   ? limits->maximum_index_bytes
+                                   : spatial_validation_max_index_bytes,
+    };
+    if (control != NULL && control->statistics != NULL) {
+        *control->statistics = (struct mylite_spatial_work_statistics){0};
+    }
+    if (!spatial_validation_check_control(validation) ||
+        !spatial_validation_count_geometry_segments(validation, geometry)) {
+        return;
+    }
+    if (validation->indexed_segment_count > validation->maximum_segment_count ||
+        validation->indexed_segment_count >
+            validation->maximum_index_bytes / sizeof(struct spatial_validation_segment_entry)) {
+        validation->status = SPATIAL_VALIDATION_RESOURCE_LIMIT;
+        return;
+    }
+    if (limits != NULL && limits->maximum_candidate_count != 0U) {
+        candidate_limit = limits->maximum_candidate_count;
+    } else {
+        candidate_limit =
+            validation->indexed_segment_count * spatial_validation_candidate_multiplier;
+        if (candidate_limit < spatial_validation_min_candidate_count) {
+            candidate_limit = spatial_validation_min_candidate_count;
+        }
+        if (candidate_limit > spatial_validation_max_candidate_count) {
+            candidate_limit = spatial_validation_max_candidate_count;
+        }
+    }
+    validation->candidate_limit = candidate_limit;
+}
+
+static bool spatial_validation_count_geometry_segments(
+    struct spatial_validation_context *validation,
+    const struct spatial_distance_geometry *geometry
+) {
+    if (geometry == NULL) {
+        return true;
+    }
+    if (geometry->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+        for (uint32_t index = 0U; index < geometry->ring_count; ++index) {
+            if (!spatial_validation_count_ring_segments(validation, &geometry->rings[index])) {
+                return false;
+            }
+        }
+    }
+    for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+        if (!spatial_validation_count_geometry_segments(validation, &geometry->children[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool spatial_validation_count_ring_segments(
+    struct spatial_validation_context *validation,
+    const struct spatial_distance_ring *ring
+) {
+    uint64_t segment_count =
+        ring == NULL || ring->point_count == 0U ? 0U : (uint64_t)ring->point_count - 1U;
+
+    if (validation == NULL || validation->status != SPATIAL_VALIDATION_OK) {
+        return false;
+    }
+    if (segment_count > UINT64_MAX - validation->indexed_segment_count) {
+        validation->status = SPATIAL_VALIDATION_RESOURCE_LIMIT;
+        return false;
+    }
+    validation->indexed_segment_count += segment_count;
+    if (validation->indexed_segment_count > validation->maximum_segment_count) {
+        validation->status = SPATIAL_VALIDATION_RESOURCE_LIMIT;
+        return false;
+    }
+    for (uint64_t index = 0U; index < segment_count; ++index) {
+        if (!spatial_validation_record_sequential_operation(validation)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool spatial_validation_record_sequential_operation(
+    struct spatial_validation_context *validation
+) {
+    if (validation == NULL) {
+        return true;
+    }
+    if (validation->status != SPATIAL_VALIDATION_OK) {
+        return false;
+    }
+    ++validation->sequential_operation_count;
+    if (validation->sequential_operation_count % spatial_validation_sequential_poll_interval ==
+        0U) {
+        return spatial_validation_check_control(validation);
+    }
+    return true;
+}
+
+static bool spatial_validation_record_candidate_check(struct spatial_validation_context *validation
+) {
+    if (validation == NULL) {
+        return true;
+    }
+    if (validation->status != SPATIAL_VALIDATION_OK) {
+        return false;
+    }
+    if (validation->candidate_check_count >= validation->candidate_limit) {
+        validation->status = SPATIAL_VALIDATION_RESOURCE_LIMIT;
+        return false;
+    }
+    ++validation->candidate_check_count;
+    if (validation->candidate_check_count % spatial_validation_candidate_poll_interval == 0U) {
+        return spatial_validation_check_control(validation);
+    }
+    return true;
+}
+
+static bool spatial_validation_reserve_index_bytes(
+    struct spatial_validation_context *validation,
+    size_t byte_count
+) {
+    if (validation == NULL) {
+        return byte_count <= spatial_validation_max_index_bytes;
+    }
+    if (validation->status != SPATIAL_VALIDATION_OK) {
+        return false;
+    }
+    if ((uint64_t)byte_count > validation->maximum_index_bytes ||
+        validation->temporary_index_bytes >
+            validation->maximum_index_bytes - (uint64_t)byte_count) {
+        validation->status = SPATIAL_VALIDATION_RESOURCE_LIMIT;
+        return false;
+    }
+    validation->temporary_index_bytes += (uint64_t)byte_count;
+    if (validation->temporary_index_bytes > validation->peak_index_bytes) {
+        validation->peak_index_bytes = validation->temporary_index_bytes;
+    }
+    return true;
+}
+
+static void spatial_validation_release_index_bytes(
+    struct spatial_validation_context *validation,
+    size_t byte_count
+) {
+    if (validation == NULL) {
+        return;
+    }
+    if ((uint64_t)byte_count > validation->temporary_index_bytes) {
+        validation->temporary_index_bytes = 0U;
+        return;
+    }
+    validation->temporary_index_bytes -= (uint64_t)byte_count;
+}
+
+static bool spatial_validation_check_control(struct spatial_validation_context *validation) {
+    enum mylite_spatial_work_status status = MYLITE_SPATIAL_WORK_CONTINUE;
+
+    if (validation == NULL || validation->status != SPATIAL_VALIDATION_OK) {
+        return validation == NULL;
+    }
+    ++validation->control_check_count;
+    if (validation->control == NULL || validation->control->check == NULL) {
+        return true;
+    }
+    status = validation->control->check(validation->control->context);
+    if (status == MYLITE_SPATIAL_WORK_INTERRUPTED) {
+        validation->status = SPATIAL_VALIDATION_INTERRUPTED;
+        return false;
+    }
+    if (status == MYLITE_SPATIAL_WORK_DEADLINE_EXCEEDED) {
+        validation->status = SPATIAL_VALIDATION_DEADLINE_EXCEEDED;
+        return false;
+    }
+    return true;
+}
+
+static void spatial_validation_publish_statistics(struct spatial_validation_context *validation) {
+    struct mylite_spatial_work_statistics *statistics = NULL;
+
+    if (validation == NULL || validation->control == NULL) {
+        return;
+    }
+    statistics = validation->control->statistics;
+    if (statistics == NULL) {
+        return;
+    }
+    *statistics = (struct mylite_spatial_work_statistics){
+        .indexed_segment_count = validation->indexed_segment_count,
+        .candidate_check_count = validation->candidate_check_count,
+        .control_check_count = validation->control_check_count,
+        .peak_index_bytes = validation->peak_index_bytes,
+    };
+}
+
+static bool validity_geometry_is_valid(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_validation_context *validation
+) {
     if (geometry == NULL) {
         return false;
     }
@@ -9949,50 +10393,120 @@ static bool validity_geometry_is_valid(const struct spatial_distance_geometry *g
     case MYLITE_SPATIAL_GEOMETRY_POINT:
         return validity_point_is_valid(&geometry->point);
     case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
-        return validity_line_is_valid(geometry->points, geometry->point_count);
+        return validity_line_is_valid(geometry->points, geometry->point_count, validation);
     case MYLITE_SPATIAL_GEOMETRY_POLYGON:
-        return validity_polygon_is_valid(geometry);
+        return validity_polygon_is_valid(geometry, validation);
     case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
     case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
     case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
         for (uint32_t index = 0U; index < geometry->child_count; ++index) {
-            if (!validity_geometry_is_valid(&geometry->children[index])) {
+            if (!validity_geometry_is_valid(&geometry->children[index], validation)) {
                 return false;
             }
         }
         return true;
     case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
-        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
-            if (!validity_polygon_is_valid(&geometry->children[index])) {
-                return false;
-            }
-            for (uint32_t previous = 0U; previous < index; ++previous) {
-                if (validity_polygons_intersect_invalidly(
-                        &geometry->children[previous],
-                        &geometry->children[index]
-                    )) {
-                    return false;
-                }
-            }
-        }
-        return true;
+        return validity_multipolygon_is_valid(geometry, validation);
     default:
         break;
     }
     return false;
 }
 
+static bool validity_multipolygon_is_valid(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_validation_context *validation
+) {
+    size_t entry_count = geometry == NULL ? 0U : (size_t)geometry->child_count;
+    size_t index_bytes = 0U;
+    struct spatial_validation_component_entry *entries = NULL;
+    bool valid = true;
+
+    if (entry_count == 0U) {
+        return geometry != NULL;
+    }
+    if (entry_count > SIZE_MAX / sizeof(*entries)) {
+        return false;
+    }
+    index_bytes = entry_count * sizeof(*entries);
+    if (!spatial_validation_reserve_index_bytes(validation, index_bytes)) {
+        return false;
+    }
+    entries = (struct spatial_validation_component_entry *)malloc(index_bytes);
+    if (entries == NULL) {
+        spatial_validation_release_index_bytes(validation, index_bytes);
+        if (validation != NULL) {
+            validation->status = SPATIAL_VALIDATION_NOMEM;
+        }
+        return false;
+    }
+    for (uint32_t index = 0U; valid && index < geometry->child_count; ++index) {
+        const struct spatial_distance_geometry *polygon = &geometry->children[index];
+
+        valid = validity_polygon_is_valid(polygon, validation);
+        if (valid) {
+            valid = validity_build_component_entry(
+                &entries[index],
+                &polygon->rings[0],
+                index,
+                0U,
+                validation
+            );
+        }
+    }
+    if (valid) {
+        qsort(entries, entry_count, sizeof(*entries), validity_compare_component_entries);
+        valid = spatial_validation_check_control(validation);
+    }
+    for (size_t left_index = 0U; valid && left_index < entry_count; ++left_index) {
+        const struct spatial_validation_component_entry *left = &entries[left_index];
+
+        for (size_t right_index = left_index + 1U; right_index < entry_count; ++right_index) {
+            const struct spatial_validation_component_entry *right = &entries[right_index];
+
+            if (right->min_x > left->max_x + spatial_distance_epsilon) {
+                break;
+            }
+            if (!spatial_validation_record_candidate_check(validation)) {
+                valid = false;
+                break;
+            }
+            if (!validity_component_entries_can_intersect(left, right)) {
+                continue;
+            }
+            if (validity_polygons_intersect_invalidly(
+                    &geometry->children[left->index],
+                    &geometry->children[right->index],
+                    validation
+                )) {
+                valid = false;
+                break;
+            }
+        }
+    }
+    free(entries);
+    spatial_validation_release_index_bytes(validation, index_bytes);
+    return valid;
+}
+
 static bool validity_point_is_valid(const struct spatial_point *point) {
     return point != NULL && isfinite(point->coordinate_x) && isfinite(point->coordinate_y);
 }
 
-static bool validity_line_is_valid(const struct spatial_point *points, uint32_t point_count) {
+static bool validity_line_is_valid(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    struct spatial_validation_context *validation
+) {
     bool has_distinct_point = false;
 
     if (points == NULL || point_count < 2U) {
         return false;
     }
     for (uint32_t index = 0U; index < point_count; ++index) {
+        if (!spatial_validation_record_sequential_operation(validation)) {
+            return false;
+        }
         if (!validity_point_is_valid(&points[index])) {
             return false;
         }
@@ -10003,26 +10517,35 @@ static bool validity_line_is_valid(const struct spatial_point *points, uint32_t 
     return has_distinct_point;
 }
 
-static bool validity_polygon_is_valid(const struct spatial_distance_geometry *polygon) {
+static bool validity_polygon_is_valid(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_validation_context *validation
+) {
     if (polygon == NULL || polygon->type != MYLITE_SPATIAL_GEOMETRY_POLYGON ||
         polygon->ring_count == 0U) {
         return false;
     }
     for (uint32_t index = 0U; index < polygon->ring_count; ++index) {
-        if (!validity_ring_is_valid(&polygon->rings[index])) {
+        if (!validity_ring_is_valid(&polygon->rings[index], validation)) {
             return false;
         }
     }
-    return validity_polygon_holes_are_valid(polygon);
+    return validity_polygon_holes_are_valid(polygon, validation);
 }
 
-static bool validity_ring_is_valid(const struct spatial_distance_ring *ring) {
+static bool validity_ring_is_valid(
+    const struct spatial_distance_ring *ring,
+    struct spatial_validation_context *validation
+) {
     if (ring == NULL || ring->points == NULL || ring->point_count < 4U ||
         !spatial_points_are_equal(&ring->points[0], &ring->points[ring->point_count - 1U]) ||
         !spatial_ring_has_noncollinear_points(ring)) {
         return false;
     }
     for (uint32_t index = 0U; index < ring->point_count; ++index) {
+        if (!spatial_validation_record_sequential_operation(validation)) {
+            return false;
+        }
         if (!validity_point_is_valid(&ring->points[index])) {
             return false;
         }
@@ -10031,153 +10554,540 @@ static bool validity_ring_is_valid(const struct spatial_distance_ring *ring) {
             return false;
         }
     }
-    return validity_ring_is_simple(ring);
+    return validity_ring_is_simple(ring, validation);
 }
 
-static bool validity_ring_is_simple(const struct spatial_distance_ring *ring) {
-    uint32_t segment_count = ring->point_count - 1U;
+static bool validity_ring_is_simple(
+    const struct spatial_distance_ring *ring,
+    struct spatial_validation_context *validation
+) {
+    return !validity_ring_segments_intersect_invalidly(ring, NULL, true, validation);
+}
 
-    for (uint32_t left_index = 0U; left_index < segment_count; ++left_index) {
-        for (uint32_t right_index = left_index + 1U; right_index < segment_count; ++right_index) {
-            if (right_index == left_index + 1U ||
-                (left_index == 0U && right_index == segment_count - 1U)) {
+static bool validity_polygon_holes_are_valid(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_validation_context *validation
+) {
+    const struct spatial_distance_ring *exterior = &polygon->rings[0];
+    size_t entry_count = (size_t)polygon->ring_count - 1U;
+    size_t index_bytes = 0U;
+    struct spatial_validation_component_entry exterior_entry = {0};
+    struct spatial_validation_component_entry *entries = NULL;
+    bool valid = true;
+
+    if (entry_count == 0U) {
+        return true;
+    }
+    if (entry_count > SIZE_MAX / sizeof(*entries)) {
+        return false;
+    }
+    index_bytes = entry_count * sizeof(*entries);
+    if (!spatial_validation_reserve_index_bytes(validation, index_bytes)) {
+        return false;
+    }
+    entries = (struct spatial_validation_component_entry *)malloc(index_bytes);
+    if (entries == NULL) {
+        spatial_validation_release_index_bytes(validation, index_bytes);
+        if (validation != NULL) {
+            validation->status = SPATIAL_VALIDATION_NOMEM;
+        }
+        return false;
+    }
+    valid = validity_build_component_entry(&exterior_entry, exterior, 0U, 0U, validation);
+    for (uint32_t hole_index = 1U; valid && hole_index < polygon->ring_count; ++hole_index) {
+        const struct spatial_distance_ring *hole = &polygon->rings[hole_index];
+        struct spatial_validation_component_entry *entry = &entries[hole_index - 1U];
+        struct spatial_point hole_point = validity_ring_representative_point(hole);
+
+        valid = validity_build_component_entry(entry, hole, hole_index, 0U, validation);
+        if (valid && validity_component_entries_can_intersect(&exterior_entry, entry) &&
+            validity_rings_intersect_invalidly(exterior, hole, validation)) {
+            valid = false;
+        }
+        if (valid &&
+            !validity_ring_point_is_inside_or_on_boundary(exterior, &hole_point, validation)) {
+            valid = false;
+        }
+    }
+    if (valid) {
+        qsort(entries, entry_count, sizeof(*entries), validity_compare_component_entries);
+        valid = spatial_validation_check_control(validation);
+    }
+    for (size_t left_index = 0U; valid && left_index < entry_count; ++left_index) {
+        const struct spatial_validation_component_entry *left = &entries[left_index];
+
+        for (size_t right_index = left_index + 1U; right_index < entry_count; ++right_index) {
+            const struct spatial_validation_component_entry *right = &entries[right_index];
+            struct spatial_point left_point = {0};
+            struct spatial_point right_point = {0};
+
+            if (right->min_x > left->max_x + spatial_distance_epsilon) {
+                break;
+            }
+            if (!spatial_validation_record_candidate_check(validation)) {
+                valid = false;
+                break;
+            }
+            if (!validity_component_entries_can_intersect(left, right)) {
                 continue;
             }
-            if (validity_ring_segments_intersect_invalidly(ring, left_index, right_index)) {
-                return false;
+            left_point = validity_ring_representative_point(left->ring);
+            right_point = validity_ring_representative_point(right->ring);
+            if (validity_rings_intersect_invalidly(left->ring, right->ring, validation) ||
+                validity_ring_contains_point_interior(left->ring, &right_point, validation) ||
+                validity_ring_contains_point_interior(right->ring, &left_point, validation)) {
+                valid = false;
+                break;
             }
         }
     }
-    return true;
+    free(entries);
+    spatial_validation_release_index_bytes(validation, index_bytes);
+    return valid;
 }
 
-static bool validity_ring_segments_intersect_invalidly(
-    const struct spatial_distance_ring *ring,
-    uint32_t left_index,
-    uint32_t right_index
+static struct spatial_point validity_ring_representative_point(
+    const struct spatial_distance_ring *ring
 ) {
-    struct spatial_segment left = ring_segment(ring, left_index);
-    struct spatial_segment right = ring_segment(ring, right_index);
-
-    return segments_intersect(&left, &right);
-}
-
-static bool validity_polygon_holes_are_valid(const struct spatial_distance_geometry *polygon) {
-    const struct spatial_distance_ring *exterior = &polygon->rings[0];
-
-    for (uint32_t hole_index = 1U; hole_index < polygon->ring_count; ++hole_index) {
-        const struct spatial_distance_ring *hole = &polygon->rings[hole_index];
-
-        if (validity_rings_intersect_invalidly(exterior, hole)) {
-            return false;
-        }
-        for (uint32_t point_index = 0U; point_index + 1U < hole->point_count; ++point_index) {
-            if (!validity_ring_point_is_inside_or_on_boundary(
-                    exterior,
-                    &hole->points[point_index]
-                )) {
-                return false;
-            }
-        }
-        for (uint32_t previous_index = 1U; previous_index < hole_index; ++previous_index) {
-            const struct spatial_distance_ring *previous = &polygon->rings[previous_index];
-
-            if (validity_rings_intersect_invalidly(previous, hole)) {
-                return false;
-            }
-            for (uint32_t point_index = 0U; point_index + 1U < hole->point_count; ++point_index) {
-                if (validity_ring_contains_point_interior(previous, &hole->points[point_index])) {
-                    return false;
-                }
-            }
-            for (uint32_t point_index = 0U; point_index + 1U < previous->point_count;
-                 ++point_index) {
-                if (validity_ring_contains_point_interior(hole, &previous->points[point_index])) {
-                    return false;
-                }
-            }
-        }
+    if (ring == NULL || ring->points == NULL || ring->point_count < 2U) {
+        return (struct spatial_point){0};
     }
-    return true;
+    return (struct spatial_point){
+        .coordinate_x = (ring->points[0].coordinate_x + ring->points[1].coordinate_x) /
+                        spatial_midpoint_divisor,
+        .coordinate_y = (ring->points[0].coordinate_y + ring->points[1].coordinate_y) /
+                        spatial_midpoint_divisor,
+    };
 }
 
 static bool validity_ring_point_is_inside_or_on_boundary(
     const struct spatial_distance_ring *ring,
-    const struct spatial_point *point
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
 ) {
-    enum spatial_point_ring_relation relation = point_ring_relation(ring, point);
+    enum spatial_point_ring_relation relation =
+        validity_point_ring_relation(ring, point, validation);
 
     return relation == SPATIAL_POINT_RING_INSIDE || relation == SPATIAL_POINT_RING_BOUNDARY;
 }
 
 static bool validity_ring_contains_point_interior(
     const struct spatial_distance_ring *ring,
-    const struct spatial_point *point
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
 ) {
-    return point_ring_relation(ring, point) == SPATIAL_POINT_RING_INSIDE;
+    return validity_point_ring_relation(ring, point, validation) == SPATIAL_POINT_RING_INSIDE;
+}
+
+static enum spatial_point_ring_relation validity_point_ring_relation(
+    const struct spatial_distance_ring *ring,
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
+) {
+    bool inside = false;
+
+    if (ring == NULL || point == NULL || ring->point_count < 3U) {
+        return SPATIAL_POINT_RING_OUTSIDE;
+    }
+    for (uint32_t index = 0U, previous = ring->point_count - 1U; index < ring->point_count;
+         previous = index++) {
+        const struct spatial_point *current_point = &ring->points[index];
+        const struct spatial_point *previous_point = &ring->points[previous];
+        const struct spatial_segment segment = {.start = *previous_point, .end = *current_point};
+
+        if (!spatial_validation_record_sequential_operation(validation)) {
+            return SPATIAL_POINT_RING_OUTSIDE;
+        }
+        if (point_on_segment(point, &segment)) {
+            return SPATIAL_POINT_RING_BOUNDARY;
+        }
+        if ((current_point->coordinate_y > point->coordinate_y) !=
+            (previous_point->coordinate_y > point->coordinate_y)) {
+            double crossing_x = ((previous_point->coordinate_x - current_point->coordinate_x) *
+                                 (point->coordinate_y - current_point->coordinate_y) /
+                                 (previous_point->coordinate_y - current_point->coordinate_y)) +
+                                current_point->coordinate_x;
+
+            if (point->coordinate_x < crossing_x) {
+                inside = !inside;
+            }
+        }
+    }
+    return inside ? SPATIAL_POINT_RING_INSIDE : SPATIAL_POINT_RING_OUTSIDE;
 }
 
 static bool validity_rings_intersect_invalidly(
     const struct spatial_distance_ring *left,
-    const struct spatial_distance_ring *right
+    const struct spatial_distance_ring *right,
+    struct spatial_validation_context *validation
 ) {
-    for (uint32_t left_index = 0U; left_index + 1U < left->point_count; ++left_index) {
-        struct spatial_segment left_segment = ring_segment(left, left_index);
-
-        for (uint32_t right_index = 0U; right_index + 1U < right->point_count; ++right_index) {
-            struct spatial_segment right_segment = ring_segment(right, right_index);
-
-            if (validity_segment_intersection_is_invalid(&left_segment, &right_segment, true)) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return validity_ring_segments_intersect_invalidly(left, right, false, validation);
 }
 
 static bool validity_polygons_intersect_invalidly(
     const struct spatial_distance_geometry *left,
-    const struct spatial_distance_geometry *right
+    const struct spatial_distance_geometry *right,
+    struct spatial_validation_context *validation
 ) {
-    for (uint32_t left_ring = 0U; left_ring < left->ring_count; ++left_ring) {
-        for (uint32_t right_ring = 0U; right_ring < right->ring_count; ++right_ring) {
+    size_t left_count = left == NULL ? 0U : (size_t)left->ring_count;
+    size_t right_count = right == NULL ? 0U : (size_t)right->ring_count;
+    size_t entry_count = left_count + right_count;
+    size_t index_bytes = 0U;
+    struct spatial_validation_component_entry *entries = NULL;
+    bool invalid = false;
+
+    if (left_count == 0U || right_count == 0U || entry_count < left_count ||
+        entry_count > SIZE_MAX / sizeof(*entries)) {
+        return true;
+    }
+    index_bytes = entry_count * sizeof(*entries);
+    if (!spatial_validation_reserve_index_bytes(validation, index_bytes)) {
+        return true;
+    }
+    entries = (struct spatial_validation_component_entry *)malloc(index_bytes);
+    if (entries == NULL) {
+        spatial_validation_release_index_bytes(validation, index_bytes);
+        if (validation != NULL) {
+            validation->status = SPATIAL_VALIDATION_NOMEM;
+        }
+        return true;
+    }
+    for (uint32_t index = 0U; !invalid && index < left->ring_count; ++index) {
+        invalid = !validity_build_component_entry(
+            &entries[index],
+            &left->rings[index],
+            index,
+            0U,
+            validation
+        );
+    }
+    for (uint32_t index = 0U; !invalid && index < right->ring_count; ++index) {
+        invalid = !validity_build_component_entry(
+            &entries[left_count + index],
+            &right->rings[index],
+            index,
+            1U,
+            validation
+        );
+    }
+    if (!invalid) {
+        qsort(entries, entry_count, sizeof(*entries), validity_compare_component_entries);
+        invalid = !spatial_validation_check_control(validation);
+    }
+    for (size_t left_index = 0U; !invalid && left_index < entry_count; ++left_index) {
+        const struct spatial_validation_component_entry *left_entry = &entries[left_index];
+
+        for (size_t right_index = left_index + 1U; right_index < entry_count; ++right_index) {
+            const struct spatial_validation_component_entry *right_entry = &entries[right_index];
+
+            if (right_entry->min_x > left_entry->max_x + spatial_distance_epsilon) {
+                break;
+            }
+            if (left_entry->group == right_entry->group) {
+                continue;
+            }
+            if (!spatial_validation_record_candidate_check(validation)) {
+                invalid = true;
+                break;
+            }
+            if (!validity_component_entries_can_intersect(left_entry, right_entry)) {
+                continue;
+            }
             if (validity_rings_intersect_invalidly(
-                    &left->rings[left_ring],
-                    &right->rings[right_ring]
+                    left_entry->ring,
+                    right_entry->ring,
+                    validation
                 )) {
-                return true;
+                invalid = true;
+                break;
             }
         }
     }
-    for (uint32_t index = 0U; index + 1U < right->rings[0].point_count; ++index) {
-        if (validity_polygon_contains_point_interior(left, &right->rings[0].points[index])) {
-            return true;
-        }
+    free(entries);
+    spatial_validation_release_index_bytes(validation, index_bytes);
+    if (invalid) {
+        return true;
     }
-    for (uint32_t index = 0U; index + 1U < left->rings[0].point_count; ++index) {
-        if (validity_polygon_contains_point_interior(right, &left->rings[0].points[index])) {
-            return true;
-        }
+    {
+        struct spatial_point right_point = validity_ring_representative_point(&right->rings[0]);
+        struct spatial_point left_point = validity_ring_representative_point(&left->rings[0]);
+
+        return validity_polygon_contains_point_interior(left, &right_point, validation) ||
+               validity_polygon_contains_point_interior(right, &left_point, validation);
     }
-    return false;
 }
 
 static bool validity_polygon_contains_point_interior(
     const struct spatial_distance_geometry *polygon,
-    const struct spatial_point *point
+    const struct spatial_point *point,
+    struct spatial_validation_context *validation
 ) {
-    if (point_ring_relation(&polygon->rings[0], point) != SPATIAL_POINT_RING_INSIDE) {
+    if (validity_point_ring_relation(&polygon->rings[0], point, validation) !=
+        SPATIAL_POINT_RING_INSIDE) {
         return false;
     }
     for (uint32_t index = 1U; index < polygon->ring_count; ++index) {
         enum spatial_point_ring_relation relation =
-            point_ring_relation(&polygon->rings[index], point);
+            validity_point_ring_relation(&polygon->rings[index], point, validation);
 
         if (relation == SPATIAL_POINT_RING_INSIDE || relation == SPATIAL_POINT_RING_BOUNDARY) {
             return false;
         }
     }
     return true;
+}
+
+static bool validity_ring_segments_intersect_invalidly(
+    const struct spatial_distance_ring *left,
+    const struct spatial_distance_ring *right,
+    bool same_ring,
+    struct spatial_validation_context *validation
+) {
+    size_t left_segment_count =
+        left == NULL || left->point_count == 0U ? 0U : (size_t)left->point_count - 1U;
+    size_t right_segment_count = same_ring || right == NULL || right->point_count == 0U
+                                     ? 0U
+                                     : (size_t)right->point_count - 1U;
+    size_t entry_count = left_segment_count + right_segment_count;
+    size_t index_bytes = 0U;
+    size_t offset = 0U;
+    struct spatial_validation_segment_entry *entries = NULL;
+    bool invalid = false;
+
+    if (entry_count == 0U ||
+        (validation != NULL &&
+         ((uint64_t)entry_count > validation->maximum_segment_count ||
+          (uint64_t)entry_count > validation->maximum_index_bytes / sizeof(*entries))) ||
+        (validation == NULL && entry_count > spatial_validation_max_segment_count)) {
+        if (entry_count != 0U && validation != NULL) {
+            validation->status = SPATIAL_VALIDATION_RESOURCE_LIMIT;
+            return true;
+        }
+        return false;
+    }
+    index_bytes = entry_count * sizeof(*entries);
+    if (!spatial_validation_reserve_index_bytes(validation, index_bytes)) {
+        return true;
+    }
+    entries = (struct spatial_validation_segment_entry *)malloc(index_bytes);
+    if (entries == NULL) {
+        spatial_validation_release_index_bytes(validation, index_bytes);
+        if (validation != NULL) {
+            validation->status = SPATIAL_VALIDATION_NOMEM;
+        }
+        return true;
+    }
+    if (!validity_build_segment_entries(entries, left, 0U, &offset, validation) ||
+        (!same_ring && !validity_build_segment_entries(entries, right, 1U, &offset, validation))) {
+        free(entries);
+        spatial_validation_release_index_bytes(validation, index_bytes);
+        return true;
+    }
+    qsort(entries, entry_count, sizeof(*entries), validity_compare_segment_entries);
+    if (!spatial_validation_check_control(validation)) {
+        free(entries);
+        spatial_validation_release_index_bytes(validation, index_bytes);
+        return true;
+    }
+    for (size_t left_index = 0U; left_index < entry_count && !invalid; ++left_index) {
+        const struct spatial_validation_segment_entry *left_entry = &entries[left_index];
+
+        for (size_t right_index = left_index + 1U; right_index < entry_count; ++right_index) {
+            const struct spatial_validation_segment_entry *right_entry = &entries[right_index];
+            struct spatial_segment left_segment_value = {0};
+            struct spatial_segment right_segment_value = {0};
+
+            if (right_entry->min_x > left_entry->max_x + spatial_distance_epsilon) {
+                break;
+            }
+            if (!spatial_validation_record_candidate_check(validation)) {
+                invalid = true;
+                break;
+            }
+            if ((!same_ring && left_entry->group == right_entry->group) ||
+                (same_ring && validity_segment_entries_are_adjacent(left_entry, right_entry)) ||
+                !validity_segment_entries_can_intersect(left_entry, right_entry)) {
+                continue;
+            }
+            left_segment_value = ring_segment(left_entry->ring, left_entry->segment_index);
+            right_segment_value = ring_segment(right_entry->ring, right_entry->segment_index);
+            invalid = same_ring ? segments_intersect(&left_segment_value, &right_segment_value)
+                                : validity_segment_intersection_is_invalid(
+                                      &left_segment_value,
+                                      &right_segment_value,
+                                      true
+                                  );
+            if (invalid) {
+                break;
+            }
+        }
+    }
+    free(entries);
+    spatial_validation_release_index_bytes(validation, index_bytes);
+    return invalid;
+}
+
+static bool validity_build_component_entry(
+    struct spatial_validation_component_entry *entry,
+    const struct spatial_distance_ring *ring,
+    uint32_t index,
+    uint32_t group,
+    struct spatial_validation_context *validation
+) {
+    struct spatial_box box = {0};
+
+    if (entry == NULL || ring == NULL || ring->points == NULL || ring->point_count == 0U) {
+        return false;
+    }
+    for (uint32_t point_index = 0U; point_index < ring->point_count; ++point_index) {
+        spatial_box_include_point(
+            &box,
+            ring->points[point_index].coordinate_x,
+            ring->points[point_index].coordinate_y
+        );
+        if (!spatial_validation_record_sequential_operation(validation)) {
+            return false;
+        }
+    }
+    *entry = (struct spatial_validation_component_entry){
+        .ring = ring,
+        .min_x = box.min_x,
+        .min_y = box.min_y,
+        .max_x = box.max_x,
+        .max_y = box.max_y,
+        .index = index,
+        .group = group,
+    };
+    return true;
+}
+
+static int validity_compare_component_entries(
+    const void *left, // NOLINT(bugprone-easily-swappable-parameters): qsort comparator ABI.
+    const void *right
+) {
+    const struct spatial_validation_component_entry *left_entry = left;
+    const struct spatial_validation_component_entry *right_entry = right;
+    int comparison = validity_compare_double(left_entry->min_x, right_entry->min_x);
+
+    if (comparison == 0) {
+        comparison = validity_compare_double(left_entry->max_x, right_entry->max_x);
+    }
+    if (comparison == 0) {
+        comparison = validity_compare_double(left_entry->min_y, right_entry->min_y);
+    }
+    if (comparison == 0) {
+        comparison = validity_compare_double(left_entry->max_y, right_entry->max_y);
+    }
+    if (comparison == 0 && left_entry->group != right_entry->group) {
+        comparison = left_entry->group < right_entry->group ? -1 : 1;
+    }
+    if (comparison == 0 && left_entry->index != right_entry->index) {
+        comparison = left_entry->index < right_entry->index ? -1 : 1;
+    }
+    return comparison;
+}
+
+static bool validity_component_entries_can_intersect(
+    const struct spatial_validation_component_entry *left,
+    const struct spatial_validation_component_entry *right
+) {
+    return left != NULL && right != NULL &&
+           left->min_x <= right->max_x + spatial_distance_epsilon &&
+           left->max_x + spatial_distance_epsilon >= right->min_x &&
+           left->min_y <= right->max_y + spatial_distance_epsilon &&
+           left->max_y + spatial_distance_epsilon >= right->min_y;
+}
+
+static bool validity_build_segment_entries(
+    struct spatial_validation_segment_entry *entries,
+    const struct spatial_distance_ring *ring,
+    uint32_t group,
+    size_t *offset,
+    struct spatial_validation_context *validation
+) {
+    size_t segment_count =
+        ring == NULL || ring->point_count == 0U ? 0U : (size_t)ring->point_count - 1U;
+
+    if (entries == NULL || offset == NULL || ring == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < segment_count; ++index) {
+        const struct spatial_point *start = &ring->points[index];
+        const struct spatial_point *end = &ring->points[index + 1U];
+
+        entries[*offset] = (struct spatial_validation_segment_entry){
+            .ring = ring,
+            .min_x = fmin(start->coordinate_x, end->coordinate_x),
+            .min_y = fmin(start->coordinate_y, end->coordinate_y),
+            .max_x = fmax(start->coordinate_x, end->coordinate_x),
+            .max_y = fmax(start->coordinate_y, end->coordinate_y),
+            .segment_index = (uint32_t)index,
+            .group = group,
+        };
+        ++*offset;
+        if (!spatial_validation_record_sequential_operation(validation)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int validity_compare_segment_entries(
+    const void *left, // NOLINT(bugprone-easily-swappable-parameters): qsort comparator ABI.
+    const void *right
+) {
+    const struct spatial_validation_segment_entry *left_entry = left;
+    const struct spatial_validation_segment_entry *right_entry = right;
+    int comparison = validity_compare_double(left_entry->min_x, right_entry->min_x);
+
+    if (comparison == 0) {
+        comparison = validity_compare_double(left_entry->max_x, right_entry->max_x);
+    }
+    if (comparison == 0) {
+        comparison = validity_compare_double(left_entry->min_y, right_entry->min_y);
+    }
+    if (comparison == 0) {
+        comparison = validity_compare_double(left_entry->max_y, right_entry->max_y);
+    }
+    if (comparison == 0 && left_entry->group != right_entry->group) {
+        comparison = left_entry->group < right_entry->group ? -1 : 1;
+    }
+    if (comparison == 0 && left_entry->segment_index != right_entry->segment_index) {
+        comparison = left_entry->segment_index < right_entry->segment_index ? -1 : 1;
+    }
+    return comparison;
+}
+
+static int validity_compare_double(double left, double right) {
+    if (left < right) {
+        return -1;
+    }
+    if (left > right) {
+        return 1;
+    }
+    return 0;
+}
+
+static bool validity_segment_entries_can_intersect(
+    const struct spatial_validation_segment_entry *left,
+    const struct spatial_validation_segment_entry *right
+) {
+    return left->min_y <= right->max_y + spatial_distance_epsilon &&
+           left->max_y + spatial_distance_epsilon >= right->min_y;
+}
+
+static bool validity_segment_entries_are_adjacent(
+    const struct spatial_validation_segment_entry *left,
+    const struct spatial_validation_segment_entry *right
+) {
+    uint32_t segment_count = left->ring->point_count - 1U;
+    uint32_t left_index = left->segment_index;
+    uint32_t right_index = right->segment_index;
+
+    return left->ring == right->ring &&
+           (right_index == left_index + 1U || left_index == right_index + 1U ||
+            (left_index == 0U && right_index == segment_count - 1U) ||
+            (right_index == 0U && left_index == segment_count - 1U));
 }
 
 static bool validity_segment_intersection_is_invalid(
@@ -10803,7 +11713,7 @@ static bool relation_simple_geometry_interiors_intersect(
             return relation_point_is_on_line_interior(&left->point, right);
         }
         if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
-            return validity_polygon_contains_point_interior(right, &left->point);
+            return validity_polygon_contains_point_interior(right, &left->point, NULL);
         }
         break;
     case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
@@ -10819,7 +11729,7 @@ static bool relation_simple_geometry_interiors_intersect(
         break;
     case MYLITE_SPATIAL_GEOMETRY_POLYGON:
         if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
-            return validity_polygon_contains_point_interior(left, &right->point);
+            return validity_polygon_contains_point_interior(left, &right->point, NULL);
         }
         if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
             return relation_line_polygon_interiors_intersect(right, left);
@@ -10948,7 +11858,7 @@ static bool relation_line_polygon_interiors_intersect(
         return false;
     }
     for (uint32_t index = 0U; index < line->point_count; ++index) {
-        if (validity_polygon_contains_point_interior(polygon, &line->points[index])) {
+        if (validity_polygon_contains_point_interior(polygon, &line->points[index], NULL)) {
             return true;
         }
     }
@@ -10956,7 +11866,7 @@ static bool relation_line_polygon_interiors_intersect(
         struct spatial_segment segment = line_segment(line, index);
         struct spatial_point midpoint = segment_midpoint(&segment);
 
-        if (validity_polygon_contains_point_interior(polygon, &midpoint)) {
+        if (validity_polygon_contains_point_interior(polygon, &midpoint, NULL)) {
             return true;
         }
     }
@@ -10975,12 +11885,12 @@ static bool relation_polygons_have_interior_intersection(
         return true;
     }
     for (uint32_t index = 0U; index + 1U < right->rings[0].point_count; ++index) {
-        if (validity_polygon_contains_point_interior(left, &right->rings[0].points[index])) {
+        if (validity_polygon_contains_point_interior(left, &right->rings[0].points[index], NULL)) {
             return true;
         }
     }
     for (uint32_t index = 0U; index + 1U < left->rings[0].point_count; ++index) {
-        if (validity_polygon_contains_point_interior(right, &left->rings[0].points[index])) {
+        if (validity_polygon_contains_point_interior(right, &left->rings[0].points[index], NULL)) {
             return true;
         }
     }
@@ -11048,7 +11958,7 @@ static bool relation_simple_geometry_contains(
         return false;
     case MYLITE_SPATIAL_GEOMETRY_POLYGON:
         if (content->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
-            return validity_polygon_contains_point_interior(container, &content->point);
+            return validity_polygon_contains_point_interior(container, &content->point, NULL);
         }
         if (content->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
             return relation_polygon_contains_line(container, content);
@@ -11232,7 +12142,7 @@ static bool relation_polygon_contains_point_sample(
         return false;
     }
     if (io_has_interior_sample != NULL &&
-        validity_polygon_contains_point_interior(container, point)) {
+        validity_polygon_contains_point_interior(container, point, NULL)) {
         *io_has_interior_sample = true;
     }
     return true;

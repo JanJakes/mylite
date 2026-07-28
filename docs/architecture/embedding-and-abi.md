@@ -70,7 +70,10 @@ Database, statement, result, and returned-value ownership is defined beside the
 public declarations in `mylite/mylite.h`. A database handle and statements
 created from it are single-threaded and non-reentrant. Independent handles may
 be used concurrently. Applications must finalize statements and free results
-according to the documented lifetime boundaries.
+according to the documented lifetime boundaries. `mylite_interrupt()` is the
+sole same-handle cross-thread exception: it may request cancellation of active
+work, but the caller must keep the database handle open until the call returns.
+It does not make any other concurrent operation on that handle valid.
 
 Length-bearing hosts must use `mylite_open_with_size()` or
 `mylite_open_with_size_and_diagnostic()`. The path span is borrowed for the

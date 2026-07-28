@@ -2,6 +2,9 @@
 
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_execution_session_system_variables_support.h"
+#include "mylite_execution_system_variables.h"
+#include "mylite_mysql_error_codes.h"
 #include "mylite_spatial.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
@@ -10,14 +13,34 @@
 
 #include <limits.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
+
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  include <windows.h>
+#endif
+
+enum {
+    spatial_decimal_radix = 10,
+    spatial_nanoseconds_per_millisecond = 1000000,
+    spatial_nanoseconds_per_second = 1000000000ULL,
+};
 
 struct spatial_sqlite_function_descriptor {
     const char *name;
     enum mylite_spatial_function_kind kind;
 };
 
+static mylite_spatial_sql_work_test_hook spatial_sql_work_test_hook = NULL;
+static void *spatial_sql_work_test_hook_context = NULL;
+
 static void spatial_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static enum mylite_spatial_work_status spatial_sql_check_work(void *context);
+static uint64_t spatial_monotonic_now_ns(void);
 static int spatial_sqlite_arguments(
     int argc,
     sqlite3_value **argv,
@@ -175,9 +198,12 @@ int mylite_sqlite_register_spatial_functions(sqlite3 *sqlite) {
 
 static void spatial_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
     const struct spatial_sqlite_function_descriptor *descriptor = sqlite3_user_data(context);
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
     struct mylite_spatial_argument *arguments = NULL;
     struct mylite_spatial_result result = {0};
     struct mylite_spatial_error error = {0};
+    struct mylite_spatial_sql_work_context work = {0};
+    struct mylite_spatial_work_control control = {0};
 
     if (descriptor == NULL) {
         sqlite3_result_error(context, "MyLite spatial function is not registered", -1);
@@ -187,7 +213,20 @@ static void spatial_sqlite_callback(sqlite3_context *context, int argc, sqlite3_
         sqlite3_result_error_nomem(context);
         return;
     }
-    if (mylite_spatial_evaluate(descriptor->kind, arguments, (size_t)argc, &result, &error) != 0) {
+    mylite_spatial_sql_work_control_init(
+        &work,
+        database,
+        sqlite3_context_db_handle(context),
+        &control
+    );
+    if (mylite_spatial_evaluate_with_control(
+            descriptor->kind,
+            arguments,
+            (size_t)argc,
+            &result,
+            &error,
+            &control
+        ) != 0) {
         spatial_sqlite_set_error(context, &error);
     } else {
         spatial_sqlite_set_result(context, &result);
@@ -195,6 +234,94 @@ static void spatial_sqlite_callback(sqlite3_context *context, int argc, sqlite3_
 
     mylite_spatial_result_deinit(&result);
     free(arguments);
+}
+
+void mylite_spatial_sql_work_control_init(
+    struct mylite_spatial_sql_work_context *work,
+    const struct mylite_db *database,
+    sqlite3 *sqlite,
+    struct mylite_spatial_work_control *control
+) {
+    const char *timeout_text = NULL;
+    uint64_t timeout_ms = 0U;
+    uint64_t now_ns = 0U;
+
+    if (work == NULL || control == NULL) {
+        return;
+    }
+    *work = (struct mylite_spatial_sql_work_context){
+        .sqlite = sqlite,
+    };
+    *control = (struct mylite_spatial_work_control){
+        .check = spatial_sql_check_work,
+        .context = work,
+    };
+    if (database == NULL) {
+        return;
+    }
+    timeout_text = mylite_execution_session_system_variable_override_value(
+        database,
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_EXECUTION_TIME
+    );
+    if (timeout_text == NULL || timeout_text[0] == '\0') {
+        return;
+    }
+    timeout_ms = (uint64_t)strtoull(timeout_text, NULL, spatial_decimal_radix);
+    if (timeout_ms == 0U) {
+        return;
+    }
+    now_ns = spatial_monotonic_now_ns();
+    work->has_deadline = true;
+    if (timeout_ms > (UINT64_MAX - now_ns) / spatial_nanoseconds_per_millisecond) {
+        work->deadline_ns = UINT64_MAX;
+    } else {
+        work->deadline_ns = now_ns + (timeout_ms * spatial_nanoseconds_per_millisecond);
+    }
+}
+
+void mylite_spatial_set_sql_work_test_hook(mylite_spatial_sql_work_test_hook hook, void *context) {
+    spatial_sql_work_test_hook = hook;
+    spatial_sql_work_test_hook_context = context;
+}
+
+static enum mylite_spatial_work_status spatial_sql_check_work(void *context) {
+    const struct mylite_spatial_sql_work_context *work = context;
+
+    if (work == NULL) {
+        return MYLITE_SPATIAL_WORK_CONTINUE;
+    }
+    if (spatial_sql_work_test_hook != NULL) {
+        spatial_sql_work_test_hook(spatial_sql_work_test_hook_context);
+    }
+    if (work->sqlite != NULL && sqlite3_is_interrupted(work->sqlite) != 0) {
+        return MYLITE_SPATIAL_WORK_INTERRUPTED;
+    }
+    if (work->has_deadline && spatial_monotonic_now_ns() >= work->deadline_ns) {
+        return MYLITE_SPATIAL_WORK_DEADLINE_EXCEEDED;
+    }
+    return MYLITE_SPATIAL_WORK_CONTINUE;
+}
+
+static uint64_t spatial_monotonic_now_ns(void) {
+#ifdef _WIN32
+    return GetTickCount64() * spatial_nanoseconds_per_millisecond;
+#elif defined(CLOCK_MONOTONIC)
+    struct timespec timestamp = {0};
+
+    if (clock_gettime(CLOCK_MONOTONIC, &timestamp) != 0) {
+        return 0U;
+    }
+    return ((uint64_t)timestamp.tv_sec * spatial_nanoseconds_per_second) +
+           (uint64_t)timestamp.tv_nsec;
+#else
+    struct timespec timestamp = {0};
+
+    if (timespec_get(&timestamp, TIME_UTC) != TIME_UTC) {
+        return 0U;
+    }
+    return ((uint64_t)timestamp.tv_sec * spatial_nanoseconds_per_second) +
+           (uint64_t)timestamp.tv_nsec;
+#endif
 }
 
 static int spatial_sqlite_arguments(
@@ -255,6 +382,9 @@ static void spatial_sqlite_set_error(
         );
     }
     sqlite3_result_error(context, message, -1);
+    if (error != NULL && error->code == mysql_error_query_interrupted) {
+        sqlite3_result_error_code(context, SQLITE_INTERRUPT);
+    }
 }
 
 static void spatial_sqlite_set_result(

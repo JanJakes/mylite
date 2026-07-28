@@ -534,6 +534,7 @@ tests/runtime_spatial_simplicity_function_test.c|internal|always
 tests/runtime_spatial_simplify_function_test.c|internal|always
 tests/runtime_spatial_touches_function_test.c|internal|always
 tests/runtime_spatial_validity_functions_test.c|internal|always
+tests/runtime_spatial_validation_scaling_cancellation_test.c|internal|always
 tests/runtime_sql_auto_is_null_system_variable_test.c|internal|always
 tests/runtime_sql_big_selects_system_variable_test.c|internal|always
 tests/runtime_sql_buffer_result_system_variable_test.c|internal|always

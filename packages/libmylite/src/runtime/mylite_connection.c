@@ -194,6 +194,13 @@ int mylite_close_checked(mylite_db *database) {
     return MYLITE_OK;
 }
 
+void mylite_interrupt(mylite_db *database) {
+    if (database == NULL || database->sqlite == NULL) {
+        return;
+    }
+    sqlite3_interrupt(database->sqlite);
+}
+
 uint64_t mylite_connection_id(const mylite_db *database) {
     return database == NULL ? 0U : database->stable_connection_id;
 }

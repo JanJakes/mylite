@@ -69,6 +69,8 @@ static int spatial_function_session_scalar_value(
     struct mylite_spatial_argument *arguments = NULL;
     struct mylite_spatial_result result = {0};
     struct mylite_spatial_error error = {0};
+    struct mylite_spatial_sql_work_context work = {0};
+    struct mylite_spatial_work_control control = {0};
     size_t argument_count =
         arguments_node == NULL ? 0U : mylite_sql_ast_node_child_count(arguments_node);
     int rc = MYLITE_OK;
@@ -100,7 +102,20 @@ static int spatial_function_session_scalar_value(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_spatial_evaluate(kind, arguments, argument_count, &result, &error);
+        mylite_spatial_sql_work_control_init(
+            &work,
+            database,
+            database == NULL ? NULL : database->sqlite,
+            &control
+        );
+        rc = mylite_spatial_evaluate_with_control(
+            kind,
+            arguments,
+            argument_count,
+            &result,
+            &error,
+            &control
+        );
     }
     if (rc == MYLITE_OK) {
         rc = spatial_function_session_scalar_result(database, &result, out_cell);

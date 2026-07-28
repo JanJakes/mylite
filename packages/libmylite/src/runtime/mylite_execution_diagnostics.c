@@ -1,5 +1,7 @@
 #include "mylite_execution_diagnostics_internal.h"
 
+#include "sqlite3.h"
+
 void mylite_execution_diagnostics_set_unsupported_error(
     struct mylite_db *database,
     const char *message
@@ -150,6 +152,15 @@ void mylite_execution_diagnostics_set_physical_sqlite_error(struct mylite_db *da
 }
 
 void mylite_execution_diagnostics_set_physical_sqlite_row_error(struct mylite_db *database) {
+    if (database != NULL && sqlite3_errcode(database->sqlite) == SQLITE_INTERRUPT) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_query_interrupted,
+            "70100",
+            "Query execution was interrupted"
+        );
+        return;
+    }
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown,

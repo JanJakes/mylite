@@ -32,6 +32,9 @@ enum {
     spatial_byte_bit_count = 8,
     spatial_byte_mask = 0xff,
     nanoseconds_per_second = 1000000000ULL,
+    maximum_candidates_per_segment = 32,
+    maximum_candidate_slope_tenths = 25,
+    candidate_slope_tenths_scale = 10,
 };
 
 static const double full_circle_radians = 6.283185307179586476925286766559;
@@ -41,7 +44,13 @@ struct generated_geometry {
     size_t byte_count;
 };
 
-static int benchmark_vertex_count(size_t vertex_count, size_t iterations);
+struct benchmark_outcome {
+    int status;
+    uint64_t indexed_segments;
+    uint64_t candidate_checks;
+};
+
+static struct benchmark_outcome benchmark_vertex_count(size_t vertex_count, size_t iterations);
 static struct generated_geometry make_regular_polygon(size_t vertex_count);
 static int parse_size_argument(const char *text, size_t *out_value);
 static void write_u32_le(unsigned char *destination, uint32_t value);
@@ -52,6 +61,7 @@ int main(int argc, char **argv) {
     static const size_t vertex_counts[] = {8192U, 16384U, 32768U, 65536U};
     size_t iterations = default_iterations;
     size_t selected_vertex_count = 0U;
+    uint64_t previous_candidate_checks = 0U;
 
     if (argc > 3) {
         fprintf(stderr, "usage: %s [iterations [vertices]]\n", argv[0]);
@@ -66,19 +76,40 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    puts("vertices,bytes,iterations,ns_per_validation,legacy_segment_pairs,result");
+    puts("vertices,bytes,iterations,ns_per_validation,indexed_segments,candidate_checks,"
+         "legacy_segment_pairs,result");
     if (selected_vertex_count != 0U) {
-        return benchmark_vertex_count(selected_vertex_count, iterations);
+        return benchmark_vertex_count(selected_vertex_count, iterations).status;
     }
     for (size_t index = 0U; index < sizeof(vertex_counts) / sizeof(vertex_counts[0]); ++index) {
-        if (benchmark_vertex_count(vertex_counts[index], iterations) != 0) {
+        struct benchmark_outcome outcome = benchmark_vertex_count(vertex_counts[index], iterations);
+
+        if (outcome.status != 0) {
             return 1;
         }
+        if (outcome.candidate_checks > outcome.indexed_segments * maximum_candidates_per_segment) {
+            fprintf(
+                stderr,
+                "%zu-vertex polygon exceeded 32 candidates per segment\n",
+                vertex_counts[index]
+            );
+            return 1;
+        }
+        if (index > 0U && outcome.candidate_checks * candidate_slope_tenths_scale >
+                              previous_candidate_checks * maximum_candidate_slope_tenths) {
+            fprintf(
+                stderr,
+                "%zu-vertex polygon candidate slope exceeded 2.5x\n",
+                vertex_counts[index]
+            );
+            return 1;
+        }
+        previous_candidate_checks = outcome.candidate_checks;
     }
     return 0;
 }
 
-static int benchmark_vertex_count(size_t vertex_count, size_t iterations) {
+static struct benchmark_outcome benchmark_vertex_count(size_t vertex_count, size_t iterations) {
     struct generated_geometry geometry = make_regular_polygon(vertex_count);
     const struct mylite_spatial_argument argument = {
         .bytes = geometry.bytes,
@@ -86,23 +117,28 @@ static int benchmark_vertex_count(size_t vertex_count, size_t iterations) {
     };
     struct mylite_spatial_result result = {0};
     struct mylite_spatial_error error = {0};
+    struct mylite_spatial_work_statistics statistics = {0};
+    const struct mylite_spatial_work_control control = {
+        .statistics = &statistics,
+    };
     uint64_t started = 0U;
     uint64_t elapsed = 0U;
     uint64_t legacy_pair_count = 0U;
 
     if (geometry.bytes == NULL) {
         fprintf(stderr, "failed to allocate %zu-vertex polygon\n", vertex_count);
-        return 1;
+        return (struct benchmark_outcome){.status = 1};
     }
 
     started = monotonic_now_ns();
     for (size_t iteration = 0U; iteration < iterations; ++iteration) {
-        int rc = mylite_spatial_evaluate(
+        int rc = mylite_spatial_evaluate_with_control(
             MYLITE_SPATIAL_FUNCTION_ST_ISVALID,
             &argument,
             1U,
             &result,
-            &error
+            &error,
+            &control
         );
 
         if (rc != 0 || result.kind != MYLITE_SPATIAL_RESULT_INTEGER || result.integer != 1) {
@@ -116,22 +152,27 @@ static int benchmark_vertex_count(size_t vertex_count, size_t iterations) {
             );
             mylite_spatial_result_deinit(&result);
             free(geometry.bytes);
-            return 1;
+            return (struct benchmark_outcome){.status = 1};
         }
         mylite_spatial_result_deinit(&result);
     }
     elapsed = monotonic_now_ns() - started;
     legacy_pair_count = ((uint64_t)vertex_count * (uint64_t)(vertex_count - 3U)) / 2U;
     printf(
-        "%zu,%zu,%zu,%.3f,%llu,1\n",
+        "%zu,%zu,%zu,%.3f,%llu,%llu,%llu,1\n",
         vertex_count,
         geometry.byte_count,
         iterations,
         (double)elapsed / (double)iterations,
+        (unsigned long long)statistics.indexed_segment_count,
+        (unsigned long long)statistics.candidate_check_count,
         (unsigned long long)legacy_pair_count
     );
     free(geometry.bytes);
-    return 0;
+    return (struct benchmark_outcome){
+        .indexed_segments = statistics.indexed_segment_count,
+        .candidate_checks = statistics.candidate_check_count,
+    };
 }
 
 static struct generated_geometry make_regular_polygon(size_t vertex_count) {

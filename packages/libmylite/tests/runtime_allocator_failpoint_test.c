@@ -36,6 +36,7 @@ static int test_warning_snapshot_failure_preserves_handle(void);
 static int test_cursor_failure_completes_and_resets(void);
 static int test_materialized_cursor_reexecution_failure_recovers(void);
 static int test_spatial_depth_allocation_failures(void);
+static int test_spatial_validation_allocation_failures(void);
 static int expect_spatial_allocation_sweep(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -69,6 +70,7 @@ int main(void) {
     failures += test_execute_failure_preserves_handle();
     failures += test_warning_snapshot_failure_preserves_handle();
     failures += test_spatial_depth_allocation_failures();
+    failures += test_spatial_validation_allocation_failures();
     mylite_test_allocator_clear();
     return failures == 0 ? 0 : 1;
 }
@@ -626,6 +628,50 @@ cleanup:
     free(wkt_above_limit);
     free(geojson_at_limit);
     mylite_test_allocator_clear();
+    return failures;
+}
+
+static int test_spatial_validation_allocation_failures(void) {
+    static const char *wkts[] = {
+        "POLYGON((0 0,10 0,10 10,0 10,0 0),"
+        "(1 1,2 1,2 2,1 2,1 1),(6 6,7 6,7 7,6 7,6 6))",
+        "MULTIPOLYGON(((0 0,1 0,1 1,0 1,0 0)),"
+        "((3 0,4 0,4 1,3 1,3 0)),((6 0,7 0,7 1,6 1,6 0)))",
+    };
+    int failures = 0;
+
+    for (size_t index = 0U; index < sizeof(wkts) / sizeof(wkts[0]); ++index) {
+        const struct mylite_spatial_argument text_argument = {
+            .bytes = wkts[index],
+            .byte_count = strlen(wkts[index]),
+        };
+        struct mylite_spatial_result geometry = {0};
+        struct mylite_spatial_error error = {0};
+        int rc = mylite_spatial_evaluate(
+            MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMTEXT,
+            &text_argument,
+            1U,
+            &geometry,
+            &error
+        );
+        struct mylite_spatial_argument validity_argument = {
+            .bytes = geometry.bytes,
+            .byte_count = geometry.byte_count,
+        };
+
+        failures += mylite_test_expect_int(rc, 0, "construct validity failpoint geometry");
+        if (rc == 0) {
+            failures += expect_spatial_allocation_sweep(
+                MYLITE_SPATIAL_FUNCTION_ST_ISVALID,
+                &validity_argument,
+                1U,
+                true,
+                index == 0U ? "polygon validity allocation sweep"
+                            : "multipolygon validity allocation sweep"
+            );
+        }
+        mylite_spatial_result_deinit(&geometry);
+    }
     return failures;
 }
 

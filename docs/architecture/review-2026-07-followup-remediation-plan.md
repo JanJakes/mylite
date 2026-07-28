@@ -721,18 +721,52 @@ archive.
 
 ### `ARCH-03`: reduce the retry recognizer
 
-- [ ] Inventory every retry as a grammar transform, token transform, utility
+- [x] Inventory every retry as a grammar transform, token transform, utility
   placeholder, or unsupported compatibility fallback.
-- [ ] Move grammar/token transforms behind typed parser interfaces.
-- [ ] Eliminate retries that duplicate Lemon-recognizable syntax.
-- [ ] Add a zero-growth ratchet for retry count and retry-layer source size.
+- [x] Move grammar/token transforms behind typed parser interfaces.
+- [x] Eliminate retries that duplicate Lemon-recognizable syntax.
+- [x] Add a zero-growth ratchet for retry count and retry-layer source size.
+
+`ARCH-03` is closed by the independently authored specification and MySQL
+fixture at `4d3b30d6b`, implementation at `8b11b443a`, static-analysis cleanup
+at `4f40d3bb6`, and release qualification at `ff05c50c5`. Six ordered,
+categorized retry kinds replace the former eight named callbacks. Tableless
+`LIMIT` and both legacy index `TYPE` positions now parse directly through
+Lemon while `TYPE` remains a nonreserved identifier fallback.
+
+The exact ratchets cap the syntax plan at six strategies and the enumerated
+retry layer at 300,727 bytes, 10,927 bytes below its pre-remediation size.
+Qualification covered all 52 parser-labeled suites and all 31 affected runtime
+suites across Development, Debug-CI, Release, and ASan/UBSan; focused
+deterministic allocator suites; all 42 parser-related MySQL 8.4.9 fixtures;
+10,000 seeded parser-fuzzer executions; host Lemon generation; full LLVM 19
+static analysis across 930 translation units; formatting, ABI, install,
+pkg-config, compatibility-ledger, and source-ratchet gates; and the
+12,381,120-byte production archive.
 
 ### Phase 4 closure
 
-- [ ] Run all lexer/parser tests in Debug and ASan/UBSan, parser fuzz targets,
+- [x] Run all lexer/parser tests in Debug and ASan/UBSan, parser fuzz targets,
   allocation failpoints, host-tool generation, and MySQL syntax expectations.
-- [ ] Review every parser error path for forward progress, bounded work,
+- [x] Review every parser error path for forward progress, bounded work,
   ownership, and exact diagnostics.
+
+Phase 4 is closed with all six front-end remediations release-qualified. Fatal
+retry infrastructure failures retain precedence, recovery and syntax
+diagnostics are explicitly bounded, retry-produced AST spans retain full
+source ownership, the Lemon stack grows within an eight-MiB ceiling, and the
+remaining retry layer is typed, categorized, and ratcheted.
+
+The closing error-path review found no remaining release blocker. Every retry
+plan is finite and increments its callback accounting before dispatch;
+tokenization, lexer passes, parenthesis indexes, callback count, stack storage,
+and live workspace have explicit ceilings. Fatal allocation, lexer, misuse,
+and stack outcomes cannot be overwritten by recoverable syntax status. Retry
+ASTs replace an existing parse result only after successful handling, invalid
+retry kinds leave ownership unchanged, and unhandled statements retain the
+bounded MySQL-compatible `1064` / `42000` diagnostic. Cross-profile, fault,
+fuzz, generation, MySQL-runtime, static-analysis, ABI, install, compatibility,
+and production-size gates are green for the complete phase.
 
 ## Phase 5: Temporal And Result-Metadata Compatibility
 

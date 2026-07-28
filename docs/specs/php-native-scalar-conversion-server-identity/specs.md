@@ -2,10 +2,10 @@
 
 ## Status
 
-This feature specifies PHP native-protocol scalar conversion and PDO version
-identity across PDO MyLite and the mysqli replacement. It closes review
-findings API-03 and API-04 without changing SQL type semantics or mysqli's
-direct text-protocol result policy.
+Implemented and qualified. This feature defines PHP native-protocol scalar
+conversion and PDO version identity across PDO MyLite and the mysqli
+replacement. It closes review findings API-03 and API-04 without changing SQL
+type semantics or mysqli's direct text-protocol result policy.
 
 ## Sources
 
@@ -175,3 +175,27 @@ row to make this equality pass.
 | mysqli MyLite | direct strings unchanged; prepared `get_result()`; `execute_query()`; `bind_result()`; BIT and unsigned overflow; binary NUL |
 | Native C API | package/server identity distinction and SQL-visible equality |
 | Qualification | Release/Debug tests, ASan/UBSan extension tests, ABI checks, formatters, static analysis, artifact-size gates |
+
+## Qualification
+
+The pinned MySQL 8.4.9 fixture passes for signed and unsigned boundaries,
+representable and overflowing `BIT`, FLOAT/DOUBLE, DECIMAL, binary data with an
+embedded NUL, text, SQL NULL, PDO stringify mode, direct and prepared mysqli
+paths, and independent client/server identity.
+
+The MyLite PDO and mysqli regressions cover native prepared results, runtime
+PDO stringify changes, direct buffered and unbuffered mysqli isolation,
+`get_result()`, `execute_query()`, `bind_result()`, and exact
+`PDO::ATTR_SERVER_VERSION` equality with `SELECT VERSION()`. The Doctrine DBAL
+and ORM bridge tests pass after removing both explicit `serverVersion`
+overrides.
+
+All 693 native Release tests and all 706 tests in the PHP developer tree pass.
+All 13 PHP adapter tests pass in Release and under ASan/UBSan. The installed
+header and shared-library exports match both ABI manifests. Repository-wide
+clang-format and focused clang-tidy checks pass with LLVM 19 and warnings
+treated as errors.
+
+Production artifacts remain within their budgets: `libmylite.a` is 12,352,258
+bytes, the core PHP module is 8,934,072 bytes, the mysqli module is 242,752
+bytes, and the PDO module is 32,832 bytes.

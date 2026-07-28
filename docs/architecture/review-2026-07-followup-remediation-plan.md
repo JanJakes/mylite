@@ -345,19 +345,40 @@ release-review completion at `d5005f606`:
 
 ### `API-03` and `API-04`: PHP scalar types and server identity
 
-- [ ] Specify native-protocol conversion for signed/unsigned integer
+- [x] Specify native-protocol conversion for signed/unsigned integer
   boundaries, BIT, FLOAT/DOUBLE, DECIMAL, overflowing unsigned BIGINT, NULL,
   binary data, and text.
-- [ ] Return representable integral values as PHP integers and approximate
+- [x] Return representable integral values as PHP integers and approximate
   numerics as doubles for PDO and prepared mysqli results.
-- [ ] Preserve DECIMAL, overflowing integers, text, and binary values as
+- [x] Preserve DECIMAL, overflowing integers, text, and binary values as
   strings where MySQL does.
-- [ ] Honor `PDO::ATTR_STRINGIFY_FETCHES`.
-- [ ] Keep text-protocol mysqli direct-query behavior unchanged.
-- [ ] Return MyLite's package version for the PDO client version and the MySQL
+- [x] Honor `PDO::ATTR_STRINGIFY_FETCHES`.
+- [x] Keep text-protocol mysqli direct-query behavior unchanged.
+- [x] Return MyLite's package version for the PDO client version and the MySQL
   compatibility identity for the server version.
-- [ ] Assert server identity equals `SELECT VERSION()` and remove integration
+- [x] Assert server identity equals `SELECT VERSION()` and remove integration
   harness overrides that mask the defect.
+
+`API-03` and `API-04` implementation evidence at `2c1115144` and
+`718187c57`:
+
+- One shared, metadata-driven adapter conversion policy returns representable
+  integral and BIT values as PHP integers, FLOAT/DOUBLE as PHP floats, and
+  preserves DECIMAL, overflowing integers, binary data, text, and unknown
+  values as exact strings. PDO stringify mode and SQL NULL are handled
+  independently.
+- Prepared mysqli `get_result()`, `execute_query()`, and `bind_result()` use
+  native conversion. Direct buffered and unbuffered results retain their
+  existing text-result policy.
+- The additive native server-version accessor shares the SQL-visible
+  compatibility identity. PDO client and server attributes now report the
+  package and compatibility versions separately, and the Doctrine harness no
+  longer supplies server-version overrides.
+- The MySQL 8.4.9 fixture passes the complete boundary matrix. All 693 native
+  Release tests, all 706 PHP developer-tree tests, all 13 Release adapter
+  tests, and all 13 ASan/UBSan adapter tests pass. Exact ABI, LLVM 19
+  formatting/static-analysis, Doctrine DBAL/ORM, and all production artifact
+  size gates pass.
 
 ### `API-06` and `API-07`: metadata, observables, and framework integration
 

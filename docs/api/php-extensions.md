@@ -150,3 +150,28 @@ caller-owned indexed warning copies. Direct result handles also retain warning
 records independently from later connection activity. See
 [statement diagnostics and warning snapshots](../specs/statement-diagnostics-warning-snapshots/specs.md)
 for the exact ABI, ownership, and lifetime contract.
+
+## Native scalar results and server identity
+
+PDO MyLite and prepared mysqli results use native result metadata when creating
+PHP values. Signed and unsigned integral values, including `BIT`, become PHP
+integers when representable by `zend_long`; larger exact integers remain
+decimal strings. FLOAT and DOUBLE become PHP floats. DECIMAL, text, binary,
+temporal, JSON, geometry, and unknown values remain length-aware strings. SQL
+NULL remains PHP `null`.
+
+`PDO::ATTR_STRINGIFY_FETCHES` converts numeric PDO results to strings while
+leaving SQL NULL unchanged. The setting is read at fetch time. Prepared mysqli
+`get_result()`, `execute_query()`, and `bind_result()` use native conversion.
+Direct buffered and unbuffered mysqli queries retain their existing
+string/NULL result policy.
+
+PDO reports the MyLite package version through `PDO::ATTR_CLIENT_VERSION` and
+the MySQL compatibility identity through `PDO::ATTR_SERVER_VERSION`. The
+server value is identical to `SELECT VERSION()`. The native
+`mylite_server_version()` accessor exposes the same process-lifetime identity,
+while `mylite_version()` continues to identify the client library.
+
+See
+[PHP native scalar conversion and server identity](../specs/php-native-scalar-conversion-server-identity/specs.md)
+for the complete conversion matrix and qualification evidence.

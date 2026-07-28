@@ -14,8 +14,12 @@
 enum {
     mysql_error_internal = 1105,
     mysql_warning_incorrect_datetime_value = 1292,
-    convert_tz_datetime_length = 19,
-    convert_tz_text_capacity = convert_tz_datetime_length + 1,
+    convert_tz_datetime_base_length = 19,
+    convert_tz_fraction_separator_index = 19,
+    convert_tz_fraction_start = 20,
+    convert_tz_fraction_digits_max = 6,
+    convert_tz_datetime_max_length = convert_tz_fraction_start + convert_tz_fraction_digits_max,
+    convert_tz_text_capacity = convert_tz_datetime_max_length + 1,
     convert_tz_offset_length = 6,
     convert_tz_datetime_year_start = 0,
     convert_tz_datetime_first_date_separator = 4,
@@ -40,6 +44,7 @@ enum {
     convert_tz_hours_per_day = 24,
     convert_tz_seconds_per_hour = 60 * 60,
     convert_tz_seconds_per_day = 24 * 60 * 60,
+    convert_tz_microseconds_per_second = 1000000,
     convert_tz_date_year_min = 1,
     convert_tz_date_year_max = 9999,
     convert_tz_date_month_min = 1,
@@ -50,6 +55,14 @@ enum {
     convert_tz_minute_second_max = 59,
     convert_tz_february = 2,
     convert_tz_february_days_leap = 29,
+    convert_tz_utc_min_year = 1970,
+    convert_tz_utc_min_month = 1,
+    convert_tz_utc_min_day = 1,
+    convert_tz_utc_min_second_of_day = 1,
+    convert_tz_utc_max_year = 3001,
+    convert_tz_utc_max_month = 1,
+    convert_tz_utc_max_day = 18,
+    convert_tz_utc_max_second_of_day = convert_tz_seconds_per_day - 1,
     convert_tz_leap_year_cycle_short = 4,
     convert_tz_leap_year_cycle_century = 100,
     convert_tz_leap_year_cycle_full = 400,
@@ -79,12 +92,19 @@ struct convert_tz_datetime_parts {
     int hour;
     int minute;
     int second;
+    int microsecond;
+    size_t fractional_precision;
 };
 
 struct convert_tz_civil_date {
     int year;
     unsigned int month;
     unsigned int day;
+};
+
+struct convert_tz_utc_instant {
+    int64_t seconds;
+    int microsecond;
 };
 
 static void convert_tz_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -104,6 +124,11 @@ static bool parse_datetime_parts(
     size_t length,
     struct convert_tz_datetime_parts *out_parts
 );
+static bool parse_fractional_seconds(
+    const char *text,
+    size_t length,
+    struct convert_tz_datetime_parts *out_parts
+);
 static bool parse_time_zone_offset(const char *text, size_t length, int *out_minutes);
 static int append_incorrect_datetime_warning(
     struct mylite_db *database,
@@ -115,7 +140,15 @@ static int format_datetime_result(
     const struct convert_tz_datetime_parts *parts,
     char **out_text
 );
+static int copy_datetime_result(
+    struct mylite_db *database,
+    const char *text,
+    size_t length,
+    char **out_text
+);
+static int allocate_datetime_result(struct mylite_db *database, size_t capacity, char **out_text);
 static bool datetime_parts_are_valid(const struct convert_tz_datetime_parts *parts);
+static bool utc_instant_is_supported(struct convert_tz_utc_instant instant);
 static int days_in_month(int year, int month);
 static bool is_leap_year(int year);
 static int64_t days_from_civil(const struct convert_tz_civil_date *date);
@@ -249,8 +282,9 @@ static int convert_tz_result(
     int from_offset = 0;
     int to_offset = 0;
     int64_t days = 0;
-    int64_t seconds = 0;
-    int64_t delta_seconds = 0;
+    int64_t local_seconds = 0;
+    int64_t utc_seconds = 0;
+    int64_t target_seconds = 0;
     int64_t whole_days = 0;
     int64_t day_seconds = 0;
     struct convert_tz_civil_date date = {0};
@@ -274,12 +308,20 @@ static int convert_tz_result(
     date.month = (unsigned int)parts.month;
     date.day = (unsigned int)parts.day;
     days = days_from_civil(&date);
-    seconds = ((int64_t)parts.hour * convert_tz_seconds_per_hour) +
-              ((int64_t)parts.minute * convert_tz_seconds_per_minute) + parts.second;
-    delta_seconds = (int64_t)(to_offset - from_offset) * convert_tz_seconds_per_minute;
-    seconds += delta_seconds;
-    whole_days = days + (seconds / convert_tz_seconds_per_day);
-    day_seconds = seconds % convert_tz_seconds_per_day;
+    local_seconds = (days * convert_tz_seconds_per_day) +
+                    ((int64_t)parts.hour * convert_tz_seconds_per_hour) +
+                    ((int64_t)parts.minute * convert_tz_seconds_per_minute) + parts.second;
+    utc_seconds = local_seconds - ((int64_t)from_offset * convert_tz_seconds_per_minute);
+    if (!utc_instant_is_supported((struct convert_tz_utc_instant){
+            .seconds = utc_seconds,
+            .microsecond = parts.microsecond,
+        })) {
+        return copy_datetime_result(database, datetime_text, datetime_length, out_text);
+    }
+
+    target_seconds = utc_seconds + ((int64_t)to_offset * convert_tz_seconds_per_minute);
+    whole_days = target_seconds / convert_tz_seconds_per_day;
+    day_seconds = target_seconds % convert_tz_seconds_per_day;
     if (day_seconds < 0) {
         day_seconds += convert_tz_seconds_per_day;
         --whole_days;
@@ -307,7 +349,8 @@ static bool parse_datetime_parts(
 ) {
     struct convert_tz_datetime_parts parts = {0};
 
-    if (text == NULL || out_parts == NULL || length != convert_tz_datetime_length) {
+    if (text == NULL || out_parts == NULL || length < convert_tz_datetime_base_length ||
+        length > convert_tz_datetime_max_length) {
         return false;
     }
     if (text[convert_tz_datetime_first_date_separator] != '-' ||
@@ -323,10 +366,46 @@ static bool parse_datetime_parts(
         !parse_two_digits(text + convert_tz_datetime_hour_start, &parts.hour) ||
         !parse_two_digits(text + convert_tz_datetime_minute_start, &parts.minute) ||
         !parse_two_digits(text + convert_tz_datetime_second_start, &parts.second) ||
-        !datetime_parts_are_valid(&parts)) {
+        !parse_fractional_seconds(text, length, &parts) || !datetime_parts_are_valid(&parts)) {
         return false;
     }
     *out_parts = parts;
+    return true;
+}
+
+static bool parse_fractional_seconds(
+    const char *text,
+    size_t length,
+    struct convert_tz_datetime_parts *out_parts
+) {
+    size_t precision = 0U;
+    int microsecond = 0;
+
+    if (text == NULL || out_parts == NULL || length < convert_tz_datetime_base_length ||
+        length > convert_tz_datetime_max_length) {
+        return false;
+    }
+    if (length == convert_tz_datetime_base_length) {
+        out_parts->microsecond = 0;
+        out_parts->fractional_precision = 0U;
+        return true;
+    }
+    if (text[convert_tz_fraction_separator_index] != '.' || length == convert_tz_fraction_start) {
+        return false;
+    }
+    precision = length - convert_tz_fraction_start;
+    for (size_t index = 0U; index < precision; ++index) {
+        if (!is_ascii_digit(text[convert_tz_fraction_start + index])) {
+            return false;
+        }
+        microsecond = (microsecond * convert_tz_decimal_base) +
+                      (int)(text[convert_tz_fraction_start + index] - '0');
+    }
+    for (size_t index = precision; index < convert_tz_fraction_digits_max; ++index) {
+        microsecond *= convert_tz_decimal_base;
+    }
+    out_parts->microsecond = microsecond;
+    out_parts->fractional_precision = precision;
     return true;
 }
 
@@ -405,21 +484,15 @@ static int format_datetime_result(
 ) {
     char *result = NULL;
     int written = 0;
+    int fraction_written = 0;
+    int rc = MYLITE_OK;
 
     if (parts == NULL || out_text == NULL) {
         return MYLITE_MISUSE;
     }
-    result = (char *)malloc(convert_tz_text_capacity);
-    if (result == NULL) {
-        if (database != NULL) {
-            mylite_diagnostics_set_error(
-                &database->diagnostics,
-                mysql_error_internal,
-                "HY000",
-                "out of memory"
-            );
-        }
-        return MYLITE_NOMEM;
+    rc = allocate_datetime_result(database, convert_tz_text_capacity, &result);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     written = snprintf(
         result,
@@ -432,7 +505,7 @@ static int format_datetime_result(
         parts->minute,
         parts->second
     );
-    if (written != convert_tz_datetime_length) {
+    if (written != convert_tz_datetime_base_length) {
         free(result);
         mylite_diagnostics_set_error(
             &database->diagnostics,
@@ -441,6 +514,70 @@ static int format_datetime_result(
             "failed to format CONVERT_TZ() result"
         );
         return MYLITE_ERROR;
+    }
+    if (parts->fractional_precision > 0U) {
+        result[convert_tz_fraction_separator_index] = '.';
+        fraction_written = snprintf(
+            result + convert_tz_fraction_start,
+            (size_t)convert_tz_fraction_digits_max + 1U,
+            "%06d",
+            parts->microsecond
+        );
+        if (fraction_written != convert_tz_fraction_digits_max) {
+            free(result);
+            mylite_diagnostics_set_error(
+                &database->diagnostics,
+                mysql_error_internal,
+                "HY000",
+                "failed to format CONVERT_TZ() fraction"
+            );
+            return MYLITE_ERROR;
+        }
+        result[convert_tz_fraction_start + parts->fractional_precision] = '\0';
+    }
+    *out_text = result;
+    return MYLITE_OK;
+}
+
+static int copy_datetime_result(
+    struct mylite_db *database,
+    const char *text,
+    size_t length,
+    char **out_text
+) {
+    char *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || out_text == NULL || length > convert_tz_datetime_max_length) {
+        return MYLITE_MISUSE;
+    }
+    rc = allocate_datetime_result(database, length + 1U, &result);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    memcpy(result, text, length);
+    result[length] = '\0';
+    *out_text = result;
+    return MYLITE_OK;
+}
+
+static int allocate_datetime_result(struct mylite_db *database, size_t capacity, char **out_text) {
+    char *result = NULL;
+
+    if (out_text == NULL || capacity == 0U) {
+        return MYLITE_MISUSE;
+    }
+    result = (char *)malloc(capacity);
+    if (result == NULL) {
+        if (database != NULL) {
+            mylite_diagnostics_set_error(
+                &database->diagnostics,
+                mysql_error_internal,
+                "HY000",
+                "out of memory"
+            );
+        }
+        return MYLITE_NOMEM;
     }
     *out_text = result;
     return MYLITE_OK;
@@ -457,6 +594,30 @@ static bool datetime_parts_are_valid(const struct convert_tz_datetime_parts *par
         return false;
     }
     return true;
+}
+
+static bool utc_instant_is_supported(struct convert_tz_utc_instant instant) {
+    const struct convert_tz_civil_date minimum_date = {
+        .year = convert_tz_utc_min_year,
+        .month = convert_tz_utc_min_month,
+        .day = convert_tz_utc_min_day,
+    };
+    const struct convert_tz_civil_date maximum_date = {
+        .year = convert_tz_utc_max_year,
+        .month = convert_tz_utc_max_month,
+        .day = convert_tz_utc_max_day,
+    };
+    int64_t minimum_seconds = 0;
+    int64_t maximum_seconds = 0;
+
+    if (instant.microsecond < 0 || instant.microsecond >= convert_tz_microseconds_per_second) {
+        return false;
+    }
+    minimum_seconds = (days_from_civil(&minimum_date) * convert_tz_seconds_per_day) +
+                      convert_tz_utc_min_second_of_day;
+    maximum_seconds = (days_from_civil(&maximum_date) * convert_tz_seconds_per_day) +
+                      convert_tz_utc_max_second_of_day;
+    return instant.seconds >= minimum_seconds && instant.seconds <= maximum_seconds;
 }
 
 static int days_in_month(int year, int month) {

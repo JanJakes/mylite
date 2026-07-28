@@ -2,6 +2,7 @@
 
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_convert_tz.h"
 #include "runtime/mylite_spatial.h"
 #include "runtime/mylite_test_allocator.h"
 
@@ -30,9 +31,20 @@ struct generated_bytes {
     size_t size;
 };
 
+struct expected_convert_tz_result {
+    const char *datetime;
+    const char *expected;
+    const char *context;
+};
+
 static int test_open_failure_is_scoped_and_recoverable(void);
 static int test_execute_failure_preserves_handle(void);
 static int test_warning_snapshot_failure_preserves_handle(void);
+static int test_convert_tz_result_allocation_failures(void);
+static int expect_convert_tz_result_allocation_failure(
+    mylite_db *database,
+    struct expected_convert_tz_result expected
+);
 static int test_cursor_failure_completes_and_resets(void);
 static int test_materialized_cursor_reexecution_failure_recovers(void);
 static int test_spatial_depth_allocation_failures(void);
@@ -69,6 +81,7 @@ int main(void) {
     failures += test_materialized_cursor_reexecution_failure_recovers();
     failures += test_execute_failure_preserves_handle();
     failures += test_warning_snapshot_failure_preserves_handle();
+    failures += test_convert_tz_result_allocation_failures();
     failures += test_spatial_depth_allocation_failures();
     failures += test_spatial_validation_allocation_failures();
     mylite_test_allocator_clear();
@@ -520,6 +533,93 @@ static int test_warning_snapshot_failure_preserves_handle(void) {
     failures += expect_true(observed_nomem, "warning allocation sweep reached fatal copy failure");
     mylite_close(database);
     mylite_test_allocator_clear();
+    return failures;
+}
+
+static int test_convert_tz_result_allocation_failures(void) {
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open CONVERT_TZ allocation handle"
+    );
+    if (database == NULL) {
+        return failures;
+    }
+    failures += expect_convert_tz_result_allocation_failure(
+        database,
+        (struct expected_convert_tz_result){
+            .datetime = "2004-01-01 12:00:00.123456",
+            .expected = "2004-01-01 13:00:00.123456",
+            .context = "converted CONVERT_TZ result allocation",
+        }
+    );
+    failures += expect_convert_tz_result_allocation_failure(
+        database,
+        (struct expected_convert_tz_result){
+            .datetime = "3001-01-19 00:00:00.000000",
+            .expected = "3001-01-19 00:00:00.000000",
+            .context = "preserved CONVERT_TZ result allocation",
+        }
+    );
+
+    mylite_close(database);
+    mylite_test_allocator_clear();
+    return failures;
+}
+
+static int expect_convert_tz_result_allocation_failure(
+    mylite_db *database,
+    struct expected_convert_tz_result expected
+) {
+    static const char from_zone[] = "+00:00";
+    static const char to_zone[] = "+01:00";
+    char *result = NULL;
+    bool is_null = false;
+    int failures = 0;
+    int rc = MYLITE_OK;
+
+    mylite_test_allocator_fail_after(0U);
+    rc = mylite_convert_tz_value(
+        database,
+        expected.datetime,
+        strlen(expected.datetime),
+        false,
+        from_zone,
+        strlen(from_zone),
+        false,
+        to_zone,
+        strlen(to_zone),
+        false,
+        &result,
+        &is_null
+    );
+    failures += mylite_test_expect_true(mylite_test_allocator_was_triggered(), expected.context);
+    failures += mylite_test_expect_int(rc, MYLITE_NOMEM, expected.context);
+    failures += expect_true(result == NULL, expected.context);
+    failures += expect_true(!is_null, expected.context);
+
+    mylite_test_allocator_clear();
+    rc = mylite_convert_tz_value(
+        database,
+        expected.datetime,
+        strlen(expected.datetime),
+        false,
+        from_zone,
+        strlen(from_zone),
+        false,
+        to_zone,
+        strlen(to_zone),
+        false,
+        &result,
+        &is_null
+    );
+    failures += mylite_test_expect_int(rc, MYLITE_OK, expected.context);
+    failures += expect_true(!is_null, expected.context);
+    failures += mylite_test_expect_text(result, expected.expected, expected.context);
+    free(result);
     return failures;
 }
 

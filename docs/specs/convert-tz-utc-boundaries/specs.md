@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented; release qualification is pending.
 
 ## Summary
 

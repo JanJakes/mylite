@@ -26,7 +26,11 @@ Invalid periods such as `0` or a month outside `1..12` raise error
 datetime text and valid offset time zones such as `+00:00` and `-05:30`.
 `NULL` inputs return `NULL`. Invalid datetime text returns `NULL` and appends
 warning `1292`. Invalid time zone names or offsets return `NULL` without a new
-warning in the observed fixed-offset probes.
+warning in the observed fixed-offset probes. On the pinned 64-bit runtime,
+conversion occurs only when source-zone normalization produces a UTC instant
+from `1970-01-01 00:00:01.000000` through
+`3001-01-18 23:59:59.999999`, inclusive. An instant outside that interval
+returns the original datetime value unchanged and without a warning.
 
 `WEIGHT_STRING()` returns binary bytes. With `AS BINARY(length)`, the result is
 truncated or right-padded with zero bytes to the requested byte length. MySQL's
@@ -39,10 +43,14 @@ The period functions are implemented for `NULL`, boolean, signed integer
 literals, and signed-integer descriptor columns. String, decimal, floating, and
 warning-producing coercions are intentionally deferred.
 
-`CONVERT_TZ()` is implemented for canonical `YYYY-MM-DD HH:MM:SS` inputs and
-literal or descriptor-backed fixed-offset time zone strings in `+HH:MM` or
-`-HH:MM` form. Named time zones remain placeholder behavior until time zone
-tables and `mysql_tzinfo_to_sql` loading exist. Leap seconds are not modeled.
+`CONVERT_TZ()` is implemented for canonical `YYYY-MM-DD HH:MM:SS` inputs with
+optional one-through-six-digit fractions and literal or descriptor-backed
+fixed-offset time zone strings in `+HH:MM` or `-HH:MM` form. Source-local
+values are normalized to UTC, checked against the pinned MySQL 8.4.9 x86-64
+interval, and converted to the target zone only when in range. Out-of-range
+instants preserve the original datetime text. Named time zones remain
+placeholder behavior until time zone tables and `mysql_tzinfo_to_sql` loading
+exist. Leap seconds are not modeled.
 
 `WEIGHT_STRING()` is implemented as binary byte identity for admitted scalar
 values and descriptor-backed byte/text values. `AS BINARY(length)` supports
@@ -80,7 +88,8 @@ The MyLite runtime test covers:
 
 - no-source, `FROM DUAL`, and `DO` scalar execution;
 - table-backed scalar projection over supported descriptor columns;
-- fixed-offset `CONVERT_TZ()` results and invalid inputs;
+- fixed-offset `CONVERT_TZ()` results, normalized-UTC boundaries, fractional
+  precision, leap-day crossings, and invalid inputs;
 - `HEX(WEIGHT_STRING(...))` and `HEX(WEIGHT_STRING(... AS BINARY(N)))`;
 - native argument-count diagnostics and period invalid-argument diagnostics.
 

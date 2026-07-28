@@ -129,6 +129,7 @@ tests/runtime_concat_ws_function_test.c|internal|always
 tests/runtime_connection_id_function_test.c|internal|always
 tests/runtime_connection_system_variables_test.c|internal|always
 tests/runtime_conv_function_test.c|internal|always
+tests/runtime_convert_tz_utc_boundaries_test.c|internal|always
 tests/runtime_core_aggregate_window_functions_test.c|internal|always
 tests/runtime_count_aggregate_test.c|internal-sqlite|always
 tests/runtime_create_index_lifecycle_test.c|internal-sqlite|always

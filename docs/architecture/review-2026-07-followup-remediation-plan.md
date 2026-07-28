@@ -592,13 +592,28 @@ topology-surface, search, and extreme-ratio MySQL-artifact gaps.
 
 ### `SQL-01`: fatal retry status propagation
 
-- [ ] Propagate retry-context initialization and callback `NOMEM` instead of
+- [x] Propagate retry-context initialization and callback `NOMEM` instead of
   restoring the original syntax status.
-- [ ] Define precedence for fatal infrastructure errors over recoverable parse
+- [x] Define precedence for fatal infrastructure errors over recoverable parse
   errors.
-- [ ] Add allocator failpoints at every retry allocation and callback.
-- [ ] Require `MYLITE_SQL_PARSE_NOMEM`/`MYLITE_NOMEM`, stable diagnostics, and
+- [x] Add allocator failpoints at every retry allocation and callback.
+- [x] Require `MYLITE_SQL_PARSE_NOMEM`/`MYLITE_NOMEM`, stable diagnostics, and
   leak-free cleanup.
+
+`SQL-01` is closed by the independently authored specification at
+`6f828c705`, implementation at `64913aa5b`, and release qualification at
+`95118ea22`. Fatal retry-context initialization and callback failures now
+override recoverable syntax status without depending on `out_handled`, and
+nested Lemon parses preserve allocation, lexer, misuse, and stack failures.
+The public runtime maps parser allocation failure to `MYLITE_NOMEM` with
+`HY001` / `out of memory` and remains usable after the failpoint clears.
+
+Qualification covered all 45 ordinary parser suites in Development, Debug-CI,
+Release, and ASan/UBSan with leak detection; all 46 parser suites plus the
+runtime allocator suite in the deterministic fault profile; all 37 pinned
+MySQL 8.4.9 parser fixtures; 10,000 seeded parser-fuzzer executions; ABI,
+install-consumer, formatting, focused static-analysis, and compatibility
+ledger gates; and the 12,397,476-byte production archive.
 
 ### `SQL-02`: bounded recovery work and memory
 

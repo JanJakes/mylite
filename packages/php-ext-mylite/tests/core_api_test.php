@@ -23,6 +23,27 @@ function mylite_test_path(string $name): string
     return $path;
 }
 
+function expect_mylite_path_rejected(
+    callable $open,
+    string $filesystemPrefix,
+    string $context
+): void {
+    try {
+        $connection = $open();
+        if ($connection instanceof MyLite\Connection) {
+            $connection->close();
+        }
+        throw new RuntimeException($context . ' did not reject the path');
+    } catch (MyLite\Exception $exception) {
+        expect_true($exception->getCode() === MYLITE_MISUSE, $context . ' exception code');
+        expect_true(
+            $exception->getMessage() === 'invalid MyLite open arguments',
+            $context . ' exception message'
+        );
+    }
+    expect_true(!file_exists($filesystemPrefix), $context . ' touched the filesystem prefix');
+}
+
 expect_true(extension_loaded('mylite'), 'mylite extension is not loaded');
 expect_true(mylite_version() !== '', 'mylite_version() returned an empty string');
 expect_true(MYLITE_OK === 0, 'MYLITE_OK constant mismatch');
@@ -32,6 +53,54 @@ $memory = mylite_open(':memory:');
 expect_true($memory instanceof MyLite\Connection, 'mylite_open(:memory:) did not return a connection');
 expect_true($memory->query('SELECT 1 AS value')->fetchAssociative() === ['value' => '1'], 'memory query mismatch');
 expect_true($memory->close(), 'memory close failed');
+
+$emptyPathPrefix = mylite_test_path('empty');
+expect_mylite_path_rejected(
+    static fn (): MyLite\Connection => mylite_open(''),
+    $emptyPathPrefix,
+    'procedural empty path'
+);
+
+$nulAtStartPrefix = mylite_test_path('nul-at-start');
+expect_mylite_path_rejected(
+    static fn (): MyLite\Connection => mylite_open("\0" . $nulAtStartPrefix),
+    $nulAtStartPrefix,
+    'procedural path with leading NUL'
+);
+
+$nulInMiddlePrefix = mylite_test_path('nul-in-middle');
+expect_mylite_path_rejected(
+    static fn (): MyLite\Connection => mylite_open($nulInMiddlePrefix . "\0.bypass"),
+    $nulInMiddlePrefix,
+    'procedural path with embedded NUL'
+);
+
+$nulAtEndPrefix = mylite_test_path('nul-at-end');
+expect_mylite_path_rejected(
+    static fn (): MyLite\Connection => new MyLite\Connection($nulAtEndPrefix . "\0"),
+    $nulAtEndPrefix,
+    'constructor path with trailing NUL'
+);
+
+$preservedPrefix = mylite_test_path('preserved-prefix');
+$preserved = mylite_open($preservedPrefix);
+expect_true($preserved->close(), 'preserved-prefix close failed');
+$preservedHash = hash_file('sha256', $preservedPrefix);
+expect_true(is_string($preservedHash), 'preserved-prefix hash failed');
+expect_mylite_path_rejected(
+    static fn (): MyLite\Connection => new MyLite\Connection($preservedPrefix . "\0.bypass"),
+    $preservedPrefix . '.bypass',
+    'constructor existing-prefix bypass'
+);
+expect_true(
+    hash_file('sha256', $preservedPrefix) === $preservedHash,
+    'rejected constructor path changed the existing prefix'
+);
+
+$unicodePath = mylite_test_path('café');
+$unicode = mylite_open($unicodePath);
+expect_true($unicode->close(), 'non-ASCII path close failed');
+expect_true(file_exists($unicodePath), 'non-ASCII path was not created');
 
 $path = mylite_test_path('native');
 $db = mylite_open($path);

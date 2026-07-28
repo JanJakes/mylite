@@ -52,6 +52,13 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/mysqli_procedural.php"
   )
   mylite_add_php_test(
+    php-ext-mysqli-mylite.path-safety
+    -n
+    -d "extension=${MYLITE_PHP_CORE_EXTENSION}"
+    -d "extension=${MYLITE_PHP_MYSQLI_EXTENSION}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/mysqli_path_safety.php"
+  )
+  mylite_add_php_test(
     php-ext-mysqli-mylite.fetch-object
     -n
     -d "extension=${MYLITE_PHP_CORE_EXTENSION}"

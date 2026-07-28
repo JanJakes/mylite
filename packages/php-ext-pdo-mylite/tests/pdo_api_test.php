@@ -27,6 +27,88 @@ function mylite_pdo_test_path(string $name): string
     return $path;
 }
 
+function expect_pdo_path_rejected(
+    string $dsn,
+    string $filesystemPrefix,
+    string $context,
+    bool $staticConnect = false
+): void {
+    try {
+        if ($staticConnect) {
+            PDO::connect($dsn);
+        } else {
+            new PDO($dsn);
+        }
+        throw new RuntimeException($context . ' did not reject the DSN');
+    } catch (PDOException $exception) {
+        expect_true($exception->getCode() === MYLITE_MISUSE, $context . ' exception code');
+        expect_true(
+            str_contains($exception->getMessage(), 'do not support NUL bytes'),
+            $context . ' exception message'
+        );
+    }
+    expect_true(!file_exists($filesystemPrefix), $context . ' touched the filesystem prefix');
+}
+
+$emptyPathPrefix = mylite_pdo_test_path('empty');
+try {
+    new PDO('mylite:');
+    throw new RuntimeException('PDO empty path did not reject the DSN');
+} catch (PDOException $exception) {
+    expect_true($exception->getCode() === MYLITE_MISUSE, 'PDO empty path exception code');
+    expect_true(
+        str_contains($exception->getMessage(), 'requires a path'),
+        'PDO empty path exception message'
+    );
+}
+expect_true(!file_exists($emptyPathPrefix), 'PDO empty path touched a filesystem prefix');
+
+$nulAtStartPrefix = mylite_pdo_test_path('nul-at-start');
+expect_pdo_path_rejected(
+    'mylite:' . "\0" . $nulAtStartPrefix,
+    $nulAtStartPrefix,
+    'PDO path with leading NUL'
+);
+
+$nulInMiddlePrefix = mylite_pdo_test_path('nul-in-middle');
+expect_pdo_path_rejected(
+    'mylite:' . $nulInMiddlePrefix . "\0.bypass",
+    $nulInMiddlePrefix,
+    'PDO::connect path with embedded NUL',
+    true
+);
+
+$nulAtEndPrefix = mylite_pdo_test_path('nul-at-end');
+expect_pdo_path_rejected(
+    'mylite:path=' . $nulAtEndPrefix . "\0",
+    $nulAtEndPrefix,
+    'PDO path= DSN with trailing NUL'
+);
+
+$preservedPrefix = mylite_pdo_test_path('preserved-prefix');
+$preserved = new PDO('mylite:' . $preservedPrefix);
+unset($preserved);
+$preservedHash = hash_file('sha256', $preservedPrefix);
+expect_true(is_string($preservedHash), 'PDO preserved-prefix hash failed');
+expect_pdo_path_rejected(
+    'mylite:path=' . $preservedPrefix . "\0.bypass",
+    $preservedPrefix . '.bypass',
+    'PDO existing-prefix bypass'
+);
+expect_true(
+    hash_file('sha256', $preservedPrefix) === $preservedHash,
+    'rejected PDO path changed the existing prefix'
+);
+
+$memoryPdo = new PDO('mylite::memory:');
+expect_true($memoryPdo->query('SELECT 1')->fetchColumn() === 1, 'PDO memory path routing failed');
+unset($memoryPdo);
+
+$unicodePath = mylite_pdo_test_path('café');
+$unicodePdo = new PDO('mylite:' . $unicodePath);
+unset($unicodePdo);
+expect_true(file_exists($unicodePath), 'PDO non-ASCII path was not created');
+
 $pdo = new PDO('mylite:' . mylite_pdo_test_path('api'), null, null, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

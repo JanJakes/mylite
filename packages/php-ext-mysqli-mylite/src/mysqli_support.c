@@ -469,6 +469,16 @@ bool mylite_mysqli_connect_link(
         mylite_mysqli_set_connect_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
         return false;
     }
+    if (memchr(ZSTR_VAL(path), '\0', ZSTR_LEN(path)) != NULL) {
+        zend_string_release(path);
+        mylite_mysqli_set_connect_error(
+            link,
+            MYLITE_MYSQLI_ERROR_CONNECTION,
+            "HY000",
+            "MyLite database paths do not support NUL bytes"
+        );
+        return false;
+    }
 
     if (link->database != NULL) {
         mylite_mysqli_link_cancel_active_owner(link);
@@ -484,7 +494,12 @@ bool mylite_mysqli_connect_link(
     link->path = zend_string_copy(path);
 
     status = memory ? mylite_open_memory_with_diagnostic(&link->database, &diagnostic)
-                    : mylite_open_with_diagnostic(ZSTR_VAL(path), &link->database, &diagnostic);
+                    : mylite_open_with_size_and_diagnostic(
+                          ZSTR_VAL(path),
+                          ZSTR_LEN(path),
+                          &link->database,
+                          &diagnostic
+                      );
     zend_string_release(path);
     if (status != MYLITE_OK) {
         mylite_mysqli_set_connect_error(
@@ -3364,8 +3379,8 @@ static zend_string *mylite_mysqli_resolve_path(
         const char *path = host + sizeof(prefix) - 1U;
         size_t path_length = host_length - (sizeof(prefix) - 1U);
 
-        *out_memory =
-            path_length == strlen(":memory:") && memcmp(path, ":memory:", path_length) == 0;
+        *out_memory = path_length == 0U || (path_length == strlen(":memory:") &&
+                                            memcmp(path, ":memory:", path_length) == 0);
         *out_use_database = database != NULL && database_length > 0U &&
                             !mylite_mysqli_is_path_like(database, database_length);
         return zend_string_init(

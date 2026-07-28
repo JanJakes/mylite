@@ -191,7 +191,7 @@ PHP_METHOD(MyLite_Connection, __construct) {
     if (path_len == strlen(":memory:") && memcmp(path, ":memory:", path_len) == 0) {
         status = mylite_open_memory_with_diagnostic(&db, &diagnostic);
     } else {
-        status = mylite_open_with_diagnostic(path, &db, &diagnostic);
+        status = mylite_open_with_size_and_diagnostic(path, path_len, &db, &diagnostic);
     }
     if (status != MYLITE_OK) {
         php_mylite_throw_open(status, &diagnostic);
@@ -607,7 +607,7 @@ static void php_mylite_open_into_object(zval *return_value, const char *path, si
     if (path_len == strlen(":memory:") && memcmp(path, ":memory:", path_len) == 0) {
         status = mylite_open_memory_with_diagnostic(&db, &diagnostic);
     } else {
-        status = mylite_open_with_diagnostic(path, &db, &diagnostic);
+        status = mylite_open_with_size_and_diagnostic(path, path_len, &db, &diagnostic);
     }
     if (status != MYLITE_OK) {
         zval_ptr_dtor(return_value);

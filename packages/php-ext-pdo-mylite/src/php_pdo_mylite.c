@@ -107,7 +107,7 @@ static zend_string *pdo_mylite_quote_string(
     size_t length,
     bool no_backslash_escapes
 );
-static char *pdo_mylite_resolve_path(pdo_dbh_t *dbh);
+static zend_string *pdo_mylite_resolve_path(pdo_dbh_t *dbh);
 
 static const struct pdo_dbh_methods pdo_mylite_dbh_methods = {
     pdo_mylite_handle_closer,
@@ -208,20 +208,33 @@ static int pdo_mylite_handle_factory(pdo_dbh_t *dbh, zval *driver_options) {
         goto cleanup;
     }
 
-    char *path = pdo_mylite_resolve_path(dbh);
-    if (path == NULL || path[0] == '\0') {
-        efree(path);
+    zend_string *path = pdo_mylite_resolve_path(dbh);
+    if (path == NULL || ZSTR_LEN(path) == 0U) {
+        if (path != NULL) {
+            zend_string_release(path);
+        }
         pdo_mylite_error(dbh, NULL, MYLITE_MISUSE, "MyLite PDO DSN requires a path");
+        goto cleanup;
+    }
+    if (memchr(ZSTR_VAL(path), '\0', ZSTR_LEN(path)) != NULL) {
+        zend_string_release(path);
+        pdo_mylite_error(dbh, NULL, MYLITE_MISUSE, "MyLite PDO paths do not support NUL bytes");
         goto cleanup;
     }
 
     int status = MYLITE_OK;
-    if (strcmp(path, ":memory:") == 0) {
+    if (ZSTR_LEN(path) == strlen(":memory:") &&
+        memcmp(ZSTR_VAL(path), ":memory:", ZSTR_LEN(path)) == 0) {
         status = mylite_open_memory_with_diagnostic(&handle->db, &diagnostic);
     } else {
-        status = mylite_open_with_diagnostic(path, &handle->db, &diagnostic);
+        status = mylite_open_with_size_and_diagnostic(
+            ZSTR_VAL(path),
+            ZSTR_LEN(path),
+            &handle->db,
+            &diagnostic
+        );
     }
-    efree(path);
+    zend_string_release(path);
     if (status != MYLITE_OK) {
         pdo_mylite_open_error(dbh, status, &diagnostic);
         goto cleanup;
@@ -845,6 +858,13 @@ static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const 
             message
         );
     }
+    if (stmt == NULL && dbh->methods == NULL) {
+        pdo_throw_exception(
+            native_errno,
+            handle != NULL && handle->errmsg != NULL ? ZSTR_VAL(handle->errmsg) : (char *)message,
+            pdo_error
+        );
+    }
     return status;
 }
 
@@ -877,6 +897,13 @@ static int pdo_mylite_open_error(
             &handle->errmsg,
             native_errno,
             message
+        );
+    }
+    if (dbh->methods == NULL) {
+        pdo_throw_exception(
+            native_errno,
+            handle != NULL && handle->errmsg != NULL ? ZSTR_VAL(handle->errmsg) : (char *)message,
+            &dbh->error_code
         );
     }
     return status;
@@ -977,14 +1004,33 @@ static zend_string *pdo_mylite_quote_string(
     return quoted.s;
 }
 
-static char *pdo_mylite_resolve_path(pdo_dbh_t *dbh) {
+static zend_string *pdo_mylite_resolve_path(pdo_dbh_t *dbh) {
+    static const char dsn_prefix[] = "mylite:";
+    static const char prefix[] = "path=";
     const char *source = dbh->data_source;
+    size_t source_length = dbh->data_source_len;
+    zend_execute_data *execute_data = EG(current_execute_data);
 
-    if (source == NULL || source[0] == '\0') {
-        return estrdup("");
+    if (execute_data != NULL && ZEND_CALL_NUM_ARGS(execute_data) >= 1U) {
+        zval *dsn = ZEND_CALL_ARG(execute_data, 1);
+
+        ZVAL_DEREF(dsn);
+        if (Z_TYPE_P(dsn) == IS_STRING && Z_STRLEN_P(dsn) >= sizeof(dsn_prefix) - 1U &&
+            memcmp(Z_STRVAL_P(dsn), dsn_prefix, sizeof(dsn_prefix) - 1U) == 0) {
+            source = Z_STRVAL_P(dsn) + sizeof(dsn_prefix) - 1U;
+            source_length = Z_STRLEN_P(dsn) - (sizeof(dsn_prefix) - 1U);
+        }
     }
-    if (strncmp(source, "path=", strlen("path=")) == 0) {
-        return estrdup(source + strlen("path="));
+
+    if (source == NULL || source_length == 0U) {
+        return zend_string_init("", 0U, false);
     }
-    return estrdup(source);
+    if (source_length >= sizeof(prefix) - 1U && memcmp(source, prefix, sizeof(prefix) - 1U) == 0) {
+        return zend_string_init(
+            source + sizeof(prefix) - 1U,
+            source_length - (sizeof(prefix) - 1U),
+            false
+        );
+    }
+    return zend_string_init(source, source_length, false);
 }

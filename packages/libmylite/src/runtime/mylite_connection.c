@@ -102,7 +102,11 @@ int mylite_open_memory_with_diagnostic(
 }
 
 int mylite_open(const char *path, mylite_db **out_db) {
-    return mylite_open_with_diagnostic(path, out_db, NULL);
+    return mylite_open_with_size(path, path == NULL ? 0U : strlen(path), out_db);
+}
+
+int mylite_open_with_size(const char *path, size_t path_size, mylite_db **out_db) {
+    return mylite_open_with_size_and_diagnostic(path, path_size, out_db, NULL);
 }
 
 int mylite_open_with_diagnostic(
@@ -110,7 +114,22 @@ int mylite_open_with_diagnostic(
     mylite_db **out_db,
     struct mylite_open_diagnostic *out_diagnostic
 ) {
+    return mylite_open_with_size_and_diagnostic(
+        path,
+        path == NULL ? 0U : strlen(path),
+        out_db,
+        out_diagnostic
+    );
+}
+
+int mylite_open_with_size_and_diagnostic(
+    const char *path,
+    size_t path_size,
+    mylite_db **out_db,
+    struct mylite_open_diagnostic *out_diagnostic
+) {
     struct mylite_db *database = NULL;
+    char *terminated_path = NULL;
     int rc = MYLITE_OK;
 
     initialize_open_diagnostic(out_diagnostic);
@@ -120,15 +139,25 @@ int mylite_open_with_diagnostic(
     }
 
     *out_db = NULL;
-    if (path == NULL || path[0] == '\0') {
+    if (path == NULL || path_size == 0U || path_size == SIZE_MAX ||
+        memchr(path, '\0', path_size) != NULL) {
         capture_open_diagnostic(out_diagnostic, NULL, MYLITE_MISUSE);
         return MYLITE_MISUSE;
     }
 
+    terminated_path = malloc(path_size + 1U);
+    if (terminated_path == NULL) {
+        capture_open_diagnostic(out_diagnostic, NULL, MYLITE_NOMEM);
+        return MYLITE_NOMEM;
+    }
+    memcpy(terminated_path, path, path_size);
+    terminated_path[path_size] = '\0';
+
     rc = allocate_database_handle(&database);
     if (rc == MYLITE_OK) {
-        rc = open_file_sqlite(database, path);
+        rc = open_file_sqlite(database, terminated_path);
     }
+    free(terminated_path);
     if (rc != MYLITE_OK) {
         capture_open_diagnostic(out_diagnostic, database, rc);
         destroy_database_handle(database);

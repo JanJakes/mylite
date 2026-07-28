@@ -115,6 +115,11 @@ MYLITE_API const char *mylite_server_version(void);
  * inputs are copied when they must outlive the call.
  */
 MYLITE_API int mylite_open(const char *path, mylite_db **out_db);
+/*
+ * Length-aware file open. path is borrowed for the call and path_size excludes
+ * any optional C terminator. Empty paths and spans containing NUL are rejected.
+ */
+MYLITE_API int mylite_open_with_size(const char *path, size_t path_size, mylite_db **out_db);
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
 /*
  * Diagnostic open variants populate out_diagnostic on both success and
@@ -123,6 +128,12 @@ MYLITE_API int mylite_open_memory(mylite_db **out_db);
  */
 MYLITE_API int mylite_open_with_diagnostic(
     const char *path,
+    mylite_db **out_db,
+    struct mylite_open_diagnostic *out_diagnostic
+);
+MYLITE_API int mylite_open_with_size_and_diagnostic(
+    const char *path,
+    size_t path_size,
     mylite_db **out_db,
     struct mylite_open_diagnostic *out_diagnostic
 );

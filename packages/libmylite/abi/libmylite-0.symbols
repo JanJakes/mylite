@@ -9,6 +9,8 @@ mylite_open
 mylite_open_memory
 mylite_open_memory_with_diagnostic
 mylite_open_with_diagnostic
+mylite_open_with_size
+mylite_open_with_size_and_diagnostic
 mylite_prepare
 mylite_prepare_buffered
 mylite_result_affected_rows

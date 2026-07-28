@@ -50,6 +50,8 @@ struct child_process_paths {
 };
 
 static int test_open_rejects_invalid_arguments(void);
+static int test_sized_open_path_contract(void);
+static int test_sized_open_rejection_has_no_vfs_side_effects(void);
 static int test_create_new_file_with_preamble_and_shifted_payload(void);
 static int test_reopen_existing_file_preserves_sqlite_payload(void);
 static int test_rejects_invalid_truncated_and_plain_sqlite_files(void);
@@ -144,6 +146,8 @@ int main(int argc, char **argv) {
     }
 
     failures += test_open_rejects_invalid_arguments();
+    failures += test_sized_open_path_contract();
+    failures += test_sized_open_rejection_has_no_vfs_side_effects();
     failures += test_create_new_file_with_preamble_and_shifted_payload();
     failures += test_reopen_existing_file_preserves_sqlite_payload();
     failures += test_rejects_invalid_truncated_and_plain_sqlite_files();
@@ -181,6 +185,184 @@ static int test_open_rejects_invalid_arguments(void) {
         MYLITE_MISUSE,
         "reject NULL output"
     );
+
+    return failures;
+}
+
+static int test_sized_open_path_contract(void) {
+    static const char nul_at_start[] = {'\0', 'x'};
+    static const char nul_in_middle[] = {'x', '\0', 'y'};
+    static const char memory_with_nul[] = {':', 'm', 'e', 'm', 'o', 'r', 'y', ':', '\0'};
+    static const unsigned char sentinel[] = "sized-open-prefix-sentinel";
+
+    char path[test_path_capacity];
+    char path_span[test_path_capacity];
+    char rejected_path[test_path_capacity * 2U];
+    unsigned char readback[sizeof(sentinel)];
+    struct mylite_open_diagnostic diagnostic;
+    mylite_db *database = NULL;
+    size_t path_size = 0U;
+    int failures = 0;
+
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(NULL, 0U, &database),
+        MYLITE_MISUSE,
+        "sized open rejects NULL path"
+    );
+    failures += mylite_test_expect_true(database == NULL, "NULL sized path leaves output null");
+    failures += mylite_test_expect_int(
+        mylite_open_with_size("", 0U, &database),
+        MYLITE_MISUSE,
+        "sized open rejects empty span"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_with_size("x", SIZE_MAX, &database),
+        MYLITE_MISUSE,
+        "sized open rejects unterminatable span"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_with_size("unused", strlen("unused"), NULL),
+        MYLITE_MISUSE,
+        "sized open rejects NULL output"
+    );
+
+    failures += mylite_test_expect_int(
+        mylite_open_with_size_and_diagnostic(
+            nul_in_middle,
+            sizeof(nul_in_middle),
+            &database,
+            &diagnostic
+        ),
+        MYLITE_MISUSE,
+        "diagnostic sized open rejects embedded NUL"
+    );
+    failures +=
+        mylite_test_expect_true(database == NULL, "diagnostic embedded NUL leaves output null");
+    failures += mylite_test_expect_int(
+        diagnostic.error_code,
+        MYLITE_MISUSE,
+        "diagnostic embedded NUL error code"
+    );
+    failures += mylite_test_expect_true(
+        strcmp(diagnostic.sqlstate, "HY000") == 0,
+        "diagnostic embedded NUL SQLSTATE"
+    );
+    failures += mylite_test_expect_true(
+        strcmp(diagnostic.message, "invalid MyLite open arguments") == 0,
+        "diagnostic embedded NUL message"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(nul_at_start, sizeof(nul_at_start), &database),
+        MYLITE_MISUSE,
+        "sized open rejects leading NUL"
+    );
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(memory_with_nul, sizeof(memory_with_nul), &database),
+        MYLITE_MISUSE,
+        "sized open rejects NUL-suffixed memory token"
+    );
+
+    if (mylite_test_make_path(path, sizeof(path), "sized_nonterminated") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+    path_size = strlen(path);
+    memcpy(path_span, path, path_size);
+    path_span[path_size] = 'X';
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(path_span, path_size, &database),
+        MYLITE_OK,
+        "sized open accepts nonterminated span"
+    );
+    mylite_close(database);
+    database = NULL;
+    failures += expect_bool(path_exists(path) != 0, true, "nonterminated path creates exact file");
+    remove_related_files(path);
+
+    if (mylite_test_make_path(path, sizeof(path), "sized_\xC3\xA9") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(path, strlen(path), &database),
+        MYLITE_OK,
+        "sized open accepts non-ASCII path"
+    );
+    mylite_close(database);
+    database = NULL;
+    failures += expect_bool(path_exists(path) != 0, true, "non-ASCII path creates exact file");
+    remove_related_files(path);
+
+    if (mylite_test_make_path(path, sizeof(path), "sized_absent_prefix") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+    path_size = strlen(path);
+    memcpy(rejected_path, path, path_size);
+    rejected_path[path_size] = '\0';
+    memcpy(&rejected_path[path_size + 1U], ".bypass", strlen(".bypass"));
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(rejected_path, path_size + 1U + strlen(".bypass"), &database),
+        MYLITE_MISUSE,
+        "sized open rejects absent authorized-prefix bypass"
+    );
+    failures += expect_bool(path_exists(path) != 0, false, "rejected prefix is not created");
+
+    if (mylite_test_make_path(path, sizeof(path), "sized_existing_prefix") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+    failures += write_file_bytes(path, sentinel, sizeof(sentinel));
+    path_size = strlen(path);
+    memcpy(rejected_path, path, path_size);
+    rejected_path[path_size] = '\0';
+    memcpy(&rejected_path[path_size + 1U], ".bypass", strlen(".bypass"));
+    failures += mylite_test_expect_int(
+        mylite_open_with_size(rejected_path, path_size + 1U + strlen(".bypass"), &database),
+        MYLITE_MISUSE,
+        "sized open rejects existing authorized-prefix bypass"
+    );
+    failures += read_file_at(path, 0L, readback, sizeof(readback));
+    failures += expect_bytes(
+        readback,
+        sentinel,
+        sizeof(sentinel),
+        "rejected existing prefix remains unchanged"
+    );
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_sized_open_rejection_has_no_vfs_side_effects(void) {
+    static const enum mylite_storage_vfs_fault_operation operations[] = {
+        MYLITE_STORAGE_VFS_FAULT_CREATE,
+        MYLITE_STORAGE_VFS_FAULT_OPEN,
+        MYLITE_STORAGE_VFS_FAULT_TRUNCATE,
+        MYLITE_STORAGE_VFS_FAULT_DELETE,
+    };
+
+    static const char invalid_path[] = {'n', 'o', '\0', 'p', 'a', 't', 'h'};
+
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    for (size_t index = 0U; index < sizeof(operations) / sizeof(operations[0]); ++index) {
+        mylite_storage_vfs_test_set_fault(operations[index], 1U);
+        failures += mylite_test_expect_int(
+            mylite_open_with_size(invalid_path, sizeof(invalid_path), &database),
+            MYLITE_MISUSE,
+            "invalid sized path rejected before VFS"
+        );
+        failures +=
+            expect_bool(mylite_storage_vfs_test_fault_was_triggered(), false, "VFS fault unused");
+        failures += mylite_test_expect_size(
+            mylite_storage_vfs_test_matching_call_count(),
+            0U,
+            "rejected path has zero matching VFS calls"
+        );
+        mylite_storage_vfs_test_clear_fault();
+    }
 
     return failures;
 }

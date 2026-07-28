@@ -12,7 +12,7 @@ enum {
     mylite_sql_parser_stack_byte_limit = 8 * 1024 * 1024,
     mylite_sql_parser_retry_token_limit = 65536,
     mylite_sql_parser_retry_parenthesis_depth_limit = 512,
-    mylite_sql_parser_retry_callback_limit = 8,
+    mylite_sql_parser_retry_callback_limit = 6,
     mylite_sql_parser_lexer_pass_limit = 4,
     mylite_sql_parser_retry_workspace_minimum = 256 * 1024,
     mylite_sql_parser_retry_workspace_limit = 8 * 1024 * 1024,

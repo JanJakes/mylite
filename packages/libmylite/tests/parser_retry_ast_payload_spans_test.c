@@ -16,7 +16,7 @@ static int test_partition_retry_payload_spans_and_snapshot(void);
 static int test_payload_validation_and_atomic_rebase(void);
 static int test_snapshot_rejects_payload_outside_root(void);
 static int test_nonpayload_prefix_retries_remain_valid(void);
-static int test_tableless_prefix_helper_remains_valid(void);
+static int test_tableless_limit_uses_primary_grammar(void);
 static int expect_snapshot_payload_inventory(const struct mylite_sql_ast_snapshot *snapshot);
 static int expect_payload_span(
     struct mylite_sql_source_span span,
@@ -43,7 +43,7 @@ int main(void) {
     failures += test_payload_validation_and_atomic_rebase();
     failures += test_snapshot_rejects_payload_outside_root();
     failures += test_nonpayload_prefix_retries_remain_valid();
-    failures += test_tableless_prefix_helper_remains_valid();
+    failures += test_tableless_limit_uses_primary_grammar();
 
     return failures == 0 ? 0 : 1;
 }
@@ -261,39 +261,21 @@ static int test_nonpayload_prefix_retries_remain_valid(void) {
     return failures;
 }
 
-static int test_tableless_prefix_helper_remains_valid(void) {
+static int test_tableless_limit_uses_primary_grammar(void) {
     static const char sql[] = "SELECT 1 LIMIT 1";
-    struct mylite_sql_parse_config config = {
-        .input = sql,
-        .length = sizeof(sql) - 1U,
-    };
     struct mylite_sql_parse_result result = {0};
-    struct mylite_sql_parser_retry_context retry_context = {0};
-    enum mylite_sql_parse_status status = mylite_sql_parser_parse_with_lemon(config, &result);
-    bool handled = false;
-    int failures = 0;
+    int failures = parser_test_parse_sql(sql, MYLITE_SQL_PARSE_OK, &result);
 
-    if (status == MYLITE_SQL_PARSE_OK) {
-        status = mylite_sql_parser_retry_context_init(config, &retry_context);
-    }
-    if (status == MYLITE_SQL_PARSE_OK) {
-        status = mylite_sql_parser_try_parse_tableless_select_limit_statement(
-            config,
-            &result,
-            &retry_context,
-            &handled
-        );
-    }
     failures += parser_test_expect_true(
-        status == MYLITE_SQL_PARSE_OK && handled,
-        "tableless limit prefix helper handles statement"
+        result.retry_tokenization_count == 0U && result.retry_callback_count == 0U &&
+            result.retry_handled_count == 0U,
+        "tableless limit uses the primary grammar"
     );
     failures += parser_test_expect_true(
         mylite_sql_ast_spans_are_within_source(&result.ast, sql, sizeof(sql) - 1U),
-        "tableless limit prefix helper spans remain valid"
+        "primary tableless limit spans remain valid"
     );
 
-    mylite_sql_parser_retry_context_deinit(&retry_context);
     mylite_sql_parse_result_deinit(&result);
     return failures;
 }

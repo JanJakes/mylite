@@ -1003,6 +1003,11 @@ static bool map_keyword_token(
         }
     }
 
+    if (mylite_sql_parser_token_text_equals(token, "TYPE")) {
+        *out_parser_token = MYLITE_SQL_PARSE_TYPE;
+        return true;
+    }
+
     if (previous_token_allows_delete_quick_modifier(
             previous_parser_token,
             token_before_previous_parser_token

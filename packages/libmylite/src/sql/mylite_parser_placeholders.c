@@ -113,6 +113,42 @@ struct row_constructor_in_predicate_scan {
     size_t list_right_paren_index;
 };
 
+static enum mylite_sql_parse_status try_parse_select_result_option_before_duplicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_parenthesized_row_constructor_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_row_constructor_predicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_parenthesized_row_arithmetic_predicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_repeated_select_locking_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_placeholder_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
 static bool scan_can_retry_select_result_option_before_duplicate(
     const struct placeholder_statement_scan *scan,
     size_t *out_duplicate_index
@@ -719,24 +755,6 @@ static void replace_row_arithmetic_placeholder_node(
     struct mylite_sql_ast_node *placeholder,
     const struct mylite_sql_ast_node *expression
 );
-static bool scan_can_retry_tableless_select_limit(
-    const struct placeholder_statement_scan *scan,
-    size_t *out_limit_index
-);
-static bool tableless_select_limit_tail_is_supported(
-    const struct placeholder_statement_scan *scan,
-    size_t limit_index
-);
-static bool select_limit_tail_token_is_integer(
-    const struct placeholder_statement_scan *scan,
-    size_t index
-);
-static bool parsed_select_accepts_tableless_limit(struct mylite_sql_ast_node *statement);
-static struct mylite_sql_ast_node *make_select_limit_clause_from_tail(
-    struct mylite_sql_parser_state *state,
-    const struct placeholder_statement_scan *scan,
-    size_t limit_index
-);
 static bool scan_can_retry_repeated_select_locking(
     const struct placeholder_statement_scan *scan,
     size_t *out_prefix_length
@@ -763,26 +781,6 @@ static bool placeholder_scan_lock_target_list_end(
 static bool placeholder_scan_token_starts_select_lock_wait(
     const struct placeholder_statement_scan *scan,
     size_t index
-);
-static bool scan_can_retry_legacy_create_index_type(
-    const struct placeholder_statement_scan *scan,
-    size_t *out_type_index
-);
-static bool scan_legacy_create_index_type_prefix(
-    const struct placeholder_statement_scan *scan,
-    size_t after_index_name,
-    size_t *out_type_index
-);
-static bool scan_legacy_create_index_type_suffix(
-    const struct placeholder_statement_scan *scan,
-    size_t after_index_name,
-    size_t *out_type_index
-);
-static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
-    struct mylite_sql_parse_config config,
-    const struct placeholder_statement_scan *scan,
-    size_t type_index,
-    struct mylite_sql_parse_result *out_result
 );
 static enum mylite_sql_parse_status try_parse_admin_set_residual_statement(
     struct mylite_sql_parse_config config,

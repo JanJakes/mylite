@@ -5,7 +5,7 @@
 #include <string.h>
 
 enum {
-    syntax_retry_callback_count = 8,
+    syntax_retry_callback_count = 6,
 };
 
 static int test_syntax_errors(void);
@@ -37,7 +37,7 @@ static int test_syntax_errors(void) {
         result.retry_callback_count != syntax_retry_callback_count) {
         fprintf(
             stderr,
-            "expected one shared tokenization across eight retries, got %zu and %zu\n",
+            "expected one shared tokenization across six retries, got %zu and %zu\n",
             result.retry_tokenization_count,
             result.retry_callback_count
         );

@@ -48,6 +48,7 @@ tests/parser_partition_options_test.c|parser|always
 tests/parser_partition_selection_test.c|parser|always
 tests/parser_recovery_resource_limits_test.c|internal|always
 tests/parser_recovery_scaling_test.c|internal|always
+tests/parser_retry_architecture_test.c|parser|always
 tests/parser_retry_ast_payload_spans_test.c|parser|always
 tests/parser_retry_fatal_status_test.c|internal|allocator-failpoints
 tests/parser_select_into_user_variables_test.c|parser|always
@@ -425,6 +426,7 @@ tests/runtime_quote_function_test.c|internal|always
 tests/runtime_rand_function_test.c|internal|always
 tests/runtime_read_only_system_variables_test.c|internal|always
 tests/runtime_recovery_model_test.c|internal-sqlite|always
+tests/runtime_reduced_parser_retry_recognizer_test.c|internal|always
 tests/runtime_regexp_like_function_test.c|internal|always
 tests/runtime_regexp_rlike_predicates_test.c|internal|always
 tests/runtime_relaxed_temporal_dml_literals_test.c|internal|always

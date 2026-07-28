@@ -91,7 +91,80 @@ enum mylite_sql_parse_status mylite_sql_parser_retry_context_ensure_parenthesis_
     return status;
 }
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_select_result_option_before_duplicate_statement(
+unsigned int mylite_sql_parser_retry_category_mask(enum mylite_sql_parser_retry_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_PARSER_RETRY_ROW_CONSTRUCTOR_PREDICATE:
+    case MYLITE_SQL_PARSER_RETRY_ROW_ARITHMETIC_PREDICATE:
+    case MYLITE_SQL_PARSER_RETRY_REPEATED_SELECT_LOCKING:
+        return MYLITE_SQL_PARSER_RETRY_CATEGORY_GRAMMAR_TRANSFORM;
+    case MYLITE_SQL_PARSER_RETRY_SELECT_RESULT_OPTION_REORDER:
+    case MYLITE_SQL_PARSER_RETRY_PARENTHESIZED_ROW_CONSTRUCTOR:
+        return MYLITE_SQL_PARSER_RETRY_CATEGORY_TOKEN_TRANSFORM;
+    case MYLITE_SQL_PARSER_RETRY_PLACEHOLDER:
+        return MYLITE_SQL_PARSER_RETRY_CATEGORY_GRAMMAR_TRANSFORM |
+               MYLITE_SQL_PARSER_RETRY_CATEGORY_UTILITY_PLACEHOLDER |
+               MYLITE_SQL_PARSER_RETRY_CATEGORY_UNSUPPORTED_FALLBACK;
+    case MYLITE_SQL_PARSER_RETRY_KIND_COUNT:
+        break;
+    }
+    return 0U;
+}
+
+enum mylite_sql_parse_status mylite_sql_parser_try_retry(
+    enum mylite_sql_parser_retry_kind kind,
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+) {
+    switch (kind) {
+    case MYLITE_SQL_PARSER_RETRY_ROW_CONSTRUCTOR_PREDICATE:
+        return try_parse_row_constructor_predicate_statement(
+            config,
+            result,
+            retry_context,
+            out_handled
+        );
+    case MYLITE_SQL_PARSER_RETRY_SELECT_RESULT_OPTION_REORDER:
+        return try_parse_select_result_option_before_duplicate_statement(
+            config,
+            result,
+            retry_context,
+            out_handled
+        );
+    case MYLITE_SQL_PARSER_RETRY_PARENTHESIZED_ROW_CONSTRUCTOR:
+        return try_parse_parenthesized_row_constructor_statement(
+            config,
+            result,
+            retry_context,
+            out_handled
+        );
+    case MYLITE_SQL_PARSER_RETRY_ROW_ARITHMETIC_PREDICATE:
+        return try_parse_parenthesized_row_arithmetic_predicate_statement(
+            config,
+            result,
+            retry_context,
+            out_handled
+        );
+    case MYLITE_SQL_PARSER_RETRY_REPEATED_SELECT_LOCKING:
+        return try_parse_repeated_select_locking_statement(
+            config,
+            result,
+            retry_context,
+            out_handled
+        );
+    case MYLITE_SQL_PARSER_RETRY_PLACEHOLDER:
+        return try_parse_placeholder_statement(config, result, retry_context, out_handled);
+    case MYLITE_SQL_PARSER_RETRY_KIND_COUNT:
+        break;
+    }
+    if (out_handled != NULL) {
+        *out_handled = false;
+    }
+    return MYLITE_SQL_PARSE_MISUSE;
+}
+
+static enum mylite_sql_parse_status try_parse_select_result_option_before_duplicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,
@@ -364,7 +437,7 @@ static enum mylite_sql_parse_status feed_token_with_parser_token_override(
     return state->result->status;
 }
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_constructor_statement(
+static enum mylite_sql_parse_status try_parse_parenthesized_row_constructor_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,
@@ -419,7 +492,7 @@ static bool scan_can_retry_parenthesized_row_constructors(
     return false;
 }
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predicate_statement(
+static enum mylite_sql_parse_status try_parse_row_constructor_predicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,
@@ -811,7 +884,7 @@ static bool placeholder_scan_token_is_row_constructor_comparison_operator(
            placeholder_scan_token_text_equals(scan, index, ">=");
 }
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
+static enum mylite_sql_parse_status try_parse_parenthesized_row_arithmetic_predicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,
@@ -4486,189 +4559,7 @@ static void replace_row_arithmetic_placeholder_node(
     placeholder->next_sibling = next_sibling;
 }
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_tableless_select_limit_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-) {
-    struct placeholder_statement_scan scan = {0};
-    struct mylite_sql_parse_result prefix_result;
-    struct mylite_sql_ast_node *limit_clause = NULL;
-    struct mylite_sql_ast_node *statement = NULL;
-    struct mylite_sql_parser_state state;
-    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
-    size_t limit_index = 0U;
-
-    if (out_handled == NULL || retry_context == NULL) {
-        return MYLITE_SQL_PARSE_MISUSE;
-    }
-    *out_handled = false;
-    status = retry_context->status;
-    if (status != MYLITE_SQL_PARSE_OK) {
-        return status;
-    }
-    scan = placeholder_statement_scan_from_retry_context(retry_context);
-    if (!scan_can_retry_tableless_select_limit(&scan, &limit_index)) {
-        return MYLITE_SQL_PARSE_OK;
-    }
-
-    memset(&prefix_result, 0, sizeof(prefix_result));
-    status = mylite_sql_parser_parse_with_lemon(
-        (struct mylite_sql_parse_config){
-            .input = config.input,
-            .length = scan.tokens[limit_index].offset,
-            .modes = config.modes,
-            .allow_parameters = config.allow_parameters,
-            .resource_tracker = config.resource_tracker,
-        },
-        &prefix_result
-    );
-    if (status != MYLITE_SQL_PARSE_OK) {
-        mylite_sql_parse_result_deinit(&prefix_result);
-        return status == MYLITE_SQL_PARSE_SYNTAX_ERROR ? MYLITE_SQL_PARSE_OK : status;
-    }
-
-    statement = mylite_sql_parser_child_at(prefix_result.root, 0U);
-    if (!parsed_select_accepts_tableless_limit(statement)) {
-        mylite_sql_parse_result_deinit(&prefix_result);
-        return MYLITE_SQL_PARSE_OK;
-    }
-    if (!mylite_sql_ast_rebase_source_length(
-            &prefix_result.ast,
-            config.input,
-            scan.tokens[limit_index].offset,
-            config.length
-        )) {
-        mylite_sql_parse_result_deinit(&prefix_result);
-        result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
-        *out_handled = true;
-        return result->status;
-    }
-
-    state = (struct mylite_sql_parser_state){
-        .result = &prefix_result,
-        .modes = config.modes,
-        .accepted = true,
-    };
-    limit_clause = make_select_limit_clause_from_tail(&state, &scan, limit_index);
-    if (limit_clause == NULL) {
-        mylite_sql_parse_result_deinit(&prefix_result);
-        return MYLITE_SQL_PARSE_NOMEM;
-    }
-    mylite_sql_ast_node_append_child(statement, limit_clause);
-    mylite_sql_ast_node_set_span(
-        statement,
-        mylite_sql_parser_span_join(statement->span, limit_clause->span)
-    );
-    mylite_sql_ast_node_set_span(prefix_result.root, statement->span);
-
-    mylite_sql_ast_deinit(&result->ast);
-    *result = prefix_result;
-    *out_handled = true;
-    return MYLITE_SQL_PARSE_OK;
-}
-
-static bool scan_can_retry_tableless_select_limit(
-    const struct placeholder_statement_scan *scan,
-    size_t *out_limit_index
-) {
-    size_t limit_index = 0U;
-
-    if (out_limit_index != NULL) {
-        *out_limit_index = 0U;
-    }
-    if (scan == NULL || scan->tokens == NULL || scan->has_non_trailing_semicolon ||
-        !placeholder_scan_token_text_equals(scan, 0U, "SELECT") ||
-        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
-        !placeholder_scan_find_top_level_keyword(scan, "LIMIT", &limit_index) ||
-        !tableless_select_limit_tail_is_supported(scan, limit_index)) {
-        return false;
-    }
-    if (out_limit_index != NULL) {
-        *out_limit_index = limit_index;
-    }
-    return true;
-}
-
-static bool tableless_select_limit_tail_is_supported(
-    const struct placeholder_statement_scan *scan,
-    size_t limit_index
-) {
-    size_t tail_count = 0U;
-
-    if (scan == NULL || limit_index >= scan->token_count) {
-        return false;
-    }
-    tail_count = scan->token_count - limit_index;
-    if (tail_count == 2U) {
-        return select_limit_tail_token_is_integer(scan, limit_index + 1U);
-    }
-    if (tail_count != 4U || !select_limit_tail_token_is_integer(scan, limit_index + 1U)) {
-        return false;
-    }
-    return (placeholder_scan_token_text_equals(scan, limit_index + 2U, "OFFSET") &&
-            select_limit_tail_token_is_integer(scan, limit_index + 3U)) ||
-           (mylite_sql_parser_token_is_comma(&scan->tokens[limit_index + 2U]) &&
-            select_limit_tail_token_is_integer(scan, limit_index + 3U));
-}
-
-static bool select_limit_tail_token_is_integer(
-    const struct placeholder_statement_scan *scan,
-    size_t index
-) {
-    return scan != NULL && index < scan->token_count &&
-           scan->tokens[index].kind == MYLITE_SQL_TOKEN_INTEGER;
-}
-
-static bool parsed_select_accepts_tableless_limit(struct mylite_sql_ast_node *statement) {
-    struct mylite_sql_ast_node *source = NULL;
-
-    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
-        return false;
-    }
-    source = mylite_sql_parser_child_at(statement, 1U);
-    return source == NULL || source->kind == MYLITE_SQL_AST_FROM_DUAL;
-}
-
-static struct mylite_sql_ast_node *make_select_limit_clause_from_tail(
-    struct mylite_sql_parser_state *state,
-    const struct placeholder_statement_scan *scan,
-    size_t limit_index
-) {
-    struct mylite_sql_ast_node *first = NULL;
-    struct mylite_sql_ast_node *second = NULL;
-
-    if (state == NULL || scan == NULL ||
-        !tableless_select_limit_tail_is_supported(scan, limit_index)) {
-        return NULL;
-    }
-    first = mylite_sql_parser_make_literal(
-        state,
-        scan->tokens[limit_index + 1U],
-        MYLITE_SQL_AST_LITERAL_INTEGER
-    );
-    if (first == NULL) {
-        return NULL;
-    }
-    if (scan->token_count - limit_index == 2U) {
-        return mylite_sql_parser_make_limit_clause(state, scan->tokens[limit_index], first, NULL);
-    }
-    second = mylite_sql_parser_make_literal(
-        state,
-        scan->tokens[limit_index + 3U],
-        MYLITE_SQL_AST_LITERAL_INTEGER
-    );
-    if (second == NULL) {
-        return NULL;
-    }
-    if (placeholder_scan_token_text_equals(scan, limit_index + 2U, "OFFSET")) {
-        return mylite_sql_parser_make_limit_clause(state, scan->tokens[limit_index], first, second);
-    }
-    return mylite_sql_parser_make_limit_clause(state, scan->tokens[limit_index], second, first);
-}
-
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_repeated_select_locking_statement(
+static enum mylite_sql_parse_status try_parse_repeated_select_locking_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,
@@ -4918,194 +4809,7 @@ static bool placeholder_scan_token_starts_select_lock_wait(
             placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED"));
 }
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_legacy_create_index_type_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-) {
-    struct placeholder_statement_scan scan = {0};
-    struct mylite_sql_parse_result retry_result;
-    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
-    size_t type_index = 0U;
-
-    if (out_handled == NULL || retry_context == NULL) {
-        return MYLITE_SQL_PARSE_MISUSE;
-    }
-    *out_handled = false;
-
-    status = retry_context->status;
-    if (status != MYLITE_SQL_PARSE_OK) {
-        return status;
-    }
-    scan = placeholder_statement_scan_from_retry_context(retry_context);
-    if (!scan_can_retry_legacy_create_index_type(&scan, &type_index)) {
-        return MYLITE_SQL_PARSE_OK;
-    }
-
-    memset(&retry_result, 0, sizeof(retry_result));
-    status = parse_legacy_create_index_type_tokens(config, &scan, type_index, &retry_result);
-    if (status == MYLITE_SQL_PARSE_OK) {
-        mylite_sql_ast_deinit(&result->ast);
-        *result = retry_result;
-        *out_handled = true;
-        return status;
-    }
-
-    mylite_sql_parse_result_deinit(&retry_result);
-    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        return status;
-    }
-    return MYLITE_SQL_PARSE_OK;
-}
-
-static bool scan_can_retry_legacy_create_index_type(
-    const struct placeholder_statement_scan *scan,
-    size_t *out_type_index
-) {
-    enum { legacy_create_index_type_min_token_count = 7U };
-
-    size_t index = 1U;
-    size_t after_index_name = 0U;
-
-    if (out_type_index != NULL) {
-        *out_type_index = 0U;
-    }
-    if (scan == NULL || scan->tokens == NULL || scan->has_non_trailing_semicolon ||
-        scan->token_count < legacy_create_index_type_min_token_count ||
-        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
-        !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
-        return false;
-    }
-    if (placeholder_scan_token_text_equals(scan, index, "UNIQUE")) {
-        ++index;
-    }
-    if (!placeholder_scan_token_text_equals(scan, index, "INDEX") ||
-        !placeholder_scan_token_can_name_loose_identifier(scan, index + 1U)) {
-        return false;
-    }
-
-    after_index_name = index + 2U;
-    return scan_legacy_create_index_type_prefix(scan, after_index_name, out_type_index) ||
-           scan_legacy_create_index_type_suffix(scan, after_index_name, out_type_index);
-}
-
-static bool scan_legacy_create_index_type_prefix(
-    const struct placeholder_statement_scan *scan,
-    size_t after_index_name,
-    size_t *out_type_index
-) {
-    if (!placeholder_scan_token_text_equals(scan, after_index_name, "TYPE") ||
-        !placeholder_scan_token_can_name_loose_identifier(scan, after_index_name + 1U) ||
-        !placeholder_scan_token_text_equals(scan, after_index_name + 2U, "ON")) {
-        return false;
-    }
-    if (out_type_index != NULL) {
-        *out_type_index = after_index_name;
-    }
-    return true;
-}
-
-static bool scan_legacy_create_index_type_suffix(
-    const struct placeholder_statement_scan *scan,
-    size_t after_index_name,
-    size_t *out_type_index
-) {
-    size_t index = after_index_name;
-    size_t right_paren_index = 0U;
-
-    if (!placeholder_scan_token_text_equals(scan, index, "ON")) {
-        return false;
-    }
-    ++index;
-    if (!placeholder_scan_match_column_name_starts_at(scan, index, &index) ||
-        !mylite_sql_parser_token_is_left_paren(&scan->tokens[index]) ||
-        !placeholder_scan_find_matching_right_paren(scan, index, &right_paren_index)) {
-        return false;
-    }
-    index = right_paren_index + 1U;
-    if (!placeholder_scan_token_text_equals(scan, index, "TYPE") ||
-        !placeholder_scan_token_can_name_loose_identifier(scan, index + 1U)) {
-        return false;
-    }
-    if (out_type_index != NULL) {
-        *out_type_index = index;
-    }
-    return true;
-}
-
-static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
-    struct mylite_sql_parse_config config,
-    const struct placeholder_statement_scan *scan,
-    size_t type_index,
-    struct mylite_sql_parse_result *out_result
-) {
-    struct mylite_sql_parser_state state;
-    struct mylite_sql_parser_token_history token_history = {0};
-    void *parser = NULL;
-    bool previous_token_was_dot = false;
-    struct mylite_sql_token eof_token = {
-        .kind = MYLITE_SQL_TOKEN_EOF,
-        .text = config.input == NULL ? NULL : config.input + config.length,
-        .offset = config.length,
-        .source_length = config.length,
-    };
-    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
-
-    if (out_result == NULL || scan == NULL || scan->tokens == NULL ||
-        type_index >= scan->token_count) {
-        return MYLITE_SQL_PARSE_MISUSE;
-    }
-
-    mylite_sql_parser_reset_parse_result(out_result);
-
-    state = (struct mylite_sql_parser_state){
-        .result = out_result,
-        .modes = config.modes,
-        .accepted = false,
-    };
-    parser = mylite_sql_lemonAlloc(malloc, &state);
-    if (parser == NULL) {
-        out_result->status = MYLITE_SQL_PARSE_NOMEM;
-        return out_result->status;
-    }
-
-    for (size_t index = 0U; status == MYLITE_SQL_PARSE_OK && index < scan->token_count; ++index) {
-        status = feed_token_with_parser_token_override(
-            config,
-            parser,
-            &state,
-            &token_history,
-            &previous_token_was_dot,
-            &scan->tokens[index],
-            index == type_index ? MYLITE_SQL_PARSE_USING : 0
-        );
-    }
-    if (status == MYLITE_SQL_PARSE_OK) {
-        status = feed_token_with_parser_token_override(
-            config,
-            parser,
-            &state,
-            &token_history,
-            &previous_token_was_dot,
-            &eof_token,
-            0
-        );
-    }
-
-    mylite_sql_lemonFree(parser, free);
-
-    if (out_result->status == MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_OK) {
-        out_result->status = status;
-    }
-    if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
-        out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
-    }
-
-    return out_result->status;
-}
-
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_placeholder_statement(
+static enum mylite_sql_parse_status try_parse_placeholder_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,

@@ -26,18 +26,11 @@ struct parser_retry_case {
     const char *context;
 };
 
-typedef enum mylite_sql_parse_status (*parser_retry_callback)(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-
 static int test_direct_parser_allocation_failures(void);
 static int expect_parser_allocation_sweep(const struct parser_retry_case *test_case);
-static int expect_callback_allocation_sweep(
+static int expect_typed_retry_allocation_sweep(
     const char *sql,
-    parser_retry_callback callback,
+    enum mylite_sql_parser_retry_kind kind,
     const char *context
 );
 static int test_growable_stack_allocation_failures(void);
@@ -61,13 +54,13 @@ static int test_direct_parser_allocation_failures(void) {
         {
             .sql = "SELECT FROM DUAL",
             .expected_status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
-            .minimum_callback_count = 8U,
+            .minimum_callback_count = 6U,
             .context = "unhandled syntax retry context",
         },
         {
             .sql = "SELECT FROM (DUAL)",
             .expected_status = MYLITE_SQL_PARSE_OK,
-            .minimum_callback_count = 8U,
+            .minimum_callback_count = 6U,
             .minimum_handled_count = 1U,
             .context = "parenthesized syntax retry context",
         },
@@ -109,35 +102,33 @@ static int test_direct_parser_allocation_failures(void) {
         {
             .sql = "SELECT 1 FOR UPDATE FOR SHARE",
             .expected_status = MYLITE_SQL_PARSE_OK,
-            .minimum_callback_count = 6U,
+            .minimum_callback_count = 5U,
             .minimum_handled_count = 1U,
             .context = "repeated locking retry",
         },
         {
             .sql = "CREATE INDEX idx TYPE BTREE ON t (id)",
             .expected_status = MYLITE_SQL_PARSE_OK,
-            .minimum_callback_count = 7U,
-            .minimum_handled_count = 1U,
-            .context = "legacy create index type retry",
+            .context = "primary legacy create index type",
         },
         {
             .sql = "ANALYZE TABLES t1",
             .expected_status = MYLITE_SQL_PARSE_OK,
-            .minimum_callback_count = 8U,
+            .minimum_callback_count = 6U,
             .minimum_handled_count = 1U,
             .context = "scanned placeholder retry",
         },
         {
             .sql = "ALTER TABLE t RENAME TO u, ALGORITHM=INPLACE",
             .expected_status = MYLITE_SQL_PARSE_OK,
-            .minimum_callback_count = 8U,
+            .minimum_callback_count = 6U,
             .minimum_handled_count = 1U,
             .context = "alter option tail retry",
         },
         {
             .sql = "CREATE TABLE t (id INT) PARTITION BY HASH(id) PARTITIONS 2",
             .expected_status = MYLITE_SQL_PARSE_OK,
-            .minimum_callback_count = 8U,
+            .minimum_callback_count = 6U,
             .minimum_handled_count = 1U,
             .context = "partition placeholder retry",
         },
@@ -147,10 +138,10 @@ static int test_direct_parser_allocation_failures(void) {
     for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
         failures += expect_parser_allocation_sweep(&cases[index]);
     }
-    failures += expect_callback_allocation_sweep(
-        "SELECT 1 LIMIT 1",
-        mylite_sql_parser_try_parse_tableless_select_limit_statement,
-        "tableless limit callback"
+    failures += expect_typed_retry_allocation_sweep(
+        "SELECT 1 FOR UPDATE FOR SHARE",
+        MYLITE_SQL_PARSER_RETRY_REPEATED_SELECT_LOCKING,
+        "typed repeated locking retry"
     );
     return failures;
 }
@@ -215,9 +206,9 @@ static int expect_parser_allocation_sweep(const struct parser_retry_case *test_c
     return failures;
 }
 
-static int expect_callback_allocation_sweep(
+static int expect_typed_retry_allocation_sweep(
     const char *sql,
-    parser_retry_callback callback,
+    enum mylite_sql_parser_retry_kind kind,
     const char *context
 ) {
     int failures = 0;
@@ -237,11 +228,11 @@ static int expect_callback_allocation_sweep(
 
         mylite_test_allocator_fail_after(allocation_index);
         status = mylite_sql_parser_parse_with_lemon(config, &result);
-        if (status == MYLITE_SQL_PARSE_OK) {
+        if (status == MYLITE_SQL_PARSE_OK || status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
             status = mylite_sql_parser_retry_context_init(config, &retry_context);
         }
         if (status == MYLITE_SQL_PARSE_OK) {
-            status = callback(config, &result, &retry_context, &handled);
+            status = mylite_sql_parser_try_retry(kind, config, &result, &retry_context, &handled);
         }
         allocation_failed = mylite_test_allocator_was_triggered();
         mylite_test_allocator_clear();

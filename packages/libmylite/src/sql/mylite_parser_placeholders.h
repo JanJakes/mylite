@@ -29,6 +29,24 @@ struct mylite_sql_parser_retry_context {
     bool parentheses_balanced;
 };
 
+enum mylite_sql_parser_retry_category {
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_GRAMMAR_TRANSFORM = 1U << 0U,
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_TOKEN_TRANSFORM = 1U << 1U,
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_UTILITY_PLACEHOLDER = 1U << 2U,
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_UNSUPPORTED_FALLBACK = 1U << 3U,
+};
+
+enum mylite_sql_parser_retry_kind {
+    MYLITE_SQL_PARSER_RETRY_ROW_CONSTRUCTOR_PREDICATE = 0,
+    MYLITE_SQL_PARSER_RETRY_SELECT_RESULT_OPTION_REORDER = 1,
+    MYLITE_SQL_PARSER_RETRY_PARENTHESIZED_ROW_CONSTRUCTOR = 2,
+    MYLITE_SQL_PARSER_RETRY_ROW_ARITHMETIC_PREDICATE = 3,
+    MYLITE_SQL_PARSER_RETRY_REPEATED_SELECT_LOCKING = 4,
+    MYLITE_SQL_PARSER_RETRY_PLACEHOLDER = 5,
+    MYLITE_SQL_PARSER_RETRY_KIND_COUNT = 6,
+};
+
+unsigned int mylite_sql_parser_retry_category_mask(enum mylite_sql_parser_retry_kind kind);
 enum mylite_sql_parse_status mylite_sql_parser_retry_context_init(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parser_retry_context *out_context
@@ -43,49 +61,8 @@ enum mylite_sql_parse_status mylite_sql_parser_retry_context_ensure_parenthesis_
     struct mylite_sql_parser_retry_context *context
 );
 
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_select_result_option_before_duplicate_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_constructor_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predicate_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_tableless_select_limit_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_repeated_select_locking_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_legacy_create_index_type_statement(
-    struct mylite_sql_parse_config config,
-    struct mylite_sql_parse_result *result,
-    struct mylite_sql_parser_retry_context *retry_context,
-    bool *out_handled
-);
-enum mylite_sql_parse_status mylite_sql_parser_try_parse_placeholder_statement(
+enum mylite_sql_parse_status mylite_sql_parser_try_retry(
+    enum mylite_sql_parser_retry_kind kind,
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parser_retry_context *retry_context,

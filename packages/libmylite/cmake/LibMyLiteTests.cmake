@@ -154,6 +154,14 @@ if(NOT mylite_native_test_sources STREQUAL mylite_manifest_sources)
 endif()
 
 add_test(
+  NAME libmylite.parser.retry_source_ratchet
+  COMMAND "${CMAKE_COMMAND}"
+    "-DMYLITE_RETRY_SOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
+    "-DMYLITE_RETRY_SOURCE_BYTE_CEILING=300727"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/parser_retry_source_ratchet_test.cmake"
+)
+
+add_test(
   NAME libmylite.runtime.alter_table_rename_to
   COMMAND mylite_runtime_table_rename_lifecycle_test
 )

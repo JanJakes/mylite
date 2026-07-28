@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented; release qualification is pending.
 
 ## Summary
 
@@ -142,6 +142,13 @@ The parser driver must not name or store function pointers for individual
 retry implementations. The internal retry header exposes:
 
 ```c
+enum mylite_sql_parser_retry_category {
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_GRAMMAR_TRANSFORM = 1U << 0U,
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_TOKEN_TRANSFORM = 1U << 1U,
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_UTILITY_PLACEHOLDER = 1U << 2U,
+    MYLITE_SQL_PARSER_RETRY_CATEGORY_UNSUPPORTED_FALLBACK = 1U << 3U
+};
+
 enum mylite_sql_parser_retry_kind {
     MYLITE_SQL_PARSER_RETRY_ROW_CONSTRUCTOR_PREDICATE,
     MYLITE_SQL_PARSER_RETRY_SELECT_RESULT_OPTION_REORDER,
@@ -152,6 +159,10 @@ enum mylite_sql_parser_retry_kind {
     MYLITE_SQL_PARSER_RETRY_KIND_COUNT
 };
 
+unsigned int mylite_sql_parser_retry_category_mask(
+    enum mylite_sql_parser_retry_kind kind
+);
+
 enum mylite_sql_parse_status mylite_sql_parser_try_retry(
     enum mylite_sql_parser_retry_kind kind,
     struct mylite_sql_parse_config config,
@@ -161,8 +172,12 @@ enum mylite_sql_parse_status mylite_sql_parser_try_retry(
 );
 ```
 
-The implementation dispatches the enum to private functions. Invalid enum
-values return `MYLITE_SQL_PARSE_MISUSE` without touching AST ownership.
+The implementation dispatches the enum to private functions and exposes its
+auditable classification as a category mask. The residual placeholder kind
+has grammar-transform, utility-placeholder, and unsupported-fallback bits
+because it contains separately inventoried families in all three categories.
+Invalid enum values return `MYLITE_SQL_PARSE_MISUSE` without touching AST
+ownership.
 
 The parser driver keeps two ordered typed plans:
 
@@ -194,12 +209,12 @@ callbacks, and handled retries.
 ### Legacy Index `TYPE`
 
 `TYPE` is a nonreserved MySQL keyword. The primary token mapper maps its text
-to a dedicated Lemon terminal, and the identifier production accepts that
-terminal as a fallback identifier:
+to a dedicated Lemon terminal, and Lemon falls that terminal back to
+`IDENTIFIER` in states that do not accept an index type:
 
 ```lemon
+%fallback IDENTIFIER TYPE.
 index_type_option ::= TYPE identifier.
-identifier ::= TYPE.
 ```
 
 This admits the already-declared prefix and suffix index-option productions
@@ -244,6 +259,17 @@ The test reads the enumerated source files explicitly, so generated parser
 size and unrelated parser-driver growth do not cause false positives.
 Relocating retry logic to an uncounted file is not a valid way to satisfy the
 ratchet; the file list must be updated if retry implementation is split.
+
+The post-remediation source ceiling is:
+
+| File | Lines | Bytes |
+| --- | ---: | ---: |
+| `mylite_parser_placeholders.c` | 1,971 | 73,024 |
+| `mylite_parser_placeholders_retry.inc` | 6,593 | 224,957 |
+| `mylite_parser_placeholders.h` | 72 | 2,746 |
+| **Retry-layer ceiling** | **8,636** | **300,727** |
+
+This is 321 lines and 10,927 bytes below the pre-remediation layer.
 
 An intentional increase requires a new feature specification, updated
 inventory, measured grammar alternative, and an explicit ratchet change in

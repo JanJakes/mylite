@@ -691,10 +691,33 @@ compatibility-ledger gates; and the 12,413,456-byte production archive.
 
 ### `SQL-05`: parser nesting limits
 
-- [ ] Sweep valid nested parentheses and `IF()` expressions across the Lemon
+- [x] Sweep valid nested parentheses and `IF()` expressions across the Lemon
   stack boundary.
-- [ ] Document the supported limit or use a growable parser stack with an
+- [x] Document the supported limit or use a growable parser stack with an
   explicit byte ceiling.
+
+`SQL-05` is closed by the independently authored specification and MySQL
+fixture at `0171d10cf`, implementation at `789b5905c`, static-analysis cleanup
+at `cd998d487`, and release qualification at `7777e7db9`. The generated Lemon
+parser now embeds 64 stack entries, grows geometrically on demand, and bounds
+the combined embedded and growable stack storage at eight MiB. Allocation
+failure remains distinct from the configured ceiling and maps to
+`MYLITE_NOMEM` / `HY001`; the ceiling retains the bounded public `1064` /
+`42000` syntax diagnostic.
+
+The qualified parser accepts the MySQL-observed floors of 16,384 nested
+parentheses and 1,732 direct nested `IF()` calls, plus 1,024 nested `IF()`
+calls through streaming and buffered prepare. Its x86-64 Debug parser object
+measures 22,048 bytes, down from the 176,160-byte fixed-stack baseline.
+
+Qualification covered all 50 parser-labeled suites and all 28 runtime
+parser-corpus/nesting suites in Development, Debug-CI, Release, and
+ASan/UBSan with leak detection; deterministic multi-growth allocation
+failures; all 41 pinned parser-related MySQL 8.4.9 fixtures; 10,000 seeded
+parser-fuzzer executions and a 1,200,008-byte seed; full LLVM 19 static
+analysis across 928 translation units; formatting, ABI, install-consumer,
+pkg-config, and compatibility-ledger gates; and the 12,415,752-byte production
+archive.
 
 ### `ARCH-03`: reduce the retry recognizer
 

@@ -33,6 +33,18 @@ $pdo = new PDO('mylite:' . mylite_pdo_test_path('api'), null, null, [
 ]);
 
 expect_true($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mylite', 'driver name mismatch');
+expect_true(
+    $pdo->getAttribute(PDO::ATTR_EMULATE_PREPARES) === false,
+    'native prepare attribute mismatch'
+);
+expect_true(
+    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false),
+    'disabling emulated prepares failed'
+);
+expect_true(
+    !$pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true),
+    'enabling emulated prepares should fail'
+);
 expect_true($pdo->exec('CREATE DATABASE app') >= 0, 'CREATE DATABASE failed');
 expect_true($pdo->exec('USE app') >= 0, 'USE failed');
 expect_true($pdo->exec('CREATE TABLE people (id INT PRIMARY KEY, name VARCHAR(32))') >= 0, 'CREATE TABLE failed');

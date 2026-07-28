@@ -1,0 +1,21 @@
+{
+    "name": "mylite/doctrine-dbal-driver",
+    "description": "Doctrine DBAL driver for the MyLite PDO driver",
+    "license": "MIT",
+    "type": "library",
+    "require": {
+        "php": "^8.2",
+        "doctrine/dbal": "^4.4",
+        "ext-mylite": "*",
+        "ext-pdo": "*",
+        "ext-pdo_mylite": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "MyLite\\Doctrine\\DBAL\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

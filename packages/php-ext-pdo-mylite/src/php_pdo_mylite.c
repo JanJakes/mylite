@@ -54,6 +54,7 @@ static zend_string *pdo_mylite_handle_quoter(
 static bool pdo_mylite_handle_begin(pdo_dbh_t *dbh);
 static bool pdo_mylite_handle_commit(pdo_dbh_t *dbh);
 static bool pdo_mylite_handle_rollback(pdo_dbh_t *dbh);
+static bool pdo_mylite_set_attribute(pdo_dbh_t *dbh, zend_long attr, zval *value);
 static zend_string *pdo_mylite_last_insert_id(pdo_dbh_t *dbh, const zend_string *name);
 static void pdo_mylite_fetch_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, zval *info);
 static int pdo_mylite_get_attribute(pdo_dbh_t *dbh, zend_long attr, zval *return_value);
@@ -116,7 +117,7 @@ static const struct pdo_dbh_methods pdo_mylite_dbh_methods = {
     pdo_mylite_handle_begin,
     pdo_mylite_handle_commit,
     pdo_mylite_handle_rollback,
-    NULL,
+    pdo_mylite_set_attribute,
     pdo_mylite_last_insert_id,
     pdo_mylite_fetch_error,
     pdo_mylite_get_attribute,
@@ -356,6 +357,11 @@ static bool pdo_mylite_handle_rollback(pdo_dbh_t *dbh) {
     return ok;
 }
 
+static bool pdo_mylite_set_attribute(pdo_dbh_t *dbh, zend_long attr, zval *value) {
+    (void)dbh;
+    return attr == PDO_ATTR_EMULATE_PREPARES && !zend_is_true(value);
+}
+
 static zend_string *pdo_mylite_last_insert_id(pdo_dbh_t *dbh, const zend_string *name) {
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
     (void)name;
@@ -394,6 +400,9 @@ static int pdo_mylite_get_attribute(pdo_dbh_t *dbh, zend_long attr, zval *return
         return 1;
     case PDO_ATTR_DRIVER_NAME:
         ZVAL_STRING(return_value, "mylite");
+        return 1;
+    case PDO_ATTR_EMULATE_PREPARES:
+        ZVAL_FALSE(return_value);
         return 1;
     default:
         return 0;

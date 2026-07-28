@@ -147,6 +147,54 @@ expect_same('16', $connection->query('SELECT 16')->fetch_row()[0], 'exhaustion r
 $connection->close();
 
 $connection = open_connection();
+$connection->real_query('SELECT id FROM items ORDER BY id');
+$unbuffered = $connection->use_result();
+expect_same('1', $unbuffered->fetch_row()[0], 'object-free first row');
+$unbuffered->free();
+expect_same('117', $connection->query('SELECT 117')->fetch_row()[0], 'object-free recovery');
+$connection->close();
+
+$connection = open_connection();
+$unbuffered = $connection->query('SELECT id FROM items ORDER BY id', MYSQLI_USE_RESULT);
+expect_same('1', $unbuffered->fetch_row()[0], 'destructor first row');
+unset($unbuffered);
+gc_collect_cycles();
+expect_same('118', $connection->query('SELECT 118')->fetch_row()[0], 'destructor recovery');
+$connection->close();
+
+$connection = open_connection();
+$connection->real_query("SHOW TABLES LIKE 'items'");
+$unbuffered = $connection->use_result();
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $connection->query('SELECT 119'),
+    'materialized utility unread result'
+);
+expect_same('items', $unbuffered->fetch_row()[0], 'materialized utility row');
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $connection->query('SELECT 120'),
+    'materialized utility last row'
+);
+expect_same(null, $unbuffered->fetch_row(), 'materialized utility end-of-data');
+expect_same(
+    '121',
+    $connection->query('SELECT 121')->fetch_row()[0],
+    'materialized utility recovery'
+);
+$connection->close();
+
+$connection = open_connection();
+$connection->real_query('SELECT id FROM items ORDER BY id');
+$pendingPrepare = $connection->stmt_init();
+expect_out_of_sync(
+    static fn(): bool => $pendingPrepare->prepare('SELECT 122'),
+    'prepare during direct pending result'
+);
+$connection->store_result()->free();
+expect_same(true, $pendingPrepare->prepare('SELECT 122'), 'prepare after direct store');
+$pendingPrepare->close();
+$connection->close();
+
+$connection = open_connection();
 expect_same(
     true,
     mysqli_real_query($connection, 'SELECT id FROM items ORDER BY id'),
@@ -162,6 +210,24 @@ expect_same(
     '18',
     mysqli_query($connection, 'SELECT 18')->fetch_row()[0],
     'procedural free recovery'
+);
+$connection->close();
+
+$connection = open_connection();
+$connection->begin_transaction();
+expect_same(
+    true,
+    $connection->query("INSERT INTO items VALUES (4, 'four')"),
+    'transactional pending insert'
+);
+$unbuffered = $connection->query('SELECT id FROM items ORDER BY id', MYSQLI_USE_RESULT);
+expect_out_of_sync(static fn(): bool => $connection->commit(), 'transactional pending commit');
+$unbuffered->free();
+expect_same(true, $connection->rollback(), 'rollback after pending free');
+expect_same(
+    '0',
+    $connection->query('SELECT COUNT(*) FROM items WHERE id = 4')->fetch_row()[0],
+    'failed pending commit has no side effect'
 );
 $connection->close();
 
@@ -208,6 +274,45 @@ expect_same('25', $connection->query('SELECT 25')->fetch_row()[0], 'prepared clo
 $connection->close();
 
 $connection = open_connection();
+$zeroRows = $connection->prepare('SELECT id FROM items WHERE 0');
+$zeroRows->execute();
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $connection->query('SELECT 131'),
+    'prepared zero-row result'
+);
+$zeroRows->bind_result($id);
+expect_same(null, $zeroRows->fetch(), 'prepared zero-row end-of-data');
+expect_same('132', $connection->query('SELECT 132')->fetch_row()[0], 'zero-row recovery');
+$zeroRows->close();
+$connection->close();
+
+$connection = open_connection();
+$metadataStatement = $connection->prepare(
+    'SELECT id AS pending_id, value AS pending_value FROM items ORDER BY id'
+);
+$metadataStatement->execute();
+$metadata = $metadataStatement->result_metadata();
+expect_same(2, $metadata->field_count, 'prepared metadata field count');
+expect_same(0, $metadata->num_rows, 'prepared metadata row count');
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $connection->query('SELECT 133'),
+    'prepared metadata preserves owner'
+);
+$metadata->free();
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $connection->query('SELECT 134'),
+    'prepared metadata free preserves owner'
+);
+$metadataStatement->free_result();
+expect_same(
+    '135',
+    $connection->query('SELECT 135')->fetch_row()[0],
+    'prepared metadata owner recovery'
+);
+$metadataStatement->close();
+$connection->close();
+
+$connection = open_connection();
 $statement = $connection->prepare('SELECT id FROM items ORDER BY id');
 $statement->execute();
 $result = $statement->get_result();
@@ -226,6 +331,12 @@ $second->free_result();
 $first->close();
 $second->close();
 $connection->close();
+
+$connection = open_connection();
+$closeFirstStatement = $connection->prepare('SELECT id FROM items ORDER BY id');
+$closeFirstStatement->execute();
+expect_same(true, $connection->close(), 'close connection with prepared result');
+expect_same(true, $closeFirstStatement->close(), 'close prepared owner after connection');
 
 printf("mysqli pending-result state MySQL 8.4.9 expectations verified\n");
 PHP

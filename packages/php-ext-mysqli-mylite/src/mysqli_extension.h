@@ -83,11 +83,19 @@ enum mylite_mysqli_error_code {
     MYLITE_MYSQLI_ERROR_NONE = 0,
     MYLITE_MYSQLI_ERROR_CLIENT = 2000,
     MYLITE_MYSQLI_ERROR_CONNECTION = 2002,
+    MYLITE_MYSQLI_ERROR_COMMANDS_OUT_OF_SYNC = 2014,
     MYLITE_MYSQLI_ERROR_INSECURE_API = 2061,
     MYLITE_MYSQLI_ERROR_PARSE = 1064,
     MYLITE_MYSQLI_ERROR_PACKET_TOO_LARGE = 1153,
     MYLITE_MYSQLI_ERROR_UNSUPPORTED = 1235,
     MYLITE_MYSQLI_ERROR_EXEC = 1105,
+};
+
+enum mylite_mysqli_connection_state {
+    MYLITE_MYSQLI_CONNECTION_READY = 0,
+    MYLITE_MYSQLI_CONNECTION_DIRECT_PENDING,
+    MYLITE_MYSQLI_CONNECTION_DIRECT_UNBUFFERED,
+    MYLITE_MYSQLI_CONNECTION_PREPARED_UNBUFFERED,
 };
 
 enum mylite_mysqli_transaction_flag {
@@ -116,6 +124,8 @@ typedef struct {
     mylite_stmt *pending_stmt;
     zend_string *pending_sql;
     uint64_t pending_execute_ns;
+    enum mylite_mysqli_connection_state state;
+    void *active_owner;
     zend_object std;
 } mylite_mysqli_link;
 
@@ -146,6 +156,8 @@ typedef struct {
     bool unbuffered;
     bool current_row_valid;
     bool unbuffered_finished;
+    bool connection_owner;
+    zval link;
     zend_object std;
 } mylite_mysqli_result;
 
@@ -168,6 +180,7 @@ typedef struct {
     uint32_t bound_result_count;
     uint32_t param_count;
     int error_code;
+    bool current_row_pending;
     zend_object std;
 } mylite_mysqli_stmt;
 
@@ -258,6 +271,11 @@ bool mylite_mysqli_stmt_prepare_internal(
     size_t sql_length
 );
 bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params);
+int mylite_mysqli_stmt_fetch_internal(mylite_mysqli_stmt *stmt);
+bool mylite_mysqli_stmt_get_result_internal(mylite_mysqli_stmt *stmt, zval *out_result);
+bool mylite_mysqli_stmt_result_metadata_internal(mylite_mysqli_stmt *stmt, zval *out_result);
+bool mylite_mysqli_stmt_store_result_internal(mylite_mysqli_stmt *stmt);
+void mylite_mysqli_stmt_free_result_internal(mylite_mysqli_stmt *stmt);
 bool mylite_mysqli_stmt_reset_internal(mylite_mysqli_stmt *stmt);
 bool mylite_mysqli_stmt_close_internal(mylite_mysqli_stmt *stmt);
 bool mylite_mysqli_stmt_send_long_data_internal(

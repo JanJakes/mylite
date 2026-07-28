@@ -1379,47 +1379,21 @@ PHP_FUNCTION(mysqli_stmt_bind_result) {
 PHP_FUNCTION(mysqli_stmt_fetch) {
     zval *stmt_zval = NULL;
     mylite_mysqli_stmt *stmt = NULL;
-    mylite_mysqli_result *result = NULL;
+    int status = MYLITE_ERROR;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(stmt_zval, mylite_mysqli_stmt_ce)
     ZEND_PARSE_PARAMETERS_END();
 
     stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
-    if (Z_TYPE(stmt->result) != IS_OBJECT) {
-        RETURN_FALSE;
+    status = mylite_mysqli_stmt_fetch_internal(stmt);
+    if (status == MYLITE_ROW) {
+        RETURN_TRUE;
     }
-    result = mylite_mysqli_result_from_obj(Z_OBJ(stmt->result));
-    if (result->unbuffered) {
-        RETURN_FALSE;
-    }
-    if (result->cursor >= result->row_count) {
+    if (status == MYLITE_DONE) {
         RETURN_NULL();
     }
-    if (stmt->bound_result_count != result->column_count) {
-        mylite_mysqli_set_stmt_error(
-            stmt,
-            MYLITE_MYSQLI_ERROR_CLIENT,
-            "HY000",
-            "result variable count mismatch"
-        );
-        mylite_mysqli_report_stmt_error(stmt);
-        RETURN_FALSE;
-    }
-
-    for (uint32_t column = 0; column < result->column_count; column++) {
-        zval *target = &stmt->bound_results[column];
-        zval *target_value = target;
-        zval *source = &result->values[result->cursor * result->column_count + column];
-        zval copy;
-
-        ZVAL_COPY(&copy, source);
-        ZVAL_DEREF(target_value);
-        zval_ptr_dtor(target_value);
-        ZVAL_COPY_VALUE(target_value, &copy);
-    }
-    result->cursor++;
-    RETURN_TRUE;
+    RETURN_FALSE;
 }
 
 PHP_FUNCTION(mysqli_stmt_get_result) {
@@ -1431,24 +1405,35 @@ PHP_FUNCTION(mysqli_stmt_get_result) {
     ZEND_PARSE_PARAMETERS_END();
 
     stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
-    if (Z_TYPE(stmt->result) != IS_OBJECT) {
+    if (!mylite_mysqli_stmt_get_result_internal(stmt, return_value)) {
         RETURN_FALSE;
     }
-    ZVAL_COPY(return_value, &stmt->result);
 }
 
 PHP_FUNCTION(mysqli_stmt_result_metadata) {
-    ZEND_MN(mysqli_stmt_get_result)(INTERNAL_FUNCTION_PARAM_PASSTHRU);
-}
-
-PHP_FUNCTION(mysqli_stmt_store_result) {
     zval *stmt_zval = NULL;
+    mylite_mysqli_stmt *stmt = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(stmt_zval, mylite_mysqli_stmt_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_TRUE;
+    stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
+    if (!mylite_mysqli_stmt_result_metadata_internal(stmt, return_value)) {
+        RETURN_FALSE;
+    }
+}
+
+PHP_FUNCTION(mysqli_stmt_store_result) {
+    zval *stmt_zval = NULL;
+    mylite_mysqli_stmt *stmt = NULL;
+
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+    Z_PARAM_OBJECT_OF_CLASS(stmt_zval, mylite_mysqli_stmt_ce)
+    ZEND_PARSE_PARAMETERS_END();
+
+    stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
+    RETURN_BOOL(mylite_mysqli_stmt_store_result_internal(stmt));
 }
 
 PHP_FUNCTION(mysqli_stmt_free_result) {
@@ -1460,10 +1445,7 @@ PHP_FUNCTION(mysqli_stmt_free_result) {
     ZEND_PARSE_PARAMETERS_END();
 
     stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
-    if (!Z_ISUNDEF(stmt->result)) {
-        zval_ptr_dtor(&stmt->result);
-        ZVAL_UNDEF(&stmt->result);
-    }
+    mylite_mysqli_stmt_free_result_internal(stmt);
 }
 
 PHP_FUNCTION(mysqli_stmt_close) {
@@ -2442,15 +2424,24 @@ PHP_METHOD(mysqli_result, __construct) {
 }
 
 PHP_METHOD(mysqli_result, close) {
+    mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
+    mylite_mysqli_result_discard(result);
 }
 
 PHP_METHOD(mysqli_result, free) {
+    mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
+    mylite_mysqli_result_discard(result);
 }
 
 PHP_METHOD(mysqli_result, free_result) {
+    mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
+    mylite_mysqli_result_discard(result);
 }
 
 PHP_METHOD(mysqli_result, data_seek) {
@@ -2756,77 +2747,49 @@ PHP_METHOD(mysqli_stmt, bind_result) {
 
 PHP_METHOD(mysqli_stmt, fetch) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
-    mylite_mysqli_result *result = NULL;
+    int status = MYLITE_ERROR;
 
     ZEND_PARSE_PARAMETERS_NONE();
-    if (Z_TYPE(stmt->result) != IS_OBJECT) {
-        RETURN_FALSE;
+    status = mylite_mysqli_stmt_fetch_internal(stmt);
+    if (status == MYLITE_ROW) {
+        RETURN_TRUE;
     }
-    result = mylite_mysqli_result_from_obj(Z_OBJ(stmt->result));
-    if (result->unbuffered) {
-        RETURN_FALSE;
-    }
-    if (result->cursor >= result->row_count) {
+    if (status == MYLITE_DONE) {
         RETURN_NULL();
     }
-    if (stmt->bound_result_count != result->column_count) {
-        mylite_mysqli_set_stmt_error(
-            stmt,
-            MYLITE_MYSQLI_ERROR_CLIENT,
-            "HY000",
-            "result variable count mismatch"
-        );
-        mylite_mysqli_report_stmt_error(stmt);
-        RETURN_FALSE;
-    }
-    for (uint32_t column = 0; column < result->column_count; column++) {
-        zval *target = &stmt->bound_results[column];
-        zval *target_value = target;
-        zval *source = &result->values[result->cursor * result->column_count + column];
-        zval copy;
-
-        ZVAL_COPY(&copy, source);
-        ZVAL_DEREF(target_value);
-        zval_ptr_dtor(target_value);
-        ZVAL_COPY_VALUE(target_value, &copy);
-    }
-    result->cursor++;
-    RETURN_TRUE;
+    RETURN_FALSE;
 }
 
 PHP_METHOD(mysqli_stmt, get_result) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
-    if (Z_TYPE(stmt->result) != IS_OBJECT) {
+    if (!mylite_mysqli_stmt_get_result_internal(stmt, return_value)) {
         RETURN_FALSE;
     }
-    ZVAL_COPY(return_value, &stmt->result);
 }
 
 PHP_METHOD(mysqli_stmt, result_metadata) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
-    if (Z_TYPE(stmt->result) != IS_OBJECT) {
+    if (!mylite_mysqli_stmt_result_metadata_internal(stmt, return_value)) {
         RETURN_FALSE;
     }
-    ZVAL_COPY(return_value, &stmt->result);
 }
 
 PHP_METHOD(mysqli_stmt, store_result) {
+    mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_TRUE;
+    RETURN_BOOL(mylite_mysqli_stmt_store_result_internal(stmt));
 }
 
 PHP_METHOD(mysqli_stmt, free_result) {
     mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
-    if (!Z_ISUNDEF(stmt->result)) {
-        zval_ptr_dtor(&stmt->result);
-        ZVAL_UNDEF(&stmt->result);
-    }
+    mylite_mysqli_stmt_free_result_internal(stmt);
 }
 
 PHP_METHOD(mysqli_stmt, close) {

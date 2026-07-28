@@ -89,6 +89,49 @@ expect_out_of_sync(
 expect_same(null, $unbuffered->fetch_row(), 'unbuffered end-of-data');
 expect_same('16', $mysqli->query('SELECT 16')->fetch_row()[0], 'exhaustion recovery');
 
+$mysqli->real_query('SELECT id FROM pending_items ORDER BY id');
+$unbuffered = $mysqli->use_result();
+expect_same('1', $unbuffered->fetch_row()[0], 'object-free first row');
+$unbuffered->free();
+expect_same('17', $mysqli->query('SELECT 17')->fetch_row()[0], 'object-free recovery');
+
+$unbuffered = $mysqli->query(
+    'SELECT id FROM pending_items ORDER BY id',
+    MYSQLI_USE_RESULT
+);
+expect_same('1', $unbuffered->fetch_row()[0], 'destructor first row');
+unset($unbuffered);
+gc_collect_cycles();
+expect_same('18', $mysqli->query('SELECT 18')->fetch_row()[0], 'destructor recovery');
+
+$mysqli->real_query("SHOW TABLES LIKE 'pending_items'");
+$unbuffered = $mysqli->use_result();
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 19'),
+    'materialized utility unread result'
+);
+expect_same('pending_items', $unbuffered->fetch_row()[0], 'materialized utility row');
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 20'),
+    'materialized utility last row'
+);
+expect_same(null, $unbuffered->fetch_row(), 'materialized utility end-of-data');
+expect_same(
+    '21',
+    $mysqli->query('SELECT 21')->fetch_row()[0],
+    'materialized utility recovery'
+);
+
+$mysqli->real_query('SELECT id FROM pending_items ORDER BY id');
+$pendingPrepare = $mysqli->stmt_init();
+expect_out_of_sync(
+    static fn(): bool => $pendingPrepare->prepare('SELECT 22'),
+    'prepare during direct pending result'
+);
+$mysqli->store_result()->free();
+expect_true($pendingPrepare->prepare('SELECT 22'), 'prepare after direct store');
+$pendingPrepare->close();
+
 expect_true(
     mysqli_real_query($mysqli, 'SELECT id FROM pending_items ORDER BY id'),
     'procedural real query'
@@ -100,19 +143,37 @@ expect_out_of_sync(
 );
 mysqli_free_result($unbuffered);
 expect_same(
-    '18',
-    mysqli_query($mysqli, 'SELECT 18')->fetch_row()[0],
+    '23',
+    mysqli_query($mysqli, 'SELECT 23')->fetch_row()[0],
     'procedural free recovery'
+);
+
+$mysqli->begin_transaction();
+expect_true(
+    $mysqli->query("INSERT INTO pending_items VALUES (4, 'four')"),
+    'transactional pending insert'
+);
+$unbuffered = $mysqli->query(
+    'SELECT id FROM pending_items ORDER BY id',
+    MYSQLI_USE_RESULT
+);
+expect_out_of_sync(static fn(): bool => $mysqli->commit(), 'transactional pending commit');
+$unbuffered->free();
+expect_true($mysqli->rollback(), 'rollback after pending free');
+expect_same(
+    '0',
+    $mysqli->query('SELECT COUNT(*) FROM pending_items WHERE id = 4')->fetch_row()[0],
+    'failed pending commit has no side effect'
 );
 
 $statement = $mysqli->prepare('SELECT id FROM pending_items ORDER BY id');
 $statement->execute();
 expect_out_of_sync(
-    static fn(): mysqli_result|bool => $mysqli->query('SELECT 19'),
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 24'),
     'prepared unread result'
 );
 expect_true($statement->store_result(), 'prepared store result');
-expect_same('20', $mysqli->query('SELECT 20')->fetch_row()[0], 'prepared store recovery');
+expect_same('25', $mysqli->query('SELECT 25')->fetch_row()[0], 'prepared store recovery');
 $statement->free_result();
 $statement->close();
 
@@ -122,37 +183,72 @@ $statement->bind_result($id);
 expect_true($statement->fetch(), 'prepared partial fetch');
 expect_same('1', $id, 'prepared first id');
 expect_out_of_sync(
-    static fn(): mysqli_result|bool => $mysqli->query('SELECT 21'),
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 26'),
     'prepared partial result'
 );
 expect_true($statement->reset(), 'prepared reset');
-expect_same('22', $mysqli->query('SELECT 22')->fetch_row()[0], 'prepared reset recovery');
+expect_same('27', $mysqli->query('SELECT 27')->fetch_row()[0], 'prepared reset recovery');
 
 $statement->execute();
 $statement->bind_result($id);
 expect_true($statement->fetch(), 'prepared fetch before free');
 $statement->free_result();
-expect_same('23', $mysqli->query('SELECT 23')->fetch_row()[0], 'prepared free recovery');
+expect_same('28', $mysqli->query('SELECT 28')->fetch_row()[0], 'prepared free recovery');
 
 $statement->execute();
 expect_true($statement->execute(), 'same prepared statement re-execute');
 expect_out_of_sync(
-    static fn(): mysqli_result|bool => $mysqli->query('SELECT 24'),
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 29'),
     'same statement replacement remains pending'
 );
 expect_true($statement->close(), 'prepared close');
-expect_same('25', $mysqli->query('SELECT 25')->fetch_row()[0], 'prepared close recovery');
+expect_same('30', $mysqli->query('SELECT 30')->fetch_row()[0], 'prepared close recovery');
+
+$zeroRows = $mysqli->prepare('SELECT id FROM pending_items WHERE 0');
+$zeroRows->execute();
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 31'),
+    'prepared zero-row result'
+);
+$zeroRows->bind_result($id);
+expect_same(null, $zeroRows->fetch(), 'prepared zero-row end-of-data');
+expect_same('32', $mysqli->query('SELECT 32')->fetch_row()[0], 'zero-row recovery');
+$zeroRows->close();
+
+$metadataStatement = $mysqli->prepare(
+    'SELECT id AS pending_id, value AS pending_value FROM pending_items ORDER BY id'
+);
+$metadataStatement->execute();
+$metadata = $metadataStatement->result_metadata();
+expect_same(2, $metadata->field_count, 'prepared metadata field count');
+expect_same(0, $metadata->num_rows, 'prepared metadata row count');
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 33'),
+    'prepared metadata preserves owner'
+);
+$metadata->free();
+expect_out_of_sync(
+    static fn(): mysqli_result|bool => $mysqli->query('SELECT 34'),
+    'prepared metadata free preserves owner'
+);
+$metadataStatement->free_result();
+expect_same(
+    '35',
+    $mysqli->query('SELECT 35')->fetch_row()[0],
+    'prepared metadata owner recovery'
+);
+$metadataStatement->close();
 
 $statement = $mysqli->prepare('SELECT id FROM pending_items ORDER BY id');
 $statement->execute();
 $result = $statement->get_result();
-expect_same('26', $mysqli->query('SELECT 26')->fetch_row()[0], 'get-result recovery');
+expect_same('36', $mysqli->query('SELECT 36')->fetch_row()[0], 'get-result recovery');
 expect_same(3, $result->num_rows, 'get-result buffered rows');
 $result->free();
 $statement->close();
 
 $first = $mysqli->prepare('SELECT id FROM pending_items ORDER BY id');
-$second = $mysqli->prepare('SELECT 27');
+$second = $mysqli->prepare('SELECT 37');
 $first->execute();
 expect_out_of_sync(static fn(): bool => $second->execute(), 'different prepared owner');
 $first->free_result();
@@ -162,3 +258,10 @@ $first->close();
 $second->close();
 
 $mysqli->close();
+
+$closeFirst = open_mylite_mysqli();
+reset_pending_items($closeFirst);
+$closeFirstStatement = $closeFirst->prepare('SELECT id FROM pending_items ORDER BY id');
+$closeFirstStatement->execute();
+expect_true($closeFirst->close(), 'close connection with prepared result');
+expect_true($closeFirstStatement->close(), 'close prepared owner after connection');

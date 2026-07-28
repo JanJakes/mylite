@@ -3448,9 +3448,18 @@ static int test_cursor_prepare_statement_surface(void) {
     failures += expect_cursor_text(stmt, 0U, "items", "prepared SHOW second table");
     failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "prepared SHOW done");
     failures += mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset prepared SHOW");
+    failures += execute_ok(database, "CREATE TABLE later (id INT)");
     failures +=
-        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecute prepared SHOW");
-    failures += expect_cursor_text(stmt, 0U, "another", "reexecuted prepared SHOW table");
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecuted SHOW first row");
+    failures += expect_cursor_text(stmt, 0U, "another", "reexecuted SHOW first table");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecuted SHOW second row");
+    failures += expect_cursor_text(stmt, 0U, "items", "reexecuted SHOW second table");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecuted SHOW third row");
+    failures += expect_cursor_text(stmt, 0U, "later", "reexecuted SHOW new table");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "reexecuted SHOW done");
     failures +=
         mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize prepared SHOW");
     stmt = NULL;

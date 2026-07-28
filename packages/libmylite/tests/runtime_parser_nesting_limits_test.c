@@ -14,6 +14,15 @@ enum nested_runtime_shape {
 
 enum {
     mysql_error_parse = 1064,
+    mysql_parenthesis_compatibility_depth = 16384,
+    mysql_direct_if_compatibility_depth = 1732,
+    mysql_prepare_if_compatibility_depth = 1024,
+    mylite_parenthesis_stack_ceiling_depth = 32768,
+};
+
+struct nested_runtime_sql {
+    size_t depth;
+    enum nested_runtime_shape shape;
 };
 
 static int test_deep_direct_execution(void);
@@ -35,7 +44,7 @@ static int expect_prepare_value(
     const char *context
 );
 static int expect_connection_reuse(mylite_db *database, const char *context);
-static char *make_nested_sql(enum nested_runtime_shape shape, size_t depth, size_t *out_length);
+static char *make_nested_sql(struct nested_runtime_sql request, size_t *out_length);
 
 int main(void) {
     int failures = 0;
@@ -57,12 +66,17 @@ static int test_deep_direct_execution(void) {
     failures += expect_execute_value(
         database,
         nested_runtime_parentheses,
-        16384U,
+        mysql_parenthesis_compatibility_depth,
         "0",
         "direct 16384 parentheses"
     );
-    failures +=
-        expect_execute_value(database, nested_runtime_if, 1732U, "1", "direct 1732 IF calls");
+    failures += expect_execute_value(
+        database,
+        nested_runtime_if,
+        mysql_direct_if_compatibility_depth,
+        "1",
+        "direct 1732 IF calls"
+    );
     failures += expect_connection_reuse(database, "direct nesting reuse");
     mylite_close(database);
     return failures;
@@ -79,7 +93,7 @@ static int test_deep_prepare(void) {
     failures += expect_prepare_value(
         database,
         nested_runtime_parentheses,
-        16384U,
+        mysql_parenthesis_compatibility_depth,
         false,
         "0",
         "streaming prepare 16384 parentheses"
@@ -87,7 +101,7 @@ static int test_deep_prepare(void) {
     failures += expect_prepare_value(
         database,
         nested_runtime_if,
-        1024U,
+        mysql_prepare_if_compatibility_depth,
         false,
         "1",
         "streaming prepare 1024 IF calls"
@@ -95,7 +109,7 @@ static int test_deep_prepare(void) {
     failures += expect_prepare_value(
         database,
         nested_runtime_parentheses,
-        16384U,
+        mysql_parenthesis_compatibility_depth,
         true,
         "0",
         "buffered prepare 16384 parentheses"
@@ -103,7 +117,7 @@ static int test_deep_prepare(void) {
     failures += expect_prepare_value(
         database,
         nested_runtime_if,
-        1024U,
+        mysql_prepare_if_compatibility_depth,
         true,
         "1",
         "buffered prepare 1024 IF calls"
@@ -120,7 +134,13 @@ static int test_public_stack_ceiling(void) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     size_t sql_length = 0U;
-    char *sql = make_nested_sql(nested_runtime_parentheses, 32768U, &sql_length);
+    char *sql = make_nested_sql(
+        (struct nested_runtime_sql){
+            .depth = mylite_parenthesis_stack_ceiling_depth,
+            .shape = nested_runtime_parentheses,
+        },
+        &sql_length
+    );
     int failures = mylite_test_expect_true(sql != NULL, "allocate stack ceiling SQL");
 
     failures +=
@@ -157,7 +177,13 @@ static int expect_execute_value(
 ) {
     mylite_result *result = NULL;
     size_t sql_length = 0U;
-    char *sql = make_nested_sql(shape, depth, &sql_length);
+    char *sql = make_nested_sql(
+        (struct nested_runtime_sql){
+            .depth = depth,
+            .shape = shape,
+        },
+        &sql_length
+    );
     int failures = mylite_test_expect_true(sql != NULL, context);
 
     if (sql == NULL) {
@@ -190,7 +216,13 @@ static int expect_prepare_value(
 ) {
     mylite_stmt *statement = NULL;
     size_t sql_length = 0U;
-    char *sql = make_nested_sql(shape, depth, &sql_length);
+    char *sql = make_nested_sql(
+        (struct nested_runtime_sql){
+            .depth = depth,
+            .shape = shape,
+        },
+        &sql_length
+    );
     int failures = mylite_test_expect_true(sql != NULL, context);
     int status = MYLITE_MISUSE;
 
@@ -229,19 +261,20 @@ static int expect_connection_reuse(mylite_db *database, const char *context) {
     return failures;
 }
 
-static char *make_nested_sql(enum nested_runtime_shape shape, size_t depth, size_t *out_length) {
+static char *make_nested_sql(struct nested_runtime_sql request, size_t *out_length) {
     static const char prefix[] = "SELECT ";
-    const char *open = shape == nested_runtime_parentheses ? "(" : "IF(1,1,";
+    const char *open = request.shape == nested_runtime_parentheses ? "(" : "IF(1,1,";
     const size_t prefix_length = sizeof(prefix) - 1U;
     const size_t open_length = strlen(open);
     size_t length = 0U;
     char *sql = NULL;
     char *cursor = NULL;
 
-    if (out_length == NULL || depth > (SIZE_MAX - prefix_length - 1U) / (open_length + 1U)) {
+    if (out_length == NULL ||
+        request.depth > (SIZE_MAX - prefix_length - 1U) / (open_length + 1U)) {
         return NULL;
     }
-    length = prefix_length + depth * open_length + 1U + depth;
+    length = prefix_length + request.depth * open_length + 1U + request.depth;
     sql = (char *)malloc(length + 1U);
     if (sql == NULL) {
         return NULL;
@@ -249,13 +282,13 @@ static char *make_nested_sql(enum nested_runtime_shape shape, size_t depth, size
     cursor = sql;
     memcpy(cursor, prefix, prefix_length);
     cursor += prefix_length;
-    for (size_t index = 0U; index < depth; ++index) {
+    for (size_t index = 0U; index < request.depth; ++index) {
         memcpy(cursor, open, open_length);
         cursor += open_length;
     }
     *cursor++ = '0';
-    memset(cursor, ')', depth);
-    cursor += depth;
+    memset(cursor, ')', request.depth);
+    cursor += request.depth;
     *cursor = '\0';
     *out_length = length;
     return sql;

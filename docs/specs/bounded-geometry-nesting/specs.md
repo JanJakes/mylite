@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified. Implementation and qualification are pending.
+Implemented and qualified.
 
 ## Summary
 
@@ -190,3 +190,14 @@ limit.
 - Run the complete spatial native suite and pinned MySQL spatial expectation
   suite before marking the compatibility row implemented.
 
+Implementation at `2bee55dd7` completed this qualification:
+
+- all 21 spatial-related native suites passed in Release and under
+  ASan/UBSan with leak detection;
+- the focused boundary suite passed in Debug and under deterministic
+  allocation failpoints, including exhaustive WKT, WKB, GeoJSON, and decoded
+  geometry-tree allocation sweeps;
+- all 20 pinned MySQL 8.4.9 spatial expectation fixtures passed;
+- the seeded geometry fuzzer completed 10,000 ASan/UBSan runs with a
+  262,144-byte input ceiling and direct plus SQL-dispatch WKT/WKB coverage;
+- formatting and clang-tidy passed for every changed translation unit.

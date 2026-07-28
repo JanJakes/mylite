@@ -24,10 +24,15 @@ difference, and union for same-SRID inputs, and buffer/transform support covers
 bounded identity cases. Geohash helpers support coordinate encoding/decoding
 plus SRID 0 and 4326 point round-trips. GeoJSON helpers support 2D geometry,
 Feature extraction, and FeatureCollection extraction for SRID 0 and 4326.
-Geographic point accessors support SRID 4326 latitude/longitude getters. It
-does not yet implement a general SRS catalog, full topology predicate coverage,
-general constructive geometry operations, coordinate transformation pipelines,
-nonzero buffer construction, or physical spatial search.
+Geographic point accessors support SRID 4326 latitude/longitude getters. MyLite
+enforces a deterministic maximum geometry depth of 50 across WKT, WKB,
+internal geometry, GeoJSON, conversions, traversal, constructors, and
+aggregation. Depth 51 is rejected before unbounded recursion or result
+publication; see the
+[bounded geometry nesting specification](../specs/bounded-geometry-nesting/specs.md).
+It does not yet implement a general SRS catalog, full topology predicate
+coverage, general constructive geometry operations, coordinate transformation
+pipelines, nonzero buffer construction, or physical spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |

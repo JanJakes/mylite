@@ -475,17 +475,26 @@ install consumers, production size budgets, and the compatibility ledger pass.
 
 ### `SEC-01`: bounded geometry nesting
 
-- [ ] Determine MySQL 8.4.9 behavior and diagnostics for deeply nested WKB,
+- [x] Determine MySQL 8.4.9 behavior and diagnostics for deeply nested WKB,
   WKT, and GeoJSON.
-- [ ] Define one maximum geometry nesting/work budget shared by parsing,
+- [x] Define one maximum geometry nesting/work budget shared by parsing,
   decoding, validation, conversion, traversal, and destruction.
-- [ ] Prefer iterative traversal where untrusted depth can reach the C stack.
-- [ ] Enforce the limit at WKB, WKT, GeoJSON, geometry decode, validation,
+- [x] Prefer iterative traversal where untrusted depth can reach the C stack.
+- [x] Enforce the limit at WKB, WKT, GeoJSON, geometry decode, validation,
   copy, transformation, and cleanup entry points.
-- [ ] Ensure rejection and cleanup themselves cannot recurse beyond the limit.
-- [ ] Add below/at/above-limit tests and large-input ASan/UBSan regressions.
-- [ ] Expand geometry fuzzing to reach full SQL/WKT/WKB paths and inputs above
+- [x] Ensure rejection and cleanup themselves cannot recurse beyond the limit.
+- [x] Add below/at/above-limit tests and large-input ASan/UBSan regressions.
+- [x] Expand geometry fuzzing to reach full SQL/WKT/WKB paths and inputs above
   the previous 65,536-byte ceiling.
+
+`SEC-01` is closed by the independently authored specification at
+`e15788675` and implementation at `2bee55dd7`. MyLite admits geometry depth 50
+and rejects depth 51 before reading the rejected WKB child, descending the WKT
+or GeoJSON geometry tree, decoding heap geometry, or publishing constructor and
+aggregate output. Qualification covered Release, Debug, ASan/UBSan with leak
+detection, deterministic allocation failpoints, all 21 spatial-related native
+suites, all 20 pinned MySQL 8.4.9 spatial fixtures, and 10,000 seeded geometry
+fuzzer executions with the raised 262,144-byte ceiling.
 
 ### `SEC-02`: scalable and cancellable spatial validation
 

@@ -174,4 +174,109 @@ expect_same('posts', $empty_field->table, 'empty field table');
 expect_same(MYSQLI_TYPE_LONG, $empty_field->type, 'empty field type');
 expect_same(11, $empty_field->length, 'empty field length');
 
+$spatialTemporal = $mysqli->query(
+    "SELECT ST_AsText(POINT(1,2)) AS spatial_text, " .
+    "ST_AsWKB(POINT(1,2)) AS spatial_binary, " .
+    "CONVERT_TZ('2024-01-01 00:00:00.123','+00:00','+01:00') AS timezone_value"
+);
+if (!$spatialTemporal instanceof mysqli_result) {
+    throw new RuntimeException('spatial temporal metadata result type');
+}
+$spatialTemporalFields = $spatialTemporal->fetch_fields();
+expect_same(MYSQLI_TYPE_LONG_BLOB, $spatialTemporalFields[0]->type, 'spatial text field type');
+expect_same(255, $spatialTemporalFields[0]->charsetnr, 'spatial text field collation');
+expect_same(268435456, $spatialTemporalFields[0]->length, 'spatial text field length');
+expect_same(31, $spatialTemporalFields[0]->decimals, 'spatial text field decimals');
+expect_same(0, $spatialTemporalFields[0]->flags, 'spatial text field flags');
+expect_same(MYSQLI_TYPE_LONG_BLOB, $spatialTemporalFields[1]->type, 'spatial binary field type');
+expect_same(63, $spatialTemporalFields[1]->charsetnr, 'spatial binary field collation');
+expect_same(4294967295, $spatialTemporalFields[1]->length, 'spatial binary field length');
+expect_same(31, $spatialTemporalFields[1]->decimals, 'spatial binary field decimals');
+expect_same(MYSQLI_BINARY_FLAG, $spatialTemporalFields[1]->flags, 'spatial binary field flags');
+expect_same(MYSQLI_TYPE_DATETIME, $spatialTemporalFields[2]->type, 'timezone field type');
+expect_same(63, $spatialTemporalFields[2]->charsetnr, 'timezone field collation');
+expect_same(23, $spatialTemporalFields[2]->length, 'timezone field length');
+expect_same(3, $spatialTemporalFields[2]->decimals, 'timezone field decimals');
+expect_same(MYSQLI_BINARY_FLAG, $spatialTemporalFields[2]->flags, 'timezone field flags');
+
+$aggregateMetadata = $mysqli->query(
+    'SELECT COUNT(*) AS count_value, SUM(id) AS sum_value, MIN(views) AS min_value FROM posts'
+);
+if (!$aggregateMetadata instanceof mysqli_result) {
+    throw new RuntimeException('aggregate metadata result type');
+}
+$aggregateFields = $aggregateMetadata->fetch_fields();
+expect_same(MYSQLI_TYPE_LONGLONG, $aggregateFields[0]->type, 'count field type');
+expect_same(21, $aggregateFields[0]->length, 'count field length');
+expect_same(
+    MYSQLI_NOT_NULL_FLAG | MYSQLI_BINARY_FLAG | MYSQLI_NUM_FLAG,
+    $aggregateFields[0]->flags,
+    'count field flags'
+);
+expect_same(MYSQLI_TYPE_NEWDECIMAL, $aggregateFields[1]->type, 'sum field type');
+expect_same(33, $aggregateFields[1]->length, 'sum field length');
+expect_same(0, $aggregateFields[1]->decimals, 'sum field decimals');
+expect_same(
+    MYSQLI_BINARY_FLAG | MYSQLI_NUM_FLAG,
+    $aggregateFields[1]->flags,
+    'sum field flags'
+);
+expect_same(MYSQLI_TYPE_LONG, $aggregateFields[2]->type, 'minimum field type');
+expect_same(11, $aggregateFields[2]->length, 'minimum field length');
+expect_same(
+    MYSQLI_BINARY_FLAG | MYSQLI_NUM_FLAG,
+    $aggregateFields[2]->flags,
+    'minimum field flags'
+);
+
+$preparedAggregate = $mysqli->prepare(
+    'SELECT COUNT(*) AS count_value, SUM(id) AS sum_value, MIN(views) AS min_value FROM posts'
+);
+expect_true($preparedAggregate->execute(), 'prepared aggregate metadata execute');
+$preparedAggregateMetadata = $preparedAggregate->result_metadata();
+if (!$preparedAggregateMetadata instanceof mysqli_result) {
+    throw new RuntimeException('prepared aggregate metadata result type');
+}
+$preparedAggregateFields = $preparedAggregateMetadata->fetch_fields();
+foreach ($aggregateFields as $index => $expectedField) {
+    expect_same($expectedField->type, $preparedAggregateFields[$index]->type, "prepared aggregate {$index} type");
+    expect_same($expectedField->flags, $preparedAggregateFields[$index]->flags, "prepared aggregate {$index} flags");
+    expect_same($expectedField->length, $preparedAggregateFields[$index]->length, "prepared aggregate {$index} length");
+    expect_same($expectedField->decimals, $preparedAggregateFields[$index]->decimals, "prepared aggregate {$index} decimals");
+}
+$preparedAggregateMetadata->free();
+$preparedAggregate->free_result();
+$preparedAggregate->close();
+
+$windowMetadata = $mysqli->query(
+    'SELECT ROW_NUMBER() OVER w AS row_number_value, SUM(id) OVER w AS sum_value, ' .
+    'LAG(views) OVER w AS lag_value, JSON_ARRAYAGG(id) OVER w AS json_value ' .
+    'FROM posts WINDOW w AS (ORDER BY id) LIMIT 1'
+);
+if (!$windowMetadata instanceof mysqli_result) {
+    throw new RuntimeException('window metadata result type');
+}
+$windowFields = $windowMetadata->fetch_fields();
+expect_same(MYSQLI_TYPE_LONGLONG, $windowFields[0]->type, 'row number field type');
+expect_same(
+    MYSQLI_NOT_NULL_FLAG | MYSQLI_UNSIGNED_FLAG | MYSQLI_NUM_FLAG,
+    $windowFields[0]->flags,
+    'row number field flags'
+);
+expect_same(MYSQLI_TYPE_NEWDECIMAL, $windowFields[1]->type, 'window sum field type');
+expect_same(33, $windowFields[1]->length, 'window sum field length');
+expect_same(MYSQLI_NUM_FLAG, $windowFields[1]->flags, 'window sum field flags');
+expect_same(MYSQLI_TYPE_LONGLONG, $windowFields[2]->type, 'window navigation field type');
+expect_same(11, $windowFields[2]->length, 'window navigation field length');
+expect_same(MYSQLI_NUM_FLAG, $windowFields[2]->flags, 'window navigation field flags');
+expect_same(MYSQLI_TYPE_JSON, $windowFields[3]->type, 'window JSON field type');
+expect_same(63, $windowFields[3]->charsetnr, 'window JSON field collation');
+expect_same(4294967295, $windowFields[3]->length, 'window JSON field length');
+expect_same(0, $windowFields[3]->decimals, 'window JSON field decimals');
+expect_same(
+    MYSQLI_BLOB_FLAG | MYSQLI_BINARY_FLAG,
+    $windowFields[3]->flags,
+    'window JSON field flags'
+);
+
 $mysqli->close();

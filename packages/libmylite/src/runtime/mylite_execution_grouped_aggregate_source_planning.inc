@@ -45,6 +45,10 @@ static int plan_grouped_aggregate_source(
             out_source_context
         );
     }
+    if (rc == MYLITE_OK && out_source_context->has_alias) {
+        memcpy(out_plan->source_alias, out_source_context->alias, sizeof(out_plan->source_alias));
+        out_plan->source_has_alias = true;
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_columns(
             database,

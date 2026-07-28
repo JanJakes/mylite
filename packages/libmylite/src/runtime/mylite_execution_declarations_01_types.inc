@@ -2339,6 +2339,8 @@ struct planned_grouped_aggregate {
     size_t aggregate_count;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
+    char source_alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool source_has_alias;
     struct planned_select_source *sources;
     size_t source_count;
     enum mylite_sql_ast_join_kind join_kind;

@@ -675,8 +675,11 @@ static int append_count_expression_aggregate_result_columns(
 
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
         const struct planned_count_expression_aggregate_item *item = &plan->items[item_index];
+        struct mylite_result_column_descriptor descriptor =
+            unknown_result_column_descriptor(item->result_label);
 
-        rc = mylite_result_append_column(result, item->result_label);
+        populate_count_aggregate_result_column_descriptor(false, &descriptor);
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }

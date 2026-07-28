@@ -87,6 +87,7 @@ struct expected_column_metadata {
 };
 
 static int test_descriptor_result_column_metadata(void);
+static int test_function_specific_result_column_metadata(void);
 static int test_result_column_metadata_scalar_defaults_and_misuse(void);
 static int test_show_result_column_metadata(void);
 static int test_source_span_copy_bounds(void);
@@ -107,6 +108,13 @@ static int expect_column_metadata(
     struct expected_column_metadata expected,
     const char *context
 );
+static int expect_query_column_metadata(
+    mylite_db *database,
+    const char *sql,
+    const struct expected_column_metadata *expected,
+    size_t expected_count,
+    const char *context
+);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
@@ -121,6 +129,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_descriptor_result_column_metadata();
+    failures += test_function_specific_result_column_metadata();
     failures += test_result_column_metadata_scalar_defaults_and_misuse();
     failures += test_show_result_column_metadata();
     failures += test_source_span_copy_bounds();
@@ -1113,6 +1122,409 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result_free(result);
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int test_function_specific_result_column_metadata(void) {
+    enum {
+        aggregate_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        aggregate_count_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        aggregate_unsigned_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                                           MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                                           MYLITE_RESULT_COLUMN_FLAG_NUM,
+        aggregate_bit_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                              MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                              MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        window_not_null_numeric_flags =
+            MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NUM,
+        window_unsigned_numeric_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                        MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                                        MYLITE_RESULT_COLUMN_FLAG_NUM,
+    };
+    static const struct expected_column_metadata aggregate_columns[] = {
+        {
+            .label = "count_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = aggregate_count_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        {
+            .label = "sum_tiny",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = aggregate_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 26U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "sum_int",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = aggregate_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 33U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "sum_ubigint",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = aggregate_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 43U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "avg_int",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = aggregate_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 16U,
+            .decimals = 4U,
+            .nullable = 1,
+        },
+        {
+            .label = "min_string",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = 0U,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 40U,
+            .decimals = 31U,
+            .nullable = 1,
+        },
+        {
+            .label = "max_uint",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONG,
+            .flags = aggregate_unsigned_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 10U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "any_string",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = 0U,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 40U,
+            .decimals = 31U,
+            .nullable = 1,
+        },
+        {
+            .label = "bit_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = aggregate_bit_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        {
+            .label = "stddev_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+            .flags = aggregate_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 23U,
+            .decimals = 31U,
+            .nullable = 1,
+        },
+        {
+            .label = "json_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_JSON,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = mysql_json_document_display_length,
+            .decimals = 31U,
+            .nullable = 1,
+        },
+        {
+            .label = "collect_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_GEOMETRY,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 16777216U,
+            .decimals = 31U,
+            .nullable = 1,
+        },
+    };
+    static const struct expected_column_metadata grouped_columns[] = {
+        {
+            .label = "group_string",
+            .schema_name = "app",
+            .table_name = "fm",
+            .origin_schema_name = "app",
+            .origin_table_name = "function_metadata",
+            .origin_column_name = "s",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 40U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        {
+            .label = "grouped_sum",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = aggregate_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 33U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "grouped_count",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = aggregate_count_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+    };
+    static const struct expected_column_metadata window_columns[] = {
+        {
+            .label = "row_number_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = window_unsigned_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        {
+            .label = "distribution_value",
+            .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+            .flags = window_not_null_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 23U,
+            .decimals = 31U,
+            .nullable = 0,
+        },
+        {
+            .label = "count_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = window_not_null_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        {
+            .label = "sum_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 33U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "avg_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 16U,
+            .decimals = 4U,
+            .nullable = 1,
+        },
+        {
+            .label = "min_int_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 11U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "lag_int_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 11U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "lag_string_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flags = 0U,
+            .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+            .display_length = 40U,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+        {
+            .label = "bit_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flags = window_unsigned_numeric_flags,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 21U,
+            .decimals = 0U,
+            .nullable = 0,
+        },
+        {
+            .label = "stddev_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = 23U,
+            .decimals = 31U,
+            .nullable = 1,
+        },
+        {
+            .label = "json_window",
+            .type = MYLITE_RESULT_COLUMN_TYPE_JSON,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            .charset_id = mysql_collation_binary_id,
+            .collation_id = mysql_collation_binary_id,
+            .display_length = UINT32_MAX,
+            .decimals = 0U,
+            .nullable = 1,
+        },
+    };
+    static const struct expected_column_metadata group_concat_512_column = {
+        .label = "concat_512",
+        .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+        .flags = 0U,
+        .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+        .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+        .display_length = 2048U,
+        .decimals = 31U,
+        .nullable = 1,
+    };
+    static const struct expected_column_metadata group_concat_513_column = {
+        .label = "concat_513",
+        .type = MYLITE_RESULT_COLUMN_TYPE_LONG_BLOB,
+        .flags = 0U,
+        .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+        .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+        .display_length = 32832U,
+        .decimals = 31U,
+        .nullable = 1,
+    };
+    static const struct expected_column_metadata group_concat_binary_column = {
+        .label = "concat_binary",
+        .type = MYLITE_RESULT_COLUMN_TYPE_LONG_BLOB,
+        .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+        .charset_id = mysql_collation_binary_id,
+        .collation_id = mysql_collation_binary_id,
+        .display_length = 513U,
+        .decimals = 31U,
+        .nullable = 1,
+    };
+    mylite_db *database = NULL;
+    int failures =
+        mylite_test_expect_int(mylite_open_memory(&database), MYLITE_OK, "open function metadata");
+
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "SET NAMES utf8mb4");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE function_metadata("
+        "id INT PRIMARY KEY, ti TINYINT, i INT NOT NULL, ui INT UNSIGNED, "
+        "ubi BIGINT UNSIGNED, s VARCHAR(10) NOT NULL, g GEOMETRY)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO function_metadata VALUES "
+        "(1,1,10,20,30,'alpha',Point(1,2)),"
+        "(2,2,11,21,31,'beta',Point(3,4))"
+    );
+    failures += expect_query_column_metadata(
+        database,
+        "SELECT COUNT(*) AS count_value, SUM(ti) AS sum_tiny, SUM(i) AS sum_int, "
+        "SUM(ubi) AS sum_ubigint, AVG(i) AS avg_int, MIN(s) AS min_string, "
+        "MAX(ui) AS max_uint, ANY_VALUE(s) AS any_string, BIT_OR(i) AS bit_value, "
+        "STDDEV_POP(i) AS stddev_value, JSON_ARRAYAGG(i) AS json_value, "
+        "ST_Collect(g) AS collect_value FROM function_metadata",
+        aggregate_columns,
+        sizeof(aggregate_columns) / sizeof(aggregate_columns[0]),
+        "aggregate metadata"
+    );
+
+    failures += expect_statement_ok(database, "SET SESSION group_concat_max_len=512");
+    failures += expect_query_column_metadata(
+        database,
+        "SELECT GROUP_CONCAT(s) AS concat_512 FROM function_metadata",
+        &group_concat_512_column,
+        1U,
+        "small GROUP_CONCAT metadata"
+    );
+    failures += expect_statement_ok(database, "SET SESSION group_concat_max_len=513");
+    failures += expect_query_column_metadata(
+        database,
+        "SELECT GROUP_CONCAT(s) AS concat_513 FROM function_metadata",
+        &group_concat_513_column,
+        1U,
+        "large GROUP_CONCAT metadata"
+    );
+    failures += expect_query_column_metadata(
+        database,
+        "SELECT GROUP_CONCAT(CAST(s AS BINARY)) AS concat_binary FROM function_metadata",
+        &group_concat_binary_column,
+        1U,
+        "binary GROUP_CONCAT metadata"
+    );
+
+    failures += expect_query_column_metadata(
+        database,
+        "SELECT s AS group_string, SUM(i) AS grouped_sum, COUNT(*) AS grouped_count "
+        "FROM function_metadata AS fm GROUP BY s ORDER BY s LIMIT 1",
+        grouped_columns,
+        sizeof(grouped_columns) / sizeof(grouped_columns[0]),
+        "grouped metadata"
+    );
+    failures += expect_query_column_metadata(
+        database,
+        "SELECT ROW_NUMBER() OVER w AS row_number_value, "
+        "CUME_DIST() OVER w AS distribution_value, "
+        "COUNT(*) OVER w AS count_window, SUM(i) OVER w AS sum_window, "
+        "AVG(i) OVER w AS avg_window, MIN(i) OVER w AS min_int_window, "
+        "LAG(i) OVER w AS lag_int_window, LAG(s) OVER w AS lag_string_window, "
+        "BIT_OR(i) OVER w AS bit_window, "
+        "STDDEV_POP(i) OVER w AS stddev_window, "
+        "JSON_ARRAYAGG(i) OVER w AS json_window "
+        "FROM function_metadata "
+        "WINDOW w AS (ORDER BY i ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) "
+        "LIMIT 1",
+        window_columns,
+        sizeof(window_columns) / sizeof(window_columns[0]),
+        "window metadata"
+    );
+
+    mylite_close(database);
     return failures;
 }
 
@@ -2356,6 +2768,27 @@ static int expect_statement_warning_count(mylite_db *database, const char *sql, 
         failures += mylite_test_expect_size(mylite_result_column_count(result), 0U, sql);
         failures += mylite_test_expect_size(mylite_result_row_count(result), 0U, sql);
         failures += mylite_test_expect_size(mylite_result_warning_count(result), warnings, sql);
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_query_column_metadata(
+    mylite_db *database,
+    const char *sql,
+    const struct expected_column_metadata *expected,
+    size_t expected_count,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures == 0) {
+        failures +=
+            mylite_test_expect_size(mylite_result_column_count(result), expected_count, context);
+        for (size_t index = 0U; index < expected_count; ++index) {
+            failures += expect_column_metadata(result, index, expected[index], context);
+        }
     }
     mylite_result_free(result);
     return failures;

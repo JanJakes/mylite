@@ -2859,80 +2859,42 @@ static int populate_window_function_result_column_descriptor(
     case PLANNED_WINDOW_FUNCTION_RANK:
     case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
     case PLANNED_WINDOW_FUNCTION_NTILE:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = mysql_scalar_bigint_display_length,
-                .decimals = 0U,
-                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
-                .nullable = false,
-            }
-        );
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_scalar_bigint_display_length;
+        descriptor->decimals = 0U;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                            MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_NUM;
+        descriptor->nullable = false;
         return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
     case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = mysql_scalar_bigint_display_length,
-                .decimals = 0U,
-                .extra_flags = 0U,
-                .nullable = false,
-            }
-        );
+        populate_count_aggregate_result_column_descriptor(true, descriptor);
         return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_SUM:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
-                .display_length = mysql_sum_integer_display_length,
-                .decimals = 0U,
-                .extra_flags = 0U,
-                .nullable = true,
-            }
+        return populate_window_integer_sum_or_avg_result_column_descriptor(
+            expression,
+            false,
+            descriptor
         );
-        return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_AVG:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
-                .display_length = mysql_sum_integer_display_length,
-                .decimals = avg_fraction_digits,
-                .extra_flags = 0U,
-                .nullable = true,
-            }
+        return populate_window_integer_sum_or_avg_result_column_descriptor(
+            expression,
+            true,
+            descriptor
         );
-        return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_MIN:
     case PLANNED_WINDOW_FUNCTION_MAX:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = mysql_scalar_bigint_display_length,
-                .decimals = 0U,
-                .extra_flags = 0U,
-                .nullable = true,
-            }
+        return populate_window_value_function_result_column_descriptor(
+            database,
+            expression,
+            descriptor
         );
-        return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = mysql_scalar_bigint_display_length,
-                .decimals = 0U,
-                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
-                .nullable = false,
-            }
-        );
+        populate_bitwise_aggregate_result_column_descriptor(true, descriptor);
         return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_STD:
     case PLANNED_WINDOW_FUNCTION_STDDEV:
@@ -2941,33 +2903,21 @@ static int populate_window_function_result_column_descriptor(
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
-                .display_length = mysql_scalar_double_display_length,
-                .decimals = mysql_approximate_decimals,
-                .extra_flags = 0U,
-                .nullable = true,
-            }
-        );
+        populate_statistical_aggregate_result_column_descriptor(true, descriptor);
         return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
     case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
-        populate_scalar_json_result_column_descriptor(database, descriptor);
+        populate_json_aggregate_result_column_descriptor(database, true, descriptor);
         return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
-                .display_length = mysql_scalar_double_display_length,
-                .decimals = mysql_approximate_decimals,
-                .extra_flags = 0U,
-                .nullable = false,
-            }
-        );
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_scalar_double_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NUM;
+        descriptor->nullable = false;
         return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_LAG:
     case PLANNED_WINDOW_FUNCTION_LEAD:
@@ -2986,6 +2936,59 @@ static int populate_window_function_result_column_descriptor(
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
+}
+
+static int populate_window_integer_sum_or_avg_result_column_descriptor(
+    const struct planned_row_scalar_expression *expression,
+    bool is_average,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct planned_row_scalar_expression *argument = NULL;
+
+    if (expression == NULL || descriptor == NULL || expression->argument_count == 0U ||
+        expression->arguments == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    argument = &expression->arguments[0];
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return populate_integer_sum_or_avg_result_column_descriptor(
+            argument->column,
+            is_average,
+            true,
+            descriptor
+        );
+    }
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE && !argument->value.is_null &&
+        !argument->value.is_text && !argument->value.is_blob && !argument->value.is_real) {
+        populate_integer_sum_or_avg_result_column_descriptor_for_precision(
+            planned_integer_value_decimal_precision(&argument->value),
+            is_average,
+            true,
+            descriptor
+        );
+    }
+    return MYLITE_OK;
+}
+
+static uint64_t planned_integer_value_decimal_precision(const struct planned_value *value) {
+    uint64_t magnitude = 0U;
+    uint64_t precision = 1U;
+
+    if (value == NULL) {
+        return 1U;
+    }
+    if (value->integer < 0) {
+        magnitude =
+            value->integer == INT64_MIN ? UINT64_C(9223372036854775808) : (uint64_t)-value->integer;
+    } else {
+        magnitude = (uint64_t)value->integer;
+    }
+    while (magnitude >= 10U) {
+        magnitude /= 10U;
+        ++precision;
+    }
+    return precision;
 }
 
 static int populate_window_value_function_result_column_descriptor(
@@ -3031,35 +3034,13 @@ static int populate_window_value_column_result_column_descriptor(
     const struct mylite_catalog_column_descriptor *column,
     struct mylite_result_column_descriptor *descriptor
 ) {
-    bool matched = false;
-    int rc = populate_numeric_result_column_descriptor(database, column, descriptor, &matched);
-
-    if (rc == MYLITE_OK && !matched) {
-        rc = populate_string_result_column_descriptor(database, NULL, column, descriptor, &matched);
-    }
-    if (rc == MYLITE_OK && !matched) {
-        rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
-    }
-    if (rc == MYLITE_OK && !matched) {
-        rc = populate_temporal_result_column_descriptor(column, descriptor, &matched);
-    }
-    if (rc == MYLITE_OK && !matched) {
-        rc = populate_bit_result_column_descriptor(column, descriptor, &matched);
-    }
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (!matched) {
-        set_unsupported_error(
-            database,
-            "window value metadata supports only current baseline column descriptors"
-        );
-        return MYLITE_ERROR;
-    }
-
-    descriptor->nullable = true;
-    descriptor->flags &= ~((uint32_t)MYLITE_RESULT_COLUMN_FLAG_NOT_NULL);
-    return MYLITE_OK;
+    return populate_value_preserving_aggregate_result_column_descriptor(
+        database,
+        NULL,
+        column,
+        true,
+        descriptor
+    );
 }
 
 static int populate_window_value_literal_result_column_descriptor(
@@ -3104,29 +3085,275 @@ static int populate_window_value_literal_result_column_descriptor(
         return MYLITE_OK;
     }
     if (value->is_real) {
-        populate_scalar_binary_numeric_result_column_descriptor(
-            descriptor,
-            (struct scalar_binary_numeric_result_column_shape){
-                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
-                .display_length = mysql_scalar_double_display_length,
-                .decimals = mysql_approximate_decimals,
-                .extra_flags = 0U,
-                .nullable = true,
-            }
-        );
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_scalar_double_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NUM;
+        descriptor->nullable = true;
         return MYLITE_OK;
     }
 
-    populate_scalar_binary_numeric_result_column_descriptor(
-        descriptor,
-        (struct scalar_binary_numeric_result_column_shape){
-            .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-            .display_length = mysql_scalar_bigint_display_length,
-            .decimals = 0U,
-            .extra_flags = 0U,
-            .nullable = true,
-        }
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = mysql_scalar_bigint_display_length;
+    descriptor->decimals = 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NUM;
+    descriptor->nullable = true;
+    return MYLITE_OK;
+}
+
+static void populate_count_aggregate_result_column_descriptor(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = mysql_scalar_bigint_display_length;
+    descriptor->decimals = 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NUM;
+    if (!is_window) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    descriptor->nullable = false;
+}
+
+static int populate_integer_sum_or_avg_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_average,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    uint64_t precision = 0U;
+
+    if (column == NULL || descriptor == NULL ||
+        !integer_aggregate_decimal_precision(column, &precision)) {
+        return MYLITE_MISUSE;
+    }
+
+    populate_integer_sum_or_avg_result_column_descriptor_for_precision(
+        precision,
+        is_average,
+        is_window,
+        descriptor
     );
+    return MYLITE_OK;
+}
+
+static void populate_integer_sum_or_avg_result_column_descriptor_for_precision(
+    uint64_t precision,
+    bool is_average,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = precision + (is_average ? 6U : 23U);
+    descriptor->decimals = is_average ? avg_fraction_digits : 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NUM;
+    if (!is_window) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    descriptor->nullable = true;
+}
+
+static bool integer_aggregate_decimal_precision(
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *out_precision
+) {
+    enum mylite_result_logical_type logical_type = MYLITE_RESULT_LOGICAL_TYPE_UNKNOWN;
+    uint64_t display_length = 0U;
+    bool is_unsigned = false;
+
+    if (column == NULL || out_precision == NULL ||
+        !result_metadata_integer_descriptor(
+            column->logical_type,
+            &logical_type,
+            &display_length,
+            &is_unsigned
+        )) {
+        return false;
+    }
+    (void)display_length;
+
+    switch (logical_type) {
+    case MYLITE_RESULT_LOGICAL_TYPE_TINY:
+        *out_precision = 3U;
+        return true;
+    case MYLITE_RESULT_LOGICAL_TYPE_SHORT:
+        *out_precision = 5U;
+        return true;
+    case MYLITE_RESULT_LOGICAL_TYPE_INT24:
+        *out_precision = 8U;
+        return true;
+    case MYLITE_RESULT_LOGICAL_TYPE_LONG:
+        *out_precision = 10U;
+        return true;
+    case MYLITE_RESULT_LOGICAL_TYPE_LONGLONG:
+        *out_precision = is_unsigned ? 20U : 19U;
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static int populate_value_preserving_aggregate_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
+    int rc = MYLITE_OK;
+
+    if (database == NULL || column == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = populate_select_result_column_descriptor(
+        database,
+        table,
+        column,
+        &metadata_context,
+        descriptor
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    clear_value_preserving_expression_flags(is_window, descriptor);
+    if (is_window && (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TINY ||
+                      descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_SHORT ||
+                      descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_INT24 ||
+                      descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_LONG)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    }
+    if (!is_window && (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_VARCHAR ||
+                       descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING ||
+                       descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_STRING)) {
+        descriptor->decimals = mysql_approximate_decimals;
+    }
+    descriptor->nullable = true;
+    return MYLITE_OK;
+}
+
+static void clear_value_preserving_expression_flags(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const uint32_t source_flags =
+        MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_PRI_KEY |
+        MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY | MYLITE_RESULT_COLUMN_FLAG_MULTIPLE_KEY |
+        MYLITE_RESULT_COLUMN_FLAG_AUTO_INCREMENT | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+        MYLITE_RESULT_COLUMN_FLAG_PART_KEY | MYLITE_RESULT_COLUMN_FLAG_ZEROFILL;
+
+    descriptor->flags &= ~source_flags;
+    if ((descriptor->flags & MYLITE_RESULT_COLUMN_FLAG_NUM) != 0U) {
+        if (is_window) {
+            descriptor->flags &= ~((uint32_t)MYLITE_RESULT_COLUMN_FLAG_BINARY);
+        } else {
+            descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        }
+    }
+}
+
+static void populate_bitwise_aggregate_result_column_descriptor(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = mysql_scalar_bigint_display_length;
+    descriptor->decimals = 0U;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                        MYLITE_RESULT_COLUMN_FLAG_NUM;
+    if (!is_window) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    descriptor->nullable = false;
+}
+
+static void populate_statistical_aggregate_result_column_descriptor(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = mysql_scalar_double_display_length;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_NUM;
+    if (!is_window) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    descriptor->nullable = true;
+}
+
+static void populate_json_aggregate_result_column_descriptor(
+    const struct mylite_db *database,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_JSON;
+    descriptor->charset_id =
+        is_window
+            ? mysql_collation_binary_id
+            : result_metadata_collation_id(mylite_connection_statement_collation_connection(database
+              ));
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = is_window ? UINT32_MAX : mysql_json_document_display_length;
+    descriptor->decimals = is_window ? 0U : mysql_approximate_decimals;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    if (is_window) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB;
+    }
+    descriptor->nullable = true;
+}
+
+static int populate_group_concat_result_column_descriptor(
+    const struct mylite_db *database,
+    bool binary_result,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    uint64_t multiplier = 0U;
+    uint64_t display_length = 0U;
+
+    if (database == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    multiplier = binary_result ? 1U : scalar_connection_max_bytes_per_character(database);
+
+    descriptor->logical_type =
+        database->session.group_concat_max_len > mysql_group_concat_blob_type_threshold
+            ? MYLITE_RESULT_LOGICAL_TYPE_LONG_BLOB
+            : MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    if (descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_LONG_BLOB && !binary_result) {
+        multiplier *= 16U;
+    }
+    if (database->session.group_concat_max_len > UINT64_MAX / multiplier) {
+        display_length = UINT32_MAX;
+    } else {
+        display_length =
+            result_metadata_display_length_cap(database->session.group_concat_max_len * multiplier);
+    }
+
+    descriptor->charset_id =
+        binary_result
+            ? mysql_collation_binary_id
+            : result_metadata_collation_id(mylite_connection_statement_collation_connection(database
+              ));
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = display_length;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = binary_result ? MYLITE_RESULT_COLUMN_FLAG_BINARY : 0U;
+    descriptor->nullable = true;
     return MYLITE_OK;
 }
 

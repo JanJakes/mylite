@@ -796,6 +796,12 @@ static int populate_window_function_result_column_descriptor(
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static int populate_window_integer_sum_or_avg_result_column_descriptor(
+    const struct planned_row_scalar_expression *expression,
+    bool is_average,
+    struct mylite_result_column_descriptor *descriptor
+);
+static uint64_t planned_integer_value_decimal_precision(const struct planned_value *value);
 static int populate_window_value_function_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
@@ -809,6 +815,55 @@ static int populate_window_value_column_result_column_descriptor(
 static int populate_window_value_literal_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_value *value,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_count_aggregate_result_column_descriptor(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_integer_sum_or_avg_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_average,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_integer_sum_or_avg_result_column_descriptor_for_precision(
+    uint64_t precision,
+    bool is_average,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static bool integer_aggregate_decimal_precision(
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *out_precision
+);
+static int populate_value_preserving_aggregate_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void clear_value_preserving_expression_flags(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_bitwise_aggregate_result_column_descriptor(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_statistical_aggregate_result_column_descriptor(
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static void populate_json_aggregate_result_column_descriptor(
+    const struct mylite_db *database,
+    bool is_window,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_group_concat_result_column_descriptor(
+    const struct mylite_db *database,
+    bool binary_result,
     struct mylite_result_column_descriptor *descriptor
 );
 static int populate_row_scalar_conversion_result_column_descriptor(

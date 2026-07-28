@@ -882,6 +882,12 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
     enum planned_grouped_aggregate_function function
 ) {
     switch (function) {
+    case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
+        return PLANNED_COLUMN_AGGREGATE_COUNT_STAR;
+    case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
+        return PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN;
+    case PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN:
+        return PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN;
     case PLANNED_GROUPED_AGGREGATE_MIN:
         return PLANNED_COLUMN_AGGREGATE_MIN;
     case PLANNED_GROUPED_AGGREGATE_MAX:
@@ -913,9 +919,6 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
     case PLANNED_GROUPED_AGGREGATE_ST_COLLECT:
         return PLANNED_COLUMN_AGGREGATE_ST_COLLECT;
     case PLANNED_GROUPED_AGGREGATE_NONE:
-    case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
-    case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
-    case PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN:
     case PLANNED_GROUPED_AGGREGATE_ANY_VALUE:
         return PLANNED_COLUMN_AGGREGATE_NONE;
     }

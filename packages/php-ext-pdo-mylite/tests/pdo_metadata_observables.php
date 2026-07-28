@@ -108,9 +108,85 @@ expect_same(
     'expression native descriptor transport'
 );
 expect_same(
-    expected_meta('UNKNOWN', PDO::PARAM_STR, [], '', 'aggregate_value', 0, 0),
+    expected_meta('LONGLONG', PDO::PARAM_INT, ['not_null'], '', 'aggregate_value', 21, 0),
     $expressions->getColumnMeta(1),
     'aggregate native descriptor transport'
+);
+
+$spatialTemporal = $pdo->prepare(
+    "SELECT ST_AsText(POINT(1,2)) AS spatial_text, " .
+    "ST_AsWKB(POINT(1,2)) AS spatial_binary, " .
+    "CONVERT_TZ('2024-01-01 00:00:00.123','+00:00','+01:00') AS timezone_value"
+);
+expect_same(true, $spatialTemporal->execute(), 'spatial temporal metadata execute');
+expect_same(
+    expected_meta('LONG_BLOB', PDO::PARAM_STR, [], '', 'spatial_text', 268435456, 31),
+    $spatialTemporal->getColumnMeta(0),
+    'spatial text metadata transport'
+);
+expect_same(
+    expected_meta('LONG_BLOB', PDO::PARAM_STR, [], '', 'spatial_binary', 4294967295, 31),
+    $spatialTemporal->getColumnMeta(1),
+    'spatial binary metadata transport'
+);
+expect_same(
+    expected_meta('DATETIME', PDO::PARAM_STR, [], '', 'timezone_value', 23, 3),
+    $spatialTemporal->getColumnMeta(2),
+    'CONVERT_TZ metadata transport'
+);
+
+$aggregateMetadata = $pdo->prepare(
+    'SELECT COUNT(*) AS count_value, SUM(id) AS sum_value, ' .
+    'MIN(unique_code) AS min_value, GROUP_CONCAT(unique_code) AS concat_value ' .
+    'FROM metadata_values'
+);
+expect_same(true, $aggregateMetadata->execute(), 'aggregate metadata execute');
+expect_same(
+    expected_meta('LONGLONG', PDO::PARAM_INT, ['not_null'], '', 'count_value', 21, 0),
+    $aggregateMetadata->getColumnMeta(0),
+    'count metadata transport'
+);
+expect_same(
+    expected_meta('NEWDECIMAL', PDO::PARAM_STR, [], '', 'sum_value', 33, 0),
+    $aggregateMetadata->getColumnMeta(1),
+    'sum metadata transport'
+);
+expect_same(
+    expected_meta('VAR_STRING', PDO::PARAM_STR, [], '', 'min_value', 64, 31),
+    $aggregateMetadata->getColumnMeta(2),
+    'minimum metadata transport'
+);
+expect_same(
+    expected_meta('LONG_BLOB', PDO::PARAM_STR, [], '', 'concat_value', 65536, 31),
+    $aggregateMetadata->getColumnMeta(3),
+    'GROUP_CONCAT metadata transport'
+);
+
+$windowMetadata = $pdo->prepare(
+    'SELECT ROW_NUMBER() OVER w AS row_number_value, SUM(id) OVER w AS sum_value, ' .
+    'LAG(unique_code) OVER w AS lag_value, JSON_ARRAYAGG(id) OVER w AS json_value ' .
+    'FROM metadata_values WINDOW w AS (ORDER BY id) LIMIT 1'
+);
+expect_same(true, $windowMetadata->execute(), 'window metadata execute');
+expect_same(
+    expected_meta('LONGLONG', PDO::PARAM_INT, ['not_null'], '', 'row_number_value', 21, 0),
+    $windowMetadata->getColumnMeta(0),
+    'row number metadata transport'
+);
+expect_same(
+    expected_meta('NEWDECIMAL', PDO::PARAM_STR, [], '', 'sum_value', 33, 0),
+    $windowMetadata->getColumnMeta(1),
+    'window sum metadata transport'
+);
+expect_same(
+    expected_meta('VAR_STRING', PDO::PARAM_STR, [], '', 'lag_value', 64, 0),
+    $windowMetadata->getColumnMeta(2),
+    'window navigation metadata transport'
+);
+expect_same(
+    expected_meta('JSON', PDO::PARAM_STR, ['blob'], '', 'json_value', 4294967295, 0),
+    $windowMetadata->getColumnMeta(3),
+    'window JSON metadata transport'
 );
 
 $insert = $pdo->prepare('INSERT INTO metadata_values (unique_code) VALUES (?)');

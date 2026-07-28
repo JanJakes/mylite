@@ -787,6 +787,47 @@ static int append_grouped_aggregate_result_columns(
     mylite_result *result,
     const struct planned_grouped_aggregate *plan
 );
+static int append_grouped_projection_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_projection *projection
+);
+static int populate_grouped_projection_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_projection *projection,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int append_grouped_aggregate_item_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item
+);
+static const struct mylite_catalog_table_descriptor *grouped_result_source_table(
+    const struct planned_grouped_aggregate *plan,
+    size_t source_index
+);
+static int populate_aggregate_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    enum planned_column_aggregate_function function,
+    const struct mylite_catalog_column_descriptor *column,
+    bool uses_row_scalar_expression,
+    const struct planned_row_scalar_expression *row_scalar_expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int aggregate_result_argument_is_binary_string(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool uses_row_scalar_expression,
+    const struct planned_row_scalar_expression *row_scalar_expression,
+    bool *out_binary_result
+);
+static bool result_column_descriptor_is_binary_string(
+    const struct mylite_result_column_descriptor *descriptor
+);
 static bool select_statement_has_count_aggregate(const struct mylite_sql_ast_node *statement);
 static int plan_count(
     struct mylite_db *database,

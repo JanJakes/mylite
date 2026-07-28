@@ -104,10 +104,8 @@ static int append_grouped_aggregate_result_columns(
     for (size_t projection_index = 0U; rc == MYLITE_OK && projection_index < plan->projection_count;
          ++projection_index) {
         const struct planned_grouped_projection *projection = &plan->projections[projection_index];
-        rc = mylite_result_append_column(result, projection->result_label);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+
+        rc = append_grouped_projection_result_column(database, result, plan, projection);
     }
 
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
@@ -117,26 +115,304 @@ static int append_grouped_aggregate_result_columns(
         if (item->is_hidden_order_key) {
             continue;
         }
-        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
-            rc = append_spatial_collect_result_column(
-                database,
-                result,
-                item->result_label,
-                item->has_spatial_wrapper,
-                item->spatial_wrapper_kind
-            );
-        } else if (rc == MYLITE_OK) {
-            rc = mylite_result_append_column(result, item->result_label);
-            if (rc != MYLITE_OK) {
-                set_nomem_error(database);
-            }
-        }
+        rc = append_grouped_aggregate_item_result_column(database, result, plan, item);
         if (rc != MYLITE_OK) {
             return rc;
         }
     }
 
     return rc;
+}
+
+static int append_grouped_projection_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_projection *projection
+) {
+    struct mylite_result_column_descriptor descriptor =
+        unknown_result_column_descriptor(projection->result_label);
+    int rc = populate_grouped_projection_result_column_descriptor(
+        database,
+        plan,
+        projection,
+        &descriptor
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int populate_grouped_projection_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_projection *projection,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_catalog_table_descriptor *table = NULL;
+    const struct table_name_resolution *source = NULL;
+    const struct planned_select_source *joined_source = NULL;
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
+    int rc = MYLITE_OK;
+
+    if (database == NULL || plan == NULL || projection == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (projection->uses_row_scalar_expression) {
+        return MYLITE_OK;
+    }
+    if (projection->column == NULL) {
+        return MYLITE_OK;
+    }
+
+    table = grouped_result_source_table(plan, projection->column_source_index);
+    source = planned_grouped_aggregate_source_resolution(plan, projection->column_source_index);
+    if (table == NULL || source == NULL) {
+        return MYLITE_OK;
+    }
+
+    descriptor->schema_name = source->schema.name;
+    descriptor->table_name = source->table_name;
+    descriptor->origin_schema_name = source->schema.name;
+    descriptor->origin_table_name = table->name;
+    descriptor->origin_column_name = projection->column->name;
+    descriptor->nullable = projection->column->is_nullable;
+
+    if (plan->source_count == 0U) {
+        if (plan->source_has_alias) {
+            descriptor->table_name = plan->source_alias;
+        }
+        rc = load_result_column_metadata_context_for_table(
+            database,
+            table->table_id,
+            &metadata_context
+        );
+    } else if (projection->column_source_index < plan->source_count) {
+        joined_source = &plan->sources[projection->column_source_index];
+        if (joined_source->has_alias) {
+            descriptor->table_name = joined_source->alias;
+        }
+        if (joined_source->is_derived || joined_source->is_json_table) {
+            descriptor->origin_schema_name = "";
+            descriptor->origin_table_name = "";
+        } else {
+            rc = load_result_column_metadata_context_for_table_columns(
+                database,
+                table->table_id,
+                joined_source->columns,
+                joined_source->column_count,
+                &metadata_context
+            );
+        }
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = populate_select_result_column_descriptor(
+            database,
+            table,
+            projection->column,
+            &metadata_context,
+            descriptor
+        );
+    }
+    result_column_metadata_context_deinit(&metadata_context);
+    return rc;
+}
+
+static int append_grouped_aggregate_item_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item
+) {
+    const struct mylite_catalog_table_descriptor *table =
+        grouped_result_source_table(plan, item->aggregate_column_source_index);
+    struct mylite_result_column_descriptor descriptor =
+        unknown_result_column_descriptor(item->result_label);
+    int rc = MYLITE_OK;
+
+    if (item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
+        return append_spatial_collect_result_column(
+            database,
+            result,
+            item->result_label,
+            item->has_spatial_wrapper,
+            item->spatial_wrapper_kind
+        );
+    }
+
+    rc = populate_aggregate_result_column_descriptor(
+        database,
+        table,
+        grouped_column_aggregate_function(item->function),
+        item->aggregate_column,
+        item->aggregate_uses_row_scalar_expression,
+        &item->aggregate_row_scalar_expression,
+        &descriptor
+    );
+    descriptor.label = item->result_label;
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static const struct mylite_catalog_table_descriptor *grouped_result_source_table(
+    const struct planned_grouped_aggregate *plan,
+    size_t source_index
+) {
+    if (plan == NULL) {
+        return NULL;
+    }
+    if (plan->source_count == 0U) {
+        return &plan->table;
+    }
+    if (source_index >= plan->source_count) {
+        return NULL;
+    }
+    return &plan->sources[source_index].table;
+}
+
+static int populate_aggregate_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    enum planned_column_aggregate_function function,
+    const struct mylite_catalog_column_descriptor *column,
+    bool uses_row_scalar_expression,
+    const struct planned_row_scalar_expression *row_scalar_expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    bool binary_result = false;
+    int rc = MYLITE_OK;
+
+    switch (function) {
+    case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN:
+        populate_count_aggregate_result_column_descriptor(false, descriptor);
+        return MYLITE_OK;
+    case PLANNED_COLUMN_AGGREGATE_MIN:
+    case PLANNED_COLUMN_AGGREGATE_MAX:
+    case PLANNED_COLUMN_AGGREGATE_ANY_VALUE:
+        if (column == NULL || uses_row_scalar_expression) {
+            return MYLITE_OK;
+        }
+        return populate_value_preserving_aggregate_result_column_descriptor(
+            database,
+            table,
+            column,
+            false,
+            descriptor
+        );
+    case PLANNED_COLUMN_AGGREGATE_SUM:
+    case PLANNED_COLUMN_AGGREGATE_AVG:
+        if (column == NULL || uses_row_scalar_expression) {
+            return MYLITE_OK;
+        }
+        return populate_integer_sum_or_avg_result_column_descriptor(
+            column,
+            function == PLANNED_COLUMN_AGGREGATE_AVG,
+            false,
+            descriptor
+        );
+    case PLANNED_COLUMN_AGGREGATE_BIT_AND:
+    case PLANNED_COLUMN_AGGREGATE_BIT_OR:
+    case PLANNED_COLUMN_AGGREGATE_BIT_XOR:
+        populate_bitwise_aggregate_result_column_descriptor(false, descriptor);
+        return MYLITE_OK;
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
+    case PLANNED_COLUMN_AGGREGATE_VAR_POP:
+    case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
+        populate_statistical_aggregate_result_column_descriptor(false, descriptor);
+        return MYLITE_OK;
+    case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
+        rc = aggregate_result_argument_is_binary_string(
+            database,
+            column,
+            uses_row_scalar_expression,
+            row_scalar_expression,
+            &binary_result
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return populate_group_concat_result_column_descriptor(database, binary_result, descriptor);
+    case PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG:
+    case PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG:
+        populate_json_aggregate_result_column_descriptor(database, false, descriptor);
+        return MYLITE_OK;
+    case PLANNED_COLUMN_AGGREGATE_ST_COLLECT:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_GEOMETRY;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_spatial_collect_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case PLANNED_COLUMN_AGGREGATE_NONE:
+        break;
+    }
+    return MYLITE_OK;
+}
+
+static int aggregate_result_argument_is_binary_string(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool uses_row_scalar_expression,
+    const struct planned_row_scalar_expression *row_scalar_expression,
+    bool *out_binary_result
+) {
+    struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor("");
+    int rc = MYLITE_OK;
+
+    if (out_binary_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_binary_result = false;
+    if (!uses_row_scalar_expression) {
+        *out_binary_result = column != NULL && column_descriptor_is_binary_string_family(column);
+        return MYLITE_OK;
+    }
+    if (row_scalar_expression == NULL) {
+        return MYLITE_OK;
+    }
+    rc = populate_row_scalar_expression_result_column_descriptor(
+        database,
+        row_scalar_expression,
+        &descriptor
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    *out_binary_result = result_column_descriptor_is_binary_string(&descriptor);
+    return MYLITE_OK;
+}
+
+static bool result_column_descriptor_is_binary_string(
+    const struct mylite_result_column_descriptor *descriptor
+) {
+    if (descriptor == NULL || descriptor->collation_id != mysql_collation_binary_id) {
+        return false;
+    }
+
+    return descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_VARCHAR ||
+           descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_TINY_BLOB ||
+           descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_MEDIUM_BLOB ||
+           descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_LONG_BLOB ||
+           descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_BLOB ||
+           descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING ||
+           descriptor->logical_type == MYLITE_RESULT_LOGICAL_TYPE_STRING;
 }
 
 static int plan_count(
@@ -859,8 +1135,12 @@ static int append_count_result_column(
     mylite_result *result,
     const struct planned_count *plan
 ) {
-    int rc = mylite_result_append_column(result, plan->result_label);
+    struct mylite_result_column_descriptor descriptor =
+        unknown_result_column_descriptor(plan->result_label);
+    int rc = MYLITE_OK;
 
+    populate_count_aggregate_result_column_descriptor(false, &descriptor);
+    rc = mylite_result_append_column_descriptor(result, &descriptor);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
     }
@@ -2310,9 +2590,11 @@ static int append_column_aggregate_result_column(
     mylite_result *result,
     const struct planned_column_aggregate *plan
 ) {
+    struct mylite_result_column_descriptor descriptor =
+        unknown_result_column_descriptor(plan->result_label);
     int rc = MYLITE_OK;
 
-    if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+    if (plan->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
         rc = append_spatial_collect_result_column(
             database,
             result,
@@ -2320,11 +2602,25 @@ static int append_column_aggregate_result_column(
             plan->has_spatial_wrapper,
             plan->spatial_wrapper_kind
         );
-    } else if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, plan->result_label);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+        return rc;
+    }
+    if (!plan->aggregate_has_projection_rhs) {
+        rc = populate_aggregate_result_column_descriptor(
+            database,
+            plan->has_source ? &plan->table : NULL,
+            plan->function,
+            plan->aggregate_column,
+            plan->aggregate_uses_row_scalar_expression,
+            &plan->aggregate_row_scalar_expression,
+            &descriptor
+        );
+        descriptor.label = plan->result_label;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
     }
 
     return rc;
@@ -2345,10 +2641,10 @@ static int append_spatial_collect_result_column(
         .origin_table_name = "",
         .origin_column_name = "",
         .logical_type = MYLITE_RESULT_LOGICAL_TYPE_GEOMETRY,
-        .flags = MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY,
+        .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
         .charset_id = mysql_collation_binary_id,
         .collation_id = mysql_collation_binary_id,
-        .display_length = mysql_json_document_display_length,
+        .display_length = mysql_spatial_collect_display_length,
         .decimals = mysql_approximate_decimals,
         .nullable = true,
     };

@@ -286,13 +286,28 @@ The corresponding POSIX paths passed locally.
 
 ### `API-01`: mysqli pending-result state machine
 
-- [ ] Specify connection states for pending `real_query`, stored results,
+- [x] Specify connection states for pending `real_query`, stored results,
   unbuffered results, partial fetch, exhaustion, free, reset, and errors.
-- [ ] Reject disallowed commands with MySQL error 2014/SQLSTATE/message instead
+- [x] Reject disallowed commands with MySQL error 2014/SQLSTATE/message instead
   of silently finalizing a pending result.
-- [ ] Preserve the legal behavior of ordinary buffered `query()` results.
-- [ ] Cover procedural and object APIs, direct and prepared statements,
+- [x] Preserve the legal behavior of ordinary buffered `query()` results.
+- [x] Cover procedural and object APIs, direct and prepared statements,
   commit/autocommit, strict exception mode, and cleanup ordering.
+
+`API-01` implementation evidence at `44daa2f5f`:
+
+- The explicit `READY`, `DIRECT_PENDING`, `DIRECT_UNBUFFERED`, and
+  `PREPARED_UNBUFFERED` states use identity-checked owners and reject
+  unrelated commands before any pending cursor can be cleared.
+- The MySQL 8.4.9 fixture and MyLite adapter regression cover report-off and
+  strict diagnostics, direct acquisition, buffered and unbuffered reads,
+  partial/final/EOF fetches, materialized utility results, prepared
+  store/get/metadata/fetch behavior, same- and different-statement execution,
+  zero-row results, commit/autocommit rejection, rollback integrity, and
+  free/reset/close/destructor recovery.
+- All eight mysqli/PDO developer tests pass. All nine PHP extension tests pass
+  under ASan/UBSan with the matching Clang runtime preloaded for the host PHP
+  executable. Focused clang-tidy and repository formatting gates pass.
 
 ### `API-02` and `API-05`: statement-owned diagnostics and warnings
 

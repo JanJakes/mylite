@@ -254,3 +254,25 @@ all existing buffered-query and statement tests.
 Run the complete mysqli and PDO extension suites after the focused regression.
 The adapter state must remain safe under ASan/UBSan where the PHP build
 supports it.
+
+## Implementation and qualification
+
+Implemented by `44daa2f5f`. The adapter records the connection state and an
+identity-checked active owner, keeps direct unbuffered results and prepared
+statements responsible for their native cursor lifetime, and rejects unrelated
+commands before they can clear pending state. Prepared execution steps only
+far enough to establish row availability; explicit buffering consumes the
+remaining cursor, while `result_metadata()` builds a metadata-only result
+without releasing the statement owner.
+
+Qualification evidence:
+
+- the pinned MySQL 8.4.9 expectation fixture passes the direct, prepared,
+  transaction, metadata, diagnostic, cleanup, and recovery matrix;
+- all eight mysqli/PDO tests pass in the warnings-as-errors PHP developer
+  build;
+- all nine PHP extension tests pass under ASan/UBSan with the matching Clang
+  ASan runtime preloaded for the host PHP executable;
+- the modified C translation units pass focused clang-tidy with warnings
+  treated as errors; and
+- repository formatting, PHP syntax, shell syntax, and whitespace gates pass.

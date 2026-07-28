@@ -114,13 +114,13 @@ def evidence_mentions_named_function(path, function_name):
     return pattern.search((ROOT / path).read_text(encoding="utf-8", errors="replace")) is not None
 
 
-def validate_claim_files(claim, feature, all_mysql, native_tests, ci_text):
+def validate_claim_files(claim, feature, all_mysql, registered_native_tests, ci_text):
     errors = []
     claim_id = claim["claim_id"]
     fingerprint = claim["row_fingerprint"]
     specs = split_paths(claim["specs"])
     mysql_fixtures = split_paths(claim["mysql_fixtures"])
-    native_tests = split_paths(claim["native_tests"])
+    claim_native_tests = split_paths(claim["native_tests"])
     application_runners = split_paths(claim["application_runners"])
     ci_tiers = split_paths(claim["ci_tiers"])
 
@@ -139,15 +139,31 @@ def validate_claim_files(claim, feature, all_mysql, native_tests, ci_text):
     if claim["kind"] == "mysql":
         if not mysql_fixtures:
             errors.append("{} has no MySQL fixture".format(claim_id))
-        if not native_tests:
+        if not claim_native_tests:
             errors.append("{} has no native test".format(claim_id))
         if application_runners:
             errors.append("{} unexpectedly lists application runners".format(claim_id))
         required_tiers = {"pr-native", "nightly-mysql"}
         if not required_tiers.issubset(ci_tiers):
             errors.append("{} is missing native PR or nightly MySQL CI".format(claim_id))
+    elif claim["kind"] == "adapter":
+        if not mysql_fixtures:
+            errors.append("{} has no MySQL fixture".format(claim_id))
+        if claim_native_tests:
+            errors.append("{} unexpectedly lists native tests".format(claim_id))
+        if not application_runners:
+            errors.append("{} has no adapter test".format(claim_id))
+        application_tiers = [
+            tier for tier in ci_tiers if tier.startswith("pr-application:")
+        ]
+        if "nightly-mysql" not in ci_tiers or len(application_tiers) != 1:
+            errors.append("{} is missing adapter PR or nightly MySQL CI".format(claim_id))
+        else:
+            job = application_tiers[0].split(":", 1)[1]
+            if not re.search(r"^  {}:$".format(re.escape(job)), ci_text, re.MULTILINE):
+                errors.append("{} references missing CI job {}".format(claim_id, job))
     elif claim["kind"] == "application":
-        if mysql_fixtures or native_tests:
+        if mysql_fixtures or claim_native_tests:
             errors.append("{} mixes application and MySQL/native evidence".format(claim_id))
         if not application_runners:
             errors.append("{} has no application runner".format(claim_id))
@@ -165,11 +181,11 @@ def validate_claim_files(claim, feature, all_mysql, native_tests, ci_text):
             errors.append("{} fixture is absent from full manifest: {}".format(claim_id, fixture))
         if not (ROOT / fixture).is_file():
             errors.append("{} references missing fixture {}".format(claim_id, fixture))
-    for native_test in native_tests:
+    for native_test in claim_native_tests:
         native_path = ROOT / native_test
         if not native_path.is_file():
             errors.append("{} references missing native test {}".format(claim_id, native_test))
-        elif native_test not in native_tests:
+        elif native_test not in registered_native_tests:
             errors.append(
                 "{} native test is not registered in the manifest: {}".format(
                     claim_id,
@@ -183,8 +199,8 @@ def validate_claim_files(claim, feature, all_mysql, native_tests, ci_text):
             evidence_mentions_named_function(path, function_name) for path in mysql_fixtures
         ):
             errors.append("{} MySQL fixture does not exercise {}()".format(claim_id, function_name))
-        if native_tests and not any(
-            evidence_mentions_named_function(path, function_name) for path in native_tests
+        if claim_native_tests and not any(
+            evidence_mentions_named_function(path, function_name) for path in claim_native_tests
         ):
             errors.append("{} native test does not exercise {}()".format(claim_id, function_name))
     for runner in application_runners:

@@ -35,3 +35,13 @@ and no-release flags are routed through MyLite's transaction state machine.
 Release and named transaction requests are rejected explicitly. Query and
 store-result mode arguments are validated; asynchronous query mode is not
 supported.
+
+A row-producing `real_query()` owns the connection until `store_result()` or
+`use_result()` acquires its result. A direct `MYSQLI_USE_RESULT` result
+continues to own the connection until a fetch observes end-of-data or the
+result is freed, closed, or destroyed. Row-producing prepared execution is
+unbuffered by default and similarly owns the connection until it is exhausted,
+buffered, freed, reset, re-executed on the same statement, or closed.
+Disallowed commands fail with error `2014`, SQLSTATE `HY000`, and MySQL's
+commands-out-of-sync message without consuming the active result. Prepared
+`result_metadata()` returns field metadata without releasing that ownership.

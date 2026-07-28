@@ -7,10 +7,12 @@ changes; it is not regenerated from the current line number.
 
 MySQL feature claims map to at least one independently authored specification,
 one MySQL 8.4.9 expectation script, one registered native test, the native pull
-request tier, and the complete nightly MySQL tier. Application claims instead
-map to their harness specification, executable runner or test, and exact CI
-job. One evidence artifact may support multiple narrow claims when it tests the
-shared behavior explicitly.
+request tier, and the complete nightly MySQL tier. Adapter claims map to a
+specification, a MySQL 8.4.9 expectation script, an executable adapter test,
+the exact adapter CI job, and the complete nightly MySQL tier. Application
+claims map to their harness specification, executable runner or test, and
+exact CI job. One evidence artifact may support multiple narrow claims when it
+tests the shared behavior explicitly.
 
 Run the repository gate with:
 

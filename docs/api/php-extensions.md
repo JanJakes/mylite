@@ -85,3 +85,34 @@ retaining SQL and bound values. Unread or completed buffered rows and their
 metadata are discarded. Re-executing the same statement object regenerates
 `SHOW`, `DESCRIBE`, `EXPLAIN`, SELECT, and maintenance results from the current
 schema, data, and execute-time session state.
+
+## mysqli pending-result ownership
+
+The mysqli replacement models the connection protocol state explicitly.
+Row-producing `real_query()` calls leave an unclaimed result that must be
+acquired with `store_result()` or `use_result()`. Stored results release the
+connection immediately. Results acquired with `use_result()`, including
+internally materialized utility results, retain the connection until a fetch
+observes end-of-data or the result is freed, closed, or destroyed. Returning
+the final row alone does not release it.
+
+Row-producing prepared statements are unbuffered after `execute()`.
+`store_result()` and `get_result()` buffer the rows and release the connection;
+`free_result()`, `reset()`, `close()`, or same-statement re-execution discard
+them and release it. `result_metadata()` returns a separate zero-row metadata
+object and leaves the prepared result active. A different statement cannot be
+prepared or executed while that owner remains active.
+
+A query, transaction command, autocommit change, or other server operation
+attempted while the connection is owned fails without changing the owner:
+
+```text
+error code: 2014
+SQLSTATE: HY000
+message: Commands out of sync; you can't run this command now
+```
+
+With strict mysqli reporting this is a `mysqli_sql_exception`; with reporting
+disabled the operation returns `false` and publishes the same fields on the
+connection or statement. Ordinary buffered `query()` results never own the
+connection and may remain unread across later commands.

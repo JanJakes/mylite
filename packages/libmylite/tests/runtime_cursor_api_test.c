@@ -555,6 +555,8 @@ static int test_materialized_cursor_does_not_overwrite_later_statement_state(voi
 static int test_cursor_read_transaction_lifecycle(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_db *writer_database = NULL;
+    mylite_stmt *constant_stmt = NULL;
     mylite_stmt *stmt = NULL;
     mylite_stmt *blocked_stmt = NULL;
     mylite_result *blocked_result = NULL;
@@ -580,6 +582,40 @@ static int test_cursor_read_transaction_lifecycle(void) {
         mylite_test_expect_int(sqlite3_get_autocommit(sqlite), 1, "initial SQLite autocommit");
 
     failures += mylite_test_expect_int(
+        mylite_prepare(database, "SELECT 7", strlen("SELECT 7"), &constant_stmt),
+        MYLITE_OK,
+        "prepare lazy constant cursor"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "constant prepare leaves SQLite autocommit active"
+    );
+    failures += execute_ok(database, "SET @after_constant_prepare = 1");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(constant_stmt),
+        MYLITE_ROW,
+        "lazy constant cursor first row"
+    );
+    failures += expect_cursor_text(constant_stmt, 0U, "7", "lazy constant cursor value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(constant_stmt),
+        MYLITE_DONE,
+        "lazy constant cursor done"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "constant cursor exhaustion leaves SQLite autocommit active"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(constant_stmt),
+        MYLITE_OK,
+        "finalize lazy constant cursor"
+    );
+    constant_stmt = NULL;
+
+    failures += mylite_test_expect_int(
         mylite_prepare(
             database,
             "SELECT id FROM items ORDER BY id",
@@ -589,6 +625,44 @@ static int test_cursor_read_transaction_lifecycle(void) {
         MYLITE_OK,
         "prepare read transaction cursor"
     );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "table prepare leaves SQLite autocommit active"
+    );
+    failures += mylite_test_expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items",
+            strlen("SELECT id FROM items"),
+            &blocked_stmt
+        ),
+        MYLITE_OK,
+        "allow second prepare before first step"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(blocked_stmt),
+        MYLITE_OK,
+        "finalize second unexecuted cursor"
+    );
+    blocked_stmt = NULL;
+    failures += execute_ok(database, "UPDATE items SET id = id");
+    failures += mylite_test_expect_int(
+        mylite_open(path, &writer_database),
+        MYLITE_OK,
+        "open writer during lazy prepare"
+    );
+    failures += execute_ok(writer_database, "USE app");
+    failures += execute_ok(writer_database, "INSERT INTO items VALUES (3)");
+    failures += execute_ok(writer_database, "ALTER TABLE items ADD COLUMN marker INT NULL");
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "concurrent writer leaves prepared reader idle"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "read transaction first row");
+    failures += expect_cursor_text(stmt, 0U, "1", "read transaction first value");
     failures +=
         mylite_test_expect_int(sqlite3_get_autocommit(sqlite), 0, "cursor read transaction active");
     failures += mylite_test_expect_int(
@@ -599,9 +673,9 @@ static int test_cursor_read_transaction_lifecycle(void) {
             &blocked_stmt
         ),
         MYLITE_ERROR,
-        "reject second active cursor"
+        "reject second prepare after first step"
     );
-    failures += mylite_test_expect_true(blocked_stmt == NULL, "rejected cursor handle");
+    failures += mylite_test_expect_true(blocked_stmt == NULL, "rejected active cursor handle");
     failures += mylite_test_expect_int(
         mylite_errcode(database),
         mysql_error_commands_out_of_sync,
@@ -623,8 +697,6 @@ static int test_cursor_read_transaction_lifecycle(void) {
         "reject command during active cursor"
     );
     failures += mylite_test_expect_true(blocked_result == NULL, "rejected command result");
-    failures +=
-        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "read transaction first row");
     failures += mylite_test_expect_int(
         mylite_stmt_finalize(stmt),
         MYLITE_OK,
@@ -651,6 +723,8 @@ static int test_cursor_read_transaction_lifecycle(void) {
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "exhausted cursor first row");
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "exhausted cursor second row");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "exhausted cursor third row");
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "exhausted cursor done");
     failures +=
@@ -723,8 +797,18 @@ static int test_cursor_read_transaction_lifecycle(void) {
     );
     failures += mylite_test_expect_int(
         sqlite3_get_autocommit(sqlite),
+        1,
+        "autocommit-disabled prepare defers user transaction"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "autocommit-disabled first step starts user transaction"
+    );
+    failures += mylite_test_expect_int(
+        sqlite3_get_autocommit(sqlite),
         0,
-        "autocommit-disabled cursor starts user transaction"
+        "autocommit-disabled execution owns user transaction"
     );
     failures += mylite_test_expect_int(
         mylite_stmt_finalize(stmt),
@@ -745,6 +829,7 @@ static int test_cursor_read_transaction_lifecycle(void) {
     );
     failures += execute_ok(database, "SET autocommit = 1");
 
+    mylite_close(writer_database);
     mylite_close(database);
     remove_related_files(path);
     return failures;

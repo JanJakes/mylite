@@ -464,12 +464,29 @@ install consumers, production size budgets, and the compatibility ledger pass.
 
 ### Phase 2 closure
 
-- [ ] Run core cursor/prepared/diagnostic suites under Release, Debug,
+- [x] Run core cursor/prepared/diagnostic suites under Release, Debug,
   ASan/UBSan, LSan, and allocation failpoints.
-- [ ] Run all PHP adapter suites and differential probes against MySQL 8.4.9.
-- [ ] Run WordPress, Drupal, Laravel, Doctrine, and MediaWiki baselines.
-- [ ] Review ABI snapshots, ownership documentation, and adapter state
+- [x] Run all PHP adapter suites and differential probes against MySQL 8.4.9.
+- [x] Run WordPress, Drupal, Laravel, Doctrine, and MediaWiki baselines.
+- [x] Review ABI snapshots, ownership documentation, and adapter state
   transitions independently.
+
+Phase 2 closure qualification at `17400f45c` covered the focused native
+cursor, prepared-result, diagnostic, warning, and file-open matrix in Release,
+assertion-enabled Debug, ASan/UBSan with leak detection, and deterministic
+allocator-failpoint builds. All PHP adapter suites and all 23 pinned MySQL
+8.4.9 differential scripts for the changed surface passed. Public ABI
+snapshots, result/diagnostic/path ownership, pending-result transitions, and
+prepared reset/replay behavior were reviewed during each feature's independent
+release-review commit.
+
+The application baselines passed without reduced selections:
+
+- WordPress: 29,248 tests and 3,440,328 assertions.
+- Drupal: 559 tests and 2,340 assertions, with 8 skips.
+- Laravel: 2 tests and 12 assertions.
+- Doctrine DBAL: 1 test and 9 assertions; ORM: 1 test and 6 assertions.
+- MediaWiki: 35 tests and 852 assertions, with 1 skip.
 
 ## Phase 3: Spatial Safety, Correctness, And Complexity
 

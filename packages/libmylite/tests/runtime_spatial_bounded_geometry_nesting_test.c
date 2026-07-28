@@ -607,11 +607,8 @@ static int expect_direct_success(
     int failures = mylite_test_expect_int(rc, 0, context);
 
     if (rc == 0) {
-        failures += mylite_test_expect_int(
-            (int)result.kind,
-            (int)MYLITE_SPATIAL_RESULT_GEOMETRY,
-            context
-        );
+        failures +=
+            mylite_test_expect_int((int)result.kind, (int)MYLITE_SPATIAL_RESULT_GEOMETRY, context);
     }
     mylite_spatial_result_deinit(&result);
     return failures;
@@ -634,8 +631,7 @@ static int expect_direct_error(
 
     failures += mylite_test_expect_int(error.code, expected_code, context);
     failures += mylite_test_expect_text(error.sqlstate, expected_sqlstate, context);
-    failures +=
-        mylite_test_expect_int((int)result.kind, (int)MYLITE_SPATIAL_RESULT_NULL, context);
+    failures += mylite_test_expect_int((int)result.kind, (int)MYLITE_SPATIAL_RESULT_NULL, context);
     mylite_spatial_result_deinit(&result);
     return failures;
 }

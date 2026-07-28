@@ -8,10 +8,19 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <string.h>
 
-_Static_assert(MYLITE_SQL_PARSER_RETRY_KIND_COUNT == 6, "retry strategy count may not grow");
-_Static_assert(mylite_sql_parser_retry_callback_limit == 6, "retry callback ceiling may not grow");
+enum {
+    expected_retry_strategy_count = 6,
+};
+
+_Static_assert(
+    MYLITE_SQL_PARSER_RETRY_KIND_COUNT + 0 == expected_retry_strategy_count + 0,
+    "retry strategy count may not grow"
+);
+_Static_assert(
+    mylite_sql_parser_retry_callback_limit + 0 == expected_retry_strategy_count + 0,
+    "retry callback ceiling may not grow"
+);
 
 struct expected_retry_strategy {
     enum mylite_sql_parser_retry_kind kind;
@@ -20,7 +29,13 @@ struct expected_retry_strategy {
 
 struct expected_retry_metrics {
     const char *sql;
+    enum mylite_sql_parse_status status;
     size_t callback_count;
+    const char *context;
+};
+
+struct expected_primary_parse {
+    const char *sql;
     const char *context;
 };
 
@@ -28,7 +43,7 @@ static int test_retry_inventory(void);
 static int test_invalid_retry_kind_preserves_ast(void);
 static int test_primary_grammar_replacements(void);
 static int test_retained_retry_order(void);
-static int expect_primary_parse(const char *sql, const char *context);
+static int expect_primary_parse(struct expected_primary_parse expected);
 static int expect_retry_metrics(struct expected_retry_metrics expected);
 
 int main(void) {
@@ -210,10 +225,22 @@ static int test_primary_grammar_replacements(void) {
         parser_test_expect_span_text(parser_test_child_at(option, 0U), "HASH", "suffix TYPE name");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += expect_primary_parse("CREATE TABLE type(type INT)", "TYPE DDL identifiers");
-    failures += expect_primary_parse("SELECT type FROM type", "TYPE query identifiers");
-    failures += expect_primary_parse("SELECT 1 LIMIT 1, 2", "tableless comma limit");
-    failures += expect_primary_parse("SELECT 1 LIMIT 2 OFFSET 1", "tableless offset limit");
+    failures += expect_primary_parse((struct expected_primary_parse){
+        .sql = "CREATE TABLE type(type INT)",
+        .context = "TYPE DDL identifiers",
+    });
+    failures += expect_primary_parse((struct expected_primary_parse){
+        .sql = "SELECT type FROM type",
+        .context = "TYPE query identifiers",
+    });
+    failures += expect_primary_parse((struct expected_primary_parse){
+        .sql = "SELECT 1 LIMIT 1, 2",
+        .context = "tableless comma limit",
+    });
+    failures += expect_primary_parse((struct expected_primary_parse){
+        .sql = "SELECT 1 LIMIT 2 OFFSET 1",
+        .context = "tableless offset limit",
+    });
     return failures;
 }
 
@@ -246,7 +273,7 @@ static int test_retained_retry_order(void) {
         },
         {
             .sql = "SHOW EXTENDED COLUMNS FROM t",
-            .callback_count = 6U,
+            .callback_count = expected_retry_strategy_count,
             .context = "residual placeholder retry",
         },
     };
@@ -257,20 +284,21 @@ static int test_retained_retry_order(void) {
     }
     failures += expect_retry_metrics((struct expected_retry_metrics){
         .sql = "SELECT FROM DUAL",
-        .callback_count = 6U,
+        .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        .callback_count = expected_retry_strategy_count,
         .context = "unhandled syntax retry ceiling",
     });
     return failures;
 }
 
-static int expect_primary_parse(const char *sql, const char *context) {
+static int expect_primary_parse(struct expected_primary_parse expected) {
     struct mylite_sql_parse_result result = {0};
-    int failures = parser_test_parse_sql(sql, MYLITE_SQL_PARSE_OK, &result);
+    int failures = parser_test_parse_sql(expected.sql, MYLITE_SQL_PARSE_OK, &result);
 
     failures += parser_test_expect_true(
         result.retry_tokenization_count == 0U && result.retry_callback_count == 0U &&
             result.retry_handled_count == 0U,
-        context
+        expected.context
     );
     mylite_sql_parse_result_deinit(&result);
     return failures;
@@ -278,11 +306,7 @@ static int expect_primary_parse(const char *sql, const char *context) {
 
 static int expect_retry_metrics(struct expected_retry_metrics expected) {
     struct mylite_sql_parse_result result = {0};
-    enum mylite_sql_parse_status expected_status =
-        expected.callback_count == 6U && strcmp(expected.sql, "SELECT FROM DUAL") == 0
-            ? MYLITE_SQL_PARSE_SYNTAX_ERROR
-            : MYLITE_SQL_PARSE_OK;
-    int failures = parser_test_parse_sql(expected.sql, expected_status, &result);
+    int failures = parser_test_parse_sql(expected.sql, expected.status, &result);
 
     failures += mylite_test_expect_size(result.retry_tokenization_count, 1U, expected.context);
     failures += mylite_test_expect_size(
@@ -292,7 +316,7 @@ static int expect_retry_metrics(struct expected_retry_metrics expected) {
     );
     failures += mylite_test_expect_size(
         result.retry_handled_count,
-        expected_status == MYLITE_SQL_PARSE_OK ? 1U : 0U,
+        expected.status == MYLITE_SQL_PARSE_OK ? 1U : 0U,
         expected.context
     );
     mylite_sql_parse_result_deinit(&result);

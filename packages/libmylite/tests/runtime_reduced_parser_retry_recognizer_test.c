@@ -122,7 +122,7 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     );
     for (size_t row = 0U; row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
-            size_t value_index = row * expected.column_count + column;
+            size_t value_index = (row * expected.column_count) + column;
 
             failures += mylite_test_expect_text(
                 mylite_result_value_text(result, row, column),

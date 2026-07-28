@@ -772,13 +772,31 @@ and production-size gates are green for the complete phase.
 
 ### `SEM-02`: `CONVERT_TZ()` boundaries
 
-- [ ] Determine the exact MySQL 8.4.9 supported UTC conversion interval and
+- [x] Determine the exact MySQL 8.4.9 supported UTC conversion interval and
   boundary behavior under positive and negative source/target offsets.
-- [ ] Preserve the original value when the source-zone-normalized instant is
+- [x] Preserve the original value when the source-zone-normalized instant is
   outside MySQL's conversion interval.
-- [ ] Cover lower/upper boundaries, fractional seconds, leap days, and offset
+- [x] Cover lower/upper boundaries, fractional seconds, leap days, and offset
   crossings.
-- [ ] Update the temporal specification and compatibility documentation.
+- [x] Update the temporal specification and compatibility documentation.
+
+`SEM-02` is closed by the independently authored specification and pinned
+MySQL 8.4.9 fixture at `f0a37180f`, implementation and native/fault tests at
+`d126ba0ab`, and release qualification at `a36317363`. Source-zone
+normalization now gates conversion on the inclusive x86-64 MySQL interval from
+`1970-01-01 00:00:01.000000` through
+`3001-01-18 23:59:59.999999` UTC. Values outside that interval retain their
+original length-aware text without a warning; admitted fractional precision,
+leap-day arithmetic, and extreme fixed-offset crossings match the pinned
+runtime.
+
+Qualification covered all 16 affected suites across Development, Debug-CI,
+Release, and ASan/UBSan; both deterministic result-allocation paths; all 18
+temporal and time-zone MySQL fixtures; full LLVM 19 analysis across 931
+first-party translation units; formatting, ABI, install, pkg-config, and
+compatibility-ledger gates; and the 12,381,504-byte production archive.
+Self-review found no storage, ABI, dependency, SQLite-fork, ownership, or
+metadata coupling in the value-semantics change.
 
 ### `SEM-03`: function- and argument-specific metadata
 

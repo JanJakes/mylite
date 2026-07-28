@@ -69,6 +69,7 @@ struct row_arithmetic_retry_clone_stack {
 
 enum {
     placeholder_initial_token_capacity = 16,
+    placeholder_token_capacity_growth_divisor = 8,
     placeholder_row_arithmetic_retry_initial_capacity = 4,
     placeholder_ast_node_stack_initial_capacity = 16,
     row_arithmetic_retry_clone_stack_initial_capacity = 8,

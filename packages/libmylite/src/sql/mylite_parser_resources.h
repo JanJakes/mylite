@@ -27,6 +27,11 @@ struct mylite_sql_parser_resource_tracker {
     bool retry_budget_exhausted;
 };
 
+struct mylite_sql_parser_workspace_replacement {
+    size_t old_bytes;
+    size_t new_bytes;
+};
+
 void mylite_sql_parser_resource_tracker_init(
     struct mylite_sql_parser_resource_tracker *tracker,
     size_t input_length
@@ -38,13 +43,11 @@ bool mylite_sql_parser_resource_record_retry_token(
 );
 bool mylite_sql_parser_resource_workspace_fits(
     struct mylite_sql_parser_resource_tracker *tracker,
-    size_t old_bytes,
-    size_t new_bytes
+    struct mylite_sql_parser_workspace_replacement replacement
 );
 void mylite_sql_parser_resource_record_workspace(
     struct mylite_sql_parser_resource_tracker *tracker,
-    size_t old_bytes,
-    size_t new_bytes
+    struct mylite_sql_parser_workspace_replacement replacement
 );
 void mylite_sql_parser_resource_release_workspace(
     struct mylite_sql_parser_resource_tracker *tracker,

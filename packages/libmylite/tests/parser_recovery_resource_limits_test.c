@@ -431,15 +431,17 @@ static int test_workspace_limit(void) {
     failures += mylite_test_expect_true(
         mylite_sql_parser_resource_workspace_fits(
             &tracker,
-            0U,
-            mylite_sql_parser_retry_workspace_limit
+            (struct mylite_sql_parser_workspace_replacement){
+                .new_bytes = mylite_sql_parser_retry_workspace_limit,
+            }
         ),
         "exact workspace limit is admitted"
     );
     mylite_sql_parser_resource_record_workspace(
         &tracker,
-        0U,
-        mylite_sql_parser_retry_workspace_limit
+        (struct mylite_sql_parser_workspace_replacement){
+            .new_bytes = mylite_sql_parser_retry_workspace_limit,
+        }
     );
     failures += mylite_test_expect_size(
         tracker.retry_workspace_peak_bytes,
@@ -449,8 +451,10 @@ static int test_workspace_limit(void) {
     failures += mylite_test_expect_true(
         !mylite_sql_parser_resource_workspace_fits(
             &tracker,
-            mylite_sql_parser_retry_workspace_limit,
-            (size_t)mylite_sql_parser_retry_workspace_limit + 1U
+            (struct mylite_sql_parser_workspace_replacement){
+                .old_bytes = mylite_sql_parser_retry_workspace_limit,
+                .new_bytes = (size_t)mylite_sql_parser_retry_workspace_limit + 1U,
+            }
         ),
         "workspace above limit is rejected"
     );

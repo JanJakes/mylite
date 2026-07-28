@@ -905,8 +905,9 @@ static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
     scan->predicate_context_bytes = scan->token_count * sizeof(*scan->predicate_context_flags);
     if (!mylite_sql_parser_resource_workspace_fits(
             scan->retry_context == NULL ? NULL : scan->retry_context->resource_tracker,
-            0U,
-            scan->predicate_context_bytes
+            (struct mylite_sql_parser_workspace_replacement){
+                .new_bytes = scan->predicate_context_bytes,
+            }
         )) {
         return MYLITE_SQL_PARSE_SYNTAX_ERROR;
     }
@@ -917,8 +918,9 @@ static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
     }
     mylite_sql_parser_resource_record_workspace(
         scan->retry_context == NULL ? NULL : scan->retry_context->resource_tracker,
-        0U,
-        scan->predicate_context_bytes
+        (struct mylite_sql_parser_workspace_replacement){
+            .new_bytes = scan->predicate_context_bytes,
+        }
     );
 
     for (size_t index = 0U; index < scan->token_count; ++index) {
@@ -3784,8 +3786,10 @@ static bool placeholder_row_arithmetic_subject_retries_push(
         new_bytes = capacity * sizeof(*items);
         if (!mylite_sql_parser_resource_workspace_fits(
                 retries->resource_tracker,
-                old_bytes,
-                new_bytes
+                (struct mylite_sql_parser_workspace_replacement){
+                    .old_bytes = old_bytes,
+                    .new_bytes = new_bytes,
+                }
             )) {
             return false;
         }
@@ -3796,8 +3800,10 @@ static bool placeholder_row_arithmetic_subject_retries_push(
         }
         mylite_sql_parser_resource_record_workspace(
             retries->resource_tracker,
-            old_bytes,
-            new_bytes
+            (struct mylite_sql_parser_workspace_replacement){
+                .old_bytes = old_bytes,
+                .new_bytes = new_bytes,
+            }
         );
         retries->items = items;
         retries->capacity = capacity;
@@ -5873,8 +5879,9 @@ static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
         context->token_count * sizeof(*context->matching_parenthesis_indexes) * 2U;
     if (!mylite_sql_parser_resource_workspace_fits(
             context->resource_tracker,
-            0U,
-            context->matching_parenthesis_index_bytes
+            (struct mylite_sql_parser_workspace_replacement){
+                .new_bytes = context->matching_parenthesis_index_bytes,
+            }
         )) {
         context->budget_error_token = context->tokens[0];
         return MYLITE_SQL_PARSE_SYNTAX_ERROR;
@@ -5887,14 +5894,16 @@ static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
     }
     mylite_sql_parser_resource_record_workspace(
         context->resource_tracker,
-        0U,
-        context->matching_parenthesis_index_bytes
+        (struct mylite_sql_parser_workspace_replacement){
+            .new_bytes = context->matching_parenthesis_index_bytes,
+        }
     );
     context->parenthesis_flag_bytes = context->token_count * sizeof(*context->parenthesis_flags);
     if (!mylite_sql_parser_resource_workspace_fits(
             context->resource_tracker,
-            0U,
-            context->parenthesis_flag_bytes
+            (struct mylite_sql_parser_workspace_replacement){
+                .new_bytes = context->parenthesis_flag_bytes,
+            }
         )) {
         context->budget_error_token = context->tokens[0];
         mylite_sql_parser_resource_release_workspace(
@@ -5922,8 +5931,9 @@ static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
     }
     mylite_sql_parser_resource_record_workspace(
         context->resource_tracker,
-        0U,
-        context->parenthesis_flag_bytes
+        (struct mylite_sql_parser_workspace_replacement){
+            .new_bytes = context->parenthesis_flag_bytes,
+        }
     );
     open_parentheses = context->matching_parenthesis_indexes + context->token_count;
     for (size_t index = 0U; index < context->token_count; ++index) {
@@ -6200,7 +6210,8 @@ static enum mylite_sql_parse_status append_placeholder_statement_token(
         if (context->token_capacity == 0U) {
             new_capacity = placeholder_initial_token_capacity;
         } else {
-            size_t growth = context->token_capacity / 8U;
+            size_t growth =
+                context->token_capacity / (size_t)placeholder_token_capacity_growth_divisor;
 
             if (growth == 0U) {
                 growth = 1U;
@@ -6221,8 +6232,10 @@ static enum mylite_sql_parse_status append_placeholder_statement_token(
         new_bytes = new_capacity * sizeof(*context->tokens);
         if (!mylite_sql_parser_resource_workspace_fits(
                 context->resource_tracker,
-                old_bytes,
-                new_bytes
+                (struct mylite_sql_parser_workspace_replacement){
+                    .old_bytes = old_bytes,
+                    .new_bytes = new_bytes,
+                }
             )) {
             context->budget_error_token = *token;
             return MYLITE_SQL_PARSE_SYNTAX_ERROR;
@@ -6233,8 +6246,10 @@ static enum mylite_sql_parse_status append_placeholder_statement_token(
         }
         mylite_sql_parser_resource_record_workspace(
             context->resource_tracker,
-            old_bytes,
-            new_bytes
+            (struct mylite_sql_parser_workspace_replacement){
+                .old_bytes = old_bytes,
+                .new_bytes = new_bytes,
+            }
         );
         context->tokens = grown;
         context->token_capacity = new_capacity;

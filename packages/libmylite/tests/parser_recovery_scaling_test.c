@@ -201,14 +201,19 @@ static char *make_flat_for_stored_tokens(size_t token_count, size_t *out_length)
 }
 
 static char *make_flat_for_length(size_t length) {
+    static const char prefix[] = "SELECT";
+    static const char item[] = " 1";
+    static const char suffix[] = " +";
+    size_t framing = (sizeof(prefix) - 1U) + (sizeof(suffix) - 1U);
+    size_t item_length = sizeof(item) - 1U;
     size_t integer_count = 0U;
     size_t actual_length = 0U;
     char *sql = NULL;
 
-    if (length < 8U || (length - 8U) % 2U != 0U) {
+    if (length < framing || (length - framing) % item_length != 0U) {
         return NULL;
     }
-    integer_count = (length - 8U) / 2U;
+    integer_count = (length - framing) / item_length;
     sql = make_flat_for_stored_tokens(integer_count + 2U, &actual_length);
     if (sql == NULL || actual_length != length) {
         free(sql);

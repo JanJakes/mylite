@@ -48,24 +48,23 @@ bool mylite_sql_parser_resource_record_retry_token(
 
 bool mylite_sql_parser_resource_workspace_fits(
     struct mylite_sql_parser_resource_tracker *tracker,
-    size_t old_bytes,
-    size_t new_bytes
+    struct mylite_sql_parser_workspace_replacement replacement
 ) {
     size_t retained_bytes = 0U;
 
     if (tracker == NULL) {
         return true;
     }
-    if (old_bytes > tracker->retry_workspace_bytes) {
+    if (replacement.old_bytes > tracker->retry_workspace_bytes) {
         tracker->retry_budget_exhausted = true;
         return false;
     }
-    retained_bytes = tracker->retry_workspace_bytes - old_bytes;
+    retained_bytes = tracker->retry_workspace_bytes - replacement.old_bytes;
     if (retained_bytes > tracker->retry_workspace_limit) {
         tracker->retry_budget_exhausted = true;
         return false;
     }
-    if (new_bytes > tracker->retry_workspace_limit - retained_bytes) {
+    if (replacement.new_bytes > tracker->retry_workspace_limit - retained_bytes) {
         tracker->retry_budget_exhausted = true;
         return false;
     }
@@ -74,30 +73,29 @@ bool mylite_sql_parser_resource_workspace_fits(
 
 void mylite_sql_parser_resource_record_workspace(
     struct mylite_sql_parser_resource_tracker *tracker,
-    size_t old_bytes,
-    size_t new_bytes
+    struct mylite_sql_parser_workspace_replacement replacement
 ) {
     size_t retained_bytes = 0U;
 
     if (tracker == NULL) {
         return;
     }
-    if (old_bytes > tracker->retry_workspace_bytes) {
+    if (replacement.old_bytes > tracker->retry_workspace_bytes) {
         tracker->retry_budget_exhausted = true;
         return;
     }
-    retained_bytes = tracker->retry_workspace_bytes - old_bytes;
+    retained_bytes = tracker->retry_workspace_bytes - replacement.old_bytes;
     if (retained_bytes > tracker->retry_workspace_limit ||
-        new_bytes > tracker->retry_workspace_limit - retained_bytes) {
+        replacement.new_bytes > tracker->retry_workspace_limit - retained_bytes) {
         tracker->retry_budget_exhausted = true;
         return;
     }
-    tracker->retry_workspace_bytes = retained_bytes + new_bytes;
+    tracker->retry_workspace_bytes = retained_bytes + replacement.new_bytes;
     if (tracker->retry_workspace_bytes > tracker->retry_workspace_peak_bytes) {
         tracker->retry_workspace_peak_bytes = tracker->retry_workspace_bytes;
     }
     ++tracker->retry_allocation_count;
-    add_saturated(&tracker->retry_allocation_bytes, new_bytes);
+    add_saturated(&tracker->retry_allocation_bytes, replacement.new_bytes);
 }
 
 void mylite_sql_parser_resource_release_workspace(

@@ -72,6 +72,13 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/mysqli_errors.php"
   )
   mylite_add_php_test(
+    php-ext-mysqli-mylite.pending-result-state
+    -n
+    -d "extension=${MYLITE_PHP_CORE_EXTENSION}"
+    -d "extension=${MYLITE_PHP_MYSQLI_EXTENSION}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/mysqli_pending_result_state.php"
+  )
+  mylite_add_php_test(
     php-ext-mysqli-mylite.api-surface
     -n
     -d "extension=${MYLITE_PHP_CORE_EXTENSION}"

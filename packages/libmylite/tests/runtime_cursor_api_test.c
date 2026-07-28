@@ -32,6 +32,8 @@ enum {
     diagnostic_text_capacity = 256,
     native_signed_binding_value = -42,
     native_rebind_value = 7,
+    lazy_parameterized_constant_value = 8,
+    explain_extra_column_index = 11,
     classified_marker_value = 31,
     ansi_marker_value = 32,
     executable_marker_value = 41,
@@ -635,7 +637,7 @@ static int test_cursor_read_transaction_lifecycle(void) {
         "parameterized constant prepare leaves SQLite autocommit active"
     );
     failures += mylite_test_expect_int(
-        mylite_stmt_bind_int64(parameterized_stmt, 0U, 8),
+        mylite_stmt_bind_int64(parameterized_stmt, 0U, lazy_parameterized_constant_value),
         MYLITE_OK,
         "bind lazy parameterized constant cursor"
     );
@@ -3656,15 +3658,23 @@ static int test_prepared_row_result_reexecution(void) {
     );
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first EXPLAIN query row");
-    failures +=
-        expect_cursor_text(stmt, 11U, "MyLite EXPLAIN placeholder", "first EXPLAIN query extra");
+    failures += expect_cursor_text(
+        stmt,
+        explain_extra_column_index,
+        "MyLite EXPLAIN placeholder",
+        "first EXPLAIN query extra"
+    );
     failures +=
         mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset partial EXPLAIN query");
     failures += execute_ok(database, "CREATE INDEX row_results_id ON row_results (id)");
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second EXPLAIN query row");
-    failures +=
-        expect_cursor_text(stmt, 11U, "MyLite EXPLAIN placeholder", "second EXPLAIN query extra");
+    failures += expect_cursor_text(
+        stmt,
+        explain_extra_column_index,
+        "MyLite EXPLAIN placeholder",
+        "second EXPLAIN query extra"
+    );
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "second EXPLAIN query done");
     failures +=

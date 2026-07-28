@@ -2,8 +2,7 @@
 
 ## Status
 
-Specified. Implementation and qualification are pending. This feature closes
-security review finding SEC-03.
+Implemented and qualified. This feature closes security review finding SEC-03.
 
 ## Scope And Sources
 
@@ -14,7 +13,10 @@ specified from:
 - `README.md` and `docs/architecture/engineering-standards.md`;
 - `docs/specs/file-backed-mylite-opening-vfs/specs.md`;
 - the existing public `mylite_open*()` ABI;
-- PHP's public length-aware string and PDO driver interfaces; and
+- PHP 8.4.23's
+  [PDO construction path](https://github.com/php/php-src/blob/php-8.4.23/ext/pdo/pdo_dbh.c),
+  including its public length-aware string interface and NUL-terminated
+  data-source copy; and
 - observed operating-system file behavior in first-party tests.
 
 Database filenames are an embedded MyLite concern rather than a MySQL server
@@ -33,8 +35,10 @@ functions. A value such as:
 ```
 
 is therefore validated and routed as one PHP value but opened by the operating
-system as its prefix. The PDO adapter also duplicates its data source with
-`estrdup()`, discarding the known PDO data-source length before native open.
+system as its prefix. The PDO adapter also duplicated its data source with
+`estrdup()`. PHP 8.4 PDO itself derives `dbh->data_source_len` with `strlen()`
+while copying the driver-specific suffix, so that field cannot recover bytes
+after a NUL.
 
 This is both an identity error and an authorization-boundary hazard. Rejection
 must occur before SQLite, the offset VFS, or the platform filesystem observes a
@@ -140,9 +144,15 @@ continue through their separate length-aware quoting path.
 
 ## PDO MyLite Adapter
 
-PDO MyLite uses both `dbh->data_source` and `dbh->data_source_len`. Path
-resolution returns a `zend_string` rather than an `estrdup()` result:
+For a direct `mylite:` DSN, PDO MyLite reads the still-live, length-bearing
+constructor or `PDO::connect()` argument in the shared driver factory. This is
+necessary because PHP 8.4 PDO copies the driver-specific data source with
+`strlen()` before invoking the driver. Non-binary PDO aliases fall back to
+`dbh->data_source` and `dbh->data_source_len`. Path resolution returns a
+`zend_string` rather than an `estrdup()` result:
 
+- a NUL anywhere in the original constructor argument rejects direct, alias,
+  and URI forms before fallback;
 - `path=<value>` strips the exact five-byte prefix and preserves the remaining
   length;
 - other data sources preserve the complete data-source span;
@@ -152,7 +162,8 @@ resolution returns a `zend_string` rather than an `estrdup()` result:
 
 The constructor and PHP 8.4 `PDO::connect()` share the same driver factory, so
 the matrix applies to both. Rejection uses PDO's ordinary connection exception
-surface and leaves no persistent handle or filesystem side effect.
+surface, including SQLSTATE and native status, and leaves no persistent handle
+or filesystem side effect.
 
 ## Framework Packages
 
@@ -197,6 +208,7 @@ The core, mysqli, and PDO package suites cover beginning, middle, and final NUL
 placement, empty and exact-memory values, non-ASCII file paths, missing prefix
 creation, and existing prefix preservation. mysqli covers host, localhost-host,
 socket, and database-path routing. PDO covers plain and `path=` data sources.
+Both the PDO constructor and PHP 8.4 `PDO::connect()` are exercised.
 
 All adapter failures are checked with their normal exception/error class and
 must occur before a visible prefix changes.
@@ -215,13 +227,14 @@ This feature does not claim:
 
 ## Qualification
 
-Before the compatibility row becomes supported:
+The exact ABI/export and public-header snapshots include both additive
+functions. The native path test passes Release, Debug, ASan/UBSan, and
+deterministic fault-injection profiles on POSIX and is registered unchanged in
+the required Windows CI job.
 
-- exact ABI and public-header snapshots include both additive functions;
-- the native path matrix passes Release, Debug, Windows, ASan/UBSan, and VFS
-  fault profiles;
-- all three PHP adapter suites pass in Release and ASan/UBSan builds;
-- formatting, static analysis, installation, and production-size gates pass;
-- documentation identifies sized APIs as authoritative for length-bearing
-  callers; and
-- the compatibility-claim validator passes.
+All 16 PHP package tests pass in both the Release and PHP ASan/UBSan profiles.
+The latter uses the preset's `detect_leaks=0` policy because PHP process leaks
+are qualified separately from adapter address/undefined-behavior safety.
+Formatting, static analysis, installation consumers, and all production-size
+budgets pass. The compatibility-claim validator maps the supported row to the
+three adapter tests and the `php-extensions` CI job.

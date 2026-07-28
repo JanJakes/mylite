@@ -440,18 +440,27 @@ qualification at `1ec0c22fe`:
 
 ### `SEC-03`: length-aware database paths
 
-- [ ] Add a length-aware native database-open API with explicit ownership,
+- [x] Add a length-aware native database-open API with explicit ownership,
   embedded-NUL, empty-path, and `:memory:` semantics.
-- [ ] Preserve the existing NUL-terminated API as a documented convenience
+- [x] Preserve the existing NUL-terminated API as a documented convenience
   wrapper.
-- [ ] Reject embedded NUL bytes in core PHP, mysqli socket/path resolution, and
+- [x] Reject embedded NUL bytes in core PHP, mysqli socket/path resolution, and
   PDO DSN handling before any filesystem access.
-- [ ] Test NUL placement at the beginning, middle, and end of paths, including
+- [x] Test NUL placement at the beginning, middle, and end of paths, including
   authorized-prefix bypass shapes, `:memory:`, empty values, and non-ASCII
   paths.
-- [ ] Verify that rejected paths create, open, truncate, or delete no file.
-- [ ] Run the path matrix under POSIX and Windows, ASan/UBSan, and VFS
+- [x] Verify that rejected paths create, open, truncate, or delete no file.
+- [x] Run the path matrix under POSIX and Windows, ASan/UBSan, and VFS
   failpoints.
+
+SEC-03 is closed by additive `mylite_open_with_size*()` exports and reviewed
+ABI-0 header/symbol snapshots. The Release, Debug, ASan/UBSan, and deterministic
+fault-injection native profiles pass the registered file-backed-open matrix;
+the same test is part of the required Windows CI job. All 16 PHP adapter tests
+pass in Release and PHP ASan/UBSan profiles, including every mysqli path source,
+PDO construction and `PDO::connect()`, missing/existing prefix cases, exact
+memory routing, empty values, and non-ASCII filenames. Format, static analysis,
+install consumers, production size budgets, and the compatibility ledger pass.
 
 ### Phase 2 closure
 

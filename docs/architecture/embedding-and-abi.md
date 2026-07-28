@@ -72,6 +72,15 @@ created from it are single-threaded and non-reentrant. Independent handles may
 be used concurrently. Applications must finalize statements and free results
 according to the documented lifetime boundaries.
 
+Length-bearing hosts must use `mylite_open_with_size()` or
+`mylite_open_with_size_and_diagnostic()`. The path span is borrowed for the
+call, excludes any optional C terminator, and is copied only after validation.
+Empty spans and spans containing NUL are rejected before SQLite, the offset
+VFS, or the platform filesystem is reached. `mylite_open()` and
+`mylite_open_with_diagnostic()` remain NUL-terminated convenience wrappers that
+measure the input with `strlen()`; native memory databases use the separate
+`mylite_open_memory*()` family.
+
 ## Shared-library ABI
 
 Shared builds use the project major version as `SOVERSION`; the current ABI is

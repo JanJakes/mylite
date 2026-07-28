@@ -82,6 +82,23 @@ host, or as `localhost:/path/to/file.mylite` for WordPress-style DB host
 parsing. The replacement module must be loaded in a PHP process that has not
 already loaded PHP's stock `mysqli` module.
 
+## Database path safety
+
+The core `mylite` module, mysqli replacement, and PDO driver preserve PHP
+string lengths while routing database filenames. Only the exact eight-byte
+`:memory:` token selects an in-memory database. Empty core/PDO paths and any
+selected path containing NUL fail before native open or filesystem access;
+mysqli retains its documented empty-selection memory fallback.
+
+mysqli applies the same check to `mylite:<path>`, path-like and
+`localhost:<path>` hosts, socket paths, and path-like database arguments before
+publishing a new link path. PDO applies it to plain and `path=` DSNs through
+both construction and PHP 8.4 `PDO::connect()`. Existing visible prefix files
+are not opened or changed by a rejected suffix.
+
+See [length-aware database paths](../specs/length-aware-database-paths/specs.md)
+for the native ownership contract, test matrix, and platform boundary.
+
 The mysqli replacement accepts `MYSQLI_CLIENT_FOUND_ROWS` during
 `mysqli_real_connect()`. Direct and native prepared UPDATEs then expose rows
 matched by the predicate through the connection and statement

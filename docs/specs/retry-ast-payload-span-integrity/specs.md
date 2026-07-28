@@ -2,16 +2,16 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented and release-qualified.
 
 ## Summary
 
 Several compatibility retries parse a valid statement prefix with Lemon,
 extend or annotate the resulting AST, and then publish that AST for the full
-statement. `mylite_sql_ast_rebase_source_length()` currently updates only each
-node's primary source span. It does not update source spans embedded in type
-payloads, and `mylite_sql_ast_spans_are_within_source()` validates only primary
-spans.
+statement. Before this remediation, `mylite_sql_ast_rebase_source_length()`
+updated only each node's primary source span. It did not update source spans
+embedded in type payloads, and `mylite_sql_ast_spans_are_within_source()`
+validated only primary spans.
 
 As a result, a retry-produced AST can pass the final parser invariant while
 its width, length, precision, or scale span still describes the shorter prefix
@@ -68,20 +68,24 @@ numeric precision and scale, temporal fractional precision, and character
 lengths. `TEXT(12)` is normalized to `tinytext`; integer display width and
 `YEAR(4)` do not survive in `COLUMN_TYPE`.
 
-## Current Baseline
+## Remediated Baseline
 
-The native reproducer parses the same partitioned `CREATE TABLE` through the
-partition-placeholder prefix retry and observes:
+Before implementation, the native reproducer parsed the same partitioned
+`CREATE TABLE` through the partition-placeholder prefix retry and observed:
 
 ```text
 status=ok retries=1 spans_valid=1 snapshot_cloned=0
 ```
 
-The prefix AST's primary spans are changed from the prefix source length to the
-full statement length. Its active payload spans retain the prefix source
-length, but the current validator does not inspect them. The existing snapshot
-implementation does inspect and rebase payload spans, detects the mismatch,
-and rejects the clone.
+The prefix AST's primary spans changed from the prefix source length to the
+full statement length. Its active payload spans retained the prefix source
+length, but the validator did not inspect them. The snapshot implementation
+did inspect and rebase payload spans, detected the mismatch, and rejected the
+clone.
+
+The remediated implementation uses one node-kind span registry for validation,
+source-length rebasing, and snapshot cloning. The same reproducer now validates
+every primary and payload span and clones the statement snapshot successfully.
 
 ## Scope
 
@@ -240,3 +244,18 @@ Qualification must include focused tests in Development, Debug-CI, Release,
 ASan/UBSan, and deterministic allocator profiles; all parser native suites;
 the pinned parser MySQL fixtures; parser fuzzing; formatting; full static
 analysis; ABI/install-consumer checks; and the production size gate.
+
+## Qualification
+
+Release qualification on local Linux covered:
+
+- all 48 parser native suites in Development, Debug-CI, Release, and
+  ASan/UBSan with leak detection;
+- focused retry payload-span and fatal-status deterministic allocator
+  profiles;
+- all 39 pinned parser-related MySQL 8.4.9 fixtures;
+- 10,000 seeded parser-fuzzer executions under ASan/UBSan, including
+  structured inputs above one MiB;
+- formatting and full LLVM 19 static analysis;
+- public ABI, install-consumer, pkg-config, and compatibility-claim gates;
+- the 12,413,104-byte production static archive.

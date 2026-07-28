@@ -79,3 +79,9 @@ matched by the predicate through the connection and statement
 `affected_rows` properties. Connections without the flag expose changed rows,
 and SQL `ROW_COUNT()` follows the same connection policy. Other nonzero client
 flags remain unsupported.
+
+mysqli and PDO statement execution resets the prior native execution while
+retaining SQL and bound values. Unread or completed buffered rows and their
+metadata are discarded. Re-executing the same statement object regenerates
+`SHOW`, `DESCRIBE`, `EXPLAIN`, SELECT, and maintenance results from the current
+schema, data, and execute-time session state.

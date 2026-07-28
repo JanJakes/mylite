@@ -250,16 +250,35 @@ The corresponding POSIX paths passed locally.
 
 ### `PREP-02`: row-producing classification and reset
 
-- [ ] Replace inconsistent static and dynamic row-return classifiers with one
+- [x] Replace inconsistent static and dynamic row-return classifiers with one
   typed statement-result capability.
-- [ ] Make reset release every execution-owned materialized row, cursor,
+- [x] Make reset release every execution-owned materialized row, cursor,
   metadata, completion, warning, and binding state while retaining only
   explicitly reusable analysis.
-- [ ] Re-execute prepared `SHOW`, `EXPLAIN`, DESCRIBE, metadata statements,
+- [x] Re-execute prepared `SHOW`, `EXPLAIN`, DESCRIBE, metadata statements,
   and other row-producing utilities after intervening DDL/session changes.
-- [ ] Add mutations between executions so stale and fresh output are
+- [x] Add mutations between executions so stale and fresh output are
   distinguishable.
-- [ ] Cover repeated reset/finalize under ASan/UBSan and allocation failpoints.
+- [x] Cover repeated reset/finalize under ASan/UBSan and allocation failpoints.
+
+`PREP-02` implementation evidence at `1dd11000e` and `6e0b820c1`:
+
+- One AST-derived capability now controls native prepared dispatch, query
+  completion semantics, result ownership, and reset for streaming,
+  materialized, utility, and dynamic statement families.
+- The native cursor regression covers `SHOW TABLES`, `DESCRIBE`, table and
+  query `EXPLAIN`, `SHOW VARIABLES`, buffered SELECT, reset before execution,
+  completed and partial reset, schema/data/session mutation, dropped-object
+  failure, recreation, and repeated reset/finalize.
+- Focused Release, Debug, and ASan/UBSan cursor suites passed. The allocator
+  sweep covers materialized re-execution failure, repeated reset, recovery,
+  and finalize; it also preserves `MYLITE_NOMEM` through SHOW result setup.
+- All seven mysqli/PDO extension suites passed with same-object replay
+  assertions. The pinned MySQL 8.4.9 mysqli/PDO fixture independently observed
+  fresh SHOW, DESCRIBE, EXPLAIN, and session-variable results.
+- The production shared-library ABI matches both public manifests. The
+  production static archive is 12,347,862 bytes against the 15,000,000-byte
+  gate.
 
 ### `API-01`: mysqli pending-result state machine
 

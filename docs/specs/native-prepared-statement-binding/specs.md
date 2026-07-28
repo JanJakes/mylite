@@ -107,10 +107,13 @@ with any unbound marker returns `MYLITE_MISUSE` or a statement diagnostic as
 specified by the operation.
 
 `mylite_stmt_reset()` ends the current execution, preserves bindings, and makes
-the statement executable again. `mylite_stmt_clear_bindings()` clears values
-without changing the prepared plan. Schema generation or relevant session
-semantic changes invalidate analysis and trigger controlled reprepare on the
-next execution.
+the statement executable again. It invalidates borrowed current-row values,
+execution-owned column metadata, materialized rows, completion, and warning
+state. `mylite_stmt_clear_bindings()` clears values without changing the
+prepared plan. Schema generation or relevant session semantic changes
+invalidate analysis and trigger controlled reprepare on the next execution.
+Synthetic and materialized ownership is defined in
+[Prepared Row-Result Capability And Replay](../prepared-row-result-capability/specs.md).
 
 `mylite_stmt_step()` starts execution lazily and then returns `MYLITE_ROW` for
 result rows or `MYLITE_DONE` after completion. Non-row statements return

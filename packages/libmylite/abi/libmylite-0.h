@@ -186,7 +186,11 @@ MYLITE_API int mylite_stmt_bind_blob(
     size_t value_size
 );
 MYLITE_API int mylite_stmt_clear_bindings(mylite_stmt *stmt);
-/* Reset preserves bindings and makes a completed or failed statement executable again. */
+/*
+ * Reset preserves SQL and bindings, but releases execution-owned rows,
+ * metadata, completion, and warnings. Borrowed row and metadata pointers are
+ * invalidated. The statement may be executed again.
+ */
 MYLITE_API int mylite_stmt_reset(mylite_stmt *stmt);
 MYLITE_API int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt);
 MYLITE_API uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt);

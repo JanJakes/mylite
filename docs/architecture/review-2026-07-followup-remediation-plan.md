@@ -665,12 +665,32 @@ analysis across 925 translation units; formatting, ABI, install-consumer,
 pkg-config, and compatibility-ledger gates; and the 12,413,104-byte production
 archive.
 
-### `SQL-04` and `SQL-05`: diagnostics and nesting limits
+### `SQL-04`: bounded syntax diagnostics
 
-- [ ] Remove unchecked `size_t` to `int` diagnostic precision casts and cap
+- [x] Remove unchecked `size_t` to `int` diagnostic precision casts and cap
   copied token text to the diagnostic buffer budget.
-- [ ] Differentially verify complete syntax-error code, SQLSTATE, and message
+- [x] Differentially verify complete syntax-error code, SQLSTATE, and message
   wording against MySQL 8.4.9.
+
+`SQL-04` is closed by the independently authored specification and MySQL
+fixture at `0030d2032`, implementation at `016cb5e06`, and release
+qualification at `bfefc581c`. Ordinary, prepared, and multi-statement syntax
+errors now share one allocation-free formatter with the complete MySQL 8.4.9
+English `1064` / `42000` envelope, an 80-byte source-remainder preview, empty
+end-of-input text, and LF-based line counting. Diagnostic precision is capped
+before conversion to `int`, including for non-NUL-terminated and `SIZE_MAX`
+token-length inputs.
+
+Qualification covered all 49 parser-labeled suites and all 11 affected runtime
+diagnostic suites in Development, Debug-CI, Release, and ASan/UBSan with leak
+detection; focused deterministic allocator profiles; all 40 pinned
+parser-related MySQL 8.4.9 fixtures; 10,000 seeded parser-fuzzer executions
+including inputs above one MiB; full LLVM 19 static analysis across 926
+translation units; formatting, ABI, install-consumer, pkg-config, and
+compatibility-ledger gates; and the 12,413,456-byte production archive.
+
+### `SQL-05`: parser nesting limits
+
 - [ ] Sweep valid nested parentheses and `IF()` expressions across the Lemon
   stack boundary.
 - [ ] Document the supported limit or use a growable parser stack with an

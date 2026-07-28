@@ -241,6 +241,9 @@ The corresponding POSIX paths passed locally.
   building those registered targets and rerunning them passed 2/2.
 - Focused Debug, Release, ASan/UBSan, and deterministic allocator-failpoint
   tests pass.
+- The reviewed public-header mirror and production shared-library symbol
+  manifest match, and the production static library remains within its
+  15,000,000-byte limit at 12,346,056 bytes.
 - The MyLite mysqli and PDO adapter regressions pass, and the pinned MySQL
   8.4.9 mysqli/PDO expectation fixture passes with the recorded transaction,
   writer, schema-change, and diagnostic behavior.

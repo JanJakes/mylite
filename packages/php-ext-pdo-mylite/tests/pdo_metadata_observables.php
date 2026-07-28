@@ -96,12 +96,12 @@ $expressions = $pdo->prepare(
 expect_same(true, $expressions->execute(), 'expression metadata execute');
 expect_same(2, $expressions->rowCount(), 'expression buffered row count');
 expect_same(
-    expected_meta('VAR_STRING', PDO::PARAM_STR, [], '', 'expression_value', 0, 0),
+    expected_meta('UNKNOWN', PDO::PARAM_STR, [], '', 'expression_value', 0, 0),
     $expressions->getColumnMeta(0),
     'expression native descriptor transport'
 );
 expect_same(
-    expected_meta('VAR_STRING', PDO::PARAM_STR, [], '', 'aggregate_value', 0, 0),
+    expected_meta('UNKNOWN', PDO::PARAM_STR, [], '', 'aggregate_value', 0, 0),
     $expressions->getColumnMeta(1),
     'aggregate native descriptor transport'
 );

@@ -19,5 +19,14 @@ expect_same('stable', $first->query("SELECT 'stable'")->fetch_row()[0], 'interve
 expect_same($firstSqlId, $first->thread_id, 'first thread ID remains stable');
 expect_same($firstSqlId, mysqli_thread_id($first), 'first procedural ID remains stable');
 
+$first->query('SET SESSION pseudo_thread_id = 12345');
+expect_same(
+    12345,
+    (int)$first->query('SELECT CONNECTION_ID()')->fetch_row()[0],
+    'pseudo thread SQL ID'
+);
+expect_same($firstSqlId, $first->thread_id, 'pseudo thread keeps object thread ID');
+expect_same($firstSqlId, mysqli_thread_id($first), 'pseudo thread keeps procedural thread ID');
+
 $first->close();
 $second->close();

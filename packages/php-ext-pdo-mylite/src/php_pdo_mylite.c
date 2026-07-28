@@ -71,6 +71,10 @@ static int pdo_mylite_stmt_get_col(
     zval *result,
     enum pdo_param_type *type
 );
+static int pdo_mylite_stmt_get_column_meta(pdo_stmt_t *stmt, zend_long column, zval *return_value);
+static const char *pdo_mylite_column_native_type(enum mylite_result_column_type type);
+static enum pdo_param_type pdo_mylite_column_pdo_type(enum mylite_result_column_type type);
+static void pdo_mylite_add_column_flags(zval *return_value, uint32_t native_flags);
 static int pdo_mylite_stmt_param_hook(
     pdo_stmt_t *stmt,
     struct pdo_bound_param_data *parameter,
@@ -136,7 +140,7 @@ static const struct pdo_stmt_methods pdo_mylite_stmt_methods = {
     pdo_mylite_stmt_param_hook,
     NULL,
     NULL,
-    NULL,
+    pdo_mylite_stmt_get_column_meta,
     NULL,
     pdo_mylite_stmt_cursor_closer
 };
@@ -445,8 +449,15 @@ static int pdo_mylite_stmt_execute(pdo_stmt_t *stmt) {
         return 0;
     }
     php_pdo_stmt_set_column_count(stmt, (int)column_count);
-    const int64_t affected_rows = mylite_stmt_affected_rows(statement_data->native);
-    stmt->row_count = affected_rows < 0 ? 0 : (zend_long)affected_rows;
+    if (column_count > 0U) {
+        const size_t row_count = mylite_stmt_buffered_row_count(statement_data->native);
+
+        stmt->row_count = row_count > (size_t)ZEND_LONG_MAX ? ZEND_LONG_MAX : (zend_long)row_count;
+    } else {
+        const int64_t affected_rows = mylite_stmt_affected_rows(statement_data->native);
+
+        stmt->row_count = affected_rows < 0 ? 0 : (zend_long)affected_rows;
+    }
     return 1;
 }
 
@@ -490,8 +501,14 @@ static int pdo_mylite_stmt_describe(pdo_stmt_t *stmt, int column) {
     const char *name = mylite_stmt_column_name(statement_data->native, (size_t)column);
     stmt->columns[column].name =
         zend_string_init(name == NULL ? "" : name, name == NULL ? 0U : strlen(name), false);
-    stmt->columns[column].maxlen = 0;
-    stmt->columns[column].precision = 0;
+    const uint64_t display_length =
+        mylite_stmt_column_display_length(statement_data->native, (size_t)column);
+    stmt->columns[column].maxlen = (size_t)display_length;
+    if ((uint64_t)stmt->columns[column].maxlen != display_length) {
+        stmt->columns[column].maxlen = SIZE_MAX;
+    }
+    stmt->columns[column].precision =
+        (zend_ulong)mylite_stmt_column_decimals(statement_data->native, (size_t)column);
     return 1;
 }
 
@@ -526,6 +543,121 @@ static int pdo_mylite_stmt_get_col(
         }
     }
     return 1;
+}
+
+static int pdo_mylite_stmt_get_column_meta(pdo_stmt_t *stmt, zend_long column, zval *return_value) {
+    pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
+
+    if (column < 0 || (size_t)column >= mylite_stmt_column_count(statement_data->native)) {
+        return 0;
+    }
+    const size_t column_index = (size_t)column;
+    const enum mylite_result_column_type native_type =
+        mylite_stmt_column_type(statement_data->native, column_index);
+    const char *table = mylite_stmt_column_table_name(statement_data->native, column_index);
+
+    array_init(return_value);
+    add_assoc_string(
+        return_value,
+        "native_type",
+        (char *)pdo_mylite_column_native_type(native_type)
+    );
+    add_assoc_long(return_value, "pdo_type", (zend_long)pdo_mylite_column_pdo_type(native_type));
+    pdo_mylite_add_column_flags(
+        return_value,
+        mylite_stmt_column_flags(statement_data->native, column_index)
+    );
+    add_assoc_string(return_value, "table", (char *)(table == NULL ? "" : table));
+    return 1;
+}
+
+static const char *pdo_mylite_column_native_type(enum mylite_result_column_type type) {
+    switch (type) {
+    case MYLITE_RESULT_COLUMN_TYPE_DECIMAL:
+        return "DECIMAL";
+    case MYLITE_RESULT_COLUMN_TYPE_TINY:
+        return "TINY";
+    case MYLITE_RESULT_COLUMN_TYPE_SHORT:
+        return "SHORT";
+    case MYLITE_RESULT_COLUMN_TYPE_LONG:
+        return "LONG";
+    case MYLITE_RESULT_COLUMN_TYPE_FLOAT:
+        return "FLOAT";
+    case MYLITE_RESULT_COLUMN_TYPE_DOUBLE:
+        return "DOUBLE";
+    case MYLITE_RESULT_COLUMN_TYPE_NULL:
+        return "NULL";
+    case MYLITE_RESULT_COLUMN_TYPE_TIMESTAMP:
+        return "TIMESTAMP";
+    case MYLITE_RESULT_COLUMN_TYPE_LONGLONG:
+        return "LONGLONG";
+    case MYLITE_RESULT_COLUMN_TYPE_INT24:
+        return "INT24";
+    case MYLITE_RESULT_COLUMN_TYPE_DATE:
+        return "DATE";
+    case MYLITE_RESULT_COLUMN_TYPE_TIME:
+        return "TIME";
+    case MYLITE_RESULT_COLUMN_TYPE_DATETIME:
+        return "DATETIME";
+    case MYLITE_RESULT_COLUMN_TYPE_YEAR:
+        return "YEAR";
+    case MYLITE_RESULT_COLUMN_TYPE_VARCHAR:
+        return "VARCHAR";
+    case MYLITE_RESULT_COLUMN_TYPE_BIT:
+        return "BIT";
+    case MYLITE_RESULT_COLUMN_TYPE_JSON:
+        return "JSON";
+    case MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL:
+        return "NEWDECIMAL";
+    case MYLITE_RESULT_COLUMN_TYPE_BLOB:
+        return "BLOB";
+    case MYLITE_RESULT_COLUMN_TYPE_VAR_STRING:
+        return "VAR_STRING";
+    case MYLITE_RESULT_COLUMN_TYPE_STRING:
+        return "STRING";
+    case MYLITE_RESULT_COLUMN_TYPE_GEOMETRY:
+        return "GEOMETRY";
+    case MYLITE_RESULT_COLUMN_TYPE_UNKNOWN:
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static enum pdo_param_type pdo_mylite_column_pdo_type(enum mylite_result_column_type type) {
+    switch (type) {
+    case MYLITE_RESULT_COLUMN_TYPE_TINY:
+    case MYLITE_RESULT_COLUMN_TYPE_SHORT:
+    case MYLITE_RESULT_COLUMN_TYPE_LONG:
+    case MYLITE_RESULT_COLUMN_TYPE_LONGLONG:
+    case MYLITE_RESULT_COLUMN_TYPE_INT24:
+    case MYLITE_RESULT_COLUMN_TYPE_YEAR:
+    case MYLITE_RESULT_COLUMN_TYPE_BIT:
+        return PDO_PARAM_INT;
+    default:
+        return PDO_PARAM_STR;
+    }
+}
+
+static void pdo_mylite_add_column_flags(zval *return_value, uint32_t native_flags) {
+    zval flags;
+
+    array_init(&flags);
+    if ((native_flags & MYLITE_RESULT_COLUMN_FLAG_NOT_NULL) != 0U) {
+        add_next_index_string(&flags, "not_null");
+    }
+    if ((native_flags & MYLITE_RESULT_COLUMN_FLAG_PRI_KEY) != 0U) {
+        add_next_index_string(&flags, "primary_key");
+    }
+    if ((native_flags & MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY) != 0U) {
+        add_next_index_string(&flags, "unique_key");
+    }
+    if ((native_flags & MYLITE_RESULT_COLUMN_FLAG_MULTIPLE_KEY) != 0U) {
+        add_next_index_string(&flags, "multiple_key");
+    }
+    if ((native_flags & MYLITE_RESULT_COLUMN_FLAG_BLOB) != 0U) {
+        add_next_index_string(&flags, "blob");
+    }
+    add_assoc_zval(return_value, "flags", &flags);
 }
 
 static int pdo_mylite_stmt_param_hook(

@@ -115,6 +115,12 @@ static int test_connection_id_function_values(void) {
     remove_related_files(path);
 
     failures += mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open values file");
+    failures += mylite_test_expect_true(
+        mylite_connection_id(database) > 0U,
+        "native connection id nonzero"
+    );
+    failures +=
+        mylite_test_expect_uint64(mylite_connection_id(NULL), 0U, "null native connection id");
 
     failures += execute_ok(database, "SELECT CONNECTION_ID()", &result);
     failures += capture_connection_id(
@@ -123,6 +129,11 @@ static int test_connection_id_function_values(void) {
         &connection_id,
         connection_id_text,
         sizeof(connection_id_text)
+    );
+    failures += mylite_test_expect_uint64(
+        mylite_connection_id(database),
+        connection_id,
+        "native and SQL connection ids"
     );
     failures += expect_scalar_result(
         result,
@@ -196,6 +207,11 @@ static int test_connection_id_function_values(void) {
     failures += execute_ok(database, "INSERT INTO t VALUES (1), (2)", &result);
     mylite_result_free(result);
     result = NULL;
+    failures += mylite_test_expect_uint64(
+        mylite_connection_id(database),
+        connection_id,
+        "native connection id remains stable"
+    );
     failures += execute_ok(database, "SELECT CONNECTION_ID()", &result);
     failures += expect_scalar_result(
         result,
@@ -227,6 +243,27 @@ static int test_connection_id_function_values(void) {
             .values = (const char *const[]){connection_id_text, "-1"},
             .count = 2U,
             .context = "connection id after failed statement",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SET SESSION pseudo_thread_id = 12345", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_uint64(
+        mylite_connection_id(database),
+        connection_id,
+        "pseudo thread keeps native connection id"
+    );
+    failures += execute_ok(database, "SELECT CONNECTION_ID()", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = connection_id_columns,
+            .values = (const char *const[]){"12345"},
+            .count = 1U,
+            .context = "pseudo thread changes SQL connection id",
         }
     );
     mylite_result_free(result);
@@ -286,6 +323,11 @@ static int test_connection_id_function_independent_handles(void) {
 
     failures += mylite_test_expect_int(mylite_open(path, &first), MYLITE_OK, "open first handle");
     failures += mylite_test_expect_int(mylite_open(path, &second), MYLITE_OK, "open second handle");
+    failures += expect_uint64_not_equal(
+        mylite_connection_id(first),
+        mylite_connection_id(second),
+        "native independent handle ids"
+    );
 
     failures += execute_ok(first, "SELECT CONNECTION_ID()", &result);
     failures += capture_connection_id(
@@ -295,6 +337,8 @@ static int test_connection_id_function_independent_handles(void) {
         first_text,
         sizeof(first_text)
     );
+    failures +=
+        mylite_test_expect_uint64(mylite_connection_id(first), first_id, "first native handle id");
     failures += expect_scalar_result(
         result,
         (struct expected_scalar_result){
@@ -314,6 +358,11 @@ static int test_connection_id_function_independent_handles(void) {
         &second_id,
         second_text,
         sizeof(second_text)
+    );
+    failures += mylite_test_expect_uint64(
+        mylite_connection_id(second),
+        second_id,
+        "second native handle id"
     );
     failures += expect_uint64_not_equal(first_id, second_id, "independent handle ids");
     failures += expect_scalar_result(

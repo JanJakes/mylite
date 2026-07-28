@@ -3667,7 +3667,7 @@ void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
         &link->std,
         "thread_id",
         strlen("thread_id"),
-        1
+        (zend_long)mylite_connection_id(link->database)
     );
     mylite_mysqli_update_link_status_properties(link);
 }

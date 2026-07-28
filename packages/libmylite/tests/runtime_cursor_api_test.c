@@ -1086,6 +1086,11 @@ static int test_cursor_select_streams_rows_and_metadata(void) {
         "prepare cursor select"
     );
     failures += mylite_test_expect_true(stmt != NULL, "prepare returns statement handle");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        0U,
+        "streaming cursor has no buffered row count"
+    );
     failures += mylite_test_expect_size(mylite_stmt_column_count(stmt), 3U, "cursor column count");
     failures +=
         mylite_test_expect_text(mylite_stmt_column_name(stmt, 0U), "id", "cursor id column name");
@@ -1181,6 +1186,11 @@ static int test_cursor_select_streams_rows_and_metadata(void) {
     );
 
     failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "cursor first row step");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        0U,
+        "streaming cursor row count remains zero"
+    );
     failures += expect_cursor_text(stmt, 0U, "1", "cursor first row id");
     failures += expect_cursor_text(stmt, 1U, "alpha", "cursor first row name");
     failures += expect_cursor_text(stmt, 2U, "one", "cursor first row note");
@@ -3195,6 +3205,11 @@ static int test_buffered_prepared_statement_releases_connection(void) {
     }
     remove_related_files(path);
 
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(NULL),
+        0U,
+        "null buffered row count"
+    );
     failures +=
         mylite_test_expect_int(mylite_open(path, &database), MYLITE_OK, "open buffered prepared");
     failures += execute_ok(database, "CREATE DATABASE app");
@@ -3211,17 +3226,37 @@ static int test_buffered_prepared_statement_releases_connection(void) {
         MYLITE_OK,
         "prepare buffered parameter query"
     );
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        0U,
+        "unexecuted buffered row count"
+    );
     failures +=
         mylite_test_expect_int(mylite_stmt_bind_int64(stmt, 0U, 1), MYLITE_OK, "bind buffered id");
     failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "buffered first row");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        2U,
+        "buffered total row count"
+    );
     failures += expect_cursor_text(stmt, 0U, "alpha", "buffered first value");
     session = mylite_connection_session_state(database);
     failures +=
         mylite_test_expect_int((int)session->previous_row_count, -1, "publish buffered row count");
     failures += execute_ok(database, "INSERT INTO items VALUES (3, 'gamma')");
     failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "buffered unread row");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        2U,
+        "buffered row count after fetch"
+    );
     failures += expect_cursor_text(stmt, 0U, "beta", "buffered unread value");
     failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "buffered result done");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        2U,
+        "buffered row count after exhaustion"
+    );
     session = mylite_connection_session_state(database);
     failures += mylite_test_expect_int(
         (int)session->previous_row_count,
@@ -3231,6 +3266,11 @@ static int test_buffered_prepared_statement_releases_connection(void) {
 
     failures +=
         mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset buffered statement");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        0U,
+        "reset clears buffered row count"
+    );
     failures += mylite_test_expect_int(
         mylite_stmt_bind_int64(stmt, 0U, 3),
         MYLITE_OK,
@@ -3238,7 +3278,29 @@ static int test_buffered_prepared_statement_releases_connection(void) {
     );
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecuted buffered row");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        1U,
+        "reexecuted buffered row count"
+    );
     failures += expect_cursor_text(stmt, 0U, "gamma", "reexecuted buffered value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_reset(stmt),
+        MYLITE_OK,
+        "reset for empty buffered result"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_bind_int64(stmt, 0U, 4),
+        MYLITE_OK,
+        "bind empty buffered id"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "empty buffered result done");
+    failures += mylite_test_expect_size(
+        mylite_stmt_buffered_row_count(stmt),
+        0U,
+        "empty buffered row count"
+    );
     failures += mylite_test_expect_int(
         mylite_stmt_finalize(stmt),
         MYLITE_OK,

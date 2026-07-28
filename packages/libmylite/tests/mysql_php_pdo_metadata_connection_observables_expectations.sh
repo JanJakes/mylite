@@ -163,6 +163,10 @@ expect_same(true, $firstSqlId > 0, 'first thread id nonzero');
 expect_same(true, $secondSqlId > 0, 'second thread id nonzero');
 expect_same(true, $firstSqlId !== $secondSqlId, 'connection thread ids distinct');
 expect_same($firstSqlId, $first->thread_id, 'first thread id stable');
+$first->query('SET SESSION pseudo_thread_id = 12345');
+expect_same(12345, (int)$first->query('SELECT CONNECTION_ID()')->fetch_row()[0], 'pseudo thread SQL id');
+expect_same($firstSqlId, $first->thread_id, 'pseudo thread keeps object thread id');
+expect_same($firstSqlId, mysqli_thread_id($first), 'pseudo thread keeps procedural thread id');
 $first->close();
 $second->close();
 

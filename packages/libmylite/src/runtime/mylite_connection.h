@@ -363,6 +363,7 @@ struct mylite_db {
     struct mylite_diagnostics diagnostics;
     struct mylite_diagnostics previous_diagnostics;
     struct mylite_session_state session;
+    uint64_t stable_connection_id;
     struct mylite_sqlite_bootstrap_state sqlite_bootstrap;
     struct mylite_catalog catalog;
     struct mylite_catalog_string_pool catalog_strings;

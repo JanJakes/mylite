@@ -658,6 +658,13 @@ int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt) {
     return stmt == NULL ? -1 : stmt->completion.affected_rows;
 }
 
+size_t mylite_stmt_buffered_row_count(const mylite_stmt *stmt) {
+    if (stmt == NULL || !stmt->buffered_results || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_row_count(stmt->metadata_result);
+}
+
 uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt) {
     return stmt == NULL ? 0U : stmt->completion.insert_id;
 }

@@ -52,6 +52,8 @@ publish those two flags through `getColumnMeta()`.
 Each live mysqli connection has a stable, nonzero thread ID. The object
 property and procedural accessor equal that connection's SQL
 `CONNECTION_ID()`. Simultaneously live connections have different IDs.
+`SET SESSION pseudo_thread_id` changes SQL `CONNECTION_ID()` but does not
+change the mysqli thread ID.
 
 ## Scope
 
@@ -66,7 +68,9 @@ The implementation must:
 - use the native connection ID for both the mysqli `thread_id` property and
   `mysqli_thread_id()`;
 - keep identifiers stable for the lifetime of a database handle and distinct
-  for simultaneously live handles.
+  for simultaneously live handles;
+- preserve that stable identity when `pseudo_thread_id` changes the SQL-visible
+  session value.
 
 ## Non-Goals
 
@@ -147,7 +151,9 @@ SELECT CONNECTION_ID();
 ```
 
 for that link. A second simultaneously live link must not reuse the first
-link's ID.
+link's ID. This equality describes the initially assigned connection identity:
+like MySQL, a later `SET SESSION pseudo_thread_id` changes SQL
+`CONNECTION_ID()` without changing the mysqli thread ID.
 
 ## Error And Lifetime Semantics
 
@@ -164,15 +170,17 @@ link's ID.
 Direct table-column descriptors in the test matrix match the observed MySQL
 8.4.9 PDO metadata. Expression and aggregate columns are still exposed
 faithfully from MyLite's native descriptors, including current differences in
-type and display length. SEM-03 will correct those native descriptors once and
-thereby update native, mysqli, and PDO consumers together.
+type and display length. Those two tested expressions currently publish
+`UNKNOWN`, zero display length, and zero precision. SEM-03 will correct those
+native descriptors once and thereby update native, mysqli, and PDO consumers
+together.
 
 ## Test Matrix
 
 | Layer | Required coverage |
 | --- | --- |
-| MySQL 8.4.9 fixture | direct and prepared buffered row counts; post-fetch stability; empty result metadata; integer/unsigned, decimal, VARCHAR, TEXT, BLOB, DATETIME, geometry, expression, and aggregate metadata; two mysqli IDs |
-| Native C API | null/accessor behavior; nonzero stable ID; two-handle distinction; SQL equality; buffered nonempty/empty count; fetch stability; reset and re-execution |
+| MySQL 8.4.9 fixture | direct and prepared buffered row counts; post-fetch stability; empty result metadata; integer/unsigned, decimal, VARCHAR, TEXT, BLOB, DATETIME, geometry, expression, and aggregate metadata; two mysqli IDs; `pseudo_thread_id` separation |
+| Native C API | null/accessor behavior; nonzero stable ID; two-handle distinction; initial SQL equality; stability across `pseudo_thread_id`; buffered nonempty/empty count; fetch stability; reset and re-execution |
 | PDO MyLite | exact table metadata arrays; empty results; expression/aggregate descriptor transport; immediate and post-fetch `rowCount()`; DML affected count |
 | mysqli MyLite | object/procedural identity equality; SQL equality; multiple handles; stability across commands |
 | Qualification | Release/Debug, ASan/UBSan, ABI manifests, formatters, static analysis, PHP adapters, MySQL fixture, artifact-size gates |

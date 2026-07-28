@@ -920,12 +920,14 @@ PHP_FUNCTION(mysqli_poll) {
 
 PHP_FUNCTION(mysqli_thread_id) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_LONG(1);
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    RETURN_LONG((zend_long)mylite_connection_id(link->database));
 }
 
 PHP_FUNCTION(mysqli_thread_safe) {

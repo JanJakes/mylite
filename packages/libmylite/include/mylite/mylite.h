@@ -141,6 +141,8 @@ MYLITE_API void mylite_close(mylite_db *database);
  * detached and are valid only for finalize.
  */
 MYLITE_API int mylite_close_checked(mylite_db *database);
+/* Returns the stable nonzero identity of a live database handle, or zero for NULL. */
+MYLITE_API uint64_t mylite_connection_id(const mylite_db *database);
 /* Nonzero enables MySQL CLIENT_FOUND_ROWS affected-row semantics for UPDATE. */
 MYLITE_API int mylite_set_client_found_rows(mylite_db *database, int enabled);
 
@@ -202,6 +204,8 @@ MYLITE_API int mylite_stmt_clear_bindings(mylite_stmt *stmt);
  */
 MYLITE_API int mylite_stmt_reset(mylite_stmt *stmt);
 MYLITE_API int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt);
+/* Returns the total rows retained by the current buffered result. */
+MYLITE_API size_t mylite_stmt_buffered_row_count(const mylite_stmt *stmt);
 MYLITE_API uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_stmt_info(const mylite_stmt *stmt);
 /*

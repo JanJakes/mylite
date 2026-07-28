@@ -165,6 +165,10 @@ int mylite_close_checked(mylite_db *database) {
     return MYLITE_OK;
 }
 
+uint64_t mylite_connection_id(const mylite_db *database) {
+    return database == NULL ? 0U : database->stable_connection_id;
+}
+
 int mylite_set_client_found_rows(mylite_db *database, int enabled) {
     if (database == NULL) {
         return MYLITE_MISUSE;
@@ -440,6 +444,7 @@ static int allocate_database_handle(struct mylite_db **out_database) {
     mylite_diagnostics_init(&database->diagnostics);
     mylite_diagnostics_init(&database->previous_diagnostics);
     initialize_session_state(&database->session);
+    database->stable_connection_id = database->session.connection_id;
     mylite_catalog_init(&database->catalog);
     mylite_catalog_string_pool_init(&database->catalog_strings);
     rc = register_processlist_session(database);

@@ -211,6 +211,12 @@ void mylite_sql_parser_state_syntax_error(
 void mylite_sql_parser_state_parse_failed(struct mylite_sql_parser_state *state);
 void mylite_sql_parser_state_accept(struct mylite_sql_parser_state *state);
 void mylite_sql_parser_state_stack_overflow(struct mylite_sql_parser_state *state);
+void *mylite_sql_parser_stack_reallocate(
+    void *allocation,
+    size_t size,
+    struct mylite_sql_parser_state *state
+);
+void mylite_sql_parser_stack_free(void *allocation, struct mylite_sql_parser_state *state);
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_script(struct mylite_sql_parser_state *state);
 struct mylite_sql_ast_node *mylite_sql_parser_make_script_with_statement(

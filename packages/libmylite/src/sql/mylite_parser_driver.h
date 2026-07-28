@@ -7,13 +7,8 @@
 
 struct mylite_sql_parser_retry_context;
 
-void *mylite_sql_lemonAlloc(void *(*malloc_proc)(size_t));
-void mylite_sql_lemon(
-    void *parser,
-    int parser_token,
-    struct mylite_sql_token token,
-    struct mylite_sql_parser_state *state
-);
+void *mylite_sql_lemonAlloc(void *(*malloc_proc)(size_t), struct mylite_sql_parser_state *state);
+void mylite_sql_lemon(void *parser, int parser_token, struct mylite_sql_token token);
 void mylite_sql_lemonFree(void *parser, void (*free_proc)(void *));
 
 enum {

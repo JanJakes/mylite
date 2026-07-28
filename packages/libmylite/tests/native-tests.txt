@@ -43,6 +43,7 @@ tests/parser_dml_control_test.c|parser|always
 tests/parser_errors_test.c|parser|always
 tests/parser_expression_aggregate_test.c|parser|always
 tests/parser_expression_window_explain_gaps_test.c|parser|always
+tests/parser_nesting_limits_test.c|internal|always
 tests/parser_partition_options_test.c|parser|always
 tests/parser_partition_selection_test.c|parser|always
 tests/parser_recovery_resource_limits_test.c|internal|always
@@ -382,6 +383,7 @@ tests/runtime_parser_corpus_set_dml_expression_placeholders_test.c|public|always
 tests/runtime_parser_corpus_temporal_fractional_precision_surfaces_test.c|public|always
 tests/runtime_parser_corpus_variable_value_surfaces_test.c|public|always
 tests/runtime_parser_corpus_view_fulltext_utility_placeholders_test.c|public|always
+tests/runtime_parser_nesting_limits_test.c|internal|always
 tests/runtime_performance_schema_connection_attribute_tables_test.c|internal|always
 tests/runtime_performance_schema_connection_tables_test.c|internal|always
 tests/runtime_performance_schema_error_summary_placeholders_test.c|internal|always

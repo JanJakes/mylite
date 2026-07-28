@@ -6,7 +6,10 @@
 
 struct mylite_sql_parse_result;
 
+#define MYLITE_SQL_PARSER_STACK_INITIAL_ENTRY_COUNT 64
+
 enum {
+    mylite_sql_parser_stack_byte_limit = 8 * 1024 * 1024,
     mylite_sql_parser_retry_token_limit = 65536,
     mylite_sql_parser_retry_parenthesis_depth_limit = 512,
     mylite_sql_parser_retry_callback_limit = 8,

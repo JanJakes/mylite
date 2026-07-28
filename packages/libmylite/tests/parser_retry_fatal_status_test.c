@@ -9,11 +9,13 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 enum {
     parser_allocation_sweep_limit = 2048,
+    parser_growth_sweep_depth = 128,
 };
 
 struct parser_retry_case {
@@ -38,12 +40,17 @@ static int expect_callback_allocation_sweep(
     parser_retry_callback callback,
     const char *context
 );
+static int test_growable_stack_allocation_failures(void);
+static int expect_direct_growable_stack_allocation_sweep(const char *sql, size_t sql_length);
+static int expect_runtime_growable_stack_allocation_sweep(const char *sql, size_t sql_length);
+static char *make_nested_if_query(size_t depth, size_t *out_length);
 static int test_runtime_parser_allocation_failures(void);
 
 int main(void) {
     int failures = 0;
 
     failures += test_direct_parser_allocation_failures();
+    failures += test_growable_stack_allocation_failures();
     failures += test_runtime_parser_allocation_failures();
     mylite_test_allocator_clear();
     return failures == 0 ? 0 : 1;
@@ -263,6 +270,193 @@ static int expect_callback_allocation_sweep(
 
     failures += mylite_test_expect_true(completed_sweep, context);
     return failures;
+}
+
+static int test_growable_stack_allocation_failures(void) {
+    size_t sql_length = 0U;
+    char *sql = make_nested_if_query(parser_growth_sweep_depth, &sql_length);
+    int failures = mylite_test_expect_true(sql != NULL, "allocate growable parser stack sweep SQL");
+
+    if (sql == NULL) {
+        return failures;
+    }
+    failures += expect_direct_growable_stack_allocation_sweep(sql, sql_length);
+    failures += expect_runtime_growable_stack_allocation_sweep(sql, sql_length);
+    free(sql);
+    return failures;
+}
+
+static int expect_direct_growable_stack_allocation_sweep(const char *sql, size_t sql_length) {
+    int failures = 0;
+    bool completed_sweep = false;
+
+    for (size_t allocation_index = 0U; allocation_index < parser_allocation_sweep_limit;
+         ++allocation_index) {
+        struct mylite_sql_parse_result result = {0};
+        enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+        bool allocation_failed = false;
+
+        mylite_test_allocator_fail_after(allocation_index);
+        status = mylite_sql_parse(
+            (struct mylite_sql_parse_config){
+                .input = sql,
+                .length = sql_length,
+            },
+            &result
+        );
+        allocation_failed = mylite_test_allocator_was_triggered();
+        mylite_test_allocator_clear();
+
+        if (!allocation_failed) {
+            failures += mylite_test_expect_int(
+                status,
+                MYLITE_SQL_PARSE_OK,
+                "complete growable parser stack sweep"
+            );
+            failures += mylite_test_expect_true(
+                result.parser_stack_growth_count > 1U,
+                "growable parser sweep performs multiple growth operations"
+            );
+            completed_sweep = true;
+            mylite_sql_parse_result_deinit(&result);
+            break;
+        }
+        if (status != MYLITE_SQL_PARSE_NOMEM || result.status != MYLITE_SQL_PARSE_NOMEM) {
+            fprintf(
+                stderr,
+                "growable parser allocation %zu: expected NOMEM/NOMEM, got %s/%s\n",
+                allocation_index,
+                mylite_sql_parse_status_name(status),
+                mylite_sql_parse_status_name(result.status)
+            );
+            failures = 1;
+        }
+        mylite_sql_parse_result_deinit(&result);
+    }
+
+    failures +=
+        mylite_test_expect_true(completed_sweep, "complete direct growable parser stack sweep");
+    return failures;
+}
+
+static int expect_runtime_growable_stack_allocation_sweep(const char *sql, size_t sql_length) {
+    static const char recovery_sql[] = "SELECT 9";
+    mylite_db *database = NULL;
+    int failures = mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open growable parser stack runtime sweep"
+    );
+    bool completed_sweep = false;
+    size_t required_failure_count = 0U;
+
+    if (database == NULL) {
+        return failures;
+    }
+    for (size_t allocation_index = 0U; allocation_index < parser_allocation_sweep_limit;
+         ++allocation_index) {
+        mylite_result *result = NULL;
+        int rc = MYLITE_OK;
+        bool allocation_failed = false;
+
+        mylite_test_allocator_fail_after(allocation_index);
+        rc = mylite_execute(database, sql, sql_length, &result);
+        allocation_failed = mylite_test_allocator_was_triggered();
+        mylite_test_allocator_clear();
+
+        if (!allocation_failed) {
+            failures += mylite_test_expect_int(
+                rc,
+                MYLITE_OK,
+                "complete runtime growable parser stack sweep"
+            );
+            failures += mylite_test_expect_true(
+                result != NULL,
+                "complete runtime growable parser stack result"
+            );
+            completed_sweep = true;
+            mylite_result_free(result);
+            break;
+        }
+        if (rc == MYLITE_OK) {
+            failures += mylite_test_expect_true(
+                result != NULL,
+                "optional runtime allocation fallback result"
+            );
+            mylite_result_free(result);
+            continue;
+        }
+        if (rc != MYLITE_NOMEM || mylite_errcode(database) != MYLITE_NOMEM ||
+            strcmp(mylite_sqlstate(database), "HY001") != 0 ||
+            strcmp(mylite_errmsg(database), "out of memory") != 0) {
+            fprintf(
+                stderr,
+                "runtime growable parser allocation %zu: expected NOMEM/HY001, "
+                "got %d/%d/%s/%s\n",
+                allocation_index,
+                rc,
+                mylite_errcode(database),
+                mylite_sqlstate(database),
+                mylite_errmsg(database)
+            );
+            failures = 1;
+        } else {
+            ++required_failure_count;
+        }
+        failures +=
+            mylite_test_expect_true(result == NULL, "failed growable parser sweep has no result");
+        mylite_result_free(result);
+        result = NULL;
+        failures += mylite_test_expect_int(
+            mylite_execute(database, recovery_sql, sizeof(recovery_sql) - 1U, &result),
+            MYLITE_OK,
+            "runtime growable parser sweep recovery"
+        );
+        failures +=
+            mylite_test_expect_true(result != NULL, "runtime growable parser recovery result");
+        mylite_result_free(result);
+    }
+
+    failures +=
+        mylite_test_expect_true(completed_sweep, "complete runtime growable parser stack sweep");
+    failures += mylite_test_expect_true(
+        required_failure_count > 1U,
+        "runtime sweep reaches multiple required parser allocations"
+    );
+    mylite_close(database);
+    return failures;
+}
+
+static char *make_nested_if_query(size_t depth, size_t *out_length) {
+    static const char prefix[] = "SELECT ";
+    static const char open[] = "IF(1,1,";
+    const size_t prefix_length = sizeof(prefix) - 1U;
+    const size_t open_length = sizeof(open) - 1U;
+    size_t length = 0U;
+    char *sql = NULL;
+    char *cursor = NULL;
+
+    if (out_length == NULL || depth > (SIZE_MAX - prefix_length - 1U) / (open_length + 1U)) {
+        return NULL;
+    }
+    length = prefix_length + depth * open_length + 1U + depth;
+    sql = (char *)malloc(length + 1U);
+    if (sql == NULL) {
+        return NULL;
+    }
+    cursor = sql;
+    memcpy(cursor, prefix, prefix_length);
+    cursor += prefix_length;
+    for (size_t index = 0U; index < depth; ++index) {
+        memcpy(cursor, open, open_length);
+        cursor += open_length;
+    }
+    *cursor++ = '0';
+    memset(cursor, ')', depth);
+    cursor += depth;
+    *cursor = '\0';
+    *out_length = length;
+    return sql;
 }
 
 static int test_runtime_parser_allocation_failures(void) {

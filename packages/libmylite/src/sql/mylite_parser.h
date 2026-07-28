@@ -38,6 +38,8 @@ struct mylite_sql_parse_result {
     size_t retry_allocation_count;
     size_t retry_allocation_bytes;
     size_t retry_workspace_peak_bytes;
+    size_t parser_stack_growth_count;
+    size_t parser_stack_allocation_peak_bytes;
     bool retry_budget_exhausted;
     enum mylite_sql_parse_status status;
     struct mylite_sql_token error_token;

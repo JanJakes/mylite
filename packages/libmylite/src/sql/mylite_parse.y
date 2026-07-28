@@ -2,12 +2,25 @@
 %token_prefix MYLITE_SQL_PARSE_
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
-%extra_argument { struct mylite_sql_parser_state *state }
-%stack_size 512
+%extra_context { struct mylite_sql_parser_state *state }
+%stack_size MYLITE_SQL_PARSER_STACK_INITIAL_ENTRY_COUNT
+%stack_size_limit MYLITE_SQL_PARSER_STACK_SIZE_LIMIT
+%realloc mylite_sql_parser_stack_reallocate
+%free mylite_sql_parser_stack_free
 
 %include {
 #define YYNOERRORRECOVERY 1
 #include "mylite_parser_internal.h"
+#include "mylite_parser_resources.h"
+
+#include <string.h>
+
+#define MYLITE_SQL_PARSER_STACK_SIZE_LIMIT(unused_context) \
+    ((int)(((size_t)mylite_sql_parser_stack_byte_limit / sizeof(yyStackEntry)) > \
+                   (size_t)MYLITE_SQL_PARSER_STACK_INITIAL_ENTRY_COUNT \
+               ? ((size_t)mylite_sql_parser_stack_byte_limit / sizeof(yyStackEntry)) - \
+                     (size_t)MYLITE_SQL_PARSER_STACK_INITIAL_ENTRY_COUNT \
+               : 0U))
 }
 
 %syntax_error {

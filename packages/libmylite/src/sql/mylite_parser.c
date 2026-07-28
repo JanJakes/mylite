@@ -375,7 +375,7 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
         .accepted = false,
     };
 
-    parser = mylite_sql_lemonAlloc(malloc);
+    parser = mylite_sql_lemonAlloc(malloc, &state);
     if (parser == NULL) {
         out_result->status = MYLITE_SQL_PARSE_NOMEM;
         return out_result->status;
@@ -431,6 +431,8 @@ void mylite_sql_parser_reset_parse_result(struct mylite_sql_parse_result *out_re
     out_result->retry_allocation_count = 0U;
     out_result->retry_allocation_bytes = 0U;
     out_result->retry_workspace_peak_bytes = 0U;
+    out_result->parser_stack_growth_count = 0U;
+    out_result->parser_stack_allocation_peak_bytes = 0U;
     out_result->retry_budget_exhausted = false;
     out_result->status = MYLITE_SQL_PARSE_OK;
     out_result->error_token = (struct mylite_sql_token){0};
@@ -607,7 +609,7 @@ static enum mylite_sql_parse_status feed_lexer_token(
         return context->state->result->status;
     }
 
-    mylite_sql_lemon(context->parser, token_map.parser_token, *token, context->state);
+    mylite_sql_lemon(context->parser, token_map.parser_token, *token);
     *context->previous_token_was_dot = token_map.previous_token_was_dot;
     mylite_sql_parser_update_token_history(context->token_history, token_map.parser_token);
     if (context->inject_parenthesized_row_constructors) {
@@ -734,6 +736,35 @@ void mylite_sql_parser_state_stack_overflow(struct mylite_sql_parser_state *stat
     mylite_sql_parser_set_state_status(state, MYLITE_SQL_PARSE_STACK_OVERFLOW);
 }
 
+void *mylite_sql_parser_stack_reallocate(
+    void *allocation,
+    size_t size,
+    struct mylite_sql_parser_state *state
+) {
+    void *resized = NULL;
+
+    if (size == 0U || size > (size_t)mylite_sql_parser_stack_byte_limit) {
+        return NULL;
+    }
+    resized = realloc(allocation, size);
+    if (resized == NULL) {
+        mylite_sql_parser_set_state_status(state, MYLITE_SQL_PARSE_NOMEM);
+        return NULL;
+    }
+    if (state != NULL && state->result != NULL) {
+        ++state->result->parser_stack_growth_count;
+        if (size > state->result->parser_stack_allocation_peak_bytes) {
+            state->result->parser_stack_allocation_peak_bytes = size;
+        }
+    }
+    return resized;
+}
+
+void mylite_sql_parser_stack_free(void *allocation, struct mylite_sql_parser_state *state) {
+    (void)state;
+    free(allocation);
+}
+
 static bool feed_parenthesized_row_constructor_if_needed(
     void *parser,
     struct mylite_sql_parser_state *state,
@@ -748,7 +779,7 @@ static bool feed_parenthesized_row_constructor_if_needed(
     }
 
     synthetic_row = make_synthetic_row_constructor_token(injection->left_paren);
-    mylite_sql_lemon(parser, MYLITE_SQL_PARSE_ROW, synthetic_row, state);
+    mylite_sql_lemon(parser, MYLITE_SQL_PARSE_ROW, synthetic_row);
     if (previous_token_was_dot != NULL) {
         *previous_token_was_dot = false;
     }

@@ -218,7 +218,7 @@ static enum mylite_sql_parse_status parse_select_result_option_before_duplicate_
         .modes = config.modes,
         .accepted = false,
     };
-    parser = mylite_sql_lemonAlloc(malloc);
+    parser = mylite_sql_lemonAlloc(malloc, &state);
     if (parser == NULL) {
         out_result->status = MYLITE_SQL_PARSE_NOMEM;
         return out_result->status;
@@ -324,7 +324,7 @@ static enum mylite_sql_parse_status feed_token_with_parser_token_override(
     }
 
     if (parser_token_override > 0) {
-        mylite_sql_lemon(parser, parser_token_override, *token, state);
+        mylite_sql_lemon(parser, parser_token_override, *token);
         *previous_token_was_dot = false;
         mylite_sql_parser_update_token_history(history, parser_token_override);
         return state->result->status;
@@ -358,7 +358,7 @@ static enum mylite_sql_parse_status feed_token_with_parser_token_override(
         return state->result->status;
     }
 
-    mylite_sql_lemon(parser, token_map.parser_token, *token, state);
+    mylite_sql_lemon(parser, token_map.parser_token, *token);
     *previous_token_was_dot = token_map.previous_token_was_dot;
     mylite_sql_parser_update_token_history(history, token_map.parser_token);
     return state->result->status;
@@ -3869,7 +3869,7 @@ static enum mylite_sql_parse_status parse_parenthesized_row_arithmetic_predicate
         .modes = config.modes,
         .accepted = false,
     };
-    parser = mylite_sql_lemonAlloc(malloc);
+    parser = mylite_sql_lemonAlloc(malloc, &state);
     if (parser == NULL) {
         out_result->status = MYLITE_SQL_PARSE_NOMEM;
         return out_result->status;
@@ -4163,7 +4163,7 @@ static enum mylite_sql_parse_status feed_row_arithmetic_subject_tokens(
         .modes = request->config.modes,
         .accepted = false,
     };
-    parser = mylite_sql_lemonAlloc(malloc);
+    parser = mylite_sql_lemonAlloc(malloc, &state);
     if (parser == NULL) {
         return MYLITE_SQL_PARSE_NOMEM;
     }
@@ -5064,7 +5064,7 @@ static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
         .modes = config.modes,
         .accepted = false,
     };
-    parser = mylite_sql_lemonAlloc(malloc);
+    parser = mylite_sql_lemonAlloc(malloc, &state);
     if (parser == NULL) {
         out_result->status = MYLITE_SQL_PARSE_NOMEM;
         return out_result->status;

@@ -29,4 +29,10 @@ if(BUILD_TESTING)
     -d "extension=$<TARGET_FILE:mylite_php_pdo_extension>"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/pdo_api_test.php"
   )
+  mylite_add_php_test(
+    php-ext-pdo-mylite.statement-diagnostics
+    -d "extension=$<TARGET_FILE:mylite_php_extension>"
+    -d "extension=$<TARGET_FILE:mylite_php_pdo_extension>"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/pdo_statement_diagnostics.php"
+  )
 endif()

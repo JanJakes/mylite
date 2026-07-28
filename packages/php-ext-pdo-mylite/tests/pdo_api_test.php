@@ -306,7 +306,7 @@ expect_true($payload === [
     'blob_value' => $blobBytes,
     'nullable_value' => null,
 ], 'binary-safe payload round trip mismatch');
-expect_true($pdo->query('SELECT COUNT(*) FROM people')->fetchColumn() === '2', 'hostile text changed schema');
+expect_true($pdo->query('SELECT COUNT(*) FROM people')->fetchColumn() === 2, 'hostile text changed schema');
 
 $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
 expect_true(in_array('people', $tables, true), 'SHOW TABLES omitted people');
@@ -362,7 +362,7 @@ expect_true($pdo->beginTransaction(), 'beginTransaction failed');
 expect_true($pdo->exec("INSERT INTO people VALUES (3, 'Katherine')") === 1, 'transaction INSERT failed');
 expect_true($pdo->rollBack(), 'rollBack failed');
 expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => 2, 'name' => 'Grace'], 'buffered SELECT unread row mismatch');
-expect_true($pdo->query('SELECT COUNT(*) AS total FROM people')->fetch() === ['total' => '2'], 'rollback count mismatch');
+expect_true($pdo->query('SELECT COUNT(*) AS total FROM people')->fetch() === ['total' => 2], 'rollback count mismatch');
 
 $quotedPayload = "A\0\n\r\\'\"\x1aB";
 $quotedLiteral = $pdo->quote($quotedPayload);
@@ -376,7 +376,7 @@ expect_true(
 );
 $quotedAttack = $pdo->quote("Ada' OR 1=1 -- ");
 expect_true(
-    $pdo->query('SELECT COUNT(*) FROM people WHERE name = ' . $quotedAttack)->fetchColumn() === '0',
+    $pdo->query('SELECT COUNT(*) FROM people WHERE name = ' . $quotedAttack)->fetchColumn() === 0,
     'PDO quote allowed SQL injection'
 );
 

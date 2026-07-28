@@ -27,7 +27,7 @@ struct parser_retry_case {
 typedef enum mylite_sql_parse_status (*parser_retry_callback)(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 );
 

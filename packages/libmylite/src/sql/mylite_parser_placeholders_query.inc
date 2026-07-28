@@ -600,14 +600,19 @@ static bool placeholder_scan_find_matching_right_paren(
     size_t left_paren_index,
     size_t *out_right_paren_index
 ) {
+    struct mylite_sql_parser_retry_context *context = NULL;
     size_t right_paren_index = 0U;
 
     if (scan == NULL || left_paren_index >= scan->token_count ||
-        scan->matching_parenthesis_indexes == NULL ||
         !mylite_sql_parser_token_is_left_paren(&scan->tokens[left_paren_index])) {
         return false;
     }
-    right_paren_index = scan->matching_parenthesis_indexes[left_paren_index];
+    context = scan->retry_context;
+    if (context == NULL ||
+        mylite_sql_parser_retry_context_ensure_parenthesis_index(context) != MYLITE_SQL_PARSE_OK) {
+        return false;
+    }
+    right_paren_index = context->matching_parenthesis_indexes[left_paren_index];
     if (right_paren_index == SIZE_MAX || right_paren_index <= left_paren_index ||
         right_paren_index >= scan->token_count ||
         !mylite_sql_parser_token_is_right_paren(&scan->tokens[right_paren_index])) {
@@ -872,13 +877,19 @@ static bool placeholder_scan_function_call_arguments_are_well_formed(
     size_t left_paren_index,
     size_t right_paren_index
 ) {
+    const size_t *matching_parenthesis_indexes = NULL;
+    const unsigned char *parenthesis_flags = placeholder_scan_parenthesis_flags(scan);
+
+    if (scan != NULL && scan->retry_context != NULL) {
+        matching_parenthesis_indexes = scan->retry_context->matching_parenthesis_indexes;
+    }
     if (scan == NULL || left_paren_index + 1U >= right_paren_index ||
-        scan->matching_parenthesis_indexes == NULL || scan->parenthesis_flags == NULL ||
-        scan->matching_parenthesis_indexes[left_paren_index] != right_paren_index) {
+        matching_parenthesis_indexes == NULL || parenthesis_flags == NULL ||
+        matching_parenthesis_indexes[left_paren_index] != right_paren_index) {
         return false;
     }
-    return (scan->parenthesis_flags[left_paren_index] &
-            placeholder_parenthesis_has_well_formed_arguments) != 0U;
+    return (parenthesis_flags[left_paren_index] & placeholder_parenthesis_has_well_formed_arguments
+           ) != 0U;
 }
 
 static bool placeholder_scan_token_can_follow_function_call_surface(
@@ -2503,14 +2514,14 @@ static bool placeholder_scan_row_tuple_starts_at(
     size_t *out_right_paren_index
 ) {
     size_t right_paren_index = 0U;
+    const unsigned char *parenthesis_flags = placeholder_scan_parenthesis_flags(scan);
 
     if (!placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
         right_paren_index <= left_paren_index + 2U ||
         placeholder_scan_left_paren_starts_function_arguments(scan, left_paren_index) ||
         placeholder_scan_query_expression_starts_at(scan, left_paren_index + 1U) ||
-        scan->parenthesis_flags == NULL ||
-        (scan->parenthesis_flags[left_paren_index] & placeholder_parenthesis_has_top_level_comma) ==
-            0U) {
+        parenthesis_flags == NULL ||
+        (parenthesis_flags[left_paren_index] & placeholder_parenthesis_has_top_level_comma) == 0U) {
         return false;
     }
     if (out_right_paren_index != NULL) {

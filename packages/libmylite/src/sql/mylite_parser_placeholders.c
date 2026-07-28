@@ -23,10 +23,9 @@ enum placeholder_statement_kind {
 
 struct placeholder_statement_scan {
     const struct mylite_sql_token *tokens;
-    const size_t *matching_parenthesis_indexes;
-    const size_t *left_parenthesis_run_predecessors;
-    const unsigned char *parenthesis_flags;
+    struct mylite_sql_parser_retry_context *retry_context;
     uint8_t *predicate_context_flags;
+    size_t predicate_context_bytes;
     size_t token_count;
     bool has_non_trailing_semicolon;
     bool parentheses_balanced;
@@ -46,6 +45,7 @@ struct placeholder_row_arithmetic_subject_retry {
 
 struct placeholder_row_arithmetic_subject_retries {
     struct placeholder_row_arithmetic_subject_retry *items;
+    struct mylite_sql_parser_resource_tracker *resource_tracker;
     size_t count;
     size_t capacity;
 };
@@ -168,6 +168,7 @@ static bool placeholder_scan_row_constructor_predicate_is_in_where_context(
 static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
     struct placeholder_statement_scan *scan
 );
+static void placeholder_scan_deinit_predicate_contexts(struct placeholder_statement_scan *scan);
 static bool placeholder_scan_row_constructor_comparison_starts_at(
     const struct placeholder_statement_scan *scan,
     size_t index,
@@ -888,15 +889,10 @@ static bool placeholder_scan_token_is_schema_keyword(
 );
 static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
     struct mylite_sql_parse_config config,
-    struct mylite_sql_token **out_tokens,
-    size_t *out_token_count,
-    bool *out_has_non_trailing_semicolon
+    struct mylite_sql_parser_retry_context *context
 );
 static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
     struct mylite_sql_parser_retry_context *context
-);
-static bool placeholder_retry_context_has_parenthesis(
-    const struct mylite_sql_parser_retry_context *context
 );
 static void placeholder_parenthesis_index_push(
     struct mylite_sql_parser_retry_context *context,
@@ -921,16 +917,14 @@ static void build_left_parenthesis_run_predecessors(
     size_t *out_predecessors
 );
 static struct placeholder_statement_scan placeholder_statement_scan_from_retry_context(
-    const struct mylite_sql_parser_retry_context *context
+    struct mylite_sql_parser_retry_context *context
 );
 static enum mylite_sql_parse_status scan_placeholder_lexer_tokens(
     struct mylite_sql_lexer *lexer,
     const char *root_input,
-    struct mylite_sql_token **tokens,
-    size_t *token_count,
-    size_t *token_capacity,
+    struct mylite_sql_parser_retry_context *context,
     bool *saw_semicolon,
-    bool *out_has_non_trailing_semicolon
+    size_t *parenthesis_depth
 );
 static enum mylite_sql_parse_status scan_placeholder_lexer_token(
     struct mylite_sql_token *token,
@@ -938,18 +932,14 @@ static enum mylite_sql_parse_status scan_placeholder_lexer_token(
     const char *root_input,
     struct mylite_sql_lexer *lexer_stack,
     size_t *lexer_count,
-    struct mylite_sql_token **tokens,
-    size_t *token_count,
-    size_t *token_capacity,
+    struct mylite_sql_parser_retry_context *context,
     bool *saw_semicolon,
-    bool *out_has_non_trailing_semicolon,
+    size_t *parenthesis_depth,
     bool *out_done
 );
-static bool append_placeholder_statement_token(
+static enum mylite_sql_parse_status append_placeholder_statement_token(
     const struct mylite_sql_token *token,
-    struct mylite_sql_token **tokens,
-    size_t *token_count,
-    size_t *token_capacity
+    struct mylite_sql_parser_retry_context *context
 );
 static enum mylite_sql_parse_status try_parse_alter_table_algorithm_lock_tail_statement(
     struct mylite_sql_parse_config config,
@@ -1187,6 +1177,12 @@ static bool placeholder_scan_find_matching_right_paren(
     const struct placeholder_statement_scan *scan,
     size_t left_paren_index,
     size_t *out_right_paren_index
+);
+static const size_t *placeholder_scan_left_parenthesis_run_predecessors(
+    const struct placeholder_statement_scan *scan
+);
+static const unsigned char *placeholder_scan_parenthesis_flags(
+    const struct placeholder_statement_scan *scan
 );
 static bool placeholder_scan_query_expression_starts_at(
     const struct placeholder_statement_scan *scan,

@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+struct mylite_sql_parser_resource_tracker;
+
 enum mylite_sql_parse_status {
     MYLITE_SQL_PARSE_OK = 0,
     MYLITE_SQL_PARSE_MISUSE = 1,
@@ -21,6 +23,7 @@ struct mylite_sql_parse_config {
     size_t length;
     unsigned int modes;
     bool allow_parameters;
+    struct mylite_sql_parser_resource_tracker *resource_tracker;
 };
 
 struct mylite_sql_parse_result {
@@ -30,6 +33,12 @@ struct mylite_sql_parse_result {
     size_t retry_tokenization_count;
     size_t retry_callback_count;
     size_t retry_handled_count;
+    size_t lexer_pass_count;
+    size_t retry_token_count;
+    size_t retry_allocation_count;
+    size_t retry_allocation_bytes;
+    size_t retry_workspace_peak_bytes;
+    bool retry_budget_exhausted;
     enum mylite_sql_parse_status status;
     struct mylite_sql_token error_token;
     int parser_token;

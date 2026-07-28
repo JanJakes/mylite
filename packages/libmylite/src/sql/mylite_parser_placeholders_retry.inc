@@ -7,16 +7,11 @@ enum mylite_sql_parse_status mylite_sql_parser_retry_context_init(
     if (out_context == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
     }
-    *out_context = (struct mylite_sql_parser_retry_context){0};
-    status = scan_placeholder_statement_tokens(
-        config,
-        &out_context->tokens,
-        &out_context->token_count,
-        &out_context->has_non_trailing_semicolon
-    );
-    if (status == MYLITE_SQL_PARSE_OK) {
-        status = build_placeholder_parenthesis_index(out_context);
-    }
+    *out_context = (struct mylite_sql_parser_retry_context){
+        .resource_tracker = config.resource_tracker,
+        .parentheses_balanced = true,
+    };
+    status = scan_placeholder_statement_tokens(config, out_context);
     out_context->status = status;
     return status;
 }
@@ -25,22 +20,36 @@ void mylite_sql_parser_retry_context_deinit(struct mylite_sql_parser_retry_conte
     if (context == NULL) {
         return;
     }
+    mylite_sql_parser_resource_release_workspace(
+        context->resource_tracker,
+        context->parenthesis_flag_bytes
+    );
     free(context->parenthesis_flags);
+    mylite_sql_parser_resource_release_workspace(
+        context->resource_tracker,
+        context->matching_parenthesis_index_bytes
+    );
     free(context->matching_parenthesis_indexes);
+    mylite_sql_parser_resource_release_workspace(
+        context->resource_tracker,
+        context->token_capacity * sizeof(*context->tokens)
+    );
     free(context->tokens);
     *context = (struct mylite_sql_parser_retry_context){0};
 }
 
 bool mylite_sql_parser_retry_context_parenthesis_has_top_level_comma(
-    const struct mylite_sql_parser_retry_context *context,
+    struct mylite_sql_parser_retry_context *context,
     const struct mylite_sql_token *left_parenthesis,
     size_t *inout_token_index
 ) {
     size_t index = 0U;
 
     if (context == NULL || left_parenthesis == NULL || inout_token_index == NULL ||
-        context->status != MYLITE_SQL_PARSE_OK || context->parenthesis_flags == NULL ||
         !mylite_sql_parser_token_is_left_paren(left_parenthesis)) {
+        return false;
+    }
+    if (mylite_sql_parser_retry_context_ensure_parenthesis_index(context) != MYLITE_SQL_PARSE_OK) {
         return false;
     }
     index = *inout_token_index;
@@ -55,10 +64,37 @@ bool mylite_sql_parser_retry_context_parenthesis_has_top_level_comma(
            (context->parenthesis_flags[index] & placeholder_parenthesis_has_top_level_comma) != 0U;
 }
 
+enum mylite_sql_parse_status mylite_sql_parser_retry_context_ensure_parenthesis_index(
+    struct mylite_sql_parser_retry_context *context
+) {
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (context == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (context->parenthesis_index_state == MYLITE_SQL_PARSER_PARENTHESIS_INDEX_READY) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    if (context->parenthesis_index_state == MYLITE_SQL_PARSER_PARENTHESIS_INDEX_UNAVAILABLE) {
+        return context->status;
+    }
+    if (context->status != MYLITE_SQL_PARSE_OK) {
+        context->parenthesis_index_state = MYLITE_SQL_PARSER_PARENTHESIS_INDEX_UNAVAILABLE;
+        return context->status;
+    }
+
+    status = build_placeholder_parenthesis_index(context);
+    context->status = status;
+    context->parenthesis_index_state = status == MYLITE_SQL_PARSE_OK
+                                           ? MYLITE_SQL_PARSER_PARENTHESIS_INDEX_READY
+                                           : MYLITE_SQL_PARSER_PARENTHESIS_INDEX_UNAVAILABLE;
+    return status;
+}
+
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_select_result_option_before_duplicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -331,7 +367,7 @@ static enum mylite_sql_parse_status feed_token_with_parser_token_override(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_constructor_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -386,7 +422,7 @@ static bool scan_can_retry_parenthesized_row_constructors(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -412,12 +448,12 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predica
     status = scan_row_constructor_predicate_retries(&scan, &retries, &can_retry);
     if (status != MYLITE_SQL_PARSE_OK) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
-        free(scan.predicate_context_flags);
+        placeholder_scan_deinit_predicate_contexts(&scan);
         return status;
     }
     if (!can_retry) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
-        free(scan.predicate_context_flags);
+        placeholder_scan_deinit_predicate_contexts(&scan);
         return MYLITE_SQL_PARSE_OK;
     }
 
@@ -429,13 +465,13 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predica
         *result = retry_result;
         *out_handled = true;
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
-        free(scan.predicate_context_flags);
+        placeholder_scan_deinit_predicate_contexts(&scan);
         return status;
     }
 
     mylite_sql_parse_result_deinit(&retry_result);
     placeholder_row_arithmetic_subject_retries_deinit(&retries);
-    free(scan.predicate_context_flags);
+    placeholder_scan_deinit_predicate_contexts(&scan);
     if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         result->status = status;
         *out_handled = true;
@@ -456,6 +492,9 @@ static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
     }
     if (out_retries != NULL) {
         *out_retries = (struct placeholder_row_arithmetic_subject_retries){0};
+        if (scan != NULL && scan->retry_context != NULL) {
+            out_retries->resource_tracker = scan->retry_context->resource_tracker;
+        }
     }
     if (scan == NULL || scan->tokens == NULL || out_retries == NULL || out_can_retry == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
@@ -521,15 +560,17 @@ static bool placeholder_scan_row_constructor_predicate_is_in_where_context(
     const struct placeholder_statement_scan *scan,
     size_t index
 ) {
+    const size_t *left_parenthesis_run_predecessors =
+        placeholder_scan_left_parenthesis_run_predecessors(scan);
     size_t cursor = index;
 
-    if (scan == NULL || scan->tokens == NULL || scan->left_parenthesis_run_predecessors == NULL ||
+    if (scan == NULL || scan->tokens == NULL || left_parenthesis_run_predecessors == NULL ||
         index == 0U || index >= scan->token_count) {
         return false;
     }
     --cursor;
     if (mylite_sql_parser_token_is_left_paren(&scan->tokens[cursor])) {
-        cursor = scan->left_parenthesis_run_predecessors[cursor];
+        cursor = left_parenthesis_run_predecessors[cursor];
         if (cursor == SIZE_MAX) {
             return false;
         }
@@ -773,7 +814,7 @@ static bool placeholder_scan_token_is_row_constructor_comparison_operator(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -805,12 +846,12 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arith
     );
     if (status != MYLITE_SQL_PARSE_OK) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
-        free(scan.predicate_context_flags);
+        placeholder_scan_deinit_predicate_contexts(&scan);
         return status;
     }
     if (!can_retry) {
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
-        free(scan.predicate_context_flags);
+        placeholder_scan_deinit_predicate_contexts(&scan);
         return MYLITE_SQL_PARSE_OK;
     }
 
@@ -822,13 +863,13 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arith
         *result = retry_result;
         *out_handled = true;
         placeholder_row_arithmetic_subject_retries_deinit(&retries);
-        free(scan.predicate_context_flags);
+        placeholder_scan_deinit_predicate_contexts(&scan);
         return status;
     }
 
     mylite_sql_parse_result_deinit(&retry_result);
     placeholder_row_arithmetic_subject_retries_deinit(&retries);
-    free(scan.predicate_context_flags);
+    placeholder_scan_deinit_predicate_contexts(&scan);
     if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         result->status = status;
         *out_handled = true;
@@ -861,10 +902,24 @@ static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
     if (scan->token_count == 0U) {
         return MYLITE_SQL_PARSE_OK;
     }
-    scan->predicate_context_flags = (uint8_t *)malloc(scan->token_count * sizeof(uint8_t));
+    scan->predicate_context_bytes = scan->token_count * sizeof(*scan->predicate_context_flags);
+    if (!mylite_sql_parser_resource_workspace_fits(
+            scan->retry_context == NULL ? NULL : scan->retry_context->resource_tracker,
+            0U,
+            scan->predicate_context_bytes
+        )) {
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+    scan->predicate_context_flags = (uint8_t *)malloc(scan->predicate_context_bytes);
     if (scan->predicate_context_flags == NULL) {
+        scan->predicate_context_bytes = 0U;
         return MYLITE_SQL_PARSE_NOMEM;
     }
+    mylite_sql_parser_resource_record_workspace(
+        scan->retry_context == NULL ? NULL : scan->retry_context->resource_tracker,
+        0U,
+        scan->predicate_context_bytes
+    );
 
     for (size_t index = 0U; index < scan->token_count; ++index) {
         uint8_t context_flags = 0U;
@@ -879,6 +934,19 @@ static enum mylite_sql_parse_status placeholder_scan_prepare_predicate_contexts(
         placeholder_scan_update_predicate_context(scan, index, &state);
     }
     return MYLITE_SQL_PARSE_OK;
+}
+
+static void placeholder_scan_deinit_predicate_contexts(struct placeholder_statement_scan *scan) {
+    if (scan == NULL) {
+        return;
+    }
+    mylite_sql_parser_resource_release_workspace(
+        scan->retry_context == NULL ? NULL : scan->retry_context->resource_tracker,
+        scan->predicate_context_bytes
+    );
+    free(scan->predicate_context_flags);
+    scan->predicate_context_flags = NULL;
+    scan->predicate_context_bytes = 0U;
 }
 
 static void placeholder_scan_update_predicate_context(
@@ -936,6 +1004,9 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
     }
     if (out_retries != NULL) {
         *out_retries = (struct placeholder_row_arithmetic_subject_retries){0};
+        if (scan != NULL && scan->retry_context != NULL) {
+            out_retries->resource_tracker = scan->retry_context->resource_tracker;
+        }
     }
     if (scan == NULL || scan->tokens == NULL || out_retries == NULL || out_can_retry == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
@@ -3476,14 +3547,15 @@ static bool placeholder_scan_token_starts_row_arithmetic_predicate_subject(
     size_t index,
     bool allow_concat_operator
 ) {
+    const size_t *left_parenthesis_run_predecessors =
+        placeholder_scan_left_parenthesis_run_predecessors(scan);
     size_t cursor = index;
 
-    if (scan == NULL || scan->left_parenthesis_run_predecessors == NULL ||
-        index >= scan->token_count) {
+    if (scan == NULL || left_parenthesis_run_predecessors == NULL || index >= scan->token_count) {
         return false;
     }
     if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
-        cursor = scan->left_parenthesis_run_predecessors[index];
+        cursor = left_parenthesis_run_predecessors[index];
         if (cursor == SIZE_MAX) {
             return false;
         }
@@ -3701,16 +3773,32 @@ static bool placeholder_row_arithmetic_subject_retries_push(
         return false;
     }
     if (retries->count == retries->capacity) {
+        size_t old_bytes = retries->capacity * sizeof(*items);
+        size_t new_bytes = 0U;
+
         capacity = retries->capacity == 0U ? placeholder_row_arithmetic_retry_initial_capacity
                                            : retries->capacity * 2U;
         if (capacity < retries->capacity || capacity > SIZE_MAX / sizeof(*items)) {
             return false;
         }
-        items = (struct placeholder_row_arithmetic_subject_retry *)
-            realloc(retries->items, capacity * sizeof(*items));
+        new_bytes = capacity * sizeof(*items);
+        if (!mylite_sql_parser_resource_workspace_fits(
+                retries->resource_tracker,
+                old_bytes,
+                new_bytes
+            )) {
+            return false;
+        }
+        items =
+            (struct placeholder_row_arithmetic_subject_retry *)realloc(retries->items, new_bytes);
         if (items == NULL) {
             return false;
         }
+        mylite_sql_parser_resource_record_workspace(
+            retries->resource_tracker,
+            old_bytes,
+            new_bytes
+        );
         retries->items = items;
         retries->capacity = capacity;
     }
@@ -3737,6 +3825,10 @@ static void placeholder_row_arithmetic_subject_retries_deinit(
     if (retries == NULL) {
         return;
     }
+    mylite_sql_parser_resource_release_workspace(
+        retries->resource_tracker,
+        retries->capacity * sizeof(*retries->items)
+    );
     free(retries->items);
     *retries = (struct placeholder_row_arithmetic_subject_retries){0};
 }
@@ -4391,7 +4483,7 @@ static void replace_row_arithmetic_placeholder_node(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_tableless_select_limit_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -4421,6 +4513,8 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_tableless_select_limit_
             .input = config.input,
             .length = scan.tokens[limit_index].offset,
             .modes = config.modes,
+            .allow_parameters = config.allow_parameters,
+            .resource_tracker = config.resource_tracker,
         },
         &prefix_result
     );
@@ -4571,7 +4665,7 @@ static struct mylite_sql_ast_node *make_select_limit_clause_from_tail(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_repeated_select_locking_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -4600,6 +4694,8 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_repeated_select_locking
             .input = config.input,
             .length = prefix_length,
             .modes = config.modes,
+            .allow_parameters = config.allow_parameters,
+            .resource_tracker = config.resource_tracker,
         },
         &prefix_result
     );
@@ -4819,7 +4915,7 @@ static bool placeholder_scan_token_starts_select_lock_wait(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_legacy_create_index_type_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -5006,7 +5102,7 @@ static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_placeholder_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 ) {
     struct placeholder_statement_scan scan = {0};
@@ -5728,22 +5824,18 @@ static bool placeholder_scan_token_is_schema_keyword(
 
 static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
     struct mylite_sql_parse_config config,
-    struct mylite_sql_token **out_tokens,
-    size_t *out_token_count,
-    bool *out_has_non_trailing_semicolon
+    struct mylite_sql_parser_retry_context *context
 ) {
     struct mylite_sql_lexer lexer;
-    struct mylite_sql_token *tokens = NULL;
-    size_t token_count = 0U;
-    size_t token_capacity = 0U;
     bool saw_semicolon = false;
+    size_t parenthesis_depth = 0U;
 
-    if (out_tokens == NULL || out_token_count == NULL || out_has_non_trailing_semicolon == NULL) {
+    if (context == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
     }
-    *out_tokens = NULL;
-    *out_token_count = 0U;
-    *out_has_non_trailing_semicolon = false;
+    if (!mylite_sql_parser_resource_record_lexer_pass(context->resource_tracker)) {
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
 
     mylite_sql_lexer_init(
         &lexer,
@@ -5753,26 +5845,13 @@ static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
             .modes = config.modes,
         }
     );
-    {
-        enum mylite_sql_parse_status status = scan_placeholder_lexer_tokens(
-            &lexer,
-            config.input,
-            &tokens,
-            &token_count,
-            &token_capacity,
-            &saw_semicolon,
-            out_has_non_trailing_semicolon
-        );
-
-        if (status != MYLITE_SQL_PARSE_OK) {
-            free(tokens);
-            return status;
-        }
-    }
-
-    *out_tokens = tokens;
-    *out_token_count = token_count;
-    return MYLITE_SQL_PARSE_OK;
+    return scan_placeholder_lexer_tokens(
+        &lexer,
+        config.input,
+        context,
+        &saw_semicolon,
+        &parenthesis_depth
+    );
 }
 
 static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
@@ -5784,20 +5863,68 @@ static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
     if (context == NULL || (context->tokens == NULL && context->token_count != 0U)) {
         return MYLITE_SQL_PARSE_MISUSE;
     }
-    context->parentheses_balanced = true;
-    if (!placeholder_retry_context_has_parenthesis(context)) {
+    if (!context->has_parenthesis) {
         return MYLITE_SQL_PARSE_OK;
     }
     if (context->token_count > SIZE_MAX / (sizeof(size_t) * 2U)) {
         return MYLITE_SQL_PARSE_NOMEM;
     }
+    context->matching_parenthesis_index_bytes =
+        context->token_count * sizeof(*context->matching_parenthesis_indexes) * 2U;
+    if (!mylite_sql_parser_resource_workspace_fits(
+            context->resource_tracker,
+            0U,
+            context->matching_parenthesis_index_bytes
+        )) {
+        context->budget_error_token = context->tokens[0];
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
     context->matching_parenthesis_indexes =
-        (size_t *)malloc(context->token_count * sizeof(size_t) * 2U);
-    context->parenthesis_flags =
-        (unsigned char *)calloc(context->token_count, sizeof(*context->parenthesis_flags));
-    if (context->matching_parenthesis_indexes == NULL || context->parenthesis_flags == NULL) {
+        (size_t *)malloc(context->matching_parenthesis_index_bytes);
+    if (context->matching_parenthesis_indexes == NULL) {
+        context->matching_parenthesis_index_bytes = 0U;
         return MYLITE_SQL_PARSE_NOMEM;
     }
+    mylite_sql_parser_resource_record_workspace(
+        context->resource_tracker,
+        0U,
+        context->matching_parenthesis_index_bytes
+    );
+    context->parenthesis_flag_bytes = context->token_count * sizeof(*context->parenthesis_flags);
+    if (!mylite_sql_parser_resource_workspace_fits(
+            context->resource_tracker,
+            0U,
+            context->parenthesis_flag_bytes
+        )) {
+        context->budget_error_token = context->tokens[0];
+        mylite_sql_parser_resource_release_workspace(
+            context->resource_tracker,
+            context->matching_parenthesis_index_bytes
+        );
+        free(context->matching_parenthesis_indexes);
+        context->matching_parenthesis_indexes = NULL;
+        context->matching_parenthesis_index_bytes = 0U;
+        context->parenthesis_flag_bytes = 0U;
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+    context->parenthesis_flags =
+        (unsigned char *)calloc(context->token_count, sizeof(*context->parenthesis_flags));
+    if (context->parenthesis_flags == NULL) {
+        mylite_sql_parser_resource_release_workspace(
+            context->resource_tracker,
+            context->matching_parenthesis_index_bytes
+        );
+        free(context->matching_parenthesis_indexes);
+        context->matching_parenthesis_indexes = NULL;
+        context->matching_parenthesis_index_bytes = 0U;
+        context->parenthesis_flag_bytes = 0U;
+        return MYLITE_SQL_PARSE_NOMEM;
+    }
+    mylite_sql_parser_resource_record_workspace(
+        context->resource_tracker,
+        0U,
+        context->parenthesis_flag_bytes
+    );
     open_parentheses = context->matching_parenthesis_indexes + context->token_count;
     for (size_t index = 0U; index < context->token_count; ++index) {
         context->matching_parenthesis_indexes[index] = SIZE_MAX;
@@ -5834,18 +5961,6 @@ static enum mylite_sql_parse_status build_placeholder_parenthesis_index(
     }
     build_left_parenthesis_run_predecessors(context, open_parentheses);
     return MYLITE_SQL_PARSE_OK;
-}
-
-static bool placeholder_retry_context_has_parenthesis(
-    const struct mylite_sql_parser_retry_context *context
-) {
-    for (size_t index = 0U; index < context->token_count; ++index) {
-        if (mylite_sql_parser_token_is_left_paren(&context->tokens[index]) ||
-            mylite_sql_parser_token_is_right_paren(&context->tokens[index])) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static void placeholder_parenthesis_index_push(
@@ -5933,19 +6048,14 @@ static void build_left_parenthesis_run_predecessors(
 }
 
 static struct placeholder_statement_scan placeholder_statement_scan_from_retry_context(
-    const struct mylite_sql_parser_retry_context *context
+    struct mylite_sql_parser_retry_context *context
 ) {
     if (context == NULL) {
         return (struct placeholder_statement_scan){0};
     }
     return (struct placeholder_statement_scan){
         .tokens = context->tokens,
-        .matching_parenthesis_indexes = context->matching_parenthesis_indexes,
-        .left_parenthesis_run_predecessors =
-            context->matching_parenthesis_indexes == NULL
-                ? NULL
-                : context->matching_parenthesis_indexes + context->token_count,
-        .parenthesis_flags = context->parenthesis_flags,
+        .retry_context = context,
         .token_count = context->token_count,
         .has_non_trailing_semicolon = context->has_non_trailing_semicolon,
         .parentheses_balanced = context->parentheses_balanced,
@@ -5955,17 +6065,14 @@ static struct placeholder_statement_scan placeholder_statement_scan_from_retry_c
 static enum mylite_sql_parse_status scan_placeholder_lexer_tokens(
     struct mylite_sql_lexer *lexer,
     const char *root_input,
-    struct mylite_sql_token **tokens,
-    size_t *token_count,
-    size_t *token_capacity,
+    struct mylite_sql_parser_retry_context *context,
     bool *saw_semicolon,
-    bool *out_has_non_trailing_semicolon
+    size_t *parenthesis_depth
 ) {
     struct mylite_sql_lexer lexer_stack[mylite_sql_parser_version_comment_lexer_stack_limit];
     size_t lexer_count = 1U;
 
-    if (lexer == NULL || tokens == NULL || token_count == NULL || token_capacity == NULL ||
-        saw_semicolon == NULL || out_has_non_trailing_semicolon == NULL) {
+    if (lexer == NULL || context == NULL || saw_semicolon == NULL || parenthesis_depth == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
     }
 
@@ -5985,16 +6092,20 @@ static enum mylite_sql_parse_status scan_placeholder_lexer_tokens(
             root_input,
             lexer_stack,
             &lexer_count,
-            tokens,
-            token_count,
-            token_capacity,
+            context,
             saw_semicolon,
-            out_has_non_trailing_semicolon,
+            parenthesis_depth,
             &done
         );
 
-        if (status != MYLITE_SQL_PARSE_OK || done) {
+        if (status != MYLITE_SQL_PARSE_OK) {
             return status;
+        }
+        if (done) {
+            if (*parenthesis_depth != 0U) {
+                context->parentheses_balanced = false;
+            }
+            return MYLITE_SQL_PARSE_OK;
         }
     }
 }
@@ -6005,16 +6116,13 @@ static enum mylite_sql_parse_status scan_placeholder_lexer_token(
     const char *root_input,
     struct mylite_sql_lexer *lexer_stack,
     size_t *lexer_count,
-    struct mylite_sql_token **tokens,
-    size_t *token_count,
-    size_t *token_capacity,
+    struct mylite_sql_parser_retry_context *context,
     bool *saw_semicolon,
-    bool *out_has_non_trailing_semicolon,
+    size_t *parenthesis_depth,
     bool *out_done
 ) {
     if (token == NULL || current_lexer == NULL || lexer_stack == NULL || lexer_count == NULL ||
-        tokens == NULL || token_count == NULL || token_capacity == NULL || saw_semicolon == NULL ||
-        out_has_non_trailing_semicolon == NULL || out_done == NULL) {
+        context == NULL || saw_semicolon == NULL || parenthesis_depth == NULL || out_done == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
     }
     *out_done = false;
@@ -6049,41 +6157,96 @@ static enum mylite_sql_parse_status scan_placeholder_lexer_token(
         return MYLITE_SQL_PARSE_OK;
     }
     if (*saw_semicolon) {
-        *out_has_non_trailing_semicolon = true;
+        context->has_non_trailing_semicolon = true;
     }
-    if (!append_placeholder_statement_token(token, tokens, token_count, token_capacity)) {
-        return MYLITE_SQL_PARSE_NOMEM;
+    if (mylite_sql_parser_token_is_left_paren(token)) {
+        context->has_parenthesis = true;
+        if (*parenthesis_depth >= (size_t)mylite_sql_parser_retry_parenthesis_depth_limit) {
+            context->budget_error_token = *token;
+            mylite_sql_parser_resource_exhaust(context->resource_tracker);
+            return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        }
+        ++*parenthesis_depth;
+    } else if (mylite_sql_parser_token_is_right_paren(token)) {
+        context->has_parenthesis = true;
+        if (*parenthesis_depth == 0U) {
+            context->parentheses_balanced = false;
+        } else {
+            --*parenthesis_depth;
+        }
     }
 
-    return MYLITE_SQL_PARSE_OK;
+    return append_placeholder_statement_token(token, context);
 }
 
-static bool append_placeholder_statement_token(
+static enum mylite_sql_parse_status append_placeholder_statement_token(
     const struct mylite_sql_token *token,
-    struct mylite_sql_token **tokens,
-    size_t *token_count,
-    size_t *token_capacity
+    struct mylite_sql_parser_retry_context *context
 ) {
     struct mylite_sql_token *grown = NULL;
     size_t new_capacity = 0U;
+    size_t old_bytes = 0U;
+    size_t new_bytes = 0U;
 
-    if (*token_count == *token_capacity) {
-        new_capacity =
-            *token_capacity == 0U ? placeholder_initial_token_capacity : *token_capacity * 2U;
-        if (new_capacity < *token_capacity) {
-            return false;
+    if (token == NULL || context == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (context->token_count >= (size_t)mylite_sql_parser_retry_token_limit) {
+        context->budget_error_token = *token;
+        mylite_sql_parser_resource_exhaust(context->resource_tracker);
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+    if (context->token_count == context->token_capacity) {
+        if (context->token_capacity == 0U) {
+            new_capacity = placeholder_initial_token_capacity;
+        } else {
+            size_t growth = context->token_capacity / 8U;
+
+            if (growth == 0U) {
+                growth = 1U;
+            }
+            if (growth > (size_t)mylite_sql_parser_retry_token_limit - context->token_capacity) {
+                new_capacity = (size_t)mylite_sql_parser_retry_token_limit;
+            } else {
+                new_capacity = context->token_capacity + growth;
+            }
         }
-        grown = (struct mylite_sql_token *)realloc(*tokens, new_capacity * sizeof(**tokens));
+        if (new_capacity <= context->token_capacity ||
+            new_capacity > SIZE_MAX / sizeof(*context->tokens)) {
+            context->budget_error_token = *token;
+            mylite_sql_parser_resource_exhaust(context->resource_tracker);
+            return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        }
+        old_bytes = context->token_capacity * sizeof(*context->tokens);
+        new_bytes = new_capacity * sizeof(*context->tokens);
+        if (!mylite_sql_parser_resource_workspace_fits(
+                context->resource_tracker,
+                old_bytes,
+                new_bytes
+            )) {
+            context->budget_error_token = *token;
+            return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        }
+        grown = (struct mylite_sql_token *)realloc(context->tokens, new_bytes);
         if (grown == NULL) {
-            return false;
+            return MYLITE_SQL_PARSE_NOMEM;
         }
-        *tokens = grown;
-        *token_capacity = new_capacity;
+        mylite_sql_parser_resource_record_workspace(
+            context->resource_tracker,
+            old_bytes,
+            new_bytes
+        );
+        context->tokens = grown;
+        context->token_capacity = new_capacity;
+    }
+    if (!mylite_sql_parser_resource_record_retry_token(context->resource_tracker)) {
+        context->budget_error_token = *token;
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
     }
 
-    (*tokens)[*token_count] = *token;
-    ++*token_count;
-    return true;
+    context->tokens[context->token_count] = *token;
+    ++context->token_count;
+    return MYLITE_SQL_PARSE_OK;
 }
 
 static enum mylite_sql_parse_status try_parse_alter_table_algorithm_lock_tail_statement(
@@ -6128,6 +6291,8 @@ static enum mylite_sql_parse_status try_parse_alter_table_algorithm_lock_tail_st
             .input = config.input,
             .length = prefix_length,
             .modes = config.modes,
+            .allow_parameters = config.allow_parameters,
+            .resource_tracker = config.resource_tracker,
         },
         &prefix_result
     );
@@ -6363,6 +6528,8 @@ static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
             .input = config.input,
             .length = prefix_length,
             .modes = config.modes,
+            .allow_parameters = config.allow_parameters,
+            .resource_tracker = config.resource_tracker,
         },
         &prefix_result
     );
@@ -6377,6 +6544,8 @@ static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
                 .input = config.input,
                 .length = prefix_length,
                 .modes = config.modes,
+                .allow_parameters = config.allow_parameters,
+                .resource_tracker = config.resource_tracker,
             },
             &prefix_result
         );
@@ -6669,4 +6838,37 @@ static bool create_table_select_scan_has_balanced_parentheses(
         }
     }
     return paren_depth == 0;
+}
+
+static const size_t *placeholder_scan_left_parenthesis_run_predecessors(
+    const struct placeholder_statement_scan *scan
+) {
+    struct mylite_sql_parser_retry_context *context = NULL;
+
+    if (scan == NULL) {
+        return NULL;
+    }
+    context = scan->retry_context;
+    if (context == NULL ||
+        mylite_sql_parser_retry_context_ensure_parenthesis_index(context) != MYLITE_SQL_PARSE_OK ||
+        context->matching_parenthesis_indexes == NULL) {
+        return NULL;
+    }
+    return context->matching_parenthesis_indexes + context->token_count;
+}
+
+static const unsigned char *placeholder_scan_parenthesis_flags(
+    const struct placeholder_statement_scan *scan
+) {
+    struct mylite_sql_parser_retry_context *context = NULL;
+
+    if (scan == NULL) {
+        return NULL;
+    }
+    context = scan->retry_context;
+    if (context == NULL ||
+        mylite_sql_parser_retry_context_ensure_parenthesis_index(context) != MYLITE_SQL_PARSE_OK) {
+        return NULL;
+    }
+    return context->parenthesis_flags;
 }

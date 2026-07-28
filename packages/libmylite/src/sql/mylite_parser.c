@@ -5,6 +5,7 @@
 #include "mylite_parser_helpers.h"
 #include "mylite_parser_internal.h"
 #include "mylite_parser_placeholders.h"
+#include "mylite_parser_resources.h"
 #include "mylite_parser_token_map.h"
 #include "mylite_version_comment.h"
 
@@ -16,7 +17,7 @@
 
 struct parenthesized_row_constructor_injection {
     bool enabled;
-    const struct mylite_sql_parser_retry_context *retry_context;
+    struct mylite_sql_parser_retry_context *retry_context;
     size_t *retry_token_index;
     const struct mylite_sql_token *left_paren;
     const struct mylite_sql_token *previous_token;
@@ -31,7 +32,7 @@ struct mylite_sql_parser_feed_context {
     struct mylite_sql_token *previous_token;
     bool *has_previous_token;
     bool inject_parenthesized_row_constructors;
-    const struct mylite_sql_parser_retry_context *retry_context;
+    struct mylite_sql_parser_retry_context *retry_context;
     size_t retry_token_index;
 };
 
@@ -44,7 +45,7 @@ struct mylite_sql_parse_error {
 typedef enum mylite_sql_parse_status (*mylite_sql_parse_retry_callback)(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     bool *out_handled
 );
 
@@ -82,25 +83,30 @@ static bool parse_result_is_unsupported_utility_script(const struct mylite_sql_p
 static enum mylite_sql_parse_status retry_unsupported_utility_parse(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 );
 static enum mylite_sql_parse_status retry_syntax_error_parse(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 );
 static enum mylite_sql_parse_status retry_parse_with_callback(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 );
 static bool parse_status_is_fatal_retry_failure(enum mylite_sql_parse_status status);
+static enum mylite_sql_parse_status record_retry_budget_exhaustion(
+    struct mylite_sql_parse_result *result,
+    const struct mylite_sql_parser_retry_context *retry_context,
+    enum mylite_sql_parse_status original_status
+);
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parse_error error
@@ -111,7 +117,14 @@ enum mylite_sql_parse_status mylite_sql_parse(
     struct mylite_sql_parse_result *out_result
 ) {
     struct mylite_sql_parser_retry_context retry_context = {0};
-    enum mylite_sql_parse_status status = mylite_sql_parser_parse_with_lemon(config, out_result);
+    struct mylite_sql_parser_resource_tracker resource_tracker = {0};
+    enum mylite_sql_parse_status status;
+    enum mylite_sql_parse_status initial_status;
+
+    mylite_sql_parser_resource_tracker_init(&resource_tracker, config.length);
+    config.resource_tracker = &resource_tracker;
+    status = mylite_sql_parser_parse_with_lemon(config, out_result);
+    initial_status = status;
 
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR ||
         (status == MYLITE_SQL_PARSE_OK && parse_result_is_unsupported_utility_script(out_result))) {
@@ -120,8 +133,15 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
         out_result->retry_tokenization_count = 1U;
         if (retry_context_status != MYLITE_SQL_PARSE_OK) {
-            out_result->status = retry_context_status;
             status = retry_context_status;
+            if (resource_tracker.retry_budget_exhausted) {
+                status = record_retry_budget_exhaustion(out_result, &retry_context, initial_status);
+            } else {
+                out_result->status = status;
+            }
+            mylite_sql_parser_retry_context_deinit(&retry_context);
+            mylite_sql_parser_resource_publish(&resource_tracker, out_result);
+            return status;
         }
     }
 
@@ -203,16 +223,20 @@ enum mylite_sql_parse_status mylite_sql_parse(
         status = out_result->status;
     }
 
+    mylite_sql_parser_resource_publish(&resource_tracker, out_result);
     return status;
 }
 
 static enum mylite_sql_parse_status retry_unsupported_utility_parse(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 ) {
+    if (config.resource_tracker != NULL && config.resource_tracker->retry_budget_exhausted) {
+        return status;
+    }
     if (status != MYLITE_SQL_PARSE_OK || !parse_result_is_unsupported_utility_script(result)) {
         return status;
     }
@@ -222,11 +246,12 @@ static enum mylite_sql_parse_status retry_unsupported_utility_parse(
 static enum mylite_sql_parse_status retry_syntax_error_parse(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 ) {
-    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+    if ((config.resource_tracker != NULL && config.resource_tracker->retry_budget_exhausted) ||
+        status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         return status;
     }
     return retry_parse_with_callback(config, result, retry_context, status, callback);
@@ -235,19 +260,38 @@ static enum mylite_sql_parse_status retry_syntax_error_parse(
 static enum mylite_sql_parse_status retry_parse_with_callback(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
-    const struct mylite_sql_parser_retry_context *retry_context,
+    struct mylite_sql_parser_retry_context *retry_context,
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 ) {
     bool handled = false;
+    struct mylite_sql_token original_error_token = result->error_token;
+    int original_parser_token = result->parser_token;
     size_t retry_tokenization_count = result->retry_tokenization_count;
-    size_t retry_callback_count = result->retry_callback_count + 1U;
+    size_t retry_callback_count = result->retry_callback_count;
     size_t retry_handled_count = result->retry_handled_count;
-    enum mylite_sql_parse_status retry_status = callback(config, result, retry_context, &handled);
+    enum mylite_sql_parse_status retry_status;
+
+    if (retry_callback_count >= (size_t)mylite_sql_parser_retry_callback_limit) {
+        mylite_sql_parser_resource_exhaust(config.resource_tracker);
+        return record_retry_budget_exhaustion(result, retry_context, status);
+    }
+    ++retry_callback_count;
+    retry_status = callback(config, result, retry_context, &handled);
 
     result->retry_tokenization_count = retry_tokenization_count;
     result->retry_callback_count = retry_callback_count;
     result->retry_handled_count = retry_handled_count + (handled ? 1U : 0U);
+    if (config.resource_tracker != NULL && config.resource_tracker->retry_budget_exhausted) {
+        if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+            result->error_token = original_error_token;
+            result->parser_token = original_parser_token;
+        }
+        return record_retry_budget_exhaustion(result, retry_context, status);
+    }
+    if (parse_status_is_fatal_retry_failure(retry_context->status)) {
+        retry_status = retry_context->status;
+    }
     if (parse_status_is_fatal_retry_failure(retry_status)) {
         result->status = retry_status;
         return retry_status;
@@ -263,6 +307,22 @@ static bool parse_status_is_fatal_retry_failure(enum mylite_sql_parse_status sta
     return status != MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_SYNTAX_ERROR;
 }
 
+static enum mylite_sql_parse_status record_retry_budget_exhaustion(
+    struct mylite_sql_parse_result *result,
+    const struct mylite_sql_parser_retry_context *retry_context,
+    enum mylite_sql_parse_status original_status
+) {
+    if (result == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (original_status == MYLITE_SQL_PARSE_OK && retry_context != NULL) {
+        result->error_token = retry_context->budget_error_token;
+        result->parser_token = -1;
+    }
+    result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    return result->status;
+}
+
 enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *out_result
@@ -274,7 +334,7 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *out_result,
     bool inject_parenthesized_row_constructors,
-    const struct mylite_sql_parser_retry_context *retry_context
+    struct mylite_sql_parser_retry_context *retry_context
 ) {
     struct mylite_sql_parser_state state;
     struct mylite_sql_lexer lexer;
@@ -293,6 +353,17 @@ enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon_options(
 
     if (config.input == NULL && config.length != 0U) {
         out_result->status = MYLITE_SQL_PARSE_MISUSE;
+        return out_result->status;
+    }
+    if (!mylite_sql_parser_resource_record_lexer_pass(config.resource_tracker)) {
+        out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        out_result->error_token = (struct mylite_sql_token){
+            .kind = MYLITE_SQL_TOKEN_EOF,
+            .text = config.input,
+            .span_text = config.input,
+            .source_length = config.length,
+        };
+        out_result->parser_token = -1;
         return out_result->status;
     }
 
@@ -355,6 +426,12 @@ void mylite_sql_parser_reset_parse_result(struct mylite_sql_parse_result *out_re
     out_result->retry_tokenization_count = 0U;
     out_result->retry_callback_count = 0U;
     out_result->retry_handled_count = 0U;
+    out_result->lexer_pass_count = 0U;
+    out_result->retry_token_count = 0U;
+    out_result->retry_allocation_count = 0U;
+    out_result->retry_allocation_bytes = 0U;
+    out_result->retry_workspace_peak_bytes = 0U;
+    out_result->retry_budget_exhausted = false;
     out_result->status = MYLITE_SQL_PARSE_OK;
     out_result->error_token = (struct mylite_sql_token){0};
     out_result->parser_token = 0;

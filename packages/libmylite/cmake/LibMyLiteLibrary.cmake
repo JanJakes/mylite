@@ -246,6 +246,7 @@ add_library(mylite
   src/sql/mylite_parser_helpers.c
   src/sql/mylite_parser_placeholders.c
   src/sql/mylite_parser_query_builders.c
+  src/sql/mylite_parser_resources.c
   src/sql/mylite_parser_schema_builders.c
   src/sql/mylite_parser_statement_builders.c
   src/sql/mylite_parser_token_map.c

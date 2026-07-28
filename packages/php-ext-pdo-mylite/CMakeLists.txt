@@ -30,6 +30,7 @@ if(BUILD_TESTING)
     php-ext-pdo-mylite.api
     -d "extension=$<TARGET_FILE:mylite_php_extension>"
     -d "extension=$<TARGET_FILE:mylite_php_pdo_extension>"
+    -d "pdo.dsn.mylite_path_safety=mylite::memory:"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/pdo_api_test.php"
   )
   mylite_add_php_test(

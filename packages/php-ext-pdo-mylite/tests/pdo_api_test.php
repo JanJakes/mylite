@@ -85,6 +85,13 @@ expect_pdo_path_rejected(
     'PDO path= DSN with trailing NUL'
 );
 
+$nulAliasPrefix = mylite_pdo_test_path('nul-alias');
+expect_pdo_path_rejected(
+    "mylite_path_safety\0.bypass",
+    $nulAliasPrefix,
+    'PDO configured alias with embedded NUL'
+);
+
 $preservedPrefix = mylite_pdo_test_path('preserved-prefix');
 $preserved = new PDO('mylite:' . $preservedPrefix);
 unset($preserved);

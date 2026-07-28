@@ -1015,10 +1015,15 @@ static zend_string *pdo_mylite_resolve_path(pdo_dbh_t *dbh) {
         zval *dsn = ZEND_CALL_ARG(execute_data, 1);
 
         ZVAL_DEREF(dsn);
-        if (Z_TYPE_P(dsn) == IS_STRING && Z_STRLEN_P(dsn) >= sizeof(dsn_prefix) - 1U &&
-            memcmp(Z_STRVAL_P(dsn), dsn_prefix, sizeof(dsn_prefix) - 1U) == 0) {
-            source = Z_STRVAL_P(dsn) + sizeof(dsn_prefix) - 1U;
-            source_length = Z_STRLEN_P(dsn) - (sizeof(dsn_prefix) - 1U);
+        if (Z_TYPE_P(dsn) == IS_STRING) {
+            if (memchr(Z_STRVAL_P(dsn), '\0', Z_STRLEN_P(dsn)) != NULL) {
+                return zend_string_copy(Z_STR_P(dsn));
+            }
+            if (Z_STRLEN_P(dsn) >= sizeof(dsn_prefix) - 1U &&
+                memcmp(Z_STRVAL_P(dsn), dsn_prefix, sizeof(dsn_prefix) - 1U) == 0) {
+                source = Z_STRVAL_P(dsn) + sizeof(dsn_prefix) - 1U;
+                source_length = Z_STRLEN_P(dsn) - (sizeof(dsn_prefix) - 1U);
+            }
         }
     }
 

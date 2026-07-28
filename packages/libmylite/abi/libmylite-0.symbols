@@ -36,6 +36,7 @@ mylite_result_value_text
 mylite_result_warning_at
 mylite_result_warning_count
 mylite_result_warning_record_count
+mylite_server_version
 mylite_session_no_backslash_escapes
 mylite_set_client_found_rows
 mylite_sqlstate

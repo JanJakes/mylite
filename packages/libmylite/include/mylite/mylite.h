@@ -104,6 +104,7 @@ enum mylite_transaction_control_statement {
 #define MYLITE_RESULT_COLUMN_FLAG_NUM 32768u
 
 MYLITE_API const char *mylite_version(void);
+MYLITE_API const char *mylite_server_version(void);
 
 /*
  * A database handle and all statements created from it are single-threaded.

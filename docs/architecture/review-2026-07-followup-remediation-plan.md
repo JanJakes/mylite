@@ -395,7 +395,8 @@ release-review completion at `d5005f606`:
 - [ ] Test fresh framework applications through normal configuration,
   migrations, hydration, metadata, exception conversion, and transactions.
 
-`API-06` implementation evidence at `6dc01dcea`:
+`API-06` implementation evidence at `6dc01dcea`, with release-review
+completion at `6bea75a55`:
 
 - PDO describe and `getColumnMeta()` use the native result descriptor for
   names, types, parameter classes, MySQL PDO flags, table names, display

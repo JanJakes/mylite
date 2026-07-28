@@ -54,3 +54,9 @@ as PHP floats. DECIMAL, overflowing exact integers, text, binary, temporal,
 JSON, geometry, and unknown values remain strings, and SQL NULL remains
 `null`. Direct buffered and unbuffered queries retain their string/NULL result
 policy.
+
+Each live mysqli handle exposes the native handle's stable, nonzero connection
+ID through both the `thread_id` property and `mysqli_thread_id()`. The value
+initially equals SQL `CONNECTION_ID()` and differs across simultaneous handles.
+As in MySQL, changing `SESSION pseudo_thread_id` changes the SQL-visible value
+without changing the mysqli thread ID.

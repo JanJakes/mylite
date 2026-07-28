@@ -26,3 +26,14 @@ when enabled.
 `PDO::ATTR_CLIENT_VERSION` identifies the MyLite library.
 `PDO::ATTR_SERVER_VERSION` exposes the MySQL compatibility identity and equals
 `SELECT VERSION()`.
+
+`PDOStatement::getColumnMeta()` publishes the native type, PDO parameter type,
+MySQL PDO flags, table and column names, display length, and decimal precision
+from MyLite's result descriptor. Metadata remains available for empty result
+sets. Current native expression and aggregate descriptor differences remain
+visible rather than being hidden in the adapter.
+
+PDO MyLite buffers row-producing statements. Direct and prepared SELECT
+`rowCount()` therefore report the complete selected-row count immediately
+after execution and retain it across fetching. Non-row statements report
+affected rows.

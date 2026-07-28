@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented; release qualification is pending.
+Implemented and release-qualified.
 
 ## Summary
 
@@ -314,3 +314,33 @@ deterministic allocator profiles; all parser and affected runtime suites; all
 pinned parser MySQL fixtures; parser fuzzing; host Lemon generation;
 formatting; full static analysis; ABI/install-consumer checks; compatibility
 validation; and the production size gate.
+
+## Qualification
+
+Release qualification completed on 2026-07-28 against MySQL 8.4.9 and the
+supported native build profiles:
+
+- all 52 parser-labeled suites and all 31 affected runtime parser, index, and
+  limit suites pass in Development, assertion-enabled Debug-CI, Release, and
+  ASan/UBSan with leak detection;
+- retry architecture, fatal-status, and source-ratchet suites pass in the
+  deterministic allocator profile;
+- all 42 pinned parser-related MySQL 8.4.9 fixtures pass, including the
+  dedicated tableless-limit, legacy-index-`TYPE`, row-constructor, modifier,
+  and repeated-locking expectations;
+- 10,000 seeded parser-fuzzer executions pass under ASan/UBSan;
+- host Lemon generation, repository formatting, and full LLVM 19 static
+  analysis across 930 translation units pass;
+- the shared-library ABI snapshot, installed CMake and pkg-config consumers,
+  multiarch pkg-config relocation, and compatibility ledger pass;
+- the production archive is 12,381,120 bytes against the 15,000,000-byte
+  ceiling.
+
+The final ratchets require exactly six typed retry strategies and at most
+300,727 bytes across the enumerated retry-layer sources. Tableless `LIMIT`,
+both legacy index `TYPE` positions, and ordinary `type` identifiers produce
+zero retry tokenizations, callbacks, and handled retries. Review of the typed
+plans and retry result publication confirms finite forward progress, bounded
+workspace and lexer work, fatal-status precedence, AST replacement only after
+a successful handled retry, and preservation of the original MySQL-compatible
+syntax diagnostic when no retry handles the statement.

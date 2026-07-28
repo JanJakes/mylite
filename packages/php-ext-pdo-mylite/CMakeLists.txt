@@ -44,4 +44,10 @@ if(BUILD_TESTING)
     -d "extension=$<TARGET_FILE:mylite_php_pdo_extension>"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/pdo_scalar_types_server_identity.php"
   )
+  mylite_add_php_test(
+    php-ext-pdo-mylite.metadata-observables
+    -d "extension=$<TARGET_FILE:mylite_php_extension>"
+    -d "extension=$<TARGET_FILE:mylite_php_pdo_extension>"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/pdo_metadata_observables.php"
+  )
 endif()

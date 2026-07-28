@@ -2,15 +2,15 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented and release-qualified.
 
 ## Summary
 
-MyLite reports parser rejection as MySQL error `1064` with SQLSTATE `42000`,
-but its ordinary parse-error formatter currently differs from MySQL 8.4.9 in
-the message envelope, near-text selection, end-of-input handling, and line
-counting. It also converts an untrusted token `size_t` length directly to the
-`int` precision consumed by `snprintf()`.
+MyLite reports parser rejection as MySQL error `1064` with SQLSTATE `42000`.
+Before this remediation, its ordinary parse-error formatter differed from
+MySQL 8.4.9 in the message envelope, near-text selection, end-of-input
+handling, and line counting. It also converted an untrusted token `size_t`
+length directly to the `int` precision consumed by `snprintf()`.
 
 An out-of-range conversion is implementation-defined. On common targets it can
 produce a negative precision, which makes `%.*s` behave as though no precision
@@ -79,7 +79,7 @@ The 80-byte limit is byte-oriented, not character-oriented. It can end inside
 a multibyte encoded character. MyLite therefore does not reinterpret, repair,
 or allocate a transcoded near excerpt.
 
-## Current Baseline
+## Pre-Remediation Baseline
 
 Before implementation, the native runtime reports:
 
@@ -229,3 +229,19 @@ Qualification must include focused tests in Development, Debug-CI, Release,
 and ASan/UBSan; all parser and affected runtime diagnostic suites; the pinned
 parser MySQL fixtures; parser fuzzing; formatting; full static analysis;
 ABI/install-consumer checks; and the production size gate.
+
+## Qualification
+
+Release qualification on local Linux covered:
+
+- all 49 parser-labeled suites and all 11 affected runtime diagnostic suites
+  in Development, Debug-CI, Release, and ASan/UBSan with leak detection;
+- the fatal-retry, recovery-resource, payload-span, and syntax-diagnostic
+  tests in the deterministic allocator-failpoint profile;
+- all 40 pinned parser-related MySQL 8.4.9 fixtures;
+- 10,000 seeded parser-fuzzer executions under ASan/UBSan, including corpus
+  inputs above one MiB;
+- formatting and full LLVM 19 static analysis across 926 translation units;
+- exact public ABI, installed CMake/pkg-config consumer, and
+  compatibility-claim gates;
+- the 12,413,456-byte production static archive.

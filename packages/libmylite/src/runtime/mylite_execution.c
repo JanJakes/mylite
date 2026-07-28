@@ -741,7 +741,7 @@ static int reset_cursor_execution(mylite_stmt *stmt) {
         mylite_statement_context_deinit(&stmt->context);
         stmt->has_context = false;
     }
-    if (stmt->returns_rows) {
+    if (mylite_statement_result_may_have_rows(stmt->result_capability)) {
         clear_cursor_select_plan_resources(stmt, rc);
     } else if (stmt->completed_result != NULL) {
         mylite_result_free(stmt->reusable_command_result);
@@ -763,6 +763,7 @@ static int start_cursor_execution(mylite_stmt *stmt) {
     struct mylite_db *database = stmt->database;
     mylite_stmt *saved_active_bound_statement = database->active_bound_statement;
     bool saved_has_selected_schema = database->session.has_selected_schema;
+    bool streams_rows = stmt->result_capability == MYLITE_STATEMENT_RESULT_STREAMING_QUERY;
     char saved_selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY] = {0};
     int rc = validate_stmt_bindings_complete(stmt);
 
@@ -808,24 +809,24 @@ static int start_cursor_execution(mylite_stmt *stmt) {
         );
         database->session.active_statement_time =
             (int64_t)mylite_statement_context_time(&stmt->context);
-        if (!stmt->returns_rows) {
+        if (!streams_rows) {
             rc = execute_prepared_materialized_statement(stmt);
         } else if (stmt->statement != NULL) {
             rc = mylite_execution_prepare_statement_transaction_boundary(database, stmt->statement);
         }
     }
-    if (rc == MYLITE_OK && stmt->returns_rows) {
+    if (rc == MYLITE_OK && streams_rows) {
         rc = begin_read_statement_transaction(database, &stmt->read_transaction);
     }
-    if (rc == MYLITE_OK && stmt->returns_rows) {
+    if (rc == MYLITE_OK && streams_rows) {
         database->active_bound_statement = stmt;
         rc = prepare_cursor_select_execution(stmt);
         database->active_bound_statement = saved_active_bound_statement;
     }
-    if (rc == MYLITE_OK && stmt->returns_rows && !stmt->has_materialized_rows) {
+    if (rc == MYLITE_OK && streams_rows && !stmt->has_materialized_rows) {
         database->active_cursor = stmt;
     }
-    if (rc != MYLITE_OK && stmt->returns_rows) {
+    if (rc != MYLITE_OK && streams_rows) {
         mylite_result *result = NULL;
 
         rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
@@ -852,7 +853,7 @@ static int execute_prepared_materialized_statement(mylite_stmt *stmt) {
     mylite_stmt *saved_active_bound_statement = database->active_bound_statement;
     mylite_result *result = NULL;
     int64_t completed_row_count = -1;
-    bool returns_rows = false;
+    bool returns_rows = mylite_statement_result_may_have_rows(stmt->result_capability);
     bool preserve_diagnostics_snapshot = false;
     int rc = MYLITE_OK;
 
@@ -860,7 +861,9 @@ static int execute_prepared_materialized_statement(mylite_stmt *stmt) {
     rc = execute_parsed_statement(database, &stmt->context, stmt->statement, &result);
     database->active_bound_statement = saved_active_bound_statement;
     if (rc == MYLITE_OK) {
-        returns_rows = mylite_result_column_count(result) != 0U;
+        if (mylite_statement_result_is_dynamic(stmt->result_capability)) {
+            returns_rows = result != NULL && mylite_result_column_count(result) != 0U;
+        }
         completed_row_count = row_count_for_completed_statement(stmt->statement, result);
         preserve_diagnostics_snapshot = statement_preserves_diagnostics_snapshot(stmt->statement);
         rc = finish_completed_statement(
@@ -1536,7 +1539,7 @@ static int prepare_cursor_select_statement(
             set_unsupported_error(database, "statement type is not supported by prepare");
             rc = MYLITE_ERROR;
         } else {
-            stmt->returns_rows = prepared_statement_returns_rows(stmt->statement);
+            stmt->result_capability = mylite_statement_result_capability(stmt->statement);
         }
     }
     if (rc == MYLITE_OK && stmt->parse_result.parameter_count != 0U) {
@@ -1554,12 +1557,15 @@ static int prepare_cursor_select_statement(
         }
     }
     if (rc == MYLITE_OK &&
-        (stmt->parameter_count != 0U || !stmt->returns_rows || stmt->buffered_results) &&
+        (stmt->parameter_count != 0U ||
+         stmt->result_capability != MYLITE_STATEMENT_RESULT_STREAMING_QUERY ||
+         stmt->buffered_results) &&
         prepared_statement_requires_object_validation(stmt->statement)) {
         rc = validate_prepared_statement_objects(stmt);
     }
-    if (rc == MYLITE_OK &&
-        (stmt->parameter_count != 0U || !stmt->returns_rows || stmt->buffered_results)) {
+    if (rc == MYLITE_OK && (stmt->parameter_count != 0U ||
+                            stmt->result_capability != MYLITE_STATEMENT_RESULT_STREAMING_QUERY ||
+                            stmt->buffered_results)) {
         (void)mylite_statement_context_end(&stmt->context, MYLITE_OK);
         mylite_statement_context_deinit(&stmt->context);
         stmt->has_context = false;
@@ -1604,10 +1610,6 @@ static bool prepared_statement_kind_is_supported(const struct mylite_sql_ast_nod
     }
     return statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
            select_statement_into_list(statement) == NULL;
-}
-
-static bool prepared_statement_returns_rows(const struct mylite_sql_ast_node *statement) {
-    return statement != NULL && statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT;
 }
 
 static bool prepared_statement_requires_object_validation(
@@ -1706,7 +1708,8 @@ static int validate_prepared_statement_objects(mylite_stmt *stmt) {
         rc = commit_statement_transaction(database, &stmt->read_transaction);
     } else {
         rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
-        if (rc != MYLITE_NOMEM && stmt->returns_rows && unsupported) {
+        if (rc != MYLITE_NOMEM &&
+            stmt->result_capability == MYLITE_STATEMENT_RESULT_STREAMING_QUERY && unsupported) {
             mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
             rc = MYLITE_OK;
         }
@@ -2181,7 +2184,8 @@ static int ensure_prepared_statement_parse_tree(mylite_stmt *stmt) {
         stmt->statement = child_at(stmt->parse_result.root, 0U);
     }
     if (rc != MYLITE_OK || statement_count != 1U || stmt->statement == NULL ||
-        !prepared_statement_returns_rows(stmt->statement) ||
+        mylite_statement_result_capability(stmt->statement) !=
+            MYLITE_STATEMENT_RESULT_STREAMING_QUERY ||
         stmt->parse_result.parameter_count != stmt->parameter_count) {
         set_parse_error(stmt->database, &stmt->parse_result);
         release_prepared_statement_parse_tree(stmt);

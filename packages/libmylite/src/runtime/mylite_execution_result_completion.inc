@@ -2,6 +2,9 @@ int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 ) {
+    enum mylite_statement_result_capability capability =
+        mylite_statement_result_capability(statement);
+
     if (statement != NULL && statement->kind == MYLITE_SQL_AST_CALL_STATEMENT) {
         return 0;
     }
@@ -10,6 +13,10 @@ int64_t row_count_for_completed_statement(
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     }
     if (result != NULL && mylite_result_column_count(result) != 0U) {
+        return -1;
+    }
+    if (mylite_statement_result_may_have_rows(capability) &&
+        !mylite_statement_result_is_dynamic(capability)) {
         return -1;
     }
     if (statement == NULL) {
@@ -159,7 +166,6 @@ int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_JSON_TABLE_ORDINALITY_COLUMN:
     case MYLITE_SQL_AST_JSON_TABLE_PATH_COLUMN:
     case MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN:
-        break;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
     case MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION:
@@ -210,7 +216,7 @@ int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
-        return -1;
+        break;
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST:
     case MYLITE_SQL_AST_LOCK_TABLE_TARGET:
     case MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK:
@@ -809,6 +815,94 @@ int64_t row_count_for_completed_statement(
     }
 
     return 0;
+}
+
+enum mylite_statement_result_capability mylite_statement_result_capability(
+    const struct mylite_sql_ast_node *statement
+) {
+    if (statement == NULL) {
+        return MYLITE_STATEMENT_RESULT_NONE;
+    }
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+        return child_with_kind(statement, MYLITE_SQL_AST_SELECT_INTO_LIST) == NULL
+                   ? MYLITE_STATEMENT_RESULT_STREAMING_QUERY
+                   : MYLITE_STATEMENT_RESULT_QUERY_NO_ROWS;
+    case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION:
+    case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
+        return MYLITE_STATEMENT_RESULT_MATERIALIZED_QUERY;
+    case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_BINARY_LOG_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_REPLICA_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_REPLICAS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_VIEW_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_FUNCTION_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_TRIGGER_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_EVENT_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_USER_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT:
+        return MYLITE_STATEMENT_RESULT_MATERIALIZED_UTILITY;
+    case MYLITE_SQL_AST_EXECUTE_STATEMENT:
+        return MYLITE_STATEMENT_RESULT_DYNAMIC_QUERY;
+    case MYLITE_SQL_AST_CALL_STATEMENT:
+        return MYLITE_STATEMENT_RESULT_DYNAMIC_UTILITY;
+    default:
+        return MYLITE_STATEMENT_RESULT_NONE;
+    }
+}
+
+bool mylite_statement_result_may_have_rows(enum mylite_statement_result_capability capability) {
+    return capability != MYLITE_STATEMENT_RESULT_NONE &&
+           capability != MYLITE_STATEMENT_RESULT_QUERY_NO_ROWS;
+}
+
+bool mylite_statement_result_is_query(enum mylite_statement_result_capability capability) {
+    return capability == MYLITE_STATEMENT_RESULT_QUERY_NO_ROWS ||
+           capability == MYLITE_STATEMENT_RESULT_STREAMING_QUERY ||
+           capability == MYLITE_STATEMENT_RESULT_MATERIALIZED_QUERY;
+}
+
+bool mylite_statement_result_is_dynamic(enum mylite_statement_result_capability capability) {
+    return capability == MYLITE_STATEMENT_RESULT_DYNAMIC_QUERY ||
+           capability == MYLITE_STATEMENT_RESULT_DYNAMIC_UTILITY;
 }
 
 bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement) {

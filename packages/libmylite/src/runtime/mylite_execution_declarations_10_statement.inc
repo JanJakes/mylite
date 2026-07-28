@@ -35,7 +35,6 @@ static int copy_active_stmt_parameter_cell(
     struct session_scalar_cell *out_cell
 );
 static bool prepared_statement_kind_is_supported(const struct mylite_sql_ast_node *statement);
-static bool prepared_statement_returns_rows(const struct mylite_sql_ast_node *statement);
 static bool prepared_statement_requires_object_validation(
     const struct mylite_sql_ast_node *statement
 );

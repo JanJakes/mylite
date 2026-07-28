@@ -3,6 +3,8 @@
 
 #include <mylite/mylite.h>
 
+#include "mylite_execution_result_capability.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

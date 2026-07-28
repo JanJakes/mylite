@@ -13,11 +13,17 @@ not weaken, the lazy lifecycle defined by
 
 ## Implementation status
 
-The specification and MySQL 8.4.9 expectations are frozen before the runtime
-change. The audited implementation incorrectly classifies prepared `SHOW`
-statements as commands during reset even though execution materializes rows.
-The retained materialized rowset is consequently replayed after reset instead
-of executing the statement again.
+The runtime stores the AST-derived capability on each prepared statement.
+Execution dispatch, completion semantics, and reset consume that capability.
+Reset releases materialized rows and their metadata for every static or
+dynamic row-producing family, so the next step dispatches the statement
+again. Runtime column count is consulted only for the two dynamic
+capabilities.
+
+The original defect classified prepared `SHOW` statements as commands during
+reset even though execution materialized rows. It consequently replayed the
+retained rowset. The source-level regression now creates a table between two
+executions and requires the original handle to return it.
 
 ## Authorities
 
@@ -73,10 +79,12 @@ The parsed top-level statement has one capability:
 | Capability | Meaning | Current statement families |
 | --- | --- | --- |
 | `NONE` | The statement cannot return a rowset through the current execution surface | DDL, DML, transaction, assignment, and other command statements |
-| `STREAMING_QUERY` | Rows are described at prepare and streamed from a first-step SQLite execution program | Supported simple `SELECT` statements |
+| `QUERY_NO_ROWS` | Query completion semantics apply, but this statement shape does not expose a rowset | Direct `SELECT ... INTO`; this shape is not admitted by native prepare |
+| `STREAMING_QUERY` | The statement uses the prepared query pipeline and is eligible to stream from a first-step SQLite execution program | Supported simple `SELECT` statements; the buffered option materializes rows within the same query pipeline |
 | `MATERIALIZED_QUERY` | Query-shaped rows are produced into a MyLite-owned result before the first row is exposed | Compound and parenthesized queries and `EXPLAIN` |
 | `MATERIALIZED_UTILITY` | Synthetic or administrative rows are produced into a MyLite-owned result | `SHOW`, `DESCRIBE`, `ANALYZE`, `CHECK`, `CHECKSUM`, `OPTIMIZE`, and `REPAIR` families |
-| `DYNAMIC` | Whether rows are returned depends on the invoked object or nested execution | `CALL` and any future dynamic row-producing surface |
+| `DYNAMIC_QUERY` | Whether query rows are returned depends on nested execution | SQL-level `EXECUTE` |
+| `DYNAMIC_UTILITY` | Whether utility rows are returned depends on the invoked object | `CALL` and future dynamic utility surfaces |
 
 One central classifier maps the typed AST to this capability. Prepare,
 execution dispatch, result completion, reset, and finalization must consume
@@ -87,8 +95,9 @@ The capability describes ownership and lifecycle, not whether one particular
 execution happens to return zero rows. A materialized result with zero rows
 still has a row-producing capability and still owns result metadata.
 
-For a `DYNAMIC` statement, the execution result determines whether that
-execution produced rows. Reset must conservatively release both possible
+For a dynamic statement, the execution result determines whether that
+execution produced rows. Query versus utility completion semantics remain
+encoded in the capability. Reset must conservatively release both possible
 row-result and command-completion state.
 
 ## Prepare and first execution
@@ -103,11 +112,11 @@ On first `mylite_stmt_step()`:
   opens the execution transaction, and streams rows;
 - `MATERIALIZED_QUERY` and `MATERIALIZED_UTILITY` dispatch the statement once
   and take ownership of the returned result before exposing its first row;
-- `DYNAMIC` dispatches once and records whether that execution returned
-  columns;
+- dynamic capabilities dispatch once and record whether that execution
+  returned columns;
 - `NONE` dispatches once and exposes only command completion.
 
-A runtime column count may describe the result of `DYNAMIC` execution. It
+A runtime column count may describe the result of dynamic execution. It
 must not override the static ownership capability of other families.
 
 ## Reset contract

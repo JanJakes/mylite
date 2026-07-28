@@ -1,3 +1,4 @@
+#include "mylite_execution_result_capability.h"
 #include "mylite_execution_select_analysis.h"
 
 enum planned_type_size_budget {
@@ -2685,6 +2686,7 @@ struct mylite_stmt {
     size_t row_count;
     size_t materialized_row_index;
     size_t current_materialized_row;
+    enum mylite_statement_result_capability result_capability;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
     char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
@@ -2695,7 +2697,6 @@ struct mylite_stmt {
     bool has_normalized_sql;
     bool has_materialized_rows;
     bool buffered_results;
-    bool returns_rows;
     bool analyzing_unbound_parameters;
     bool parameter_plan_reusable;
     bool dml_plan_reuse_checked;

@@ -14,6 +14,7 @@ enum { allocation_sweep_limit = 512 };
 static int test_open_failure_is_scoped_and_recoverable(void);
 static int test_execute_failure_preserves_handle(void);
 static int test_cursor_failure_completes_and_resets(void);
+static int test_materialized_cursor_reexecution_failure_recovers(void);
 static int expect_true(bool actual, const char *context);
 
 int main(void) {
@@ -21,6 +22,7 @@ int main(void) {
 
     failures += test_open_failure_is_scoped_and_recoverable();
     failures += test_cursor_failure_completes_and_resets();
+    failures += test_materialized_cursor_reexecution_failure_recovers();
     failures += test_execute_failure_preserves_handle();
     mylite_test_allocator_clear();
     return failures == 0 ? 0 : 1;
@@ -171,6 +173,150 @@ static int test_cursor_failure_completes_and_resets(void) {
     }
 
     failures += expect_true(completed_sweep, "cursor allocation sweep reached success");
+    mylite_close(database);
+    mylite_test_allocator_clear();
+    return failures;
+}
+
+static int test_materialized_cursor_reexecution_failure_recovers(void) {
+    static const char query[] = "SHOW TABLES";
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+    bool completed_sweep = false;
+
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open materialized cursor sweep handle"
+    );
+    failures += mylite_test_expect_int(
+        mylite_execute(database, "CREATE DATABASE app", strlen("CREATE DATABASE app"), &result),
+        MYLITE_OK,
+        "create materialized cursor sweep schema"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_execute(database, "USE app", strlen("USE app"), &result),
+        MYLITE_OK,
+        "select materialized cursor sweep schema"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += mylite_test_expect_int(
+        mylite_execute(
+            database,
+            "CREATE TABLE materialized_item (id INT)",
+            strlen("CREATE TABLE materialized_item (id INT)"),
+            &result
+        ),
+        MYLITE_OK,
+        "create materialized cursor sweep table"
+    );
+    mylite_result_free(result);
+
+    for (size_t allocation_index = 0U; allocation_index < allocation_sweep_limit;
+         ++allocation_index) {
+        mylite_stmt *stmt = NULL;
+        int rc = MYLITE_OK;
+
+        failures += mylite_test_expect_int(
+            mylite_prepare_buffered(database, query, strlen(query), &stmt),
+            MYLITE_OK,
+            "prepare materialized cursor allocation sweep"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_ROW,
+            "execute initial materialized cursor"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "complete initial materialized cursor"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_reset(stmt),
+            MYLITE_OK,
+            "reset initial materialized cursor"
+        );
+
+        mylite_test_allocator_fail_after(allocation_index);
+        rc = mylite_stmt_step(stmt);
+        if (!mylite_test_allocator_was_triggered()) {
+            failures += mylite_test_expect_int(
+                rc,
+                MYLITE_ROW,
+                "completed materialized cursor allocation sweep"
+            );
+            completed_sweep = true;
+            mylite_test_allocator_clear();
+            failures += mylite_test_expect_int(
+                mylite_stmt_finalize(stmt),
+                MYLITE_OK,
+                "finalize completed materialized cursor sweep"
+            );
+            break;
+        }
+
+        mylite_test_allocator_clear();
+        if (rc == MYLITE_ROW) {
+            failures += mylite_test_expect_int(
+                mylite_stmt_finalize(stmt),
+                MYLITE_OK,
+                "finalize tolerated materialized allocation failure"
+            );
+            continue;
+        }
+        if (rc != MYLITE_NOMEM) {
+            fprintf(
+                stderr,
+                "materialized cursor allocation index %zu returned %d: %s\n",
+                allocation_index,
+                rc,
+                mylite_errmsg(database)
+            );
+        }
+        failures += mylite_test_expect_int(
+            rc,
+            MYLITE_NOMEM,
+            "injected materialized cursor allocation failure"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_DONE,
+            "failed materialized cursor is completed"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_reset(stmt),
+            MYLITE_OK,
+            "reset failed materialized cursor"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_reset(stmt),
+            MYLITE_OK,
+            "repeat reset failed materialized cursor"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_step(stmt),
+            MYLITE_ROW,
+            "reexecute failed materialized cursor"
+        );
+        failures += mylite_test_expect_text(
+            mylite_stmt_value_text(stmt, 0U),
+            "materialized_item",
+            "reexecuted materialized cursor row"
+        );
+        failures += mylite_test_expect_int(
+            mylite_stmt_finalize(stmt),
+            MYLITE_OK,
+            "finalize recovered materialized cursor"
+        );
+    }
+
+    failures +=
+        expect_true(completed_sweep, "materialized cursor allocation sweep reached success");
     mylite_close(database);
     mylite_test_allocator_clear();
     return failures;

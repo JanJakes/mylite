@@ -37,7 +37,6 @@ static int execute_show_tables_statement(
         );
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
-            rc = MYLITE_ERROR;
         }
     }
     if (rc == MYLITE_OK) {

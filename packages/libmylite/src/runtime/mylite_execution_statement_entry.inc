@@ -114,16 +114,13 @@ static bool statement_result_is_select(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 ) {
-    if (statement == NULL) {
-        return false;
-    }
-    if (statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT ||
-        statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT ||
-        statement->kind == MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION ||
-        statement->kind == MYLITE_SQL_AST_EXPLAIN_STATEMENT) {
+    enum mylite_statement_result_capability capability =
+        mylite_statement_result_capability(statement);
+
+    if (mylite_statement_result_is_query(capability)) {
         return true;
     }
-    if (statement->kind != MYLITE_SQL_AST_EXECUTE_STATEMENT || result == NULL) {
+    if (capability != MYLITE_STATEMENT_RESULT_DYNAMIC_QUERY || result == NULL) {
         return false;
     }
     return mylite_result_column_count(result) != 0U;

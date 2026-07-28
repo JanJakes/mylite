@@ -95,6 +95,7 @@ static int test_native_prepared_multirow_dml(void);
 static int test_buffered_prepared_statement_releases_connection(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_statement_surface(void);
+static int test_prepared_row_result_reexecution(void);
 static int test_cursor_read_transaction_lifecycle(void);
 static int test_streaming_cursor_reports_select_row_count(void);
 static int test_cursor_connection_close_order(void);
@@ -133,6 +134,7 @@ int main(void) {
     failures += test_buffered_prepared_statement_releases_connection();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_statement_surface();
+    failures += test_prepared_row_result_reexecution();
     failures += test_cursor_read_transaction_lifecycle();
     failures += test_streaming_cursor_reports_select_row_count();
     failures += test_cursor_connection_close_order();
@@ -3458,8 +3460,7 @@ static int test_cursor_prepare_statement_surface(void) {
     failures +=
         mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reexecuted SHOW third row");
     failures += expect_cursor_text(stmt, 0U, "later", "reexecuted SHOW new table");
-    failures +=
-        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "reexecuted SHOW done");
+    failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "reexecuted SHOW done");
     failures +=
         mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize prepared SHOW");
     stmt = NULL;
@@ -3526,6 +3527,284 @@ static int test_cursor_prepare_statement_surface(void) {
 
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int test_prepared_row_result_reexecution(void) {
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open prepared row-result database"
+    );
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE row_results (id INT NOT NULL)");
+
+    failures += mylite_test_expect_int(
+        mylite_prepare_buffered(
+            database,
+            "DESCRIBE row_results",
+            strlen("DESCRIBE row_results"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare DESCRIBE for replay"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset DESCRIBE before step");
+    failures += mylite_test_expect_int(
+        mylite_stmt_reset(stmt),
+        MYLITE_OK,
+        "repeat reset DESCRIBE before step"
+    );
+    failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first DESCRIBE row");
+    failures += expect_cursor_text(stmt, 0U, "id", "first DESCRIBE field");
+    failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "first DESCRIBE done");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset completed DESCRIBE");
+    failures += mylite_test_expect_size(
+        mylite_stmt_column_count(stmt),
+        0U,
+        "reset releases DESCRIBE metadata"
+    );
+    failures += mylite_test_expect_int64(
+        mylite_stmt_affected_rows(stmt),
+        -1,
+        "reset releases DESCRIBE completion"
+    );
+    failures += execute_ok(database, "ALTER TABLE row_results ADD COLUMN marker VARCHAR(8) NULL");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second DESCRIBE first row");
+    failures += expect_cursor_text(stmt, 0U, "id", "second DESCRIBE id");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second DESCRIBE second row");
+    failures += expect_cursor_text(stmt, 0U, "marker", "second DESCRIBE new field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset partial DESCRIBE");
+    failures += mylite_test_expect_size(
+        mylite_stmt_column_count(stmt),
+        0U,
+        "partial reset releases DESCRIBE metadata"
+    );
+    failures += execute_ok(database, "ALTER TABLE row_results ADD COLUMN appended_value INT NULL");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "third DESCRIBE first row");
+    failures += expect_cursor_text(stmt, 0U, "id", "third DESCRIBE id");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "third DESCRIBE second row");
+    failures += expect_cursor_text(stmt, 0U, "marker", "third DESCRIBE marker");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "third DESCRIBE third row");
+    failures += expect_cursor_text(stmt, 0U, "appended_value", "third DESCRIBE appended field");
+    failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "third DESCRIBE done");
+    failures += mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize DESCRIBE");
+    stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare_buffered(
+            database,
+            "EXPLAIN row_results",
+            strlen("EXPLAIN row_results"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare EXPLAIN table"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first EXPLAIN table row");
+    failures += expect_cursor_text(stmt, 0U, "id", "first EXPLAIN table field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first EXPLAIN marker row");
+    failures += expect_cursor_text(stmt, 0U, "marker", "first EXPLAIN marker field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first EXPLAIN appended row");
+    failures += expect_cursor_text(stmt, 0U, "appended_value", "first EXPLAIN appended field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "first EXPLAIN table done");
+    failures += mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset EXPLAIN table");
+    failures += execute_ok(database, "ALTER TABLE row_results ADD COLUMN explained INT NULL");
+    failures += mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second EXPLAIN id row");
+    failures += expect_cursor_text(stmt, 0U, "id", "second EXPLAIN id field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second EXPLAIN marker row");
+    failures += expect_cursor_text(stmt, 0U, "marker", "second EXPLAIN marker field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second EXPLAIN appended row");
+    failures += expect_cursor_text(stmt, 0U, "appended_value", "second EXPLAIN appended field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second EXPLAIN new row");
+    failures += expect_cursor_text(stmt, 0U, "explained", "second EXPLAIN new field");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "second EXPLAIN table done");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize EXPLAIN table");
+    stmt = NULL;
+
+    failures += mylite_test_expect_int(
+        mylite_prepare_buffered(
+            database,
+            "EXPLAIN SELECT id FROM row_results",
+            strlen("EXPLAIN SELECT id FROM row_results"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare EXPLAIN query"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first EXPLAIN query row");
+    failures +=
+        expect_cursor_text(stmt, 11U, "MyLite EXPLAIN placeholder", "first EXPLAIN query extra");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset partial EXPLAIN query");
+    failures += execute_ok(database, "CREATE INDEX row_results_id ON row_results (id)");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "second EXPLAIN query row");
+    failures +=
+        expect_cursor_text(stmt, 11U, "MyLite EXPLAIN placeholder", "second EXPLAIN query extra");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "second EXPLAIN query done");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize EXPLAIN query");
+    stmt = NULL;
+
+    failures += execute_ok(database, "SET SESSION sql_mode = ''");
+    failures += mylite_test_expect_int(
+        mylite_prepare_buffered(
+            database,
+            "SHOW VARIABLES LIKE 'sql_mode'",
+            strlen("SHOW VARIABLES LIKE 'sql_mode'"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare SHOW session variable"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "first prepared SHOW session variable row"
+    );
+    failures += expect_cursor_text(stmt, 1U, "", "first prepared sql_mode value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "first prepared SHOW session variable done"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_reset(stmt),
+        MYLITE_OK,
+        "reset prepared SHOW session variable"
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "second prepared SHOW session variable row"
+    );
+    failures += expect_cursor_text(stmt, 1U, "ANSI_QUOTES", "second prepared sql_mode value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize partial SHOW session variable"
+    );
+    stmt = NULL;
+
+    failures += execute_ok(database, "CREATE TABLE row_data (id INT NOT NULL)");
+    failures += execute_ok(database, "INSERT INTO row_data VALUES (1)");
+    failures += mylite_test_expect_int(
+        mylite_prepare_buffered(
+            database,
+            "SELECT id FROM row_data ORDER BY id",
+            strlen("SELECT id FROM row_data ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare buffered mutable query"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "first buffered mutable query row"
+    );
+    failures += expect_cursor_text(stmt, 0U, "1", "first buffered mutable query value");
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset partial buffered query");
+    failures += execute_ok(database, "INSERT INTO row_data VALUES (2)");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "second buffered query first row"
+    );
+    failures += expect_cursor_text(stmt, 0U, "1", "second buffered query first value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "second buffered query second row"
+    );
+    failures += expect_cursor_text(stmt, 0U, "2", "second buffered query new value");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "second buffered mutable query done"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize buffered query");
+    stmt = NULL;
+
+    failures += execute_ok(database, "CREATE TABLE failure_target (original INT)");
+    failures += mylite_test_expect_int(
+        mylite_prepare_buffered(
+            database,
+            "DESCRIBE failure_target",
+            strlen("DESCRIBE failure_target"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare recoverable DESCRIBE"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "initial recoverable DESCRIBE");
+    failures += expect_cursor_text(stmt, 0U, "original", "initial recoverable field");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_DONE,
+        "initial recoverable DESCRIBE done"
+    );
+    failures +=
+        mylite_test_expect_int(mylite_stmt_reset(stmt), MYLITE_OK, "reset recoverable DESCRIBE");
+    failures += execute_ok(database, "DROP TABLE failure_target");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ERROR,
+        "reexecuted DESCRIBE reports dropped table"
+    );
+    failures += mylite_test_expect_contains(
+        mylite_errmsg(database),
+        "doesn't exist",
+        "reexecuted DESCRIBE dropped-table diagnostic"
+    );
+    failures += mylite_test_expect_int(
+        mylite_stmt_reset(stmt),
+        MYLITE_OK,
+        "reset failed recoverable DESCRIBE"
+    );
+    failures += execute_ok(database, "CREATE TABLE failure_target (replacement INT)");
+    failures += mylite_test_expect_int(
+        mylite_stmt_step(stmt),
+        MYLITE_ROW,
+        "recovered DESCRIBE after recreation"
+    );
+    failures += expect_cursor_text(stmt, 0U, "replacement", "recovered DESCRIBE field");
+    failures += mylite_test_expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize recovered DESCRIBE"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

@@ -382,18 +382,36 @@ release-review completion at `d5005f606`:
 
 ### `API-06` and `API-07`: metadata, observables, and framework integration
 
-- [ ] Implement PDO `getColumnMeta()` and complete `describe` metadata from
+- [x] Implement PDO `getColumnMeta()` and complete `describe` metadata from
   native result descriptors.
-- [ ] Cover empty results, integer, unsigned, decimal, text, blob, nullable,
+- [x] Cover empty results, integer, unsigned, decimal, text, blob, nullable,
   primary, unique, expression, spatial, temporal, and aggregate columns.
-- [ ] Define and implement buffered PDO SELECT `rowCount()` compatibility.
-- [ ] Expose a stable public connection ID and make mysqli `thread_id` match
+- [x] Define and implement buffered PDO SELECT `rowCount()` compatibility.
+- [x] Expose a stable public connection ID and make mysqli `thread_id` match
   `CONNECTION_ID()` across multiple handles.
 - [ ] Replace Laravel and Doctrine test-only bridge wiring with supported
   connector/driver packages, or explicitly scope those baselines as adapters
   rather than drop-in integrations.
 - [ ] Test fresh framework applications through normal configuration,
   migrations, hydration, metadata, exception conversion, and transactions.
+
+`API-06` implementation evidence at `6dc01dcea`:
+
+- PDO describe and `getColumnMeta()` use the native result descriptor for
+  names, types, parameter classes, MySQL PDO flags, table names, display
+  lengths, and decimal precision, including empty result sets.
+- Buffered direct and prepared SELECT statements expose their complete row
+  count immediately after execution and retain it across fetch and exhaustion;
+  DML continues to report affected rows.
+- Additive, read-only native accessors expose buffered row counts and a
+  handle-lifetime connection ID. mysqli object and procedural thread IDs use
+  that stable value, including across simultaneous handles and
+  `pseudo_thread_id` changes.
+- The MySQL 8.4.9 fixture passes the exact metadata, row-count, flag, and
+  connection-identity matrix. All 693 native Release tests, all 708
+  developer-tree tests, all 15 Release adapter tests, and all 15 ASan/UBSan
+  adapter tests pass. Exact ABI, LLVM 19 formatting/static-analysis, and all
+  production artifact size gates pass.
 
 ### `SEC-03`: length-aware database paths
 

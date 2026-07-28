@@ -2,8 +2,7 @@
 
 ## Status
 
-Specified and covered by failing adapter regressions. Implementation and
-qualification are pending. This feature closes the metadata, buffered row
+Implemented and qualified. This feature closes the metadata, buffered row
 count, and connection-identity portions of review finding API-06.
 
 ## Sources
@@ -179,8 +178,33 @@ together.
 
 | Layer | Required coverage |
 | --- | --- |
-| MySQL 8.4.9 fixture | direct and prepared buffered row counts; post-fetch stability; empty result metadata; integer/unsigned, decimal, VARCHAR, TEXT, BLOB, DATETIME, geometry, expression, and aggregate metadata; two mysqli IDs; `pseudo_thread_id` separation |
+| MySQL 8.4.9 fixture | direct and prepared buffered row counts; post-fetch stability; empty result metadata; integer/unsigned, decimal, VARCHAR, TEXT, BLOB, DATETIME, geometry, primary/unique/multiple-key flags, expression, and aggregate metadata; two mysqli IDs; `pseudo_thread_id` separation |
 | Native C API | null/accessor behavior; nonzero stable ID; two-handle distinction; initial SQL equality; stability across `pseudo_thread_id`; buffered nonempty/empty count; fetch stability; reset and re-execution |
 | PDO MyLite | exact table metadata arrays; empty results; expression/aggregate descriptor transport; immediate and post-fetch `rowCount()`; DML affected count |
 | mysqli MyLite | object/procedural identity equality; SQL equality; multiple handles; stability across commands |
 | Qualification | Release/Debug, ASan/UBSan, ABI manifests, formatters, static analysis, PHP adapters, MySQL fixture, artifact-size gates |
+
+## Qualification
+
+The pinned MySQL 8.4.9 fixture passes for direct and prepared buffered SELECT
+row counts before and after fetching, empty-result metadata, exact direct
+table-column metadata, primary/unique/multiple-key and blob flags, expression
+and aggregate metadata, two simultaneous mysqli connection IDs, and
+`pseudo_thread_id` separation.
+
+Native regressions cover null and live connection-ID access, initial SQL
+equality, handle distinction, lifetime stability, buffered and streaming
+statements, nonempty and empty buffered results, fetch and exhaustion, reset,
+and re-execution. PDO and mysqli regressions cover the corresponding adapter
+surfaces, including DML affected rows and descriptor transport for current
+expression and aggregate metadata.
+
+All 693 native Release tests and all 708 tests in the PHP developer tree pass.
+All 15 PHP adapter tests pass in Release and under ASan/UBSan. The installed
+header and shared-library exports match both ABI manifests. Repository-wide
+clang-format and focused clang-tidy checks pass with LLVM 19 and warnings
+treated as errors.
+
+Production artifacts remain within their budgets: `libmylite.a` is 12,352,798
+bytes, the core PHP module is 8,934,176 bytes, the mysqli module is 242,792
+bytes, and the PDO module is 33,464 bytes.

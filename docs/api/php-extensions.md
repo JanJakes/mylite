@@ -175,3 +175,29 @@ while `mylite_version()` continues to identify the client library.
 See
 [PHP native scalar conversion and server identity](../specs/php-native-scalar-conversion-server-identity/specs.md)
 for the complete conversion matrix and qualification evidence.
+
+## PDO metadata, buffered row counts, and connection identity
+
+PDO MyLite publishes native result descriptors through `getColumnMeta()`.
+Each column reports `native_type`, `pdo_type`, `flags`, `table`, `name`, `len`,
+and `precision`. Direct table columns preserve metadata for empty results.
+MySQL's PDO flag names `not_null`, `primary_key`, `unique_key`,
+`multiple_key`, and `blob` are mapped from the native descriptor; unsigned and
+auto-increment flags remain intentionally omitted because PDO MySQL does not
+publish them through this API.
+
+PDO statements are buffered. Direct and prepared SELECT `rowCount()` therefore
+report the complete selected-row count immediately after execution and retain
+it during and after fetching. Non-row statements continue to report affected
+rows.
+
+The mysqli replacement publishes each live native handle's stable connection
+ID through both the `thread_id` property and `mysqli_thread_id()`. Initially
+this value equals SQL `CONNECTION_ID()` and differs across simultaneous
+connections. As in MySQL, `SET SESSION pseudo_thread_id` changes the SQL value
+without changing the mysqli thread ID.
+
+The native `mylite_stmt_buffered_row_count()` and `mylite_connection_id()`
+accessors expose the same read-only values. See
+[PHP PDO metadata and connection observables](../specs/php-pdo-metadata-connection-observables/specs.md)
+for the exact descriptor, lifetime, and compatibility boundaries.

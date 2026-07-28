@@ -38,17 +38,19 @@ run_mysql \
      CREATE TABLE ${DATABASE}.metadata_values (
          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
          unique_code VARCHAR(16) NOT NULL UNIQUE,
+         indexed_code VARCHAR(16),
          nullable_decimal DECIMAL(10,2) NULL,
          body TEXT,
          payload BLOB,
          created_at DATETIME,
-         location POINT
+         location POINT,
+         KEY idx_metadata_values_indexed_code (indexed_code)
      ) ENGINE=InnoDB;
      INSERT INTO ${DATABASE}.metadata_values
-         (unique_code, nullable_decimal, body, payload, created_at, location)
+         (unique_code, indexed_code, nullable_decimal, body, payload, created_at, location)
      VALUES
-         ('one', 12.30, 'hello', UNHEX('610062'), '2026-07-27 12:34:56', POINT(1,2)),
-         ('two', NULL, NULL, NULL, NULL, NULL);" >/dev/null
+         ('one', 'lookup', 12.30, 'hello', UNHEX('610062'), '2026-07-27 12:34:56', POINT(1,2)),
+         ('two', NULL, NULL, NULL, NULL, NULL, NULL);" >/dev/null
 
 MYLITE_API06_MYSQL_HOST=$(
     docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
@@ -110,6 +112,7 @@ $pdo = new PDO(
 $tableMeta = [
     expected_meta('LONG', PDO::PARAM_INT, ['not_null', 'primary_key'], 'metadata_values', 'id', 10, 0),
     expected_meta('VAR_STRING', PDO::PARAM_STR, ['not_null', 'unique_key'], 'metadata_values', 'unique_code', 64, 0),
+    expected_meta('VAR_STRING', PDO::PARAM_STR, ['multiple_key'], 'metadata_values', 'indexed_code', 64, 0),
     expected_meta('NEWDECIMAL', PDO::PARAM_STR, [], 'metadata_values', 'nullable_decimal', 12, 2),
     expected_meta('BLOB', PDO::PARAM_STR, ['blob'], 'metadata_values', 'body', 262140, 0),
     expected_meta('BLOB', PDO::PARAM_STR, ['blob'], 'metadata_values', 'payload', 65535, 0),
@@ -118,7 +121,7 @@ $tableMeta = [
 ];
 
 $statement = $pdo->prepare(
-    'SELECT id, unique_code, nullable_decimal, body, payload, created_at, location ' .
+    'SELECT id, unique_code, indexed_code, nullable_decimal, body, payload, created_at, location ' .
     'FROM metadata_values ORDER BY id'
 );
 expect_same(true, $statement->execute(), 'table metadata execute');
@@ -128,6 +131,11 @@ foreach ($tableMeta as $index => $expected) {
 }
 expect_same(2, count($statement->fetchAll()), 'buffered fetch count');
 expect_same(2, $statement->rowCount(), 'buffered row count after fetch');
+
+$direct = $pdo->query('SELECT id FROM metadata_values ORDER BY id');
+expect_same(2, $direct->rowCount(), 'direct buffered row count before fetch');
+expect_same(2, count($direct->fetchAll()), 'direct buffered fetch count');
+expect_same(2, $direct->rowCount(), 'direct buffered row count after fetch');
 
 $empty = $pdo->prepare('SELECT id, unique_code FROM metadata_values WHERE id = 999');
 expect_same(true, $empty->execute(), 'empty metadata execute');

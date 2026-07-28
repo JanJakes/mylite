@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented and release-qualified.
 
 ## Summary
 
@@ -184,7 +184,30 @@ any failure that is downgraded to `MYLITE_ERROR`. Every fatal parser allocation
 returns `MYLITE_NOMEM`, publishes `HY001` / `out of memory`, and permits a
 successful subsequent statement after the failpoint is cleared.
 
-Qualification must include the focused test in deterministic allocator,
-Debug, Release, and ASan/UBSan profiles, all parser native tests, the pinned
-parser MySQL fixtures, formatting, static analysis, and the production size
-gate.
+Qualification must include the focused failure test in the deterministic
+allocator profile, all parser native tests in Debug, Release, and ASan/UBSan
+profiles, the pinned parser MySQL fixtures, formatting, static analysis, ABI
+and install-consumer checks, parser fuzzing, and the production size gate.
+
+## Qualification
+
+Release qualification completed on 2026-07-28 against MySQL 8.4.9 and the
+supported native build profiles:
+
+- all 45 ordinary parser suites pass in Development, assertion-enabled
+  Debug-CI, Release, and ASan/UBSan with leak detection;
+- the deterministic fault-injection profile passes all 46 parser suites,
+  including the allocation sweep for every retry path, plus the runtime
+  allocator-failpoint suite;
+- all 37 pinned parser MySQL 8.4.9 fixtures pass, establishing unchanged
+  accepted results and rejection diagnostics across the parser corpus;
+- 10,000 seeded parser-fuzzer executions pass under ASan/UBSan;
+- focused LLVM 19 static analysis, repository formatting, shared-library ABI
+  snapshots, installed CMake/pkg-config consumers, and production size gates
+  pass;
+- the production archive is 12,397,476 bytes against the 15,000,000-byte
+  ceiling.
+
+The focused failure suite is registered in the cross-platform deterministic
+allocator configuration, including Windows CI. The local sanitizer, fuzz,
+fault, and production qualification was performed on Linux.

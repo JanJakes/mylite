@@ -671,6 +671,25 @@ static int populate_row_scalar_expression_result_column_descriptor(
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_row_scalar_convert_tz_result_column_descriptor(
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static uint16_t planned_convert_tz_fractional_precision(
+    const struct planned_row_scalar_expression *expression
+);
+static uint16_t temporal_descriptor_fractional_precision(
+    const struct mylite_catalog_column_descriptor *column
+);
+static uint16_t temporal_text_fractional_precision(
+    const char *text,
+    size_t text_length,
+    uint16_t fallback
+);
+static void populate_convert_tz_result_column_descriptor(
+    uint16_t fractional_precision,
+    struct mylite_result_column_descriptor *descriptor
+);
 static int populate_row_scalar_source_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source_expression,

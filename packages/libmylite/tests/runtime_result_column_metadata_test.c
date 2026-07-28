@@ -850,6 +850,145 @@ static int test_descriptor_result_column_metadata(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE temporal_meta("
+        "id INT PRIMARY KEY, d DATE, dt DATETIME, ts TIMESTAMP NULL, "
+        "v VARCHAR(30))"
+    );
+    failures += execute_ok(
+        database,
+        "SELECT "
+        "CONVERT_TZ('2024-01-01 00:00:00','+00:00','+01:00') AS tz_whole, "
+        "CONVERT_TZ('2024-01-01 00:00:00.123','+00:00','+01:00') AS tz_fraction, "
+        "CONVERT_TZ(NULL,'+00:00','+01:00') AS tz_null",
+        &result
+    );
+    if (failures == 0) {
+        static const struct expected_column_metadata convert_tz_literal_columns[] = {
+            {
+                .label = "tz_whole",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 19U,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            {
+                .label = "tz_fraction",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 23U,
+                .decimals = 3U,
+                .nullable = 1,
+            },
+            {
+                .label = "tz_null",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 19U,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+        };
+
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            sizeof(convert_tz_literal_columns) / sizeof(convert_tz_literal_columns[0]),
+            "literal CONVERT_TZ metadata column count"
+        );
+        for (size_t index = 0U;
+             index < sizeof(convert_tz_literal_columns) / sizeof(convert_tz_literal_columns[0]);
+             ++index) {
+            failures += expect_column_metadata(
+                result,
+                index,
+                convert_tz_literal_columns[index],
+                "literal CONVERT_TZ metadata"
+            );
+        }
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT_TZ(d,'+00:00','+01:00') AS tz_date, "
+        "CONVERT_TZ(dt,'+00:00','+01:00') AS tz_datetime, "
+        "CONVERT_TZ(ts,'+00:00','+01:00') AS tz_timestamp, "
+        "CONVERT_TZ(v,'+00:00','+01:00') AS tz_text "
+        "FROM temporal_meta LIMIT 0",
+        &result
+    );
+    if (failures == 0) {
+        static const struct expected_column_metadata convert_tz_descriptor_columns[] = {
+            {
+                .label = "tz_date",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 19U,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            {
+                .label = "tz_datetime",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 19U,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            {
+                .label = "tz_timestamp",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 19U,
+                .decimals = 0U,
+                .nullable = 1,
+            },
+            {
+                .label = "tz_text",
+                .type = MYLITE_RESULT_COLUMN_TYPE_DATETIME,
+                .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
+                .charset_id = mysql_collation_binary_id,
+                .collation_id = mysql_collation_binary_id,
+                .display_length = 26U,
+                .decimals = 6U,
+                .nullable = 1,
+            },
+        };
+
+        failures += mylite_test_expect_size(
+            mylite_result_column_count(result),
+            sizeof(convert_tz_descriptor_columns) / sizeof(convert_tz_descriptor_columns[0]),
+            "descriptor CONVERT_TZ metadata column count"
+        );
+        for (size_t index = 0U; index < sizeof(convert_tz_descriptor_columns) /
+                                            sizeof(convert_tz_descriptor_columns[0]);
+             ++index) {
+            failures += expect_column_metadata(
+                result,
+                index,
+                convert_tz_descriptor_columns[index],
+                "descriptor CONVERT_TZ metadata"
+            );
+        }
+    }
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(
         database,
         "SELECT TIMESTAMPADD(SECOND, 1, dt) AS d_shift, "

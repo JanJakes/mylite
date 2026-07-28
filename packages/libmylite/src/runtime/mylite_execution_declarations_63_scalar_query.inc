@@ -64,6 +64,11 @@ static int populate_scalar_function_result_column_descriptor(
     const struct mylite_sql_ast_node *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_scalar_convert_tz_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
 static void populate_scalar_temporal_string_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor

@@ -631,6 +631,12 @@ static const char *pdo_mylite_column_native_type(enum mylite_result_column_type 
         return "JSON";
     case MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL:
         return "NEWDECIMAL";
+    case MYLITE_RESULT_COLUMN_TYPE_TINY_BLOB:
+        return "TINY_BLOB";
+    case MYLITE_RESULT_COLUMN_TYPE_MEDIUM_BLOB:
+        return "MEDIUM_BLOB";
+    case MYLITE_RESULT_COLUMN_TYPE_LONG_BLOB:
+        return "LONG_BLOB";
     case MYLITE_RESULT_COLUMN_TYPE_BLOB:
         return "BLOB";
     case MYLITE_RESULT_COLUMN_TYPE_VAR_STRING:

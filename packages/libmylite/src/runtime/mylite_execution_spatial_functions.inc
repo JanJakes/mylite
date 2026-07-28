@@ -342,49 +342,106 @@ static int populate_spatial_function_result_column_descriptor(
     enum mylite_spatial_function_kind kind,
     struct mylite_result_column_descriptor *descriptor
 ) {
+    uint64_t max_bytes_per_character = 0U;
+
     if (database == NULL || descriptor == NULL) {
         return MYLITE_MISUSE;
     }
-    if (mylite_spatial_function_returns_geometry(kind)) {
-        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_GEOMETRY;
-        descriptor->charset_id = mysql_collation_binary_id;
-        descriptor->collation_id = mysql_collation_binary_id;
-        descriptor->display_length = mysql_json_document_display_length;
+    max_bytes_per_character = scalar_connection_max_bytes_per_character(database);
+    switch (kind) {
+    case MYLITE_SPATIAL_FUNCTION_ST_ASTEXT:
+    case MYLITE_SPATIAL_FUNCTION_ST_ASWKT:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONG_BLOB;
+        descriptor->charset_id =
+            result_metadata_collation_id(mylite_connection_statement_collation_connection(database)
+            );
+        descriptor->collation_id = descriptor->charset_id;
+        descriptor->display_length = mysql_spatial_text_character_length * max_bytes_per_character;
         descriptor->decimals = mysql_approximate_decimals;
-        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_BLOB;
+        descriptor->flags = 0U;
         descriptor->nullable = true;
         return MYLITE_OK;
-    }
-    if (mylite_spatial_function_returns_text(kind)) {
+    case MYLITE_SPATIAL_FUNCTION_ST_ASBINARY:
+    case MYLITE_SPATIAL_FUNCTION_ST_ASWKB:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONG_BLOB;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = UINT32_MAX;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYTYPE:
         populate_scalar_connection_string_result_column_descriptor(
             database,
             descriptor,
             (struct scalar_connection_string_result_column_shape){
-                .display_length = mysql_json_document_display_length,
+                .display_length = 15U * max_bytes_per_character,
                 .extra_flags = 0U,
                 .nullable = true,
             }
         );
         return MYLITE_OK;
-    }
-    if (mylite_spatial_function_returns_wkb(kind)) {
-        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
+    case MYLITE_SPATIAL_FUNCTION_ST_GEOHASH:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = 100U * max_bytes_per_character,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_JSON;
+        descriptor->charset_id =
+            result_metadata_collation_id(mylite_connection_statement_collation_connection(database)
+            );
+        descriptor->collation_id = descriptor->charset_id;
+        descriptor->display_length =
+            mysql_spatial_geojson_character_length * max_bytes_per_character;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case MYLITE_SPATIAL_FUNCTION_ST_BUFFER_STRATEGY:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;
         descriptor->collation_id = mysql_collation_binary_id;
-        descriptor->display_length = mysql_json_document_display_length;
+        descriptor->display_length = 16U;
         descriptor->decimals = mysql_approximate_decimals;
-        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_BLOB;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+    if (mylite_spatial_function_returns_geometry(kind)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_GEOMETRY;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = UINT32_MAX;
+        descriptor->decimals = 0U;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;
         return MYLITE_OK;
     }
     if (mylite_spatial_function_returns_integer(kind)) {
+        const bool is_property = kind == MYLITE_SPATIAL_FUNCTION_ST_SRID ||
+                                 kind == MYLITE_SPATIAL_FUNCTION_ST_DIMENSION ||
+                                 kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
+                                 kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
+                                 kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING ||
+                                 kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS;
+
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
                 .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = mysql_scalar_bigint_display_length,
+                .display_length = is_property ? 10U : 1U,
                 .decimals = 0U,
-                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .extra_flags = 0U,
                 .nullable = true,
             }
         );

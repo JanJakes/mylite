@@ -2621,7 +2621,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
         populate_scalar_json_result_column_descriptor(database, descriptor);
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
-        populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        populate_row_scalar_convert_tz_result_column_descriptor(expression, descriptor);
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
@@ -2727,6 +2727,122 @@ static int populate_row_scalar_expression_result_column_descriptor(
     }
 
     return MYLITE_OK;
+}
+
+static void populate_row_scalar_convert_tz_result_column_descriptor(
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    populate_convert_tz_result_column_descriptor(
+        planned_convert_tz_fractional_precision(expression),
+        descriptor
+    );
+}
+
+static uint16_t planned_convert_tz_fractional_precision(
+    const struct planned_row_scalar_expression *expression
+) {
+    const struct planned_row_scalar_expression *argument = NULL;
+
+    if (expression == NULL || expression->argument_count == 0U || expression->arguments == NULL) {
+        return 6U;
+    }
+    argument = &expression->arguments[0];
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+        if (argument->value.is_null) {
+            return 0U;
+        }
+        if (argument->value.is_text) {
+            return temporal_text_fractional_precision(
+                argument->value.text,
+                argument->value.text_length,
+                0U
+            );
+        }
+        return 6U;
+    }
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return temporal_descriptor_fractional_precision(argument->column);
+    }
+    return 6U;
+}
+
+static uint16_t temporal_descriptor_fractional_precision(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    const char *open = NULL;
+    const char *close = NULL;
+    unsigned int precision = 0U;
+
+    if (column == NULL) {
+        return 6U;
+    }
+    if (column_descriptor_is_date(column)) {
+        return 0U;
+    }
+    if (!column_descriptor_is_datetime(column) && !column_descriptor_is_timestamp(column)) {
+        return 6U;
+    }
+    open = strchr(column->logical_type, '(');
+    if (open == NULL) {
+        return 0U;
+    }
+    close = strchr(open + 1, ')');
+    if (close == NULL || close == open + 1 || close[1] != '\0') {
+        return 0U;
+    }
+    for (const char *cursor = open + 1; cursor < close; ++cursor) {
+        if (!isdigit((unsigned char)*cursor)) {
+            return 0U;
+        }
+        precision = (precision * 10U) + (unsigned int)(*cursor - '0');
+        if (precision > 6U) {
+            return 6U;
+        }
+    }
+    return (uint16_t)precision;
+}
+
+static uint16_t temporal_text_fractional_precision(
+    const char *text,
+    size_t text_length,
+    uint16_t fallback
+) {
+    size_t separator_index = 0U;
+    size_t precision = 0U;
+
+    if (text == NULL) {
+        return fallback;
+    }
+    while (separator_index < text_length && text[separator_index] != '.') {
+        ++separator_index;
+    }
+    if (separator_index == text_length) {
+        return 0U;
+    }
+    for (size_t index = separator_index + 1U;
+         index < text_length && isdigit((unsigned char)text[index]) && precision < 6U;
+         ++index) {
+        ++precision;
+    }
+    return precision == 0U ? fallback : (uint16_t)precision;
+}
+
+static void populate_convert_tz_result_column_descriptor(
+    uint16_t fractional_precision,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    if (fractional_precision > 6U) {
+        fractional_precision = 6U;
+    }
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DATETIME;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length =
+        fractional_precision == 0U ? 19U : (uint64_t)20U + fractional_precision;
+    descriptor->decimals = fractional_precision;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    descriptor->nullable = true;
 }
 
 static int populate_window_function_result_column_descriptor(

@@ -603,8 +603,10 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION:
     case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
     case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
-    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
         populate_scalar_temporal_string_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
+        populate_scalar_convert_tz_result_column_descriptor(database, expression, descriptor);
         return MYLITE_OK;
     case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
@@ -747,6 +749,41 @@ static void populate_scalar_temporal_string_result_column_descriptor(
     descriptor->decimals = mysql_approximate_decimals;
     descriptor->flags = 0U;
     descriptor->nullable = true;
+}
+
+static void populate_scalar_convert_tz_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *argument =
+        expression == NULL ? NULL : unwrap_parenthesized_expression(child_at(expression, 0U));
+    uint16_t fractional_precision = 6U;
+
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            fractional_precision = 0U;
+        } else if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            char *text = NULL;
+            size_t text_length = 0U;
+
+            if (decode_sql_string_literal_with_policy(
+                    database,
+                    argument,
+                    "CONVERT_TZ() metadata supports only ordinary string literals",
+                    "CONVERT_TZ() metadata does not support NUL bytes in string literals",
+                    true,
+                    &text,
+                    &text_length
+                ) == MYLITE_OK) {
+                fractional_precision = temporal_text_fractional_precision(text, text_length, 0U);
+            }
+            free(text);
+        }
+    }
+    populate_convert_tz_result_column_descriptor(fractional_precision, descriptor);
 }
 
 static void populate_calendar_name_result_column_descriptor(

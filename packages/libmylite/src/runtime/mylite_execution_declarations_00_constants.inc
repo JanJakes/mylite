@@ -943,6 +943,8 @@ static const long double decimal_round_integer_step = 1.0L;
 static const int tm_year_calendar_offset = 1900;
 static const uint64_t longtext_max_length = 4294967295ULL;
 static const uint64_t mysql_json_document_display_length = 4294967292ULL;
+static const uint64_t mysql_spatial_text_character_length = 67108864ULL;
+static const uint64_t mysql_spatial_geojson_character_length = 1073741823ULL;
 static const uint64_t max_allowed_packet_default_value = 67108864ULL;
 static const uint64_t group_concat_max_len_default_value =
     MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE;

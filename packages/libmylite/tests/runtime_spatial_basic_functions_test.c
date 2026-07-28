@@ -508,34 +508,114 @@ static int expect_spatial_metadata(mylite_db *database) {
             "Point() metadata type"
         );
         failures += mylite_test_expect_int(
-            (int)(mylite_result_column_flags(result, 0U) & MYLITE_RESULT_COLUMN_FLAG_BLOB),
-            MYLITE_RESULT_COLUMN_FLAG_BLOB,
-            "Point() metadata blob flag"
-        );
-        failures += mylite_test_expect_int(
-            (int)(mylite_result_column_flags(result, 0U) & MYLITE_RESULT_COLUMN_FLAG_BINARY),
+            (int)mylite_result_column_flags(result, 0U),
             MYLITE_RESULT_COLUMN_FLAG_BINARY,
-            "Point() metadata binary flag"
+            "Point() metadata flags"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_collation_id(result, 0U),
+            63U,
+            "Point() metadata collation"
+        );
+        failures += mylite_test_expect_uint64(
+            mylite_result_column_display_length(result, 0U),
+            UINT32_MAX,
+            "Point() metadata display length"
+        );
+        failures += mylite_test_expect_uint16(
+            mylite_result_column_decimals(result, 0U),
+            0U,
+            "Point() metadata decimals"
         );
         failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 1U),
-            MYLITE_RESULT_COLUMN_TYPE_BLOB,
+            MYLITE_RESULT_COLUMN_TYPE_LONG_BLOB,
             "ST_AsWKB() metadata type"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_flags(result, 1U),
+            MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            "ST_AsWKB() metadata flags"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_collation_id(result, 1U),
+            63U,
+            "ST_AsWKB() metadata collation"
+        );
+        failures += mylite_test_expect_uint64(
+            mylite_result_column_display_length(result, 1U),
+            UINT32_MAX,
+            "ST_AsWKB() metadata display length"
+        );
+        failures += mylite_test_expect_uint16(
+            mylite_result_column_decimals(result, 1U),
+            31U,
+            "ST_AsWKB() metadata decimals"
         );
         failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 2U),
-            MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            MYLITE_RESULT_COLUMN_TYPE_LONG_BLOB,
             "ST_AsText() metadata type"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_flags(result, 2U),
+            0U,
+            "ST_AsText() metadata flags"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_collation_id(result, 2U),
+            255U,
+            "ST_AsText() metadata collation"
+        );
+        failures += mylite_test_expect_uint64(
+            mylite_result_column_display_length(result, 2U),
+            268435456U,
+            "ST_AsText() metadata display length"
+        );
+        failures += mylite_test_expect_uint16(
+            mylite_result_column_decimals(result, 2U),
+            31U,
+            "ST_AsText() metadata decimals"
         );
         failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 3U),
             MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
             "ST_SRID() metadata type"
         );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_flags(result, 3U),
+            MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            "ST_SRID() metadata flags"
+        );
+        failures += mylite_test_expect_uint64(
+            mylite_result_column_display_length(result, 3U),
+            10U,
+            "ST_SRID() metadata display length"
+        );
+        failures += mylite_test_expect_uint16(
+            mylite_result_column_decimals(result, 3U),
+            0U,
+            "ST_SRID() metadata decimals"
+        );
         failures += mylite_test_expect_int(
             (int)mylite_result_column_type(result, 4U),
             MYLITE_RESULT_COLUMN_TYPE_DOUBLE,
             "ST_X() metadata type"
+        );
+        failures += mylite_test_expect_uint32(
+            mylite_result_column_flags(result, 4U),
+            MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            "ST_X() metadata flags"
+        );
+        failures += mylite_test_expect_uint64(
+            mylite_result_column_display_length(result, 4U),
+            23U,
+            "ST_X() metadata display length"
+        );
+        failures += mylite_test_expect_uint16(
+            mylite_result_column_decimals(result, 4U),
+            31U,
+            "ST_X() metadata decimals"
         );
     }
     mylite_result_free(result);

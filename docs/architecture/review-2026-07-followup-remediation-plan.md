@@ -326,7 +326,8 @@ completion at `0277ee818`:
 - [x] Test two simultaneously live failing statements, an intervening success,
   multirow warning chains, reset, re-execution, and connection close.
 
-`API-02` and `API-05` implementation evidence at `1445aee86`:
+`API-02` and `API-05` implementation evidence at `1445aee86`, with
+release-review completion at `d5005f606`:
 
 - The additive native ABI exposes independent statement diagnostics, total and
   retained warning counts, and caller-owned indexed warning copies. Direct

@@ -84,6 +84,76 @@ expect_true($lazySelect->fetchAll() === [
     ['id' => '2', 'name' => 'New'],
 ], 'lazy SELECT did not observe post-prepare writes');
 
+expect_true(
+    $pdo->exec('CREATE TABLE prepared_rows_base (id INT NOT NULL)') >= 0,
+    'create prepared row-result table failed'
+);
+$replayedShow = $pdo->prepare("SHOW TABLES LIKE 'prepared_rows_%'");
+expect_true($replayedShow->execute(), 'first prepared SHOW TABLES failed');
+expect_true(
+    $replayedShow->fetchAll(PDO::FETCH_COLUMN) === ['prepared_rows_base'],
+    'first prepared SHOW TABLES rows mismatch'
+);
+expect_true(
+    $pdo->exec('CREATE TABLE prepared_rows_added (id INT NOT NULL)') >= 0,
+    'create table between prepared SHOW executions failed'
+);
+expect_true($replayedShow->execute(), 'reexecuted prepared SHOW TABLES failed');
+expect_true(
+    $replayedShow->fetchAll(PDO::FETCH_COLUMN) === ['prepared_rows_added', 'prepared_rows_base'],
+    'reexecuted prepared SHOW TABLES rows mismatch'
+);
+
+$replayedDescribe = $pdo->prepare('DESCRIBE prepared_rows_base');
+expect_true($replayedDescribe->execute(), 'first prepared DESCRIBE failed');
+expect_true(
+    array_column($replayedDescribe->fetchAll(), 'Field') === ['id'],
+    'first prepared DESCRIBE fields mismatch'
+);
+expect_true(
+    $pdo->exec('ALTER TABLE prepared_rows_base ADD COLUMN marker INT NULL') >= 0,
+    'alter table between prepared DESCRIBE executions failed'
+);
+expect_true($replayedDescribe->execute(), 'reexecuted prepared DESCRIBE failed');
+expect_true(
+    array_column($replayedDescribe->fetchAll(), 'Field') === ['id', 'marker'],
+    'reexecuted prepared DESCRIBE fields mismatch'
+);
+
+$replayedExplain = $pdo->prepare('EXPLAIN prepared_rows_base');
+expect_true($replayedExplain->execute(), 'first prepared EXPLAIN table failed');
+expect_true(
+    array_column($replayedExplain->fetchAll(), 'Field') === ['id', 'marker'],
+    'first prepared EXPLAIN fields mismatch'
+);
+expect_true(
+    $pdo->exec('ALTER TABLE prepared_rows_base ADD COLUMN explained INT NULL') >= 0,
+    'alter table between prepared EXPLAIN executions failed'
+);
+expect_true($replayedExplain->execute(), 'reexecuted prepared EXPLAIN table failed');
+expect_true(
+    array_column($replayedExplain->fetchAll(), 'Field') === ['id', 'marker', 'explained'],
+    'reexecuted prepared EXPLAIN fields mismatch'
+);
+
+expect_true($pdo->exec("SET SESSION sql_mode = ''") >= 0, 'clear prepared SHOW sql_mode failed');
+$replayedVariable = $pdo->prepare("SHOW VARIABLES LIKE 'sql_mode'");
+expect_true($replayedVariable->execute(), 'first prepared SHOW VARIABLES failed');
+expect_true(
+    $replayedVariable->fetchAll(PDO::FETCH_COLUMN, 1) === [''],
+    'first prepared SHOW VARIABLES value mismatch'
+);
+expect_true(
+    $pdo->exec("SET SESSION sql_mode = 'ANSI_QUOTES'") >= 0,
+    'change sql_mode between prepared SHOW executions failed'
+);
+expect_true($replayedVariable->execute(), 'reexecuted prepared SHOW VARIABLES failed');
+expect_true(
+    $replayedVariable->fetchAll(PDO::FETCH_COLUMN, 1) === ['ANSI_QUOTES'],
+    'reexecuted prepared SHOW VARIABLES value mismatch'
+);
+expect_true($pdo->exec("SET SESSION sql_mode = ''") >= 0, 'restore prepared SHOW sql_mode failed');
+
 $byReference = $pdo->prepare('SELECT name FROM people WHERE id = ?');
 $personId = 1;
 expect_true($byReference->bindParam(1, $personId, PDO::PARAM_INT), 'bindParam failed');

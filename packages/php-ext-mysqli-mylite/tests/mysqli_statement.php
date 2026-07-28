@@ -50,6 +50,84 @@ expect_same(
 );
 
 expect_true(
+    $mysqli->query('CREATE TABLE prepared_rows_base (id INT NOT NULL)'),
+    'create prepared row-result table'
+);
+$replayedShow = $mysqli->prepare("SHOW TABLES LIKE 'prepared_rows_%'");
+expect_true($replayedShow->execute(), 'execute first prepared SHOW TABLES');
+expect_same(
+    [['prepared_rows_base']],
+    $replayedShow->get_result()->fetch_all(MYSQLI_NUM),
+    'first prepared SHOW TABLES rows'
+);
+expect_true(
+    $mysqli->query('CREATE TABLE prepared_rows_added (id INT NOT NULL)'),
+    'create table between prepared SHOW executions'
+);
+expect_true($replayedShow->execute(), 'reexecute prepared SHOW TABLES');
+expect_same(
+    [['prepared_rows_added'], ['prepared_rows_base']],
+    $replayedShow->get_result()->fetch_all(MYSQLI_NUM),
+    'reexecuted prepared SHOW TABLES rows'
+);
+
+$replayedDescribe = $mysqli->prepare('DESCRIBE prepared_rows_base');
+expect_true($replayedDescribe->execute(), 'execute first prepared DESCRIBE');
+expect_same(
+    ['id'],
+    array_column($replayedDescribe->get_result()->fetch_all(MYSQLI_ASSOC), 'Field'),
+    'first prepared DESCRIBE fields'
+);
+expect_true(
+    $mysqli->query('ALTER TABLE prepared_rows_base ADD COLUMN marker INT NULL'),
+    'alter table between prepared DESCRIBE executions'
+);
+expect_true($replayedDescribe->execute(), 'reexecute prepared DESCRIBE');
+expect_same(
+    ['id', 'marker'],
+    array_column($replayedDescribe->get_result()->fetch_all(MYSQLI_ASSOC), 'Field'),
+    'reexecuted prepared DESCRIBE fields'
+);
+
+$replayedExplain = $mysqli->prepare('EXPLAIN prepared_rows_base');
+expect_true($replayedExplain->execute(), 'execute first prepared EXPLAIN table');
+expect_same(
+    ['id', 'marker'],
+    array_column($replayedExplain->get_result()->fetch_all(MYSQLI_ASSOC), 'Field'),
+    'first prepared EXPLAIN fields'
+);
+expect_true(
+    $mysqli->query('ALTER TABLE prepared_rows_base ADD COLUMN explained INT NULL'),
+    'alter table between prepared EXPLAIN executions'
+);
+expect_true($replayedExplain->execute(), 'reexecute prepared EXPLAIN table');
+expect_same(
+    ['id', 'marker', 'explained'],
+    array_column($replayedExplain->get_result()->fetch_all(MYSQLI_ASSOC), 'Field'),
+    'reexecuted prepared EXPLAIN fields'
+);
+
+expect_true($mysqli->query("SET SESSION sql_mode = ''"), 'clear prepared SHOW sql_mode');
+$replayedVariable = $mysqli->prepare("SHOW VARIABLES LIKE 'sql_mode'");
+expect_true($replayedVariable->execute(), 'execute first prepared SHOW VARIABLES');
+expect_same(
+    [''],
+    array_column($replayedVariable->get_result()->fetch_all(MYSQLI_ASSOC), 'Value'),
+    'first prepared SHOW VARIABLES value'
+);
+expect_true(
+    $mysqli->query("SET SESSION sql_mode = 'ANSI_QUOTES'"),
+    'change sql_mode between prepared SHOW executions'
+);
+expect_true($replayedVariable->execute(), 'reexecute prepared SHOW VARIABLES');
+expect_same(
+    ['ANSI_QUOTES'],
+    array_column($replayedVariable->get_result()->fetch_all(MYSQLI_ASSOC), 'Value'),
+    'reexecuted prepared SHOW VARIABLES value'
+);
+expect_true($mysqli->query("SET SESSION sql_mode = ''"), 'restore prepared SHOW sql_mode');
+
+expect_true(
     $mysqli->query('CREATE TABLE generated_items (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(20))'),
     'create generated table'
 );

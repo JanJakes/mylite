@@ -16,3 +16,13 @@ PDO MyLite statements use forward-only cursors. Scrollable cursor preparation,
 non-next fetch orientations, and nonzero fetch offsets fail explicitly. As with
 PDO MySQL, the optional `PDO::lastInsertId()` name argument is accepted and
 ignored; MyLite returns the connection's generated insert ID.
+
+PDO fetches return representable integral and BIT values as PHP integers and
+FLOAT/DOUBLE values as PHP floats. DECIMAL, overflowing exact integers, text,
+binary, temporal, JSON, geometry, and unknown values remain strings, and SQL
+NULL remains `null`. `PDO::ATTR_STRINGIFY_FETCHES` stringifies numeric fetches
+when enabled.
+
+`PDO::ATTR_CLIENT_VERSION` identifies the MyLite library.
+`PDO::ATTR_SERVER_VERSION` exposes the MySQL compatibility identity and equals
+`SELECT VERSION()`.

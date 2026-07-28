@@ -389,7 +389,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `unique_checks` | yes | yes | `ON` |
 | `updatable_views_with_limit` | yes | yes | `YES` |
 | `use_secondary_engine` | yes | no | `ON` |
-| `version` | yes | yes | `mylite_version()` |
+| `version` | yes | yes | `MYLITE_MYSQL_SERVER_VERSION_STRING` |
 | `version_comment` | yes | yes | `MyLite` |
 | `wait_timeout` | yes | yes | current session value or fixed global `28800` |
 | `warning_count` | yes | no | `0` |

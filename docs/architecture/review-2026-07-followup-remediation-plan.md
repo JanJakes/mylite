@@ -360,7 +360,7 @@ release-review completion at `d5005f606`:
   harness overrides that mask the defect.
 
 `API-03` and `API-04` implementation evidence at `2c1115144` and
-`718187c57`:
+`718187c57`, with release-review completion at `93087d286`:
 
 - One shared, metadata-driven adapter conversion policy returns representable
   integral and BIT values as PHP integers, FLOAT/DOUBLE as PHP floats, and

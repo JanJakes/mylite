@@ -47,3 +47,10 @@ commands-out-of-sync message without consuming the active result. Prepared
 `result_metadata()` returns field metadata without releasing that ownership.
 The busy check also precedes ping, stat, refresh, server debug-info, and kill
 operations.
+
+Prepared `get_result()`, `execute_query()`, and bound-result fetches return
+representable integral and BIT values as PHP integers and FLOAT/DOUBLE values
+as PHP floats. DECIMAL, overflowing exact integers, text, binary, temporal,
+JSON, geometry, and unknown values remain strings, and SQL NULL remains
+`null`. Direct buffered and unbuffered queries retain their string/NULL result
+policy.

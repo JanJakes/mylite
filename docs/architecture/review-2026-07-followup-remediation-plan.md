@@ -515,15 +515,32 @@ fuzzer executions with the raised 262,144-byte ceiling.
 
 ### `SEC-02`: scalable and cancellable spatial validation
 
-- [ ] Record `ST_IsValid()` scaling at 8K, 16K, 32K, and 64K vertices.
-- [ ] Replace quadratic segment and ring comparison with a sweep-line,
+- [x] Record `ST_IsValid()` scaling at 8K, 16K, 32K, and 64K vertices.
+- [x] Replace quadratic segment and ring comparison with a sweep-line,
   spatial-index, or equivalently scalable algorithm.
-- [ ] Add statement cancellation/deadline checks to long first-party spatial
+- [x] Add statement cancellation/deadline checks to long first-party spatial
   loops.
-- [ ] Define compatibility-safe complexity and memory limits for pathological
+- [x] Define compatibility-safe complexity and memory limits for pathological
   geometry.
-- [ ] Add performance thresholds based on slopes and operation counts, not
+- [x] Add performance thresholds based on slopes and operation counts, not
   noisy absolute hosted-runner time.
+
+`SEC-02` is closed by the independently authored specification at
+`44b4e871d` and implementation at `d8e07b311`. Segment, ring, and polygon AABB
+sweeps reduce the qualified regular-polygon candidate slope from 4.00 to
+approximately 2.00 per vertex doubling while retaining the existing topology
+predicates. The 64K case examines 163,836 candidates, or 2.50 per segment,
+instead of 2,147,385,344 exhaustive pairs. Explicit interruption,
+`max_execution_time`, and deterministic segment, 64 MiB index-memory, and
+candidate-work limits abort with stable diagnostics and release all temporary
+ownership.
+
+Qualification covered Development, Debug-CI, Release, and ASan/UBSan with leak
+detection across all 21 spatial-related native suites, deterministic allocation
+failpoints, all 21 pinned MySQL 8.4.9 spatial fixtures, 10,000 seeded geometry
+fuzzer executions at the 262,144-byte ceiling, ABI snapshots, the
+12,390,370-byte production archive against its 15,000,000-byte limit,
+formatting, and focused static analysis.
 
 ### `SEM-01`: robust topology and metric behavior
 

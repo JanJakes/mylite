@@ -2,19 +2,19 @@
 
 ## Status
 
-Specified; implementation and qualification are pending.
+Implemented and qualified.
 
 ## Summary
 
-`ST_IsValid()` and `ST_Validate()` currently compare every non-adjacent pair
-of segments in a polygon ring. Ring pairs, hole pairs, and multipolygon
-members repeat the same exhaustive pattern. A valid 64K-vertex polygon
-therefore performs more than two billion exact segment tests without checking
-for statement interruption.
+Before this feature, `ST_IsValid()` and `ST_Validate()` compared every
+non-adjacent pair of segments in a polygon ring. Ring pairs, hole pairs, and
+multipolygon members repeated the same exhaustive pattern. A valid
+64K-vertex polygon therefore performed more than two billion exact segment
+tests without checking for statement interruption.
 
-MyLite will replace exhaustive comparisons with an AABB sweep broad phase,
-retain the existing exact topology predicates for candidate pairs, and bound
-pathological broad-phase work. Long validation loops will poll a shared
+MyLite replaces exhaustive comparisons with an AABB sweep broad phase,
+retains the existing narrow-phase topology predicates for candidate pairs, and
+bounds pathological broad-phase work. Long validation loops poll a shared
 statement work controller for explicit interruption and
 `max_execution_time` expiry. These changes preserve the existing
 MySQL-runtime-verified validity results while making ordinary large geometry
@@ -58,6 +58,23 @@ are outside the timed region. The Release build on 2026-07-27 produced:
 
 The exact work grows by 4.00 times for each vertex doubling. Wall-clock values
 are evidence, not portable pass/fail thresholds.
+
+## Measured Result
+
+The qualified Release implementation on 2026-07-27 produced:
+
+| Vertices | Indexed segments | Candidate checks | Candidates per segment | Validation time |
+| ---: | ---: | ---: | ---: | ---: |
+| 8,192 | 8,192 | 20,476 | 2.50 | 1.760 ms |
+| 16,384 | 16,384 | 40,956 | 2.50 | 3.521 ms |
+| 32,768 | 32,768 | 81,916 | 2.50 | 7.984 ms |
+| 65,536 | 65,536 | 163,836 | 2.50 | 18.087 ms |
+
+Candidate work grows by approximately 2.00 times for each vertex doubling.
+The 64K case examines 2.50 candidates per segment, below both the
+32-candidates-per-segment qualification ceiling and the defensive candidate
+budget. The elapsed times are local evidence rather than portable
+pass/fail thresholds.
 
 ## MySQL 8.4.9 Observations
 
@@ -111,13 +128,13 @@ Entries are sorted deterministically by `min_x`, then the remaining bounds,
 group, and original identity. For each entry, the forward scan stops when the
 next `min_x` exceeds the current `max_x`. Pairs with disjoint y intervals,
 the wrong comparison groups, or adjacent positions in the same closed ring
-are discarded. Only surviving candidates reach the existing exact segment
+are discarded. Only surviving candidates reach the existing segment
 intersection predicate.
 
 The algorithm has `O(n log n + c)` time and `O(n)` temporary memory, where
 `c` is the number of broad-phase candidates examined. It is not a substitute
-for exact topology: sorting and bounds may only discard pairs that cannot
-intersect.
+for narrow-phase topology evaluation: sorting and bounds may only discard
+pairs that cannot intersect.
 
 Ring and polygon bounds form a second broad phase:
 
@@ -250,3 +267,22 @@ gate. Final qualification includes Release, Debug, ASan/UBSan with leak
 detection, deterministic allocation failpoints, the full spatial native suite,
 the pinned MySQL spatial fixtures, formatting, static analysis, ABI snapshots,
 and a review of cancellation lifetime safety.
+
+## Qualification
+
+Qualification completed on 2026-07-27:
+
+- all 21 spatial-related native suites passed in Development, Debug-CI,
+  Release, and ASan/UBSan profiles;
+- ASan/UBSan ran with leak detection and halt-on-error behavior;
+- the allocator-failpoint sweep and the scaling/cancellation suite passed in
+  the fault-injection profile;
+- the geometry fuzzer completed 10,000 deterministic executions with a
+  262,144-byte input ceiling;
+- all 21 pinned MySQL 8.4.9 spatial expectation fixtures passed;
+- the public ABI matched the symbol and header snapshots after adding
+  `mylite_interrupt()`;
+- the production archive measured 12,390,370 bytes against the 15,000,000-byte
+  limit;
+- formatting, focused static analysis, and the compatibility-claim validator
+  passed.

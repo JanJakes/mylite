@@ -30,6 +30,11 @@ internal geometry, GeoJSON, conversions, traversal, constructors, and
 aggregation. Depth 51 is rejected before unbounded recursion or result
 publication; see the
 [bounded geometry nesting specification](../specs/bounded-geometry-nesting/specs.md).
+Polygon, multipolygon, and collection validity checks use bounded AABB sweep
+broad phases, deterministic resource ceilings, explicit
+`mylite_interrupt()` cancellation, and session `max_execution_time` polling;
+see the
+[scalable and cancellable spatial validation specification](../specs/scalable-cancellable-spatial-validation/specs.md).
 It does not yet implement a general SRS catalog, full topology predicate
 coverage, general constructive geometry operations, coordinate transformation
 pipelines, nonzero buffer construction, or physical spatial search.
@@ -89,7 +94,7 @@ pipelines, nonzero buffer construction, or physical spatial search.
 | `ST_IsClosed()` | ✅ | Return LineString/MultiLineString closed state |
 | `ST_IsEmpty()` | ✅ | Return empty geometry collection state |
 | `ST_IsSimple()` | ✅ | SRID-0 simplicity check for representable geometry values |
-| `ST_IsValid()` | ✅ | SRID-0 validity check for representable geometry values |
+| `ST_IsValid()` | ✅ | Bounded and cancellable SRID-0 validity check for representable geometry values |
 | `ST_LatFromGeoHash()` | ✅ | Decode latitude from geohash value |
 | `ST_Latitude()` | ✅ | Return latitude of SRID 4326 Point; setter form deferred |
 | `ST_Length()` | ✅ | Cartesian SRID-0 LineString/MultiLineString length |
@@ -125,7 +130,7 @@ pipelines, nonzero buffer construction, or physical spatial search.
 | `ST_Touches()` | 🟡 | SRID-0 object-shape touches for Point, LineString, Polygon, and child-decomposed collections; full DE-9IM coverage and geographic SRS deferred |
 | `ST_Transform()` | 🟡 | Identity transforms for SRID 0 and 4326 plus MySQL diagnostics; coordinate transforms deferred |
 | `ST_Union()` | 🟡 | Point/MultiPoint set union with SRID preservation; general topology deferred |
-| `ST_Validate()` | ✅ | Return valid representable geometry values, otherwise `NULL` |
+| `ST_Validate()` | ✅ | Bounded and cancellable validation; return valid representable geometry values, otherwise `NULL` |
 | `ST_Within()` | 🟡 | SRID-0 inverse containment for Point, LineString, Polygon, and child-decomposed collections; full collection-union topology and geographic SRS deferred |
 | `ST_X()` | ✅ | Return X coordinate of Point |
 | `ST_Y()` | ✅ | Return Y coordinate of Point |

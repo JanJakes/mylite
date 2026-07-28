@@ -35,7 +35,6 @@ static bool mylite_mysqli_link_take_pending_cursor_result(
     bool unbuffered,
     zval *out_result
 );
-static bool mylite_mysqli_link_require_ready(mylite_mysqli_link *link);
 static bool mylite_mysqli_stmt_require_ready(mylite_mysqli_stmt *stmt, mylite_mysqli_link *link);
 static void mylite_mysqli_link_set_direct_pending(mylite_mysqli_link *link);
 static void mylite_mysqli_link_set_prepared_owner(
@@ -49,6 +48,7 @@ static void mylite_mysqli_result_attach_connection(
     mylite_mysqli_link *link
 );
 static void mylite_mysqli_result_release_connection(mylite_mysqli_result *result);
+static bool mylite_mysqli_link_check_ready(mylite_mysqli_link *link, bool report_error);
 static bool mylite_mysqli_execute_transaction_control_statement(
     mylite_mysqli_link *link,
     const char *sql,
@@ -2169,7 +2169,15 @@ static void mylite_mysqli_fill_field_from_stmt(
     field->nullable = mylite_stmt_column_nullable(native_stmt, column) != 0;
 }
 
-static bool mylite_mysqli_link_require_ready(mylite_mysqli_link *link) {
+bool mylite_mysqli_link_require_ready(mylite_mysqli_link *link) {
+    return mylite_mysqli_link_check_ready(link, true);
+}
+
+bool mylite_mysqli_link_require_ready_without_report(mylite_mysqli_link *link) {
+    return mylite_mysqli_link_check_ready(link, false);
+}
+
+static bool mylite_mysqli_link_check_ready(mylite_mysqli_link *link, bool report_error) {
     static const char message[] = "Commands out of sync; you can't run this command now";
 
     if (link->state == MYLITE_MYSQLI_CONNECTION_READY) {
@@ -2177,7 +2185,9 @@ static bool mylite_mysqli_link_require_ready(mylite_mysqli_link *link) {
     }
     mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_COMMANDS_OUT_OF_SYNC, "HY000", message);
     mylite_mysqli_update_link_status_properties(link);
-    mylite_mysqli_report_link_error(link);
+    if (report_error) {
+        mylite_mysqli_report_link_error(link);
+    }
     return false;
 }
 

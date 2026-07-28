@@ -265,6 +265,8 @@ bool mylite_mysqli_link_autocommit(mylite_mysqli_link *link, bool enable);
 bool mylite_mysqli_link_real_query(mylite_mysqli_link *link, const char *sql, size_t sql_length);
 bool mylite_mysqli_link_store_result(mylite_mysqli_link *link, zval *out_result);
 bool mylite_mysqli_link_use_result(mylite_mysqli_link *link, zval *out_result);
+bool mylite_mysqli_link_require_ready(mylite_mysqli_link *link);
+bool mylite_mysqli_link_require_ready_without_report(mylite_mysqli_link *link);
 bool mylite_mysqli_stmt_prepare_internal(
     mylite_mysqli_stmt *stmt,
     const char *sql,

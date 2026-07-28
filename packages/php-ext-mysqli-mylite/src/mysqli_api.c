@@ -790,26 +790,37 @@ PHP_FUNCTION(mysqli_ssl_set) {
 
 PHP_FUNCTION(mysqli_stat) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (!mylite_mysqli_link_require_ready_without_report(link)) {
+        RETURN_FALSE;
+    }
     RETURN_STRING("MyLite embedded mysqli connection");
 }
 
 PHP_FUNCTION(mysqli_ping) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_BOOL(mylite_mysqli_link_from_obj(Z_OBJ_P(mysql))->connected);
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (!mylite_mysqli_link_require_ready(link)) {
+        RETURN_FALSE;
+    }
+    RETURN_BOOL(link->connected);
 }
 
 PHP_FUNCTION(mysqli_kill) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
     zend_long process_id = 0;
 
     ZEND_PARSE_PARAMETERS_START(2, 2)
@@ -817,20 +828,28 @@ PHP_FUNCTION(mysqli_kill) {
     Z_PARAM_LONG(process_id)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mysql;
     (void)process_id;
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (!mylite_mysqli_link_require_ready(link)) {
+        RETURN_FALSE;
+    }
     RETURN_FALSE;
 }
 
 PHP_FUNCTION(mysqli_dump_debug_info) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (!mylite_mysqli_link_require_ready_without_report(link)) {
+        RETURN_FALSE;
+    }
     RETURN_BOOL(mylite_mysqli_reject_link_feature(
-        mylite_mysqli_link_from_obj(Z_OBJ_P(mysql)),
+        link,
         "server debug information is not supported by the embedded driver"
     ));
 }
@@ -850,6 +869,7 @@ PHP_FUNCTION(mysqli_debug) {
 
 PHP_FUNCTION(mysqli_refresh) {
     zval *mysql = NULL;
+    mylite_mysqli_link *link = NULL;
     zend_long flags = 0;
 
     ZEND_PARSE_PARAMETERS_START(2, 2)
@@ -857,8 +877,11 @@ PHP_FUNCTION(mysqli_refresh) {
     Z_PARAM_LONG(flags)
     ZEND_PARSE_PARAMETERS_END();
 
-    (void)mysql;
     (void)flags;
+    link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
+    if (!mylite_mysqli_link_require_ready_without_report(link)) {
+        RETURN_FALSE;
+    }
     RETURN_FALSE;
 }
 
@@ -2175,6 +2198,7 @@ PHP_METHOD(mysqli, init) {
 }
 
 PHP_METHOD(mysqli, kill) {
+    mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
     zend_long process_id = 0;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2182,6 +2206,9 @@ PHP_METHOD(mysqli, kill) {
     ZEND_PARSE_PARAMETERS_END();
 
     (void)process_id;
+    if (!mylite_mysqli_link_require_ready(link)) {
+        RETURN_FALSE;
+    }
     RETURN_FALSE;
 }
 
@@ -2211,8 +2238,13 @@ PHP_METHOD(mysqli, next_result) {
 }
 
 PHP_METHOD(mysqli, ping) {
+    mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_BOOL(mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()))->connected);
+    if (!mylite_mysqli_link_require_ready(link)) {
+        RETURN_FALSE;
+    }
+    RETURN_BOOL(link->connected);
 }
 
 PHP_METHOD(mysqli, poll) {
@@ -2378,7 +2410,12 @@ PHP_METHOD(mysqli, ssl_set) {
 }
 
 PHP_METHOD(mysqli, stat) {
+    mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
+    if (!mylite_mysqli_link_require_ready_without_report(link)) {
+        RETURN_FALSE;
+    }
     RETURN_STRING("MyLite embedded mysqli connection");
 }
 
@@ -2388,9 +2425,14 @@ PHP_METHOD(mysqli, thread_safe) {
 }
 
 PHP_METHOD(mysqli, dump_debug_info) {
+    mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
+    if (!mylite_mysqli_link_require_ready_without_report(link)) {
+        RETURN_FALSE;
+    }
     RETURN_BOOL(mylite_mysqli_reject_link_feature(
-        mylite_mysqli_link_from_obj(Z_OBJ_P(getThis())),
+        link,
         "server debug information is not supported by the embedded driver"
     ));
 }
@@ -2409,6 +2451,7 @@ PHP_METHOD(mysqli, debug) {
 }
 
 PHP_METHOD(mysqli, refresh) {
+    mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
     zend_long flags = 0;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
@@ -2416,6 +2459,9 @@ PHP_METHOD(mysqli, refresh) {
     ZEND_PARSE_PARAMETERS_END();
 
     (void)flags;
+    if (!mylite_mysqli_link_require_ready_without_report(link)) {
+        RETURN_FALSE;
+    }
     RETURN_FALSE;
 }
 

@@ -18,6 +18,18 @@ function expect_out_of_sync(callable $operation, string $context): void
     }
 }
 
+function expect_out_of_sync_return(mysqli $connection, callable $operation, string $context): void
+{
+    expect_same(false, $operation(), $context . ' return');
+    expect_same(2014, $connection->errno, $context . ' code');
+    expect_same('HY000', $connection->sqlstate, $context . ' SQLSTATE');
+    expect_same(
+        "Commands out of sync; you can't run this command now",
+        $connection->error,
+        $context . ' message'
+    );
+}
+
 function reset_pending_items(mysqli $connection): void
 {
     expect_true($connection->query('DROP TABLE IF EXISTS pending_items'), 'drop pending items');
@@ -165,6 +177,26 @@ expect_same(
     $mysqli->query('SELECT COUNT(*) FROM pending_items WHERE id = 4')->fetch_row()[0],
     'failed pending commit has no side effect'
 );
+
+$unbuffered = $mysqli->query(
+    'SELECT id FROM pending_items ORDER BY id',
+    MYSQLI_USE_RESULT
+);
+expect_out_of_sync(static fn(): bool => $mysqli->ping(), 'pending ping');
+expect_out_of_sync_return($mysqli, static fn(): string|false => mysqli_stat($mysqli), 'pending stat');
+expect_out_of_sync_return(
+    $mysqli,
+    static fn(): bool => $mysqli->refresh(MYSQLI_REFRESH_STATUS),
+    'pending refresh'
+);
+expect_out_of_sync_return(
+    $mysqli,
+    static fn(): bool => mysqli_dump_debug_info($mysqli),
+    'pending debug info'
+);
+expect_out_of_sync(static fn(): bool => $mysqli->kill($mysqli->thread_id), 'pending kill');
+$unbuffered->free();
+expect_same('38', $mysqli->query('SELECT 38')->fetch_row()[0], 'command-family recovery');
 
 $statement = $mysqli->prepare('SELECT id FROM pending_items ORDER BY id');
 $statement->execute();

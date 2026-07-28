@@ -100,6 +100,7 @@ static enum mylite_sql_parse_status retry_parse_with_callback(
     enum mylite_sql_parse_status status,
     mylite_sql_parse_retry_callback callback
 );
+static bool parse_status_is_fatal_retry_failure(enum mylite_sql_parse_status status);
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parse_error error
@@ -114,8 +115,14 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR ||
         (status == MYLITE_SQL_PARSE_OK && parse_result_is_unsupported_utility_script(out_result))) {
-        (void)mylite_sql_parser_retry_context_init(config, &retry_context);
+        enum mylite_sql_parse_status retry_context_status =
+            mylite_sql_parser_retry_context_init(config, &retry_context);
+
         out_result->retry_tokenization_count = 1U;
+        if (retry_context_status != MYLITE_SQL_PARSE_OK) {
+            out_result->status = retry_context_status;
+            status = retry_context_status;
+        }
     }
 
     status = retry_unsupported_utility_parse(
@@ -241,11 +248,19 @@ static enum mylite_sql_parse_status retry_parse_with_callback(
     result->retry_tokenization_count = retry_tokenization_count;
     result->retry_callback_count = retry_callback_count;
     result->retry_handled_count = retry_handled_count + (handled ? 1U : 0U);
+    if (parse_status_is_fatal_retry_failure(retry_status)) {
+        result->status = retry_status;
+        return retry_status;
+    }
     if (!handled) {
         return status;
     }
     result->status = retry_status;
     return retry_status;
+}
+
+static bool parse_status_is_fatal_retry_failure(enum mylite_sql_parse_status status) {
+    return status != MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_SYNTAX_ERROR;
 }
 
 enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon(

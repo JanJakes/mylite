@@ -362,6 +362,9 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_const
     }
 
     mylite_sql_parse_result_deinit(&retry_result);
+    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        return status;
+    }
     return MYLITE_SQL_PARSE_OK;
 }
 
@@ -4423,7 +4426,7 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_tableless_select_limit_
     );
     if (status != MYLITE_SQL_PARSE_OK) {
         mylite_sql_parse_result_deinit(&prefix_result);
-        return MYLITE_SQL_PARSE_OK;
+        return status == MYLITE_SQL_PARSE_SYNTAX_ERROR ? MYLITE_SQL_PARSE_OK : status;
     }
 
     statement = mylite_sql_parser_child_at(prefix_result.root, 0U);
@@ -4602,7 +4605,7 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_repeated_select_locking
     );
     if (status != MYLITE_SQL_PARSE_OK) {
         mylite_sql_parse_result_deinit(&prefix_result);
-        return MYLITE_SQL_PARSE_OK;
+        return status == MYLITE_SQL_PARSE_SYNTAX_ERROR ? MYLITE_SQL_PARSE_OK : status;
     }
 
     statement = mylite_sql_parser_child_at(prefix_result.root, 0U);
@@ -4848,6 +4851,9 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_legacy_create_index_typ
     }
 
     mylite_sql_parse_result_deinit(&retry_result);
+    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        return status;
+    }
     return MYLITE_SQL_PARSE_OK;
 }
 
@@ -5019,15 +5025,15 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_placeholder_statement(
     scan = placeholder_statement_scan_from_retry_context(retry_context);
     status =
         try_parse_alter_table_algorithm_lock_tail_statement(config, result, &scan, out_handled);
-    if (*out_handled) {
+    if (*out_handled || status != MYLITE_SQL_PARSE_OK) {
         return status;
     }
     status = try_parse_create_table_partition_statement(config, result, &scan, out_handled);
-    if (*out_handled) {
+    if (*out_handled || status != MYLITE_SQL_PARSE_OK) {
         return status;
     }
     status = try_parse_admin_set_residual_statement(config, result, &scan, out_handled);
-    if (*out_handled) {
+    if (*out_handled || status != MYLITE_SQL_PARSE_OK) {
         return status;
     }
 
@@ -5060,15 +5066,15 @@ static enum mylite_sql_parse_status try_parse_admin_set_residual_statement(
     }
     *out_handled = false;
     status = try_parse_plural_table_maintenance_statement(config, result, scan, out_handled);
-    if (*out_handled) {
+    if (*out_handled || status != MYLITE_SQL_PARSE_OK) {
         return status;
     }
     status = try_parse_describe_explain_table_filter_statement(config, result, scan, out_handled);
-    if (*out_handled) {
+    if (*out_handled || status != MYLITE_SQL_PARSE_OK) {
         return status;
     }
     status = try_parse_show_extended_metadata_statement(config, result, scan, out_handled);
-    if (*out_handled) {
+    if (*out_handled || status != MYLITE_SQL_PARSE_OK) {
         return status;
     }
     return try_parse_set_system_variable_assign_statement(config, result, scan, out_handled);
@@ -6127,7 +6133,7 @@ static enum mylite_sql_parse_status try_parse_alter_table_algorithm_lock_tail_st
     );
     if (status != MYLITE_SQL_PARSE_OK) {
         mylite_sql_parse_result_deinit(&prefix_result);
-        return MYLITE_SQL_PARSE_OK;
+        return status == MYLITE_SQL_PARSE_SYNTAX_ERROR ? MYLITE_SQL_PARSE_OK : status;
     }
 
     statement = mylite_sql_parser_child_at(prefix_result.root, 0U);
@@ -6360,11 +6366,11 @@ static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
         },
         &prefix_result
     );
-    if (status != MYLITE_SQL_PARSE_OK && find_open_version_comment_start_before_token(
-                                             config,
-                                             &scan->tokens[partition_index],
-                                             &prefix_length
-                                         )) {
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR && find_open_version_comment_start_before_token(
+                                                       config,
+                                                       &scan->tokens[partition_index],
+                                                       &prefix_length
+                                                   )) {
         mylite_sql_parse_result_deinit(&prefix_result);
         status = mylite_sql_parser_parse_with_lemon(
             (struct mylite_sql_parse_config){
@@ -6377,7 +6383,7 @@ static enum mylite_sql_parse_status try_parse_create_table_partition_statement(
     }
     if (status != MYLITE_SQL_PARSE_OK) {
         mylite_sql_parse_result_deinit(&prefix_result);
-        return MYLITE_SQL_PARSE_OK;
+        return status == MYLITE_SQL_PARSE_SYNTAX_ERROR ? MYLITE_SQL_PARSE_OK : status;
     }
     if (!mylite_sql_ast_rebase_source_length(
             &prefix_result.ast,

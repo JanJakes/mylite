@@ -45,6 +45,7 @@ tests/parser_expression_aggregate_test.c|parser|always
 tests/parser_expression_window_explain_gaps_test.c|parser|always
 tests/parser_partition_options_test.c|parser|always
 tests/parser_partition_selection_test.c|parser|always
+tests/parser_retry_fatal_status_test.c|internal|allocator-failpoints
 tests/parser_select_into_user_variables_test.c|parser|always
 tests/parser_select_test.c|parser|always
 tests/parser_show_test.c|parser|always

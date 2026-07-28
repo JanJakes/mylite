@@ -1,0 +1,342 @@
+#include "mylite_test_support.h"
+
+#include <mylite/mylite.h>
+
+#include "runtime/mylite_test_allocator.h"
+#include "sql/mylite_parser.h"
+#include "sql/mylite_parser_driver.h"
+#include "sql/mylite_parser_placeholders.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
+enum {
+    parser_allocation_sweep_limit = 2048,
+};
+
+struct parser_retry_case {
+    const char *sql;
+    enum mylite_sql_parse_status expected_status;
+    size_t minimum_callback_count;
+    size_t minimum_handled_count;
+    const char *context;
+};
+
+typedef enum mylite_sql_parse_status (*parser_retry_callback)(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct mylite_sql_parser_retry_context *retry_context,
+    bool *out_handled
+);
+
+static int test_direct_parser_allocation_failures(void);
+static int expect_parser_allocation_sweep(const struct parser_retry_case *test_case);
+static int expect_callback_allocation_sweep(
+    const char *sql,
+    parser_retry_callback callback,
+    const char *context
+);
+static int test_runtime_parser_allocation_failures(void);
+
+int main(void) {
+    int failures = 0;
+
+    failures += test_direct_parser_allocation_failures();
+    failures += test_runtime_parser_allocation_failures();
+    mylite_test_allocator_clear();
+    return failures == 0 ? 0 : 1;
+}
+
+static int test_direct_parser_allocation_failures(void) {
+    static const struct parser_retry_case cases[] = {
+        {
+            .sql = "SELECT FROM DUAL",
+            .expected_status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
+            .minimum_callback_count = 8U,
+            .context = "unhandled syntax retry context",
+        },
+        {
+            .sql = "SELECT FROM (DUAL)",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 8U,
+            .minimum_handled_count = 1U,
+            .context = "parenthesized syntax retry context",
+        },
+        {
+            .sql = "SELECT SQL_BIG_RESULT DISTINCT 1",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 2U,
+            .minimum_handled_count = 1U,
+            .context = "result option reorder retry",
+        },
+        {
+            .sql = "SELECT (1, 2)",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 3U,
+            .minimum_handled_count = 1U,
+            .context = "parenthesized row constructor retry",
+        },
+        {
+            .sql = "SELECT * FROM t WHERE (a,b) = (1,2)",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 1U,
+            .minimum_handled_count = 1U,
+            .context = "row constructor predicate retry",
+        },
+        {
+            .sql = "SELECT (1,2) = (1,2)",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 1U,
+            .minimum_handled_count = 1U,
+            .context = "unsupported utility retry",
+        },
+        {
+            .sql = "SELECT 1 WHERE (1 + 1) > 1",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 1U,
+            .minimum_handled_count = 1U,
+            .context = "parenthesized arithmetic predicate retry",
+        },
+        {
+            .sql = "SELECT 1 FOR UPDATE FOR SHARE",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 6U,
+            .minimum_handled_count = 1U,
+            .context = "repeated locking retry",
+        },
+        {
+            .sql = "CREATE INDEX idx TYPE BTREE ON t (id)",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 7U,
+            .minimum_handled_count = 1U,
+            .context = "legacy create index type retry",
+        },
+        {
+            .sql = "ANALYZE TABLES t1",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 8U,
+            .minimum_handled_count = 1U,
+            .context = "scanned placeholder retry",
+        },
+        {
+            .sql = "ALTER TABLE t RENAME TO u, ALGORITHM=INPLACE",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 8U,
+            .minimum_handled_count = 1U,
+            .context = "alter option tail retry",
+        },
+        {
+            .sql = "CREATE TABLE t (id INT) PARTITION BY HASH(id) PARTITIONS 2",
+            .expected_status = MYLITE_SQL_PARSE_OK,
+            .minimum_callback_count = 8U,
+            .minimum_handled_count = 1U,
+            .context = "partition placeholder retry",
+        },
+    };
+    int failures = 0;
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        failures += expect_parser_allocation_sweep(&cases[index]);
+    }
+    failures += expect_callback_allocation_sweep(
+        "SELECT 1 LIMIT 1",
+        mylite_sql_parser_try_parse_tableless_select_limit_statement,
+        "tableless limit callback"
+    );
+    return failures;
+}
+
+static int expect_parser_allocation_sweep(const struct parser_retry_case *test_case) {
+    int failures = 0;
+    bool completed_sweep = false;
+
+    for (size_t allocation_index = 0U; allocation_index < parser_allocation_sweep_limit;
+         ++allocation_index) {
+        struct mylite_sql_parse_result result = {0};
+        enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+        bool allocation_failed = false;
+
+        mylite_test_allocator_fail_after(allocation_index);
+        status = mylite_sql_parse(
+            (struct mylite_sql_parse_config){
+                .input = test_case->sql,
+                .length = strlen(test_case->sql),
+            },
+            &result
+        );
+        allocation_failed = mylite_test_allocator_was_triggered();
+        mylite_test_allocator_clear();
+
+        if (!allocation_failed) {
+            failures +=
+                mylite_test_expect_int(status, test_case->expected_status, test_case->context);
+            failures += mylite_test_expect_int(
+                result.status,
+                test_case->expected_status,
+                test_case->context
+            );
+            failures += mylite_test_expect_true(
+                result.retry_callback_count >= test_case->minimum_callback_count,
+                test_case->context
+            );
+            failures += mylite_test_expect_true(
+                result.retry_handled_count >= test_case->minimum_handled_count,
+                test_case->context
+            );
+            completed_sweep = true;
+            mylite_sql_parse_result_deinit(&result);
+            break;
+        }
+
+        if (status != MYLITE_SQL_PARSE_NOMEM || result.status != MYLITE_SQL_PARSE_NOMEM) {
+            fprintf(
+                stderr,
+                "%s allocation %zu: expected NOMEM/NOMEM, got %s/%s\n",
+                test_case->context,
+                allocation_index,
+                mylite_sql_parse_status_name(status),
+                mylite_sql_parse_status_name(result.status)
+            );
+            failures = 1;
+        }
+        mylite_sql_parse_result_deinit(&result);
+    }
+
+    failures += mylite_test_expect_true(completed_sweep, test_case->context);
+    return failures;
+}
+
+static int expect_callback_allocation_sweep(
+    const char *sql,
+    parser_retry_callback callback,
+    const char *context
+) {
+    int failures = 0;
+    bool completed_sweep = false;
+
+    for (size_t allocation_index = 0U; allocation_index < parser_allocation_sweep_limit;
+         ++allocation_index) {
+        struct mylite_sql_parse_config config = {
+            .input = sql,
+            .length = strlen(sql),
+        };
+        struct mylite_sql_parse_result result = {0};
+        struct mylite_sql_parser_retry_context retry_context = {0};
+        enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+        bool handled = false;
+        bool allocation_failed = false;
+
+        mylite_test_allocator_fail_after(allocation_index);
+        status = mylite_sql_parser_parse_with_lemon(config, &result);
+        if (status == MYLITE_SQL_PARSE_OK) {
+            status = mylite_sql_parser_retry_context_init(config, &retry_context);
+        }
+        if (status == MYLITE_SQL_PARSE_OK) {
+            status = callback(config, &result, &retry_context, &handled);
+        }
+        allocation_failed = mylite_test_allocator_was_triggered();
+        mylite_test_allocator_clear();
+
+        if (!allocation_failed) {
+            failures += mylite_test_expect_int(status, MYLITE_SQL_PARSE_OK, context);
+            failures += mylite_test_expect_true(handled, context);
+            completed_sweep = true;
+            mylite_sql_parser_retry_context_deinit(&retry_context);
+            mylite_sql_parse_result_deinit(&result);
+            break;
+        }
+        if (status != MYLITE_SQL_PARSE_NOMEM) {
+            fprintf(
+                stderr,
+                "%s allocation %zu: expected NOMEM, got %s\n",
+                context,
+                allocation_index,
+                mylite_sql_parse_status_name(status)
+            );
+            failures = 1;
+        }
+        mylite_sql_parser_retry_context_deinit(&retry_context);
+        mylite_sql_parse_result_deinit(&result);
+    }
+
+    failures += mylite_test_expect_true(completed_sweep, context);
+    return failures;
+}
+
+static int test_runtime_parser_allocation_failures(void) {
+    static const char query[] = "SELECT (1, 2) = (1, 2)";
+    static const size_t parser_failure_indexes[] = {1U, 2U, 4U};
+    mylite_db *database = NULL;
+    int failures = mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open runtime retry sweep"
+    );
+
+    for (size_t index = 0U; database != NULL && index < sizeof(parser_failure_indexes) /
+                                                            sizeof(parser_failure_indexes[0]);
+         ++index) {
+        mylite_result *result = NULL;
+        int rc = MYLITE_OK;
+        size_t allocation_index = parser_failure_indexes[index];
+
+        mylite_test_allocator_fail_after(allocation_index);
+        rc = mylite_execute(database, query, strlen(query), &result);
+        failures += mylite_test_expect_true(
+            mylite_test_allocator_was_triggered(),
+            "runtime retry failpoint reached"
+        );
+        mylite_test_allocator_clear();
+
+        if (rc != MYLITE_NOMEM) {
+            fprintf(
+                stderr,
+                "runtime retry allocation %zu: expected NOMEM, got %d/%d/%s/%s\n",
+                allocation_index,
+                rc,
+                mylite_errcode(database),
+                mylite_sqlstate(database),
+                mylite_errmsg(database)
+            );
+            failures = 1;
+        } else {
+            failures += mylite_test_expect_int(
+                mylite_errcode(database),
+                MYLITE_NOMEM,
+                "runtime retry NOMEM error code"
+            );
+            failures +=
+                mylite_test_expect_text(mylite_sqlstate(database), "HY001", "runtime retry state");
+            failures += mylite_test_expect_text(
+                mylite_errmsg(database),
+                "out of memory",
+                "runtime retry message"
+            );
+        }
+        failures +=
+            mylite_test_expect_true(result == NULL, "failed runtime retry leaves no result");
+        failures += mylite_test_expect_int(
+            mylite_execute(database, query, strlen(query), &result),
+            MYLITE_OK,
+            "runtime retry recovery"
+        );
+        failures += mylite_test_expect_true(result != NULL, "runtime retry recovery result");
+        mylite_result_free(result);
+    }
+
+    if (database != NULL) {
+        mylite_result *result = NULL;
+
+        failures += mylite_test_expect_int(
+            mylite_execute(database, query, strlen(query), &result),
+            MYLITE_OK,
+            "complete runtime retry execution"
+        );
+        failures += mylite_test_expect_true(result != NULL, "complete runtime retry result");
+        mylite_result_free(result);
+    }
+    mylite_close(database);
+    return failures;
+}

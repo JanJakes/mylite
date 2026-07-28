@@ -3,6 +3,7 @@
 
 #include <mylite/mylite.h>
 
+#include "mylite_diagnostics.h"
 #include "mylite_result_metadata.h"
 
 #include <stdbool.h>
@@ -17,6 +18,7 @@ struct mylite_result_cell {
 
 struct mylite_result {
     char **column_names;
+    struct mylite_diagnostics diagnostics;
     struct mylite_result_metadata metadata;
     char **values;
     size_t *value_sizes;
@@ -46,6 +48,10 @@ void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_row
 int mylite_result_set_info(mylite_result *result, const char *info);
 void mylite_result_set_insert_id(mylite_result *result, uint64_t insert_id);
 void mylite_result_set_warning_count(mylite_result *result, size_t warning_count);
+int mylite_result_set_diagnostics(
+    mylite_result *result,
+    const struct mylite_diagnostics *diagnostics
+);
 void mylite_result_set_found_row_count(mylite_result *result, uint64_t found_row_count);
 bool mylite_result_has_found_row_count(const mylite_result *result);
 uint64_t mylite_result_found_row_count(const mylite_result *result);

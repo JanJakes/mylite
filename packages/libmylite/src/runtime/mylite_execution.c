@@ -662,6 +662,48 @@ uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt) {
     return stmt == NULL ? 0U : stmt->completion.insert_id;
 }
 
+int mylite_stmt_errcode(const mylite_stmt *stmt) {
+    return stmt == NULL ? MYLITE_MISUSE : mylite_diagnostics_errcode(&stmt->completion.diagnostics);
+}
+
+const char *mylite_stmt_sqlstate(const mylite_stmt *stmt) {
+    return stmt == NULL ? mylite_diagnostics_misuse_sqlstate()
+                        : mylite_diagnostics_sqlstate(&stmt->completion.diagnostics);
+}
+
+const char *mylite_stmt_errmsg(const mylite_stmt *stmt) {
+    if (stmt == NULL) {
+        return mylite_diagnostics_misuse_message();
+    }
+    if (mylite_diagnostics_errcode(&stmt->completion.diagnostics) == MYLITE_OK) {
+        return "";
+    }
+    return mylite_diagnostics_errmsg(&stmt->completion.diagnostics);
+}
+
+size_t mylite_stmt_warning_count(const mylite_stmt *stmt) {
+    return stmt == NULL ? 0U
+                        : mylite_diagnostics_warning_total_count(&stmt->completion.diagnostics);
+}
+
+size_t mylite_stmt_warning_record_count(const mylite_stmt *stmt) {
+    return stmt == NULL ? 0U : mylite_diagnostics_warning_count(&stmt->completion.diagnostics);
+}
+
+int mylite_stmt_warning_at(
+    const mylite_stmt *stmt,
+    size_t index,
+    struct mylite_diagnostic *out_diagnostic
+) {
+    if (stmt == NULL) {
+        if (out_diagnostic != NULL) {
+            *out_diagnostic = (struct mylite_diagnostic){0};
+        }
+        return MYLITE_MISUSE;
+    }
+    return mylite_diagnostics_copy_warning_at(&stmt->completion.diagnostics, index, out_diagnostic);
+}
+
 static int validate_stmt_binding_index(mylite_stmt *stmt, size_t index) {
     if (stmt == NULL || stmt->database == NULL || stmt->current_row_available ||
         index >= stmt->parameter_count) {

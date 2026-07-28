@@ -29,6 +29,8 @@ typedef struct pdo_mylite_db_handle {
 typedef struct pdo_mylite_stmt {
     pdo_mylite_db_handle *handle;
     mylite_stmt *native;
+    unsigned native_errno;
+    zend_string *errmsg;
     bool pending_row;
     bool ready_for_execute;
 } pdo_mylite_stmt;
@@ -85,6 +87,12 @@ static int pdo_mylite_open_error(
     const struct mylite_open_diagnostic *diagnostic
 );
 static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt);
+static void pdo_mylite_replace_error_record(
+    unsigned *target_errno,
+    zend_string **target_message,
+    unsigned native_errno,
+    const char *message
+);
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result);
 static void pdo_mylite_update_statement_status(pdo_dbh_t *dbh, const mylite_stmt *statement);
 static zend_string *pdo_mylite_quote_string(
@@ -286,7 +294,7 @@ static bool pdo_mylite_handle_preparer(
         zend_string_release(rewritten_sql);
     }
     if (status != MYLITE_OK) {
-        pdo_mylite_error(dbh, stmt, status, "could not prepare MyLite statement");
+        pdo_mylite_error(dbh, NULL, status, "could not prepare MyLite statement");
         efree(statement_data);
         stmt->driver_data = NULL;
         return false;
@@ -349,13 +357,24 @@ static zend_string *pdo_mylite_last_insert_id(pdo_dbh_t *dbh, const zend_string 
 }
 
 static void pdo_mylite_fetch_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, zval *info) {
-    (void)stmt;
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
-    if (handle == NULL || handle->native_errno == 0U || handle->errmsg == NULL) {
+    pdo_mylite_stmt *statement_data = stmt == NULL ? NULL : (pdo_mylite_stmt *)stmt->driver_data;
+    unsigned native_errno = 0U;
+    zend_string *message = NULL;
+
+    if (statement_data != NULL) {
+        native_errno = statement_data->native_errno;
+        message = statement_data->errmsg;
+    } else if (handle != NULL) {
+        native_errno = handle->native_errno;
+        message = handle->errmsg;
+    }
+
+    if (native_errno == 0U || message == NULL) {
         return;
     }
-    add_next_index_long(info, (zend_long)handle->native_errno);
-    add_next_index_str(info, zend_string_copy(handle->errmsg));
+    add_next_index_long(info, (zend_long)native_errno);
+    add_next_index_str(info, zend_string_copy(message));
 }
 
 static int pdo_mylite_get_attribute(pdo_dbh_t *dbh, zend_long attr, zval *return_value) {
@@ -381,6 +400,9 @@ static int pdo_mylite_stmt_dtor(pdo_stmt_t *stmt) {
     if (statement_data->native != NULL) {
         (void)mylite_stmt_finalize(statement_data->native);
         statement_data->native = NULL;
+    }
+    if (statement_data->errmsg != NULL) {
+        zend_string_release(statement_data->errmsg);
     }
     efree(statement_data);
     stmt->driver_data = NULL;
@@ -624,14 +646,26 @@ static int pdo_mylite_bind_parameter(
 
 static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const char *fallback) {
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
+    pdo_mylite_stmt *statement_data = stmt == NULL ? NULL : (pdo_mylite_stmt *)stmt->driver_data;
     pdo_error_type *pdo_error = stmt != NULL ? &stmt->error_code : &dbh->error_code;
-    const char *sqlstate =
-        handle != NULL && handle->db != NULL ? mylite_sqlstate(handle->db) : "HY000";
-    const char *message =
-        handle != NULL && handle->db != NULL ? mylite_errmsg(handle->db) : fallback;
-    unsigned native_errno = handle != NULL && handle->db != NULL
-                                ? (unsigned)mylite_errcode(handle->db)
-                                : (unsigned)status;
+    const bool has_statement_diagnostic = statement_data != NULL &&
+                                          statement_data->native != NULL &&
+                                          mylite_stmt_errcode(statement_data->native) != MYLITE_OK;
+    const bool has_connection_diagnostic =
+        handle != NULL && handle->db != NULL && mylite_errcode(handle->db) != MYLITE_OK;
+    const char *sqlstate = "HY000";
+    const char *message = fallback;
+    unsigned native_errno = (unsigned)status;
+
+    if (has_statement_diagnostic) {
+        sqlstate = mylite_stmt_sqlstate(statement_data->native);
+        message = mylite_stmt_errmsg(statement_data->native);
+        native_errno = (unsigned)mylite_stmt_errcode(statement_data->native);
+    } else if (has_connection_diagnostic) {
+        sqlstate = mylite_sqlstate(handle->db);
+        message = mylite_errmsg(handle->db);
+        native_errno = (unsigned)mylite_errcode(handle->db);
+    }
 
     if (message == NULL || message[0] == '\0') {
         message = fallback;
@@ -649,12 +683,20 @@ static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const 
         memcpy(*pdo_error, sqlstate, sqlstate_size);
         (*pdo_error)[sqlstate_size] = '\0';
     }
-    if (handle != NULL) {
-        handle->native_errno = native_errno;
-        if (handle->errmsg != NULL) {
-            zend_string_release(handle->errmsg);
-        }
-        handle->errmsg = zend_string_init(message, strlen(message), false);
+    if (statement_data != NULL) {
+        pdo_mylite_replace_error_record(
+            &statement_data->native_errno,
+            &statement_data->errmsg,
+            native_errno,
+            message
+        );
+    } else if (handle != NULL) {
+        pdo_mylite_replace_error_record(
+            &handle->native_errno,
+            &handle->errmsg,
+            native_errno,
+            message
+        );
     }
     return status;
 }
@@ -683,11 +725,12 @@ static int pdo_mylite_open_error(
     memcpy(dbh->error_code, sqlstate, sqlstate_size);
     dbh->error_code[sqlstate_size] = '\0';
     if (handle != NULL) {
-        handle->native_errno = native_errno;
-        if (handle->errmsg != NULL) {
-            zend_string_release(handle->errmsg);
-        }
-        handle->errmsg = zend_string_init(message, strlen(message), false);
+        pdo_mylite_replace_error_record(
+            &handle->native_errno,
+            &handle->errmsg,
+            native_errno,
+            message
+        );
     }
     return status;
 }
@@ -695,14 +738,38 @@ static int pdo_mylite_open_error(
 static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt) {
     pdo_error_type *pdo_error = stmt != NULL ? &stmt->error_code : &dbh->error_code;
     pdo_mylite_db_handle *handle = (pdo_mylite_db_handle *)dbh->driver_data;
+    pdo_mylite_stmt *statement_data = stmt == NULL ? NULL : (pdo_mylite_stmt *)stmt->driver_data;
 
     memcpy(*pdo_error, "00000", sizeof("00000"));
-    if (handle != NULL) {
-        handle->native_errno = 0U;
-        if (handle->errmsg != NULL) {
-            zend_string_release(handle->errmsg);
-            handle->errmsg = NULL;
-        }
+    if (statement_data != NULL) {
+        pdo_mylite_replace_error_record(
+            &statement_data->native_errno,
+            &statement_data->errmsg,
+            0U,
+            NULL
+        );
+    } else if (handle != NULL) {
+        pdo_mylite_replace_error_record(&handle->native_errno, &handle->errmsg, 0U, NULL);
+    }
+}
+
+static void pdo_mylite_replace_error_record(
+    unsigned *target_errno,
+    zend_string **target_message,
+    unsigned native_errno,
+    const char *message
+) {
+    if (target_errno == NULL || target_message == NULL) {
+        return;
+    }
+
+    *target_errno = native_errno;
+    if (*target_message != NULL) {
+        zend_string_release(*target_message);
+        *target_message = NULL;
+    }
+    if (message != NULL) {
+        *target_message = zend_string_init(message, strlen(message), false);
     }
 }
 

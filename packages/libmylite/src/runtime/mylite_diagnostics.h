@@ -9,7 +9,6 @@
 enum {
     MYLITE_SQLSTATE_LENGTH = 5,
     MYLITE_DIAGNOSTIC_LEVEL_CAPACITY = 8,
-    MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY = 256,
 };
 
 struct mylite_diagnostic_record {
@@ -89,6 +88,11 @@ size_t mylite_diagnostics_error_warning_total_count(const struct mylite_diagnost
 const struct mylite_diagnostic_record *mylite_diagnostics_warning_at(
     const struct mylite_diagnostics *diagnostics,
     size_t index
+);
+int mylite_diagnostics_copy_warning_at(
+    const struct mylite_diagnostics *diagnostics,
+    size_t index,
+    struct mylite_diagnostic *out_diagnostic
 );
 
 const char *mylite_diagnostics_misuse_sqlstate(void);

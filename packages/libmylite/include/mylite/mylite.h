@@ -31,8 +31,16 @@ typedef struct mylite_result mylite_result;
 typedef struct mylite_stmt mylite_stmt;
 
 enum {
-    MYLITE_OPEN_DIAGNOSTIC_SQLSTATE_CAPACITY = 6,
-    MYLITE_OPEN_DIAGNOSTIC_MESSAGE_CAPACITY = 256,
+    MYLITE_DIAGNOSTIC_SQLSTATE_CAPACITY = 6,
+    MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY = 256,
+    MYLITE_OPEN_DIAGNOSTIC_SQLSTATE_CAPACITY = MYLITE_DIAGNOSTIC_SQLSTATE_CAPACITY,
+    MYLITE_OPEN_DIAGNOSTIC_MESSAGE_CAPACITY = MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY,
+};
+
+struct mylite_diagnostic {
+    int error_code;
+    char sqlstate[MYLITE_DIAGNOSTIC_SQLSTATE_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
 };
 
 struct mylite_open_diagnostic {
@@ -195,6 +203,22 @@ MYLITE_API int mylite_stmt_reset(mylite_stmt *stmt);
 MYLITE_API int64_t mylite_stmt_affected_rows(const mylite_stmt *stmt);
 MYLITE_API uint64_t mylite_stmt_insert_id(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_stmt_info(const mylite_stmt *stmt);
+/*
+ * Statement diagnostics are isolated from later database and sibling
+ * statement calls. String pointers remain valid until the next reset, step,
+ * finalize, or database close affecting this statement.
+ */
+MYLITE_API int mylite_stmt_errcode(const mylite_stmt *stmt);
+MYLITE_API const char *mylite_stmt_sqlstate(const mylite_stmt *stmt);
+MYLITE_API const char *mylite_stmt_errmsg(const mylite_stmt *stmt);
+MYLITE_API size_t mylite_stmt_warning_count(const mylite_stmt *stmt);
+MYLITE_API size_t mylite_stmt_warning_record_count(const mylite_stmt *stmt);
+/* Copies a retained warning into caller-owned storage. */
+MYLITE_API int mylite_stmt_warning_at(
+    const mylite_stmt *stmt,
+    size_t index,
+    struct mylite_diagnostic *out_diagnostic
+);
 MYLITE_API int mylite_stmt_step(mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_finalize(mylite_stmt *stmt);
 MYLITE_API size_t mylite_stmt_column_count(const mylite_stmt *stmt);
@@ -296,6 +320,13 @@ MYLITE_API int64_t mylite_result_affected_rows(const mylite_result *result);
 MYLITE_API const char *mylite_result_info(const mylite_result *result);
 MYLITE_API uint64_t mylite_result_insert_id(const mylite_result *result);
 MYLITE_API size_t mylite_result_warning_count(const mylite_result *result);
+MYLITE_API size_t mylite_result_warning_record_count(const mylite_result *result);
+/* Copies a retained warning into caller-owned storage. */
+MYLITE_API int mylite_result_warning_at(
+    const mylite_result *result,
+    size_t index,
+    struct mylite_diagnostic *out_diagnostic
+);
 
 /* Returns 1 when enabled, 0 when disabled, and -1 for an invalid handle. */
 MYLITE_API int mylite_session_no_backslash_escapes(const mylite_db *database);

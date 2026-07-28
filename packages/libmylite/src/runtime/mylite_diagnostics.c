@@ -380,6 +380,27 @@ const struct mylite_diagnostic_record *mylite_diagnostics_warning_at(
     return &diagnostics->warnings[index];
 }
 
+int mylite_diagnostics_copy_warning_at(
+    const struct mylite_diagnostics *diagnostics,
+    size_t index,
+    struct mylite_diagnostic *out_diagnostic
+) {
+    const struct mylite_diagnostic_record *warning = NULL;
+
+    if (out_diagnostic != NULL) {
+        *out_diagnostic = (struct mylite_diagnostic){0};
+    }
+    warning = mylite_diagnostics_warning_at(diagnostics, index);
+    if (warning == NULL || out_diagnostic == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    out_diagnostic->error_code = warning->code;
+    memcpy(out_diagnostic->sqlstate, warning->sqlstate, sizeof(out_diagnostic->sqlstate));
+    memcpy(out_diagnostic->message, warning->message, sizeof(out_diagnostic->message));
+    return MYLITE_OK;
+}
+
 const char *mylite_diagnostics_misuse_sqlstate(void) {
     return "HY000";
 }

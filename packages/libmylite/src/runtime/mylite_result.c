@@ -29,6 +29,7 @@ int mylite_result_create(mylite_result **out_result) {
         return MYLITE_NOMEM;
     }
 
+    mylite_diagnostics_init(&result->diagnostics);
     mylite_result_metadata_init(&result->metadata);
     *out_result = result;
 
@@ -42,6 +43,7 @@ void mylite_result_reset_command(mylite_result *result) {
 
     free(result->info);
     result->info = NULL;
+    mylite_diagnostics_reset(&result->diagnostics);
     result->affected_rows = 0;
     result->insert_id = 0U;
     result->warning_count = 0U;
@@ -55,6 +57,7 @@ void mylite_result_free(mylite_result *result) {
     }
 
     free_values(result->column_names, result->column_count);
+    mylite_diagnostics_deinit(&result->diagnostics);
     mylite_result_metadata_deinit(&result->metadata);
     free_values(result->values, result->row_count * result->column_count);
     free(result->value_sizes);
@@ -271,6 +274,22 @@ void mylite_result_set_warning_count(mylite_result *result, size_t warning_count
     }
 
     result->warning_count = warning_count;
+}
+
+int mylite_result_set_diagnostics(
+    mylite_result *result,
+    const struct mylite_diagnostics *diagnostics
+) {
+    int rc = MYLITE_OK;
+
+    if (result == NULL || diagnostics == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = mylite_diagnostics_replace(&result->diagnostics, diagnostics);
+    if (rc == MYLITE_OK) {
+        result->warning_count = mylite_diagnostics_warning_total_count(diagnostics);
+    }
+    return rc;
 }
 
 void mylite_result_set_found_row_count(mylite_result *result, uint64_t found_row_count) {
@@ -494,6 +513,24 @@ size_t mylite_result_warning_count(const mylite_result *result) {
     }
 
     return result->warning_count;
+}
+
+size_t mylite_result_warning_record_count(const mylite_result *result) {
+    return result == NULL ? 0U : mylite_diagnostics_warning_count(&result->diagnostics);
+}
+
+int mylite_result_warning_at(
+    const mylite_result *result,
+    size_t index,
+    struct mylite_diagnostic *out_diagnostic
+) {
+    if (result == NULL) {
+        if (out_diagnostic != NULL) {
+            *out_diagnostic = (struct mylite_diagnostic){0};
+        }
+        return MYLITE_MISUSE;
+    }
+    return mylite_diagnostics_copy_warning_at(&result->diagnostics, index, out_diagnostic);
 }
 
 const struct mylite_result_column *mylite_result_column_metadata_at(

@@ -553,6 +553,7 @@ tests/runtime_sqlite_bootstrap_test.c|internal-sqlite|always
 tests/runtime_sqlite_owner_test.c|internal-sqlite|always
 tests/runtime_sqrt_function_test.c|internal|always
 tests/runtime_statement_context_test.c|internal|always
+tests/runtime_statement_diagnostics_warning_snapshot_test.c|internal|always
 tests/runtime_statement_digest_function_test.c|internal|always
 tests/runtime_statement_digest_text_function_test.c|internal|always
 tests/runtime_statistical_aggregate_window_functions_test.c|internal|always

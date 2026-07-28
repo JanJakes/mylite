@@ -13,6 +13,7 @@ enum { allocation_sweep_limit = 512 };
 
 static int test_open_failure_is_scoped_and_recoverable(void);
 static int test_execute_failure_preserves_handle(void);
+static int test_warning_snapshot_failure_preserves_handle(void);
 static int test_cursor_failure_completes_and_resets(void);
 static int test_materialized_cursor_reexecution_failure_recovers(void);
 static int expect_true(bool actual, const char *context);
@@ -24,6 +25,7 @@ int main(void) {
     failures += test_cursor_failure_completes_and_resets();
     failures += test_materialized_cursor_reexecution_failure_recovers();
     failures += test_execute_failure_preserves_handle();
+    failures += test_warning_snapshot_failure_preserves_handle();
     mylite_test_allocator_clear();
     return failures == 0 ? 0 : 1;
 }
@@ -370,6 +372,107 @@ static int test_execute_failure_preserves_handle(void) {
     }
 
     failures += expect_true(completed_sweep, "execute allocation sweep reached success");
+    mylite_close(database);
+    mylite_test_allocator_clear();
+    return failures;
+}
+
+static int test_warning_snapshot_failure_preserves_handle(void) {
+    static const char query[] = "DO 5 DIV 0, 6 DIV 0";
+    mylite_db *database = NULL;
+    int failures = 0;
+    bool completed_sweep = false;
+    bool observed_nomem = false;
+
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open warning snapshot handle"
+    );
+    if (database == NULL) {
+        return failures;
+    }
+
+    for (size_t allocation_index = 0U; allocation_index < allocation_sweep_limit;
+         ++allocation_index) {
+        mylite_result *result = NULL;
+        int rc = MYLITE_OK;
+
+        mylite_test_allocator_fail_after(allocation_index);
+        rc = mylite_execute(database, query, strlen(query), &result);
+        if (!mylite_test_allocator_was_triggered()) {
+            failures += mylite_test_expect_int(rc, MYLITE_OK, "completed warning allocation sweep");
+            failures += expect_true(result != NULL, "completed warning execute returns result");
+            failures += mylite_test_expect_size(
+                mylite_result_warning_count(result),
+                2U,
+                "completed warning total"
+            );
+            failures += mylite_test_expect_size(
+                mylite_result_warning_record_count(result),
+                2U,
+                "completed warning records"
+            );
+            mylite_result_free(result);
+            completed_sweep = true;
+            mylite_test_allocator_clear();
+            break;
+        }
+
+        if (rc == MYLITE_OK) {
+            failures += expect_true(result != NULL, "tolerated warning allocation returns result");
+            failures += mylite_test_expect_size(
+                mylite_result_warning_count(result),
+                2U,
+                "tolerated warning total"
+            );
+            failures += mylite_test_expect_size(
+                mylite_result_warning_record_count(result),
+                2U,
+                "tolerated warning records"
+            );
+            mylite_result_free(result);
+            mylite_test_allocator_clear();
+            continue;
+        }
+
+        if (rc == MYLITE_NOMEM) {
+            observed_nomem = true;
+        } else {
+            failures += mylite_test_expect_int(
+                rc,
+                MYLITE_ERROR,
+                "warning expression allocation fallback status"
+            );
+            failures += mylite_test_expect_int(
+                mylite_errcode(database),
+                1064,
+                "warning expression allocation fallback diagnostic"
+            );
+        }
+        failures += expect_true(result == NULL, "fatal warning failure leaves result null");
+        mylite_test_allocator_clear();
+        failures += mylite_test_expect_int(
+            mylite_execute(database, query, strlen(query), &result),
+            MYLITE_OK,
+            "warning execute recovery"
+        );
+        failures += expect_true(result != NULL, "recovered warning execute returns result");
+        failures += mylite_test_expect_size(
+            mylite_result_warning_count(result),
+            2U,
+            "recovered warning total"
+        );
+        failures += mylite_test_expect_size(
+            mylite_result_warning_record_count(result),
+            2U,
+            "recovered warning records"
+        );
+        mylite_result_free(result);
+    }
+
+    failures += expect_true(completed_sweep, "warning allocation sweep reached success");
+    failures += expect_true(observed_nomem, "warning allocation sweep reached fatal copy failure");
     mylite_close(database);
     mylite_test_allocator_clear();
     return failures;

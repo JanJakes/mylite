@@ -364,40 +364,15 @@ PHP_FUNCTION(mysqli_warning_count) {
 PHP_FUNCTION(mysqli_get_warnings) {
     zval *mysql = NULL;
     mylite_mysqli_link *link = NULL;
-    const char *message = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(mysql, mylite_mysqli_link_ce)
     ZEND_PARSE_PARAMETERS_END();
 
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
-    if (link->database == NULL || link->warning_count <= 0) {
+    if (!mylite_mysqli_link_get_warnings(link, return_value)) {
         RETURN_FALSE;
     }
-
-    object_init_ex(return_value, mylite_mysqli_warning_ce);
-    message = "MyLite warning";
-    zend_update_property_string(
-        mylite_mysqli_warning_ce,
-        Z_OBJ_P(return_value),
-        "message",
-        strlen("message"),
-        message == NULL ? "" : message
-    );
-    zend_update_property_string(
-        mylite_mysqli_warning_ce,
-        Z_OBJ_P(return_value),
-        "sqlstate",
-        strlen("sqlstate"),
-        "HY000"
-    );
-    zend_update_property_long(
-        mylite_mysqli_warning_ce,
-        Z_OBJ_P(return_value),
-        "errno",
-        strlen("errno"),
-        0
-    );
 }
 
 PHP_FUNCTION(mysqli_get_client_info) {
@@ -1672,12 +1647,16 @@ PHP_FUNCTION(mysqli_stmt_param_count) {
 
 PHP_FUNCTION(mysqli_stmt_get_warnings) {
     zval *stmt_zval = NULL;
+    mylite_mysqli_stmt *stmt = NULL;
 
     ZEND_PARSE_PARAMETERS_START(1, 1)
     Z_PARAM_OBJECT_OF_CLASS(stmt_zval, mylite_mysqli_stmt_ce)
     ZEND_PARSE_PARAMETERS_END();
 
-    RETURN_FALSE;
+    stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
+    if (!mylite_mysqli_stmt_get_warnings(stmt, return_value)) {
+        RETURN_FALSE;
+    }
 }
 
 PHP_FUNCTION(mysqli_stmt_more_results) {
@@ -2162,35 +2141,11 @@ PHP_METHOD(mysqli, get_server_info) {
 
 PHP_METHOD(mysqli, get_warnings) {
     mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ_P(getThis()));
-    const char *message = NULL;
 
     ZEND_PARSE_PARAMETERS_NONE();
-    if (link->database == NULL || link->warning_count <= 0) {
+    if (!mylite_mysqli_link_get_warnings(link, return_value)) {
         RETURN_FALSE;
     }
-    object_init_ex(return_value, mylite_mysqli_warning_ce);
-    message = "MyLite warning";
-    zend_update_property_string(
-        mylite_mysqli_warning_ce,
-        Z_OBJ_P(return_value),
-        "message",
-        strlen("message"),
-        message == NULL ? "" : message
-    );
-    zend_update_property_string(
-        mylite_mysqli_warning_ce,
-        Z_OBJ_P(return_value),
-        "sqlstate",
-        strlen("sqlstate"),
-        "HY000"
-    );
-    zend_update_property_long(
-        mylite_mysqli_warning_ce,
-        Z_OBJ_P(return_value),
-        "errno",
-        strlen("errno"),
-        0
-    );
 }
 
 PHP_METHOD(mysqli, init) {
@@ -2919,8 +2874,12 @@ PHP_METHOD(mysqli_stmt, send_long_data) {
 }
 
 PHP_METHOD(mysqli_stmt, get_warnings) {
+    mylite_mysqli_stmt *stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(getThis()));
+
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_FALSE;
+    if (!mylite_mysqli_stmt_get_warnings(stmt, return_value)) {
+        RETURN_FALSE;
+    }
 }
 
 PHP_METHOD(mysqli_stmt, more_results) {
@@ -3140,7 +3099,9 @@ PHP_METHOD(mysqli_warning, __construct) {
 
 PHP_METHOD(mysqli_warning, next) {
     ZEND_PARSE_PARAMETERS_NONE();
-    RETURN_FALSE;
+    RETURN_BOOL(
+        mylite_mysqli_warning_next_internal(mylite_mysqli_warning_from_obj(Z_OBJ_P(getThis())))
+    );
 }
 
 PHP_METHOD(mysqli_sql_exception, getSqlState) {

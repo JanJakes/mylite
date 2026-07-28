@@ -123,7 +123,9 @@ typedef struct {
     zval last_result;
     mylite_stmt *pending_stmt;
     zend_string *pending_sql;
+    struct mylite_diagnostic *warning_records;
     uint64_t pending_execute_ns;
+    size_t warning_record_count;
     enum mylite_mysqli_connection_state state;
     void *active_owner;
     zend_object std;
@@ -170,6 +172,7 @@ typedef struct {
     mylite_stmt *native_stmt;
     zend_string *query;
     zend_string *types;
+    struct mylite_diagnostic *warning_records;
     char sqlstate[6];
     zend_string *error;
     zend_long affected_rows;
@@ -179,13 +182,16 @@ typedef struct {
     uint32_t bound_param_count;
     uint32_t bound_result_count;
     uint32_t param_count;
+    size_t warning_record_count;
     int error_code;
     bool current_row_pending;
     zend_object std;
 } mylite_mysqli_stmt;
 
 typedef struct {
-    uint32_t index;
+    struct mylite_diagnostic *records;
+    size_t record_count;
+    size_t index;
     zend_object std;
 } mylite_mysqli_warning;
 
@@ -240,6 +246,11 @@ void mylite_mysqli_warning_free(zend_object *object);
 mylite_mysqli_link *mylite_mysqli_link_from_obj(zend_object *object);
 mylite_mysqli_result *mylite_mysqli_result_from_obj(zend_object *object);
 mylite_mysqli_stmt *mylite_mysqli_stmt_from_obj(zend_object *object);
+mylite_mysqli_warning *mylite_mysqli_warning_from_obj(zend_object *object);
+
+bool mylite_mysqli_link_get_warnings(mylite_mysqli_link *link, zval *out_warning);
+bool mylite_mysqli_stmt_get_warnings(mylite_mysqli_stmt *stmt, zval *out_warning);
+bool mylite_mysqli_warning_next_internal(mylite_mysqli_warning *warning);
 
 bool mylite_mysqli_connect_link(
     mylite_mysqli_link *link,

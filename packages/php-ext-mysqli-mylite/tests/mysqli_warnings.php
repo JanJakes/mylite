@@ -39,6 +39,17 @@ expect_false($mysqli->get_warnings(), 'warning-free object list');
 expect_false(mysqli_get_warnings($mysqli), 'warning-free procedural list');
 $warningFree->free();
 
+$unbuffered = $mysqli->query('SELECT 5 DIV 0, 6 DIV 0', MYSQLI_USE_RESULT);
+expect_true($unbuffered instanceof mysqli_result, 'unbuffered warning query');
+expect_same([null, null], $unbuffered->fetch_row(), 'unbuffered warning row');
+expect_same(null, $unbuffered->fetch_row(), 'unbuffered warning EOF');
+expect_same(2, $mysqli->warning_count, 'unbuffered warning count after EOF');
+expect_same([
+    [1365, 'HY000', 'Division by 0'],
+    [1365, 'HY000', 'Division by 0'],
+], collect_warning_chain($mysqli->get_warnings()), 'unbuffered warning chain after EOF');
+$unbuffered->free();
+
 expect_true($mysqli->query("SET SESSION sql_mode = ''"), 'set non-strict mode');
 expect_true(
     $mysqli->query('CREATE TABLE warning_rows (tiny_value TINYINT, short_text VARCHAR(2))'),

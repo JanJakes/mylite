@@ -93,9 +93,12 @@ static int finish_completed_statement(
         }
     );
     if (rc == MYLITE_OK && *out_result != NULL) {
-        mylite_result_set_warning_count(*out_result, target->warning_count);
-        rc = mylite_statement_completion_publish(target, database);
-    } else if (rc == MYLITE_OK) {
+        rc = mylite_result_set_diagnostics(*out_result, &target->diagnostics);
+        if (rc == MYLITE_OK) {
+            mylite_result_set_warning_count(*out_result, target->warning_count);
+        }
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_statement_completion_publish(target, database);
     }
     if (rc != MYLITE_OK) {

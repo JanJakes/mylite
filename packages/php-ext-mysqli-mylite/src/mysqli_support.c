@@ -95,6 +95,25 @@ static bool mylite_mysqli_buffer_cursor_result(
     bool finalize_statement,
     bool current_row_pending
 );
+static void mylite_mysqli_capture_result_warnings(
+    mylite_mysqli_link *link,
+    const mylite_result *result
+);
+static void mylite_mysqli_capture_stmt_warnings(
+    mylite_mysqli_link *link,
+    mylite_mysqli_stmt *stmt,
+    const mylite_stmt *native_stmt
+);
+static void mylite_mysqli_clear_warning_records(
+    struct mylite_diagnostic **records,
+    size_t *record_count
+);
+static bool mylite_mysqli_initialize_warning_object(
+    const struct mylite_diagnostic *records,
+    size_t record_count,
+    zval *out_warning
+);
+static void mylite_mysqli_update_warning_properties(mylite_mysqli_warning *warning);
 static bool mylite_mysqli_result_reserve_rows(
     mylite_mysqli_link *link,
     mylite_mysqli_result *result,
@@ -218,7 +237,9 @@ zend_object *mylite_mysqli_link_create(zend_class_entry *class_entry) {
     ZVAL_UNDEF(&link->last_result);
     link->pending_stmt = NULL;
     link->pending_sql = NULL;
+    link->warning_records = NULL;
     link->pending_execute_ns = 0U;
+    link->warning_record_count = 0U;
     link->state = MYLITE_MYSQLI_CONNECTION_READY;
     link->active_owner = NULL;
     mylite_mysqli_update_link_properties(link);
@@ -241,6 +262,7 @@ void mylite_mysqli_link_free(zend_object *object) {
     if (link->info != NULL) {
         zend_string_release(link->info);
     }
+    mylite_mysqli_clear_warning_records(&link->warning_records, &link->warning_record_count);
     zend_object_std_dtor(&link->std);
 }
 
@@ -307,6 +329,8 @@ zend_object *mylite_mysqli_stmt_create(zend_class_entry *class_entry) {
     ZVAL_UNDEF(&stmt->result);
     stmt->native_stmt = NULL;
     stmt->long_data = NULL;
+    stmt->warning_records = NULL;
+    stmt->warning_record_count = 0U;
     stmt->current_row_pending = false;
     mylite_mysqli_update_stmt_properties(stmt);
     return &stmt->std;
@@ -334,11 +358,17 @@ zend_object *mylite_mysqli_warning_create(zend_class_entry *class_entry) {
 
     zend_object_std_init(&warning->std, class_entry);
     object_properties_init(&warning->std, class_entry);
+    warning->records = NULL;
+    warning->record_count = 0U;
+    warning->index = 0U;
     warning->std.handlers = &mylite_mysqli_warning_handlers;
     return &warning->std;
 }
 
 void mylite_mysqli_warning_free(zend_object *object) {
+    mylite_mysqli_warning *warning = mylite_mysqli_warning_from_obj(object);
+
+    mylite_mysqli_clear_warning_records(&warning->records, &warning->record_count);
     zend_object_std_dtor(object);
 }
 
@@ -352,6 +382,43 @@ mylite_mysqli_result *mylite_mysqli_result_from_obj(zend_object *object) {
 
 mylite_mysqli_stmt *mylite_mysqli_stmt_from_obj(zend_object *object) {
     return (mylite_mysqli_stmt *)((char *)object - XtOffsetOf(mylite_mysqli_stmt, std));
+}
+
+mylite_mysqli_warning *mylite_mysqli_warning_from_obj(zend_object *object) {
+    return (mylite_mysqli_warning *)((char *)object - XtOffsetOf(mylite_mysqli_warning, std));
+}
+
+bool mylite_mysqli_link_get_warnings(mylite_mysqli_link *link, zval *out_warning) {
+    if (link == NULL || link->database == NULL) {
+        return false;
+    }
+    return mylite_mysqli_initialize_warning_object(
+        link->warning_records,
+        link->warning_record_count,
+        out_warning
+    );
+}
+
+bool mylite_mysqli_stmt_get_warnings(mylite_mysqli_stmt *stmt, zval *out_warning) {
+    if (stmt == NULL || stmt->native_stmt == NULL) {
+        return false;
+    }
+    return mylite_mysqli_initialize_warning_object(
+        stmt->warning_records,
+        stmt->warning_record_count,
+        out_warning
+    );
+}
+
+bool mylite_mysqli_warning_next_internal(mylite_mysqli_warning *warning) {
+    if (warning == NULL || warning->index >= warning->record_count ||
+        warning->index + 1U >= warning->record_count) {
+        return false;
+    }
+
+    ++warning->index;
+    mylite_mysqli_update_warning_properties(warning);
+    return true;
 }
 
 bool mylite_mysqli_connect_link(
@@ -703,6 +770,7 @@ bool mylite_mysqli_stmt_prepare_internal(
     stmt->insert_id = 0;
     stmt->num_rows = 0;
     stmt->field_count = (zend_long)mylite_stmt_column_count(native_stmt);
+    mylite_mysqli_clear_warning_records(&stmt->warning_records, &stmt->warning_record_count);
     mylite_mysqli_clear_stmt_error(stmt);
     mylite_mysqli_update_stmt_properties(stmt);
     return true;
@@ -749,6 +817,7 @@ bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params)
     if (status != MYLITE_OK) {
         return mylite_mysqli_capture_stmt_status(stmt, link, status, "could not reset statement");
     }
+    mylite_mysqli_capture_stmt_warnings(link, stmt, stmt->native_stmt);
     if (params != NULL) {
         status = mylite_stmt_clear_bindings(stmt->native_stmt);
         if (status != MYLITE_OK) {
@@ -818,6 +887,7 @@ bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params)
             return false;
         }
     }
+    mylite_mysqli_capture_stmt_warnings(link, stmt, stmt->native_stmt);
     mylite_mysqli_update_link_status_properties(link);
     mylite_mysqli_clear_stmt_error(stmt);
     mylite_mysqli_update_stmt_properties(stmt);
@@ -888,6 +958,7 @@ int mylite_mysqli_stmt_fetch_internal(mylite_mysqli_stmt *stmt) {
         return MYLITE_ROW;
     }
     if (status == MYLITE_DONE) {
+        mylite_mysqli_capture_stmt_warnings(link, stmt, stmt->native_stmt);
         mylite_mysqli_link_release_owner(link, stmt);
         mylite_mysqli_update_stmt_properties(stmt);
         return MYLITE_DONE;
@@ -970,6 +1041,7 @@ bool mylite_mysqli_stmt_reset_internal(mylite_mysqli_stmt *stmt) {
     if (status != MYLITE_OK) {
         return mylite_mysqli_capture_stmt_status(stmt, link, status, "could not reset statement");
     }
+    mylite_mysqli_capture_stmt_warnings(link, stmt, stmt->native_stmt);
     mylite_mysqli_link_release_owner(link, stmt);
     stmt->current_row_pending = false;
     if (!Z_ISUNDEF(stmt->result)) {
@@ -999,6 +1071,7 @@ bool mylite_mysqli_stmt_close_internal(mylite_mysqli_stmt *stmt) {
     stmt->field_count = 0;
     stmt->num_rows = 0;
     stmt->affected_rows = -1;
+    mylite_mysqli_clear_warning_records(&stmt->warning_records, &stmt->warning_record_count);
     mylite_mysqli_update_stmt_properties(stmt);
     return true;
 }
@@ -1848,7 +1921,7 @@ static bool mylite_mysqli_buffer_result(
     }
 
     link->field_count = (zend_long)column_count;
-    link->warning_count = (zend_long)mylite_result_warning_count(source);
+    mylite_mysqli_capture_result_warnings(link, source);
     if (!mylite_mysqli_set_link_info(link, mylite_result_info(source))) {
         mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
         mylite_mysqli_report_link_error(link);
@@ -1943,6 +2016,7 @@ static bool mylite_mysqli_create_cursor_result(
         mylite_mysqli_report_link_error(link);
         return false;
     }
+    mylite_mysqli_capture_stmt_warnings(link, NULL, native_stmt);
     if (column_count == 0U) {
         (void)mylite_stmt_finalize(native_stmt);
         ZVAL_TRUE(out_result);
@@ -2013,6 +2087,7 @@ static bool mylite_mysqli_buffer_cursor_result(
     if (column_count == 0U) {
         link->affected_rows = (zend_long)mylite_stmt_affected_rows(native_stmt);
         link->insert_id = (zend_long)mylite_stmt_insert_id(native_stmt);
+        mylite_mysqli_capture_stmt_warnings(link, NULL, native_stmt);
         if (!mylite_mysqli_set_link_info(link, mylite_stmt_info(native_stmt))) {
             mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000", "out of memory");
             mylite_mysqli_report_link_error(link);
@@ -2103,6 +2178,7 @@ static bool mylite_mysqli_buffer_cursor_result(
     }
     link->affected_rows = -1;
     link->insert_id = (zend_long)mylite_stmt_insert_id(native_stmt);
+    mylite_mysqli_capture_stmt_warnings(link, NULL, native_stmt);
     if (finalize_statement) {
         status = mylite_stmt_finalize(native_stmt);
         if (status != MYLITE_OK) {
@@ -2114,6 +2190,146 @@ static bool mylite_mysqli_buffer_cursor_result(
 
     mylite_mysqli_update_result_properties(result);
     return true;
+}
+
+static void mylite_mysqli_capture_result_warnings(
+    mylite_mysqli_link *link,
+    const mylite_result *result
+) {
+    size_t record_count = result == NULL ? 0U : mylite_result_warning_record_count(result);
+
+    mylite_mysqli_clear_warning_records(&link->warning_records, &link->warning_record_count);
+    link->warning_count = result == NULL ? 0 : (zend_long)mylite_result_warning_count(result);
+    if (record_count == 0U) {
+        return;
+    }
+
+    link->warning_records = safe_emalloc(record_count, sizeof(*link->warning_records), 0U);
+    for (size_t index = 0U; index < record_count; ++index) {
+        if (mylite_result_warning_at(result, index, &link->warning_records[index]) != MYLITE_OK) {
+            mylite_mysqli_clear_warning_records(
+                &link->warning_records,
+                &link->warning_record_count
+            );
+            link->warning_count = 0;
+            return;
+        }
+        memcpy(
+            link->warning_records[index].sqlstate,
+            "HY000",
+            sizeof(link->warning_records[index].sqlstate)
+        );
+        link->warning_record_count = index + 1U;
+    }
+}
+
+static void mylite_mysqli_capture_stmt_warnings(
+    mylite_mysqli_link *link,
+    mylite_mysqli_stmt *stmt,
+    const mylite_stmt *native_stmt
+) {
+    size_t record_count = native_stmt == NULL ? 0U : mylite_stmt_warning_record_count(native_stmt);
+
+    mylite_mysqli_clear_warning_records(&link->warning_records, &link->warning_record_count);
+    if (stmt != NULL) {
+        mylite_mysqli_clear_warning_records(&stmt->warning_records, &stmt->warning_record_count);
+    }
+    link->warning_count =
+        native_stmt == NULL ? 0 : (zend_long)mylite_stmt_warning_count(native_stmt);
+    if (record_count == 0U) {
+        return;
+    }
+
+    link->warning_records = safe_emalloc(record_count, sizeof(*link->warning_records), 0U);
+    for (size_t index = 0U; index < record_count; ++index) {
+        if (mylite_stmt_warning_at(native_stmt, index, &link->warning_records[index]) !=
+            MYLITE_OK) {
+            mylite_mysqli_clear_warning_records(
+                &link->warning_records,
+                &link->warning_record_count
+            );
+            link->warning_count = 0;
+            return;
+        }
+        memcpy(
+            link->warning_records[index].sqlstate,
+            "HY000",
+            sizeof(link->warning_records[index].sqlstate)
+        );
+        link->warning_record_count = index + 1U;
+    }
+    if (stmt != NULL) {
+        stmt->warning_records = safe_emalloc(record_count, sizeof(*stmt->warning_records), 0U);
+        memcpy(
+            stmt->warning_records,
+            link->warning_records,
+            record_count * sizeof(*stmt->warning_records)
+        );
+        stmt->warning_record_count = record_count;
+    }
+}
+
+static void mylite_mysqli_clear_warning_records(
+    struct mylite_diagnostic **records,
+    size_t *record_count
+) {
+    if (records == NULL || record_count == NULL) {
+        return;
+    }
+
+    efree(*records);
+    *records = NULL;
+    *record_count = 0U;
+}
+
+static bool mylite_mysqli_initialize_warning_object(
+    const struct mylite_diagnostic *records,
+    size_t record_count,
+    zval *out_warning
+) {
+    if (records == NULL || record_count == 0U || out_warning == NULL) {
+        return false;
+    }
+
+    object_init_ex(out_warning, mylite_mysqli_warning_ce);
+    mylite_mysqli_warning *warning = mylite_mysqli_warning_from_obj(Z_OBJ_P(out_warning));
+
+    warning->records = safe_emalloc(record_count, sizeof(*warning->records), 0U);
+    memcpy(warning->records, records, record_count * sizeof(*warning->records));
+    warning->record_count = record_count;
+    warning->index = 0U;
+    mylite_mysqli_update_warning_properties(warning);
+    return true;
+}
+
+static void mylite_mysqli_update_warning_properties(mylite_mysqli_warning *warning) {
+    const struct mylite_diagnostic *record = NULL;
+
+    if (warning == NULL || warning->records == NULL || warning->index >= warning->record_count) {
+        return;
+    }
+    record = &warning->records[warning->index];
+    zend_update_property_string(
+        mylite_mysqli_warning_ce,
+        &warning->std,
+        "message",
+        strlen("message"),
+        record->message
+    );
+    zend_update_property_string(
+        mylite_mysqli_warning_ce,
+        &warning->std,
+        "sqlstate",
+        strlen("sqlstate"),
+        record->sqlstate
+    );
+    zend_update_property_long(
+        mylite_mysqli_warning_ce,
+        &warning->std,
+        "errno",
+        strlen("errno"),
+        record->error_code
+    );
 }
 
 static bool mylite_mysqli_result_reserve_rows(
@@ -2351,6 +2567,12 @@ static int mylite_mysqli_result_read_cursor_row(mylite_mysqli_result *result) {
     }
 
     result->unbuffered_finished = true;
+    if (status == MYLITE_DONE && !Z_ISUNDEF(result->link) && Z_TYPE(result->link) == IS_OBJECT) {
+        mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ(result->link));
+
+        mylite_mysqli_capture_stmt_warnings(link, NULL, result->native_stmt);
+        mylite_mysqli_update_link_status_properties(link);
+    }
     if (result->native_stmt != NULL) {
         int finalize_status = mylite_stmt_finalize(result->native_stmt);
 
@@ -2575,6 +2797,7 @@ static bool mylite_mysqli_stmt_buffer_current_result(mylite_mysqli_stmt *stmt) {
     }
     stmt->affected_rows = link->affected_rows;
     stmt->insert_id = link->insert_id;
+    mylite_mysqli_capture_stmt_warnings(link, stmt, stmt->native_stmt);
     mylite_mysqli_clear_stmt_error(stmt);
     mylite_mysqli_update_link_status_properties(link);
     mylite_mysqli_update_stmt_properties(stmt);

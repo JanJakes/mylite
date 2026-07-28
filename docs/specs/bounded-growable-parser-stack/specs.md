@@ -2,17 +2,17 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented and release-qualified.
 
 ## Summary
 
-MyLite's generated Lemon parser currently embeds a fixed 512-entry stack in
-every parser object. The present grammar makes each stack entry 344 bytes on
-the qualified x86-64 Debug build, so even a trivial statement allocates a
-parser object of about 176 KiB. Despite that fixed cost, valid scalar syntax
-reaches the ceiling quickly: 507 nested expression parentheses parse, while
-508 report `MYLITE_SQL_PARSE_STACK_OVERFLOW`; 84 nested `IF()` calls parse,
-while 85 overflow.
+Before this remediation, MyLite's generated Lemon parser embedded a fixed
+512-entry stack in every parser object. The grammar made each stack entry 344
+bytes on the qualified x86-64 Debug build, so even a trivial statement
+allocated a 176,160-byte parser object. Despite that fixed cost, valid scalar
+syntax reached the ceiling quickly: 507 nested expression parentheses parsed,
+while 508 reported `MYLITE_SQL_PARSE_STACK_OVERFLOW`; 84 nested `IF()` calls
+parsed, while 85 overflowed.
 
 MySQL 8.4.9 accepts substantially deeper valid expressions. On the pinned
 runtime with a 1 MiB `thread_stack`, 16,384 nested expression parentheses and
@@ -196,6 +196,9 @@ current 344-byte entry, embedded stack storage falls from 176,128 bytes to
 22,016 bytes. The exact sizes remain generated-layout details; the entry
 count and byte ceiling are the stable MyLite policy.
 
+The qualified x86-64 Debug layout measures the complete generated parser
+object at 22,048 bytes, down from the 176,160-byte pre-remediation baseline.
+
 Statements whose peak fits the embedded stack perform no stack reallocations.
 Deeper statements pay only for the backing array sizes they reach. Growth is
 geometric rather than per-token, preserving linear parser work while avoiding
@@ -242,3 +245,23 @@ deterministic allocator profiles; all parser and affected runtime suites; all
 pinned parser MySQL fixtures; parser fuzzing; host Lemon generation;
 formatting; full static analysis; ABI/install-consumer checks; and the
 production size gate.
+
+## Qualification
+
+Release qualification on local Linux covered:
+
+- all 50 parser-labeled suites and all 28 runtime parser-corpus/nesting suites
+  in Development, Debug-CI, Release, and ASan/UBSan with leak detection;
+- direct and public multi-growth allocation sweeps in the deterministic
+  allocator-failpoint profile, including `NOMEM` / `HY001` propagation and
+  recovery;
+- all 41 pinned parser-related MySQL 8.4.9 fixtures;
+- 10,000 seeded parser-fuzzer executions under ASan/UBSan plus a separate
+  1,200,008-byte nested-parentheses seed;
+- host Lemon generation, formatting, and full LLVM 19 static analysis across
+  928 translation units;
+- exact public ABI, installed CMake/pkg-config consumer, and
+  compatibility-claim gates;
+- the 12,415,752-byte production static archive; and
+- a generated-parser layout of 344 bytes per stack entry and 22,048 bytes per
+  parser object with the 64-entry embedded stack.

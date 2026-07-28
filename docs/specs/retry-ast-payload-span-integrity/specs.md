@@ -231,7 +231,7 @@ Native tests must cover:
 - validation rejection for wrong pointer, source length, offset, and length in
   both primary and payload spans;
 - atomic no-mutation behavior when any later payload span is invalid;
-- the `ALTER TABLE` option-tail prefix retry with a span-bearing type;
+- unchanged source-span validity for every non-payload prefix retry;
 - primary-grammar ASTs as a non-retry control;
 - snapshot interval rejection for a payload span outside the selected root;
 - deep iterative snapshot behavior and allocator-failure cleanup.

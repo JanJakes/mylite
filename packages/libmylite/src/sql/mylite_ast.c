@@ -11,7 +11,15 @@ enum {
     ast_nodes_per_chunk = 64,
     ast_cached_chunk_limit = 32,
     ast_snapshot_initial_stack_capacity = 16,
+    ast_node_span_limit = 3,
 };
+
+struct ast_node_span_layout {
+    size_t count;
+    size_t offsets[ast_node_span_limit];
+};
+
+_Static_assert(ast_node_span_limit == 3, "AST nodes require primary plus two payload spans");
 
 struct ast_snapshot_source_bounds {
     const char *source;
@@ -50,6 +58,32 @@ static bool ast_snapshot_rebase_node(
 static bool ast_snapshot_rebase_span(
     struct mylite_sql_source_span *span,
     const struct ast_snapshot_source_bounds *bounds
+);
+static bool ast_node_spans_are_within_source(
+    const struct mylite_sql_ast_node *node,
+    const char *source,
+    size_t source_length
+);
+static bool ast_span_is_within_source(
+    const struct mylite_sql_source_span *span,
+    const char *source,
+    size_t source_length
+);
+static void ast_node_rebase_source_length(
+    struct mylite_sql_ast_node *node,
+    size_t new_source_length
+);
+static struct ast_node_span_layout ast_node_span_layout_for_kind(enum mylite_sql_ast_node_kind kind
+);
+static const struct mylite_sql_source_span *ast_node_span_at(
+    const struct mylite_sql_ast_node *node,
+    const struct ast_node_span_layout *layout,
+    size_t index
+);
+static struct mylite_sql_source_span *ast_mutable_node_span_at(
+    struct mylite_sql_ast_node *node,
+    const struct ast_node_span_layout *layout,
+    size_t index
 );
 
 static struct mylite_sql_ast_node_chunk *cached_ast_chunks;
@@ -96,9 +130,7 @@ bool mylite_sql_ast_rebase_source_length(
 
     for (chunk = ast->first_chunk; chunk != NULL; chunk = chunk->next) {
         for (size_t index = 0U; index < chunk->used; ++index) {
-            if (chunk->nodes[index].span.text != NULL) {
-                chunk->nodes[index].span.source_length = new_source_length;
-            }
+            ast_node_rebase_source_length(&chunk->nodes[index], new_source_length);
         }
     }
     return true;
@@ -117,22 +149,161 @@ bool mylite_sql_ast_spans_are_within_source(
 
     for (chunk = ast->first_chunk; chunk != NULL; chunk = chunk->next) {
         for (size_t index = 0U; index < chunk->used; ++index) {
-            struct mylite_sql_source_span span = chunk->nodes[index].span;
-
-            if (!mylite_sql_source_span_is_valid(span)) {
-                return false;
-            }
-            if (span.text == NULL) {
-                continue;
-            }
-            if (span.source_length != source_length || source == NULL ||
-                span.text != source + span.offset) {
+            if (!ast_node_spans_are_within_source(&chunk->nodes[index], source, source_length)) {
                 return false;
             }
         }
     }
 
     return true;
+}
+
+static bool ast_node_spans_are_within_source(
+    const struct mylite_sql_ast_node *node,
+    const char *source,
+    size_t source_length
+) {
+    struct ast_node_span_layout layout;
+
+    if (node == NULL) {
+        return false;
+    }
+    layout = ast_node_span_layout_for_kind(node->kind);
+    for (size_t index = 0U; index < layout.count; ++index) {
+        if (!ast_span_is_within_source(
+                ast_node_span_at(node, &layout, index),
+                source,
+                source_length
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool ast_span_is_within_source(
+    const struct mylite_sql_source_span *span,
+    const char *source,
+    size_t source_length
+) {
+    if (span == NULL || !mylite_sql_source_span_is_valid(*span)) {
+        return false;
+    }
+    if (span->text == NULL) {
+        return true;
+    }
+    return span->source_length == source_length && source != NULL &&
+           span->text == source + span->offset;
+}
+
+static void ast_node_rebase_source_length(
+    struct mylite_sql_ast_node *node,
+    size_t new_source_length
+) {
+    struct ast_node_span_layout layout;
+
+    if (node == NULL) {
+        return;
+    }
+    layout = ast_node_span_layout_for_kind(node->kind);
+    for (size_t index = 0U; index < layout.count; ++index) {
+        struct mylite_sql_source_span *span = ast_mutable_node_span_at(node, &layout, index);
+
+        if (span->text != NULL) {
+            span->source_length = new_source_length;
+        }
+    }
+}
+
+static struct ast_node_span_layout ast_node_span_layout_for_kind(enum mylite_sql_ast_node_kind kind
+) {
+    struct ast_node_span_layout layout = {
+        .count = 1U,
+        .offsets = {offsetof(struct mylite_sql_ast_node, span)},
+    };
+
+    switch (kind) {
+    case MYLITE_SQL_AST_INTEGER_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.integer_type.display_width_span);
+        break;
+    case MYLITE_SQL_AST_VARCHAR_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.varchar_type.length_span);
+        break;
+    case MYLITE_SQL_AST_CHAR_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.char_type.length_span);
+        break;
+    case MYLITE_SQL_AST_TEXT_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.text_type.length_span);
+        break;
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.binary_string_type.length_span);
+        break;
+    case MYLITE_SQL_AST_BIT_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.bit_type.length_span);
+        break;
+    case MYLITE_SQL_AST_YEAR_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.year_type.width_span);
+        break;
+    case MYLITE_SQL_AST_DECIMAL_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.decimal_type.precision_span);
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.decimal_type.scale_span);
+        break;
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE:
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.approximate_type.precision_span);
+        layout.offsets[layout.count++] =
+            offsetof(struct mylite_sql_ast_node, payload.approximate_type.scale_span);
+        break;
+    case MYLITE_SQL_AST_DATE_TYPE:
+    case MYLITE_SQL_AST_DATETIME_TYPE:
+    case MYLITE_SQL_AST_TIMESTAMP_TYPE:
+    case MYLITE_SQL_AST_TIME_TYPE:
+        layout.offsets[layout.count++] = offsetof(
+            struct mylite_sql_ast_node,
+            payload.temporal_fractional_precision.precision_span
+        );
+        break;
+    default:
+        break;
+    }
+    return layout;
+}
+
+static const struct mylite_sql_source_span *ast_node_span_at(
+    const struct mylite_sql_ast_node *node,
+    const struct ast_node_span_layout *layout,
+    size_t index
+) {
+    const unsigned char *bytes = NULL;
+
+    if (node == NULL || layout == NULL || index >= layout->count) {
+        return NULL;
+    }
+    bytes = (const unsigned char *)node;
+    return (const struct mylite_sql_source_span *)(bytes + layout->offsets[index]);
+}
+
+static struct mylite_sql_source_span *ast_mutable_node_span_at(
+    struct mylite_sql_ast_node *node,
+    const struct ast_node_span_layout *layout,
+    size_t index
+) {
+    unsigned char *bytes = NULL;
+
+    if (node == NULL || layout == NULL || index >= layout->count) {
+        return NULL;
+    }
+    bytes = (unsigned char *)node;
+    return (struct mylite_sql_source_span *)(bytes + layout->offsets[index]);
 }
 
 void mylite_sql_ast_snapshot_init(struct mylite_sql_ast_snapshot *snapshot) {
@@ -324,42 +495,18 @@ static bool ast_snapshot_rebase_node(
     struct mylite_sql_ast_node *node,
     const struct ast_snapshot_source_bounds *bounds
 ) {
-    if (!ast_snapshot_rebase_span(&node->span, bounds)) {
+    struct ast_node_span_layout layout;
+
+    if (node == NULL) {
         return false;
     }
-
-    switch (node->kind) {
-    case MYLITE_SQL_AST_INTEGER_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.integer_type.display_width_span, bounds);
-    case MYLITE_SQL_AST_VARCHAR_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.varchar_type.length_span, bounds);
-    case MYLITE_SQL_AST_CHAR_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.char_type.length_span, bounds);
-    case MYLITE_SQL_AST_TEXT_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.text_type.length_span, bounds);
-    case MYLITE_SQL_AST_BINARY_STRING_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.binary_string_type.length_span, bounds);
-    case MYLITE_SQL_AST_BIT_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.bit_type.length_span, bounds);
-    case MYLITE_SQL_AST_YEAR_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.year_type.width_span, bounds);
-    case MYLITE_SQL_AST_DECIMAL_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.decimal_type.precision_span, bounds) &&
-               ast_snapshot_rebase_span(&node->payload.decimal_type.scale_span, bounds);
-    case MYLITE_SQL_AST_APPROXIMATE_TYPE:
-        return ast_snapshot_rebase_span(&node->payload.approximate_type.precision_span, bounds) &&
-               ast_snapshot_rebase_span(&node->payload.approximate_type.scale_span, bounds);
-    case MYLITE_SQL_AST_DATE_TYPE:
-    case MYLITE_SQL_AST_DATETIME_TYPE:
-    case MYLITE_SQL_AST_TIMESTAMP_TYPE:
-    case MYLITE_SQL_AST_TIME_TYPE:
-        return ast_snapshot_rebase_span(
-            &node->payload.temporal_fractional_precision.precision_span,
-            bounds
-        );
-    default:
-        return true;
+    layout = ast_node_span_layout_for_kind(node->kind);
+    for (size_t index = 0U; index < layout.count; ++index) {
+        if (!ast_snapshot_rebase_span(ast_mutable_node_span_at(node, &layout, index), bounds)) {
+            return false;
+        }
     }
+    return true;
 }
 
 static bool ast_snapshot_rebase_span(

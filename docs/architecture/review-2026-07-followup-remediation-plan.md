@@ -214,18 +214,36 @@ The corresponding POSIX paths passed locally.
 
 ### `PREP-01`: lazy prepare without execution-side effects
 
-- [ ] Specify parse-time, analyze-time, prepare-time, first-step, reset, and
+- [x] Specify parse-time, analyze-time, prepare-time, first-step, reset, and
   finalize state transitions for every statement family.
-- [ ] Ensure parameterless table SELECT preparation does not start a read
+- [x] Ensure parameterless table SELECT preparation does not start a read
   transaction, capture a snapshot, install an active cursor, block another
   command, or block another handle's writer.
-- [ ] Defer SQLite execution preparation when needed to preserve schema and
+- [x] Defer SQLite execution preparation when needed to preserve schema and
   session correctness without violating lazy behavior.
-- [ ] Correct the existing native test that currently requires prepare-time
+- [x] Correct the existing native test that currently requires prepare-time
   transaction activation.
-- [ ] Cover constant/table SELECTs with and without parameters, intervening
+- [x] Cover constant/table SELECTs with and without parameters, intervening
   same-handle commands, concurrent writers, schema changes, and diagnostics.
-- [ ] Verify the behavior against MySQL 8.4.9 through mysqli and PDO.
+- [x] Verify the behavior against MySQL 8.4.9 through mysqli and PDO.
+
+`PREP-01` implementation evidence at `e340b6da8`:
+
+- The native cursor lifecycle test covers zero-parameter and parameterized
+  constant/table SELECTs, reset before first step, same-handle commands,
+  cross-handle DML and DDL, metadata refresh, incompatible DDL diagnostics,
+  explicit transactions, `autocommit=0`, and never-executed finalize.
+- The profiling test proves prepare performs one parse and analysis but zero
+  SELECT lowerings; first step records a retained-plan hit and the sole
+  lowering.
+- All 692 native tests passed. The broad incremental invocation passed 690 and
+  reported two newly registered SQLite ownership executables as not built;
+  building those registered targets and rerunning them passed 2/2.
+- Focused Debug, Release, ASan/UBSan, and deterministic allocator-failpoint
+  tests pass.
+- The MyLite mysqli and PDO adapter regressions pass, and the pinned MySQL
+  8.4.9 mysqli/PDO expectation fixture passes with the recorded transaction,
+  writer, schema-change, and diagnostic behavior.
 
 ### `PREP-02`: row-producing classification and reset
 

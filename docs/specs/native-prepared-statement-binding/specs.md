@@ -115,7 +115,9 @@ next execution.
 `mylite_stmt_step()` starts execution lazily and then returns `MYLITE_ROW` for
 result rows or `MYLITE_DONE` after completion. Non-row statements return
 `MYLITE_DONE` after one execution; affected rows and insert ID remain available
-until reset or the next execution.
+until reset or the next execution. The transaction, snapshot, metadata
+invalidation, and SQLite-program ownership boundary is defined in
+[Prepared-Statement Lazy Prepare](../prepared-statement-lazy-prepare/specs.md).
 
 `mylite_prepare_buffered()` has the same binding and execution contract as
 `mylite_prepare()`, but materializes the complete result when execution begins,

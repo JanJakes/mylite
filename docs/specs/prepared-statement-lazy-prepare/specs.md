@@ -12,6 +12,21 @@ This specification closes follow-up finding `PREP-01`. The adjacent
 row-producing classifier and materialized-result reset work is tracked by
 `PREP-02`; it must preserve the lifecycle boundary defined here.
 
+## Implementation status
+
+Commit `e340b6da8` implements this lifecycle for supported streaming `SELECT`
+statements. Prepare performs a bounded catalog read and object validation.
+Zero-parameter forms also retain output metadata and reusable analysis, while
+parameterized forms defer value-dependent analysis. Prepare performs no SELECT
+lowering and retains no transaction, snapshot, active cursor, or SQLite query
+program. First step refreshes or creates analysis and metadata before lowering
+and execution.
+
+Internally materialized and synthetic row producers still use their existing
+classification and replay paths. `PREP-02` must move those families to the same
+first-step boundary without weakening the streaming lifecycle established
+here.
+
 ## Authorities
 
 - MySQL 8.4 prepared statements:

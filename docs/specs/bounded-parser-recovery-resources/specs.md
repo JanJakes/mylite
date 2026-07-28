@@ -2,26 +2,27 @@
 
 ## Status
 
-Specified; implementation and release qualification are pending.
+Implemented and release-qualified.
 
 ## Summary
 
 MyLite runs a compatibility retry layer after a recoverable Lemon syntax error
-or an unsupported utility parse. The shared retry context currently copies
-every token into a 64-byte token vector and, whenever the statement contains a
-parenthesis, eagerly allocates two `size_t` indexes plus one flag byte for
-every token. Up to eight retry callbacks can then inspect the complete token
-sequence, and selected callbacks run one or two additional Lemon parses.
+or an unsupported utility parse. Before this remediation, the shared retry
+context copied every token into a 64-byte token vector and eagerly allocated
+two `size_t` indexes plus one flag byte per token whenever the statement
+contained a parenthesis. Up to eight retry callbacks could then inspect the
+complete token sequence, and selected callbacks ran one or two additional
+Lemon parses.
 
-This work is linear after the earlier predicate-context correction, but it has
-large constants and no statement-local ceiling. A one-megabyte shallow
-malformed statement currently retains approximately 81 MiB at peak and
-requests approximately 149 MiB cumulatively before returning a syntax error.
+That work was linear after the earlier predicate-context correction, but it
+had large constants and no statement-local ceiling. A one-megabyte shallow
+malformed statement retained approximately 81 MiB at peak and requested
+approximately 149 MiB cumulatively before returning a syntax error.
 
-This feature gives compatibility recovery explicit token, parenthesis-depth,
-lexer-pass, callback, and workspace budgets. It also constructs parenthesis
-indexes only after a retry whose syntax shape needs them. Statements accepted
-by the primary Lemon grammar do not enter these budgets.
+The implementation gives compatibility recovery explicit token,
+parenthesis-depth, lexer-pass, callback, and workspace budgets. It constructs
+parenthesis indexes only after a retry whose syntax shape needs them.
+Statements accepted by the primary Lemon grammar do not enter these budgets.
 
 ## Sources
 
@@ -258,3 +259,43 @@ Development, Debug-CI, Release, ASan/UBSan, and deterministic allocator
 profiles; all parser native suites; the pinned parser MySQL fixtures; at least
 10,000 seeded parser-fuzzer executions with inputs above one MiB; formatting,
 static analysis, ABI/install-consumer checks, and the production size gate.
+
+## Qualification
+
+Release qualification completed on 2026-07-28 against MySQL 8.4.9 and the
+supported native build profiles:
+
+- all 47 parser suites pass in Development, assertion-enabled Debug-CI,
+  Release, and ASan/UBSan with leak detection;
+- the focused resource-limit, scaling, and retry fatal-status suites pass in
+  the deterministic allocator profile;
+- all 38 pinned parser MySQL 8.4.9 fixtures pass with unchanged accepted
+  behavior and public `1064` / `42000` syntax diagnostics;
+- 10,000 seeded parser-fuzzer executions pass under ASan/UBSan with the
+  existing corpus plus flat, shallow, and comment-padded inputs above one MiB;
+- repository formatting, full LLVM 19 static analysis, shared-library ABI
+  snapshots, installed CMake/pkg-config consumers, and the compatibility
+  ledger gate pass;
+- the production archive is 12,412,232 bytes against the 15,000,000-byte
+  ceiling.
+
+The final Release scaling gate reports:
+
+| Shape | Input bytes | Tokens | Lexer passes | Callbacks | Allocations | Requested bytes | Peak workspace | Budget exhausted |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Flat malformed, 64 tokens | 132 | 64 | 2 | 8 | 16 | 31,232 | 4,160 | No |
+| Flat malformed, 256 tokens | 516 | 256 | 2 | 8 | 28 | 144,640 | 16,704 | No |
+| Flat malformed, 1,024 tokens | 2,052 | 1,024 | 2 | 8 | 40 | 603,072 | 67,904 | No |
+| Flat malformed, 4,096 tokens | 8,196 | 4,096 | 2 | 8 | 52 | 2,476,544 | 278,144 | No |
+| Flat malformed, 16,384 tokens | 32,772 | 16,384 | 2 | 8 | 64 | 10,168,960 | 1,142,144 | No |
+| Flat malformed, 65,536 tokens | 131,076 | 65,536 | 2 | 8 | 76 | 41,339,584 | 4,259,840 | No |
+| Flat malformed, one MiB | 1,048,576 | 65,536 | 2 | 0 | 74 | 41,208,512 | 4,194,304 | Yes |
+| Shallow malformed, one MiB | 1,048,576 | 65,536 | 2 | 0 | 74 | 41,208,512 | 4,194,304 | Yes |
+| Comment-padded, one MiB | 1,048,576 | 3 | 2 | 8 | 3 | 1,030 | 1,027 | No |
+
+Cumulative requested bytes include each successful growth allocation and are
+therefore larger than the live-workspace ceiling. Peak live retry workspace
+remains within the proportional allowance and the 8 MiB absolute cap. The
+focused tests are registered through the cross-platform native-test manifest;
+local sanitizer, fuzz, allocator, and production qualification was performed
+on Linux.

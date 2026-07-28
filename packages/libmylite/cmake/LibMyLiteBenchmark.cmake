@@ -25,6 +25,15 @@ target_include_directories(mylite_parser_recovery_benchmark PRIVATE
 )
 mylite_configure_c_target(mylite_parser_recovery_benchmark)
 
+add_executable(mylite_spatial_validity_benchmark EXCLUDE_FROM_ALL
+  benchmarks/mylite_spatial_validity_benchmark.c
+)
+target_link_libraries(mylite_spatial_validity_benchmark PRIVATE MyLite::mylite)
+target_include_directories(mylite_spatial_validity_benchmark PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+mylite_configure_c_target(mylite_spatial_validity_benchmark)
+
 add_executable(mylite_large_dataset_benchmark EXCLUDE_FROM_ALL
   benchmarks/mylite_large_dataset_benchmark.c
 )

@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented; release qualification is pending.
+Implemented and release-qualified.
 
 ## Summary
 
@@ -197,8 +197,8 @@ The change does not alter:
 - named-zone or leap-second placeholder decisions.
 
 The baseline `CONVERT_TZ()` compatibility row remains scoped to its documented
-fixed-offset surface. A focused UTC-boundary row remains yellow until native
-and MySQL differential tests pass all release gates.
+fixed-offset surface. The focused UTC-boundary row is green for the behavior
+specified here.
 
 ## Test Plan
 
@@ -225,3 +225,30 @@ deterministic allocator profiles; affected scalar and row-scalar runtime
 suites; pinned temporal MySQL fixtures; formatting; full static analysis;
 ABI/install-consumer checks; compatibility validation; and the production
 size gate.
+
+## Qualification
+
+Release qualification completed on 2026-07-28:
+
+- all 16 affected temporal, time-zone, scalar, row-backed, and parser/runtime
+  suites passed under Development, Debug-CI, Release, and ASan/UBSan with leak
+  detection;
+- deterministic allocator injection covered both converted-result and
+  preserved-original allocation failures;
+- all 18 temporal and time-zone MySQL fixtures, including
+  `mysql_convert_tz_utc_boundaries_expectations.sh`, matched the pinned MySQL
+  8.4.9 x86-64 runtime;
+- focused LLVM 19 analysis was clean for the converter and new tests, and the
+  repository-wide gate checked 931 first-party translation units from the
+  935-entry compilation database without a finding;
+- formatting, the exact shared-library ABI comparison, the installed consumer,
+  multiarch `pkg-config`, and compatibility-claim validation passed;
+- the production `libmylite.a` measured 12,381,504 bytes against the
+  15,000,000-byte ceiling.
+
+Self-review confirmed that range comparison follows source-zone normalization,
+includes both fractional endpoints, leaves valid target results free to cross
+the UTC interval, preserves out-of-range input by explicit length, validates
+both zones before deciding whether to preserve, and retains one-allocation
+ownership on both successful result paths. No storage, ABI, SQLite-fork,
+dependency, or result-metadata change is included.

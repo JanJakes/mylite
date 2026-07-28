@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented; release qualification is pending.
+Implemented and release-qualified.
 
 ## Summary
 
@@ -285,3 +285,31 @@ Native tests must cover:
 Qualification must rerun all spatial native and pinned MySQL fixtures, the
 large-input geometry fuzzer, ASan/UBSan with leak detection, fault injection,
 formatting, static analysis, and the SEC02 scaling benchmark.
+
+## Qualification
+
+Release qualification completed against MySQL 8.4.9 and the supported native
+build profiles:
+
+- all 21 spatial-related native suites pass in Development, assertion-enabled
+  Debug-CI, Release, and ASan/UBSan with leak detection;
+- all 22 pinned spatial-related MySQL 8.4.9 fixtures pass, including the
+  threshold, translation, scaling, representational-collapse, and documented
+  extreme-ratio observations in this feature's fixture;
+- the deterministic fault-injection profile passes the 22 relevant allocator
+  and spatial suites;
+- 10,000 seeded geometry-fuzzer executions pass under ASan/UBSan with the
+  262,144-byte input ceiling;
+- focused LLVM 19 static analysis, repository formatting, shared-library ABI
+  snapshots, installed CMake/pkg-config consumers, and production size gates
+  pass;
+- the production archive is 12,396,396 bytes against the 15,000,000-byte
+  ceiling;
+- the SEC02 production benchmark passes its candidate-count and slope guards.
+  At 8K, 16K, 32K, and 64K vertices it examines 17,285, 34,553, 69,087, and
+  138,119 candidates respectively, ending at 2.11 candidates per segment
+  instead of 2,147,385,344 exhaustive pairs.
+
+The new native suite is registered in the required cross-platform test
+configuration, including Windows CI. The local sanitizer, fuzz, fault, and
+production qualification was performed on Linux.

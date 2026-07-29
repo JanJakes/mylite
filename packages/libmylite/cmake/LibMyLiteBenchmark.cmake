@@ -52,6 +52,21 @@ if(MYLITE_ENABLE_PROFILING)
 endif()
 mylite_configure_c_target(mylite_large_dataset_benchmark)
 
+add_executable(mylite_load_data_benchmark EXCLUDE_FROM_ALL
+  benchmarks/mylite_load_data_benchmark.c
+)
+target_link_libraries(mylite_load_data_benchmark PRIVATE MyLite::mylite)
+target_include_directories(mylite_load_data_benchmark PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+if(MYLITE_ENABLE_PROFILING)
+  target_compile_definitions(mylite_load_data_benchmark PRIVATE MYLITE_ENABLE_PROFILING=1)
+  set(mylite_load_data_benchmark_profile 1)
+else()
+  set(mylite_load_data_benchmark_profile 0)
+endif()
+mylite_configure_c_target(mylite_load_data_benchmark)
+
 add_executable(mylite_large_dataset_system_benchmark EXCLUDE_FROM_ALL
   benchmarks/mylite_large_dataset_system_benchmark.c
 )
@@ -88,5 +103,15 @@ add_custom_target(mylite_large_dataset_benchmark_check
   DEPENDS
     mylite_large_dataset_benchmark
     mylite_large_dataset_system_benchmark
+  VERBATIM
+)
+
+add_custom_target(mylite_load_data_benchmark_check
+  COMMAND "${CMAKE_COMMAND}"
+    "-DBENCHMARK=$<TARGET_FILE:mylite_load_data_benchmark>"
+    "-DOUTPUT_BASE=${CMAKE_CURRENT_BINARY_DIR}/load-data-smoke"
+    "-DPROFILE=${mylite_load_data_benchmark_profile}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/load_data_benchmark_cli_test.cmake"
+  DEPENDS mylite_load_data_benchmark
   VERBATIM
 )

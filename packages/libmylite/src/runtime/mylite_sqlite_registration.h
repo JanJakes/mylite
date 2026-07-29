@@ -58,7 +58,10 @@ int mylite_sqlite_register_collations(
 int mylite_sqlite_status_to_mylite(int sqlite_status);
 
 #ifdef MYLITE_ENABLE_PROFILING
+void *mylite_profile_sqlite3_user_data(sqlite3_context *context);
+
 #  define sqlite3_step(statement) mylite_profile_sqlite3_step(statement)
+#  define sqlite3_user_data(context) mylite_profile_sqlite3_user_data(context)
 #endif
 
 #endif

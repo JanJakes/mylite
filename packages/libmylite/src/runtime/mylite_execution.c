@@ -258,9 +258,11 @@ int mylite_execute(
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_record_parse(
         database,
-        profile_phase_started_ns,
-        parse_result.retry_callback_count,
-        parse_result.retry_handled_count
+        (struct mylite_profile_parse_observation){
+            .started_ns = profile_phase_started_ns,
+            .retry_callback_count = parse_result.retry_callback_count,
+            .retry_handled_count = parse_result.retry_handled_count,
+        }
     );
 #endif
     if (rc != MYLITE_OK) {
@@ -1564,9 +1566,11 @@ static int prepare_cursor_select_statement(
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_record_parse(
         database,
-        profile_phase_started_ns,
-        stmt->parse_result.retry_callback_count,
-        stmt->parse_result.retry_handled_count
+        (struct mylite_profile_parse_observation){
+            .started_ns = profile_phase_started_ns,
+            .retry_callback_count = stmt->parse_result.retry_callback_count,
+            .retry_handled_count = stmt->parse_result.retry_handled_count,
+        }
     );
 #endif
     stmt->has_parse_result = true;
@@ -2217,9 +2221,11 @@ static int ensure_prepared_statement_parse_tree(mylite_stmt *stmt) {
 #ifdef MYLITE_ENABLE_PROFILING
     mylite_profile_record_parse(
         stmt->database,
-        profile_parse_started_ns,
-        stmt->parse_result.retry_callback_count,
-        stmt->parse_result.retry_handled_count
+        (struct mylite_profile_parse_observation){
+            .started_ns = profile_parse_started_ns,
+            .retry_callback_count = stmt->parse_result.retry_callback_count,
+            .retry_handled_count = stmt->parse_result.retry_handled_count,
+        }
     );
 #endif
     stmt->has_parse_result = true;

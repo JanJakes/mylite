@@ -2,6 +2,9 @@
 #define MYLITE_RUNTIME_MYLITE_CATALOG_INTERNAL_H
 
 #include "mylite_catalog.h"
+#ifdef MYLITE_ENABLE_PROFILING
+#  include "mylite_profile_internal.h"
+#endif
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -121,7 +124,6 @@ int mylite_catalog_bind_u64(sqlite3_stmt *statement, int index, uint64_t value);
 int64_t mylite_catalog_bool_value(bool value);
 int mylite_catalog_step_done(sqlite3_stmt *statement);
 #ifdef MYLITE_ENABLE_PROFILING
-int mylite_profile_catalog_sqlite3_step(sqlite3_stmt *statement);
 #  define mylite_catalog_sqlite3_step(statement) mylite_profile_catalog_sqlite3_step(statement)
 #else
 #  define mylite_catalog_sqlite3_step(statement) sqlite3_step(statement)

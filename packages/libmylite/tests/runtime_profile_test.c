@@ -2,8 +2,11 @@
 
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
 #include "runtime/mylite_profile_internal.h"
+#include "runtime/mylite_sqlite_registration.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +20,9 @@
 enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16,
+    profile_cost_iterations = 64,
+    profile_cost_statement_count = profile_cost_iterations * 2,
+    profile_cost_total_scalar_calls = profile_cost_iterations + 2,
 };
 
 static int test_buffered_profile(void);
@@ -28,9 +34,26 @@ static int test_parameterized_prepared_plan_cache_profile(void);
 static int test_prepared_dml_plan_cache_profile(void);
 static int test_connection_attribution(void);
 static int test_transaction_control_profile(void);
+static int test_sqlite_cost_profile(void);
 static int test_close_active_profile(void);
+static int execute_direct_sql(sqlite3 *sqlite, const char *sql, bool expect_reset_status);
+static void profile_scalar_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static int profile_collation_callback(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+);
+static void profile_callback_destroy(void *application_data);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
+
+struct profile_callback_state {
+    size_t scalar_call_count;
+    size_t collation_call_count;
+    size_t destroy_count;
+};
 
 int main(void) {
     int failures = 0;
@@ -44,6 +67,7 @@ int main(void) {
     failures += test_prepared_dml_plan_cache_profile();
     failures += test_connection_attribution();
     failures += test_transaction_control_profile();
+    failures += test_sqlite_cost_profile();
     failures += test_close_active_profile();
     failures += mylite_test_expect_int(
         mylite_profile_start(NULL),
@@ -136,6 +160,8 @@ static int test_buffered_profile(void) {
     failures += mylite_test_expect_true(snapshot.sqlite_step_count > 0U, "buffered SQLite steps");
     failures += mylite_test_expect_true(snapshot.sqlite_step_ns > 0U, "buffered SQLite step time");
     failures +=
+        mylite_test_expect_true(snapshot.sqlite_vm_step_count > 0U, "buffered SQLite VM steps");
+    failures +=
         mylite_test_expect_true(snapshot.metadata_step_count > 0U, "buffered metadata steps");
     failures += mylite_test_expect_true(
         snapshot.metadata_step_count <= snapshot.sqlite_step_count,
@@ -146,6 +172,12 @@ static int test_buffered_profile(void) {
     failures += mylite_test_expect_true(
         snapshot.metadata_step_ns <= snapshot.sqlite_step_ns,
         "metadata time bounded by SQLite time"
+    );
+    failures +=
+        mylite_test_expect_true(snapshot.metadata_vm_step_count > 0U, "buffered metadata VM steps");
+    failures += mylite_test_expect_true(
+        snapshot.metadata_vm_step_count <= snapshot.sqlite_vm_step_count,
+        "metadata VM steps bounded by SQLite VM steps"
     );
     failures +=
         mylite_test_expect_true(snapshot.allocation_count > 0U, "buffered allocation count");
@@ -1738,6 +1770,146 @@ static int test_transaction_control_profile(void) {
     return failures;
 }
 
+static int test_sqlite_cost_profile(void) {
+    static const char scalar_sql[] = "SELECT mylite_profile_test_scalar(1)";
+    static const char collation_sql[] =
+        "SELECT value FROM (SELECT 'b' AS value UNION ALL SELECT 'a' UNION ALL SELECT 'c') "
+        "ORDER BY value COLLATE mylite_profile_test_collation";
+    struct profile_callback_state state = {0};
+    struct mylite_profile_snapshot snapshot = {0};
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open SQLite cost profile"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += mylite_test_expect_int(
+        mylite_sqlite_register_functions(
+            sqlite,
+            &(struct mylite_sqlite_function_registration){
+                .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+                .name = "mylite_profile_test_scalar",
+                .argument_count = 1,
+                .text_representation = SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+                .application_data = &state,
+                .scalar_callback = profile_scalar_callback,
+                .step_callback = NULL,
+                .final_callback = NULL,
+                .value_callback = NULL,
+                .inverse_callback = NULL,
+                .destroy_callback = profile_callback_destroy,
+            },
+            1U
+        ),
+        MYLITE_OK,
+        "register profiled scalar callback"
+    );
+    failures += mylite_test_expect_int(
+        mylite_sqlite_register_collations(
+            sqlite,
+            &(struct mylite_sqlite_collation_registration){
+                .name = "mylite_profile_test_collation",
+                .text_representation = SQLITE_UTF8,
+                .application_data = &state,
+                .compare_callback = profile_collation_callback,
+                .destroy_callback = profile_callback_destroy,
+            },
+            1U
+        ),
+        MYLITE_OK,
+        "register profiled collation callback"
+    );
+
+    failures +=
+        mylite_test_expect_int(mylite_profile_start(database), MYLITE_OK, "start inactive scope");
+    failures += execute_direct_sql(sqlite, scalar_sql, false);
+    failures += execute_direct_sql(sqlite, collation_sql, false);
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop inactive scope"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.sqlite_step_count == 0U && snapshot.sqlite_vm_step_count == 0U,
+        "inactive direct scope excludes SQLite counters"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.scalar_callback_count == 0U && snapshot.collation_callback_count == 0U,
+        "inactive direct scope excludes callbacks"
+    );
+
+    failures +=
+        mylite_test_expect_int(mylite_profile_start(database), MYLITE_OK, "start direct scope");
+    mylite_profile_enter_api(database);
+    for (size_t iteration = 0U; iteration < profile_cost_iterations; ++iteration) {
+        failures += execute_direct_sql(sqlite, scalar_sql, true);
+        failures += execute_direct_sql(sqlite, collation_sql, true);
+    }
+    mylite_profile_leave_api(database);
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop direct scope"
+    );
+    failures +=
+        mylite_test_expect_true(snapshot.statement_count == 0U, "direct scope statement count");
+    failures += mylite_test_expect_true(
+        snapshot.sqlite_step_count > 0U && snapshot.sqlite_vm_step_count > 0U,
+        "direct scope SQLite counters"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.sqlite_run_count >= profile_cost_statement_count,
+        "direct scope SQLite run count"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.metadata_step_count == 0U && snapshot.metadata_vm_step_count == 0U,
+        "direct scope metadata separation"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.scalar_callback_count == profile_cost_iterations &&
+            snapshot.scalar_callback_ns > 0U,
+        "direct scope scalar callback costs"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.collation_callback_count > 0U && snapshot.collation_callback_ns > 0U,
+        "direct scope collation callback costs"
+    );
+
+    failures +=
+        mylite_test_expect_int(mylite_profile_start(database), MYLITE_OK, "start overflow scope");
+    database->profile.sqlite_vm_step_count = UINT64_MAX;
+    database->profile.scalar_callback_count = UINT64_MAX;
+    mylite_profile_enter_api(database);
+    failures += execute_direct_sql(sqlite, scalar_sql, true);
+    mylite_profile_leave_api(database);
+    failures += mylite_test_expect_int(
+        mylite_profile_stop(database, &snapshot),
+        MYLITE_OK,
+        "stop overflow scope"
+    );
+    failures += mylite_test_expect_true(
+        snapshot.sqlite_vm_step_count == UINT64_MAX && snapshot.scalar_callback_count == UINT64_MAX,
+        "profile counters saturate"
+    );
+
+    mylite_close(database);
+    failures += mylite_test_expect_true(
+        state.scalar_call_count == profile_cost_total_scalar_calls,
+        "scalar application data"
+    );
+    failures += mylite_test_expect_true(
+        state.collation_call_count > profile_cost_iterations,
+        "collation application data"
+    );
+    failures +=
+        mylite_test_expect_true(state.destroy_count == 2U, "callback destructor preservation");
+    return failures;
+}
+
 static int test_close_active_profile(void) {
     struct mylite_profile_snapshot snapshot = {0};
     mylite_db *database = NULL;
@@ -1777,6 +1949,84 @@ static int test_close_active_profile(void) {
     );
     mylite_close(database);
     return failures;
+}
+
+static int execute_direct_sql(sqlite3 *sqlite, const char *sql, bool expect_reset_status) {
+    sqlite3_stmt *statement = NULL;
+    int failures = 0;
+    int rc = sqlite3_prepare_v2(sqlite, sql, -1, &statement, NULL);
+
+    failures += mylite_test_expect_int(rc, SQLITE_OK, "prepare direct profile SQL");
+    if (rc != SQLITE_OK) {
+        return failures;
+    }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        if (expect_reset_status) {
+            failures += mylite_test_expect_int(
+                sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_VM_STEP, 0),
+                0,
+                "profile resets SQLite VM status after row"
+            );
+        }
+    }
+    failures += mylite_test_expect_int(rc, SQLITE_DONE, "step direct profile SQL");
+    if (expect_reset_status) {
+        failures += mylite_test_expect_int(
+            sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_VM_STEP, 0),
+            0,
+            "profile resets SQLite VM status after done"
+        );
+    }
+    failures += mylite_test_expect_int(
+        sqlite3_finalize(statement),
+        SQLITE_OK,
+        "finalize direct profile SQL"
+    );
+    return failures;
+}
+
+static void profile_scalar_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct profile_callback_state *state = sqlite3_user_data(context);
+
+    if (state == NULL || argc != 1) {
+        sqlite3_result_error(context, "invalid profile scalar state", -1);
+        return;
+    }
+    ++state->scalar_call_count;
+    sqlite3_result_int(context, sqlite3_value_int(argv[0]));
+}
+
+static int profile_collation_callback(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+) {
+    struct profile_callback_state *state = application_data;
+    size_t common_size = 0U;
+    int result = 0;
+
+    if (state != NULL) {
+        ++state->collation_call_count;
+    }
+    if (left_size < 0 || right_size < 0) {
+        return 0;
+    }
+    common_size = (size_t)(left_size < right_size ? left_size : right_size);
+    result = memcmp(left, right, common_size);
+    if (result != 0) {
+        return result;
+    }
+    return (left_size > right_size) - (left_size < right_size);
+}
+
+static void profile_callback_destroy(void *application_data) {
+    struct profile_callback_state *state = application_data;
+
+    if (state != NULL) {
+        ++state->destroy_count;
+    }
 }
 
 static void remove_related_files(const char *path) {

@@ -19,8 +19,21 @@
 #endif
 
 static uint64_t elapsed_since(uint64_t started_ns);
+static void add_counter(uint64_t *counter, uint64_t value);
 static void record_allocation(size_t bytes);
 static int profile_sqlite3_step(sqlite3_stmt *statement, bool is_metadata);
+static void record_statement_status(
+    struct mylite_profile_snapshot *profile,
+    sqlite3_stmt *statement,
+    bool is_metadata
+);
+static void record_one_statement_status(
+    uint64_t *total,
+    uint64_t *metadata,
+    sqlite3_stmt *statement,
+    int operation,
+    bool is_metadata
+);
 
 static MYLITE_PROFILE_THREAD_LOCAL mylite_db *active_api_database = NULL;
 
@@ -111,6 +124,12 @@ void mylite_profile_enter_api(mylite_db *database) {
     active_api_database = database != NULL && database->profile_active ? database : NULL;
 }
 
+void mylite_profile_leave_api(mylite_db *database) {
+    if (active_api_database == database) {
+        active_api_database = NULL;
+    }
+}
+
 void mylite_profile_record_statement(mylite_db *database, uint64_t started_ns) {
     if (database != NULL && database->profile_active) {
         database->profile.statement_api_ns += elapsed_since(started_ns);
@@ -130,15 +149,13 @@ void mylite_profile_record_normalization(mylite_db *database, uint64_t started_n
 
 void mylite_profile_record_parse(
     mylite_db *database,
-    uint64_t started_ns,
-    size_t retry_callback_count,
-    size_t retry_handled_count
+    struct mylite_profile_parse_observation observation
 ) {
     if (database != NULL && database->profile_active) {
-        database->profile.parse_ns += elapsed_since(started_ns);
+        database->profile.parse_ns += elapsed_since(observation.started_ns);
         ++database->profile.parse_count;
-        database->profile.parser_retry_callback_count += (uint64_t)retry_callback_count;
-        database->profile.parser_retry_handled_count += (uint64_t)retry_handled_count;
+        database->profile.parser_retry_callback_count += (uint64_t)observation.retry_callback_count;
+        database->profile.parser_retry_handled_count += (uint64_t)observation.retry_handled_count;
     }
 }
 
@@ -232,6 +249,26 @@ int mylite_profile_catalog_sqlite3_step(sqlite3_stmt *statement) {
     return profile_sqlite3_step(statement, true);
 }
 
+void mylite_profile_record_scalar_callback(uint64_t started_ns) {
+    mylite_db *database = active_api_database;
+
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    add_counter(&database->profile.scalar_callback_ns, elapsed_since(started_ns));
+    add_counter(&database->profile.scalar_callback_count, 1U);
+}
+
+void mylite_profile_record_collation_callback(uint64_t started_ns) {
+    mylite_db *database = active_api_database;
+
+    if (database == NULL || !database->profile_active) {
+        return;
+    }
+    add_counter(&database->profile.collation_callback_ns, elapsed_since(started_ns));
+    add_counter(&database->profile.collation_callback_count, 1U);
+}
+
 void mylite_profile_record_descriptor_copy(mylite_db *database, size_t bytes) {
     if (database == NULL || !database->profile_active || bytes == 0U) {
         return;
@@ -287,12 +324,8 @@ static void record_allocation(size_t bytes) {
     if (database == NULL || !database->profile_active) {
         return;
     }
-    ++database->profile.allocation_count;
-    if ((uint64_t)bytes > UINT64_MAX - database->profile.allocation_bytes) {
-        database->profile.allocation_bytes = UINT64_MAX;
-    } else {
-        database->profile.allocation_bytes += (uint64_t)bytes;
-    }
+    add_counter(&database->profile.allocation_count, 1U);
+    add_counter(&database->profile.allocation_bytes, (uint64_t)bytes);
 }
 
 static int profile_sqlite3_step(sqlite3_stmt *statement, bool is_metadata) {
@@ -303,14 +336,104 @@ static int profile_sqlite3_step(sqlite3_stmt *statement, bool is_metadata) {
     if (database != NULL && database->profile_active) {
         uint64_t elapsed_ns = elapsed_since(started_ns);
 
-        database->profile.sqlite_step_ns += elapsed_ns;
-        ++database->profile.sqlite_step_count;
+        add_counter(&database->profile.sqlite_step_ns, elapsed_ns);
+        add_counter(&database->profile.sqlite_step_count, 1U);
         if (is_metadata) {
-            database->profile.metadata_step_ns += elapsed_ns;
-            ++database->profile.metadata_step_count;
+            add_counter(&database->profile.metadata_step_ns, elapsed_ns);
+            add_counter(&database->profile.metadata_step_count, 1U);
         }
+        record_statement_status(&database->profile, statement, is_metadata);
     }
     return rc;
+}
+
+static void add_counter(uint64_t *counter, uint64_t value) {
+    if (value > UINT64_MAX - *counter) {
+        *counter = UINT64_MAX;
+        return;
+    }
+    *counter += value;
+}
+
+static void record_statement_status(
+    struct mylite_profile_snapshot *profile,
+    sqlite3_stmt *statement,
+    bool is_metadata
+) {
+    record_one_statement_status(
+        &profile->sqlite_vm_step_count,
+        &profile->metadata_vm_step_count,
+        statement,
+        SQLITE_STMTSTATUS_VM_STEP,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_fullscan_step_count,
+        &profile->metadata_fullscan_step_count,
+        statement,
+        SQLITE_STMTSTATUS_FULLSCAN_STEP,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_sort_count,
+        &profile->metadata_sort_count,
+        statement,
+        SQLITE_STMTSTATUS_SORT,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_autoindex_count,
+        &profile->metadata_autoindex_count,
+        statement,
+        SQLITE_STMTSTATUS_AUTOINDEX,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_reprepare_count,
+        &profile->metadata_reprepare_count,
+        statement,
+        SQLITE_STMTSTATUS_REPREPARE,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_run_count,
+        &profile->metadata_run_count,
+        statement,
+        SQLITE_STMTSTATUS_RUN,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_filter_hit_count,
+        &profile->metadata_filter_hit_count,
+        statement,
+        SQLITE_STMTSTATUS_FILTER_HIT,
+        is_metadata
+    );
+    record_one_statement_status(
+        &profile->sqlite_filter_miss_count,
+        &profile->metadata_filter_miss_count,
+        statement,
+        SQLITE_STMTSTATUS_FILTER_MISS,
+        is_metadata
+    );
+}
+
+static void record_one_statement_status(
+    uint64_t *total,
+    uint64_t *metadata,
+    sqlite3_stmt *statement,
+    int operation,
+    bool is_metadata
+) {
+    int value = sqlite3_stmt_status(statement, operation, 1);
+
+    if (value <= 0) {
+        return;
+    }
+    add_counter(total, (uint64_t)value);
+    if (is_metadata) {
+        add_counter(metadata, (uint64_t)value);
+    }
 }
 
 static uint64_t elapsed_since(uint64_t started_ns) {

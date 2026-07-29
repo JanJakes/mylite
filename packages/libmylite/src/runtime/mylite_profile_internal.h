@@ -9,6 +9,12 @@
 
 struct sqlite3_stmt;
 
+struct mylite_profile_parse_observation {
+    uint64_t started_ns;
+    size_t retry_callback_count;
+    size_t retry_handled_count;
+};
+
 struct mylite_profile_snapshot {
     uint64_t statement_api_ns;
     uint64_t normalization_ns;
@@ -18,6 +24,8 @@ struct mylite_profile_snapshot {
     uint64_t select_lowering_ns;
     uint64_t sqlite_step_ns;
     uint64_t metadata_step_ns;
+    uint64_t scalar_callback_ns;
+    uint64_t collation_callback_ns;
     uint64_t result_buffer_ns;
     uint64_t cursor_step_ns;
     uint64_t cursor_finalize_ns;
@@ -34,6 +42,24 @@ struct mylite_profile_snapshot {
     uint64_t select_lowering_cache_hit_count;
     uint64_t sqlite_step_count;
     uint64_t metadata_step_count;
+    uint64_t sqlite_vm_step_count;
+    uint64_t sqlite_fullscan_step_count;
+    uint64_t sqlite_sort_count;
+    uint64_t sqlite_autoindex_count;
+    uint64_t sqlite_reprepare_count;
+    uint64_t sqlite_run_count;
+    uint64_t sqlite_filter_hit_count;
+    uint64_t sqlite_filter_miss_count;
+    uint64_t metadata_vm_step_count;
+    uint64_t metadata_fullscan_step_count;
+    uint64_t metadata_sort_count;
+    uint64_t metadata_autoindex_count;
+    uint64_t metadata_reprepare_count;
+    uint64_t metadata_run_count;
+    uint64_t metadata_filter_hit_count;
+    uint64_t metadata_filter_miss_count;
+    uint64_t scalar_callback_count;
+    uint64_t collation_callback_count;
     uint64_t allocation_count;
     uint64_t allocation_bytes;
     uint64_t descriptor_copy_count;
@@ -68,13 +94,12 @@ int mylite_profile_start(mylite_db *database);
 int mylite_profile_stop(mylite_db *database, struct mylite_profile_snapshot *out_snapshot);
 uint64_t mylite_profile_now_ns(void);
 void mylite_profile_enter_api(mylite_db *database);
+void mylite_profile_leave_api(mylite_db *database);
 void mylite_profile_record_statement(mylite_db *database, uint64_t started_ns);
 void mylite_profile_record_normalization(mylite_db *database, uint64_t started_ns);
 void mylite_profile_record_parse(
     mylite_db *database,
-    uint64_t started_ns,
-    size_t retry_callback_count,
-    size_t retry_handled_count
+    struct mylite_profile_parse_observation observation
 );
 void mylite_profile_record_select_plan(mylite_db *database, uint64_t started_ns, bool cache_hit);
 void mylite_profile_record_dml_plan(mylite_db *database, uint64_t started_ns, bool cache_hit);
@@ -93,6 +118,8 @@ void mylite_profile_record_cursor_step(
 void mylite_profile_record_cursor_finalize(mylite_db *database, uint64_t started_ns);
 int mylite_profile_sqlite3_step(struct sqlite3_stmt *statement);
 int mylite_profile_catalog_sqlite3_step(struct sqlite3_stmt *statement);
+void mylite_profile_record_scalar_callback(uint64_t started_ns);
+void mylite_profile_record_collation_callback(uint64_t started_ns);
 void mylite_profile_record_descriptor_copy(mylite_db *database, size_t bytes);
 void mylite_profile_record_statement_cache_event(
     mylite_db *database,

@@ -1,6 +1,29 @@
 #include "mylite_sqlite_registration.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
+
+#ifdef MYLITE_ENABLE_PROFILING
+#  undef sqlite3_user_data
+
+struct mylite_profile_function_registration {
+    void *application_data;
+    void (*scalar_callback)(sqlite3_context *context, int argc, sqlite3_value **argv);
+    void (*destroy_callback)(void *application_data);
+};
+
+struct mylite_profile_collation_registration {
+    void *application_data;
+    int (*compare_callback)(
+        void *application_data,
+        int left_size,
+        const void *left,
+        int right_size,
+        const void *right
+    );
+    void (*destroy_callback)(void *application_data);
+};
+#endif
 
 static int register_function(
     sqlite3 *sqlite,
@@ -50,6 +73,24 @@ static bool collation_registrations_are_valid(
     const struct mylite_sqlite_collation_registration *registrations,
     size_t registration_count
 );
+#ifdef MYLITE_ENABLE_PROFILING
+static struct mylite_profile_function_registration *create_profile_function_registration(
+    const struct mylite_sqlite_function_registration *registration
+);
+static void invoke_profile_scalar(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void destroy_profile_function_registration(void *application_data);
+static struct mylite_profile_collation_registration *create_profile_collation_registration(
+    const struct mylite_sqlite_collation_registration *registration
+);
+static int invoke_profile_collation(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+);
+static void destroy_profile_collation_registration(void *application_data);
+#endif
 
 int mylite_sqlite_register_functions(
     sqlite3 *sqlite,
@@ -115,6 +156,14 @@ int mylite_sqlite_status_to_mylite(int sqlite_status) {
     return MYLITE_ERROR;
 }
 
+#ifdef MYLITE_ENABLE_PROFILING
+void *mylite_profile_sqlite3_user_data(sqlite3_context *context) {
+    struct mylite_profile_function_registration *registration = sqlite3_user_data(context);
+
+    return registration != NULL ? registration->application_data : NULL;
+}
+#endif
+
 static int register_function(
     sqlite3 *sqlite,
     const struct mylite_sqlite_function_registration *registration
@@ -139,6 +188,26 @@ static int register_scalar_function(
     sqlite3 *sqlite,
     const struct mylite_sqlite_function_registration *registration
 ) {
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_function_registration *profile_registration =
+        create_profile_function_registration(registration);
+    int rc = SQLITE_NOMEM;
+
+    if (profile_registration == NULL) {
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_create_function_v2(
+        sqlite,
+        registration->name,
+        registration->argument_count,
+        registration->text_representation,
+        profile_registration,
+        invoke_profile_scalar,
+        NULL,
+        NULL,
+        destroy_profile_function_registration
+    );
+#else
     int rc = sqlite3_create_function_v2(
         sqlite,
         registration->name,
@@ -150,6 +219,7 @@ static int register_scalar_function(
         NULL,
         registration->destroy_callback
     );
+#endif
 
     return mylite_sqlite_status_to_mylite(rc);
 }
@@ -158,6 +228,26 @@ static int register_aggregate_function(
     sqlite3 *sqlite,
     const struct mylite_sqlite_function_registration *registration
 ) {
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_function_registration *profile_registration =
+        create_profile_function_registration(registration);
+    int rc = SQLITE_NOMEM;
+
+    if (profile_registration == NULL) {
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_create_function_v2(
+        sqlite,
+        registration->name,
+        registration->argument_count,
+        registration->text_representation,
+        profile_registration,
+        NULL,
+        registration->step_callback,
+        registration->final_callback,
+        destroy_profile_function_registration
+    );
+#else
     int rc = sqlite3_create_function_v2(
         sqlite,
         registration->name,
@@ -169,6 +259,7 @@ static int register_aggregate_function(
         registration->final_callback,
         registration->destroy_callback
     );
+#endif
 
     return mylite_sqlite_status_to_mylite(rc);
 }
@@ -177,6 +268,27 @@ static int register_window_function(
     sqlite3 *sqlite,
     const struct mylite_sqlite_function_registration *registration
 ) {
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_function_registration *profile_registration =
+        create_profile_function_registration(registration);
+    int rc = SQLITE_NOMEM;
+
+    if (profile_registration == NULL) {
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_create_window_function(
+        sqlite,
+        registration->name,
+        registration->argument_count,
+        registration->text_representation,
+        profile_registration,
+        registration->step_callback,
+        registration->final_callback,
+        registration->value_callback,
+        registration->inverse_callback,
+        destroy_profile_function_registration
+    );
+#else
     int rc = sqlite3_create_window_function(
         sqlite,
         registration->name,
@@ -189,6 +301,7 @@ static int register_window_function(
         registration->inverse_callback,
         registration->destroy_callback
     );
+#endif
 
     return mylite_sqlite_status_to_mylite(rc);
 }
@@ -326,6 +439,24 @@ static int register_collation(
         return MYLITE_MISUSE;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    {
+        struct mylite_profile_collation_registration *profile_registration =
+            create_profile_collation_registration(registration);
+
+        if (profile_registration == NULL) {
+            return MYLITE_NOMEM;
+        }
+        rc = sqlite3_create_collation_v2(
+            sqlite,
+            registration->name,
+            registration->text_representation,
+            profile_registration,
+            invoke_profile_collation,
+            destroy_profile_collation_registration
+        );
+    }
+#else
     rc = sqlite3_create_collation_v2(
         sqlite,
         registration->name,
@@ -334,6 +465,7 @@ static int register_collation(
         registration->compare_callback,
         registration->destroy_callback
     );
+#endif
 
     return mylite_sqlite_status_to_mylite(rc);
 }
@@ -364,3 +496,84 @@ static bool collation_registrations_are_valid(
 
     return true;
 }
+
+#ifdef MYLITE_ENABLE_PROFILING
+static struct mylite_profile_function_registration *create_profile_function_registration(
+    const struct mylite_sqlite_function_registration *registration
+) {
+    struct mylite_profile_function_registration *profile_registration =
+        malloc(sizeof(*profile_registration));
+
+    if (profile_registration == NULL) {
+        return NULL;
+    }
+    profile_registration->application_data = registration->application_data;
+    profile_registration->scalar_callback = registration->scalar_callback;
+    profile_registration->destroy_callback = registration->destroy_callback;
+    return profile_registration;
+}
+
+static void invoke_profile_scalar(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct mylite_profile_function_registration *registration = sqlite3_user_data(context);
+    uint64_t started_ns = mylite_profile_now_ns();
+
+    registration->scalar_callback(context, argc, argv);
+    mylite_profile_record_scalar_callback(started_ns);
+}
+
+static void destroy_profile_function_registration(void *application_data) {
+    struct mylite_profile_function_registration *registration = application_data;
+
+    if (registration == NULL) {
+        return;
+    }
+    if (registration->destroy_callback != NULL) {
+        registration->destroy_callback(registration->application_data);
+    }
+    free(registration);
+}
+
+static struct mylite_profile_collation_registration *create_profile_collation_registration(
+    const struct mylite_sqlite_collation_registration *registration
+) {
+    struct mylite_profile_collation_registration *profile_registration =
+        malloc(sizeof(*profile_registration));
+
+    if (profile_registration == NULL) {
+        return NULL;
+    }
+    profile_registration->application_data = registration->application_data;
+    profile_registration->compare_callback = registration->compare_callback;
+    profile_registration->destroy_callback = registration->destroy_callback;
+    return profile_registration;
+}
+
+static int invoke_profile_collation(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+) {
+    struct mylite_profile_collation_registration *registration = application_data;
+    uint64_t started_ns = mylite_profile_now_ns();
+    int result =
+        registration
+            ->compare_callback(registration->application_data, left_size, left, right_size, right);
+
+    mylite_profile_record_collation_callback(started_ns);
+    return result;
+}
+
+static void destroy_profile_collation_registration(void *application_data) {
+    struct mylite_profile_collation_registration *registration = application_data;
+
+    if (registration == NULL) {
+        return;
+    }
+    if (registration->destroy_callback != NULL) {
+        registration->destroy_callback(registration->application_data);
+    }
+    free(registration);
+}
+#endif

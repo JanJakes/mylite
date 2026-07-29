@@ -174,3 +174,13 @@ execute_process(
 if(invalid_result EQUAL 0)
   message(FATAL_ERROR "unknown large-dataset scenario unexpectedly succeeded")
 endif()
+
+execute_process(
+  COMMAND "${BENCHMARK}" --attribution-seed --rows 100 --samples 1
+  RESULT_VARIABLE attribution_without_profile_result
+  OUTPUT_QUIET
+  ERROR_QUIET
+)
+if(attribution_without_profile_result EQUAL 0)
+  message(FATAL_ERROR "attribution unexpectedly succeeded without profiling")
+endif()

@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 
 #ifdef MYLITE_ENABLE_PROFILING
@@ -80,6 +81,11 @@ enum {
     deep_offset_numerator = 9,
     deep_offset_denominator = 10,
     window_partition_account_limit = 10,
+    attribution_layer_count = 4,
+    attribution_insert_prefix_size = 12,
+    attribution_identifier_sql_extra = 32,
+    attribution_query_sql_extra = 64,
+    attribution_parameter_sql_capacity = 24,
 };
 
 static const uint64_t fnv_offset_basis = 1469598103934665603ULL;
@@ -87,6 +93,8 @@ static const uint64_t fnv_offset_basis = 1469598103934665603ULL;
 enum benchmark_engine_kind {
     benchmark_engine_mylite,
     benchmark_engine_sqlite,
+    benchmark_engine_mylite_physical,
+    benchmark_engine_mylite_guarded,
 };
 
 enum benchmark_execution_mode {
@@ -171,6 +179,7 @@ struct benchmark_options {
     bool keep_databases;
     bool reuse_databases;
     bool seed_only;
+    bool attribution_seed;
     bool analyze;
     bool list_scenarios;
     bool show_help;
@@ -184,17 +193,59 @@ struct benchmark_scenario {
     size_t default_iterations;
 };
 
+enum attribution_table_id {
+    attribution_table_accounts,
+    attribution_table_items,
+    attribution_table_item_tags,
+    attribution_table_write_log,
+    attribution_table_upsert_targets,
+    attribution_table_composite_parents,
+    attribution_table_composite_children,
+    attribution_table_fanout_parents,
+    attribution_table_fanout_children,
+    attribution_table_restrict_parents,
+    attribution_table_restrict_children,
+    attribution_table_set_null_parents,
+    attribution_table_set_null_children,
+    attribution_table_count,
+};
+
+struct attribution_program {
+    const char *logical_table;
+    char physical_table[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *guarded_sql;
+    char *plain_sql;
+    size_t parameter_count;
+    uint64_t sql_hash;
+    bool has_guard;
+    bool is_seeded;
+};
+
+struct attribution_program_set {
+    struct attribution_program programs[attribution_table_count];
+    size_t captured_program_count;
+    bool capture_failed;
+};
+
 struct benchmark_database {
     enum benchmark_engine_kind kind;
     mylite_db *mylite;
     sqlite3 *sqlite;
     const char *path;
+    const struct attribution_program_set *attribution_programs;
+    bool profile_seed;
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_snapshot *manual_profile;
+#endif
 };
 
 struct benchmark_statement {
     enum benchmark_engine_kind kind;
     mylite_stmt *mylite;
     sqlite3_stmt *sqlite;
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_snapshot *manual_profile;
+#endif
 };
 
 struct benchmark_measurement {
@@ -211,12 +262,33 @@ struct benchmark_measurement {
 
 struct benchmark_load_measurement {
     uint64_t total_ns;
+    uint64_t total_cpu_ns;
     uint64_t accounts_ns;
+    uint64_t accounts_cpu_ns;
     uint64_t items_ns;
+    uint64_t items_cpu_ns;
     uint64_t tags_ns;
+    uint64_t tags_cpu_ns;
     uint64_t support_ns;
+    uint64_t support_cpu_ns;
+    uint64_t support_upsert_ns;
+    uint64_t support_upsert_cpu_ns;
+    uint64_t support_fanout_ns;
+    uint64_t support_fanout_cpu_ns;
+    uint64_t support_restrict_ns;
+    uint64_t support_restrict_cpu_ns;
+    uint64_t support_set_null_ns;
+    uint64_t support_set_null_cpu_ns;
 #ifdef MYLITE_ENABLE_PROFILING
     struct mylite_profile_snapshot profile;
+    struct mylite_profile_snapshot accounts_profile;
+    struct mylite_profile_snapshot items_profile;
+    struct mylite_profile_snapshot tags_profile;
+    struct mylite_profile_snapshot support_profile;
+    struct mylite_profile_snapshot support_upsert_profile;
+    struct mylite_profile_snapshot support_fanout_profile;
+    struct mylite_profile_snapshot support_restrict_profile;
+    struct mylite_profile_snapshot support_set_null_profile;
 #endif
 };
 
@@ -228,6 +300,11 @@ struct benchmark_dataset {
 
 struct benchmark_bulk_import_options {
     size_t row_count;
+    size_t warmup_iterations;
+};
+
+struct benchmark_statement_run_options {
+    size_t iterations;
     size_t warmup_iterations;
 };
 
@@ -252,6 +329,109 @@ static int parse_named_option(
 static void print_usage(const char *program_name, FILE *stream);
 static void print_scenarios(FILE *stream);
 static int run_benchmark(const struct benchmark_options *options);
+#ifdef MYLITE_ENABLE_PROFILING
+static int run_attribution_seed(const struct benchmark_options *options);
+static bool attribution_options_are_valid(const struct benchmark_options *options);
+static FILE *open_attribution_output(const struct benchmark_options *options);
+static void print_attribution_header(
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs
+);
+static int run_attribution_samples(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs,
+    FILE *output
+);
+static int run_attribution_sample(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs,
+    FILE *output,
+    size_t sample
+);
+static int discover_attribution_programs(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    struct attribution_program_set *out_programs
+);
+static int run_attribution_layer(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs,
+    enum benchmark_engine_kind kind,
+    const char *path,
+    FILE *output,
+    size_t sample,
+    uint64_t out_checksums[attribution_table_count]
+);
+static int attribution_trace_callback(
+    unsigned int event,
+    void *context,
+    void *statement_pointer,
+    void *sql_pointer
+);
+static int load_attribution_physical_names(
+    sqlite3 *sqlite,
+    struct attribution_program_set *programs
+);
+static int validate_attribution_programs(struct attribution_program_set *programs);
+static int validate_attribution_layout(
+    sqlite3 *sqlite,
+    const struct attribution_program_set *programs
+);
+static int build_plain_attribution_sql(struct attribution_program *program);
+static void deinit_attribution_programs(struct attribution_program_set *programs);
+static const struct attribution_program *find_attribution_program(
+    const struct attribution_program_set *programs,
+    const char *logical_sql
+);
+static int make_attribution_path(
+    const struct benchmark_options *options,
+    const char *suffix,
+    char *out_path,
+    size_t out_path_capacity
+);
+static int verify_attribution_database(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset,
+    uint64_t out_checksums[attribution_table_count]
+);
+static int read_attribution_checksums(
+    struct benchmark_database *database,
+    uint64_t out_checksums[attribution_table_count]
+);
+static int verify_attribution_checksums(
+    size_t sample,
+    uint64_t checksums[attribution_layer_count][attribution_table_count]
+);
+static void print_attribution_measurement(
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    enum benchmark_engine_kind kind,
+    size_t sample,
+    const struct benchmark_load_measurement *measurement,
+    const uint64_t checksums[attribution_table_count]
+);
+static void print_attribution_phase(
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    enum benchmark_engine_kind kind,
+    size_t sample,
+    const char *phase,
+    uint64_t dataset_hash,
+    uint64_t elapsed_ns,
+    uint64_t cpu_ns,
+    const struct mylite_profile_snapshot *profile,
+    const struct mylite_profile_snapshot *previous
+);
+#endif
+static bool engine_uses_mylite_api(enum benchmark_engine_kind kind);
+static bool engine_uses_mylite_storage(enum benchmark_engine_kind kind);
+#ifdef MYLITE_ENABLE_PROFILING
+static bool engine_uses_direct_sqlite(enum benchmark_engine_kind kind);
+#endif
 static int prepare_benchmark_databases(
     const struct benchmark_options *options,
     struct benchmark_paths *paths,
@@ -283,6 +463,17 @@ static int finish_load_profile(
     struct benchmark_load_measurement *measurement,
     bool *profile_started
 );
+static void capture_load_profile(
+    const struct benchmark_database *database,
+    struct mylite_profile_snapshot *out_profile
+);
+static int step_profiled_sqlite_statement(struct benchmark_statement *statement);
+static void record_manual_statement_status(
+    struct mylite_profile_snapshot *profile,
+    sqlite3_stmt *statement,
+    uint64_t elapsed_ns
+);
+static void add_manual_profile_counter(uint64_t *counter, uint64_t value);
 #endif
 static int verify_benchmark_database(
     struct benchmark_database *database,
@@ -322,10 +513,31 @@ static int run_statement_scenario_engine(
     struct benchmark_database *database,
     const struct benchmark_scenario *scenario,
     const struct benchmark_dataset *dataset,
-    size_t iterations,
-    size_t warmup_iterations,
+    struct benchmark_statement_run_options options,
     struct benchmark_measurement *out_measurement
 );
+static int prepare_statement_scenario(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t warmup_iterations,
+    struct benchmark_statement *statement,
+    struct benchmark_statement **out_prepared_statement
+);
+#ifdef MYLITE_ENABLE_PROFILING
+static int start_statement_scenario_profile(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    bool *profile_started
+);
+static int finish_statement_scenario_profile(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *measurement,
+    bool *profile_started
+);
+#endif
 static int run_bulk_import_engine(
     struct benchmark_database *database,
     const struct benchmark_scenario *scenario,
@@ -488,7 +700,8 @@ static int seed_items(struct benchmark_database *database, const struct benchmar
 static int seed_tags(struct benchmark_database *database, const struct benchmark_dataset *dataset);
 static int seed_support_tables(
     struct benchmark_database *database,
-    const struct benchmark_dataset *dataset
+    const struct benchmark_dataset *dataset,
+    struct benchmark_load_measurement *measurement
 );
 static int seed_upsert_and_composite_parents(
     struct benchmark_database *database,
@@ -522,6 +735,7 @@ static void close_benchmark_database(struct benchmark_database *database);
 static void remove_database_files(const char *path);
 static uint64_t file_size(const char *path);
 static uint64_t monotonic_now_ns(void);
+static uint64_t process_cpu_now_ns(void);
 static uint64_t hash_bytes(uint64_t hash, const void *bytes, size_t size);
 static void hash_uint64(uint64_t *hash, uint64_t value);
 static double median_elapsed_us(
@@ -1004,6 +1218,7 @@ int main(int argc, char **argv) {
         .keep_databases = false,
         .reuse_databases = false,
         .seed_only = false,
+        .attribution_seed = false,
         .analyze = false,
         .list_scenarios = false,
         .show_help = false,
@@ -1024,6 +1239,14 @@ int main(int argc, char **argv) {
     if (options.reuse_databases && options.database_base == NULL) {
         fprintf(stderr, "--reuse-databases requires --database-base\n");
         return 1;
+    }
+    if (options.attribution_seed) {
+#ifndef MYLITE_ENABLE_PROFILING
+        fprintf(stderr, "--attribution-seed requires MYLITE_ENABLE_PROFILING=ON\n");
+        return 1;
+#else
+        return run_attribution_seed(&options);
+#endif
     }
     return run_benchmark(&options);
 }
@@ -1070,6 +1293,10 @@ static bool parse_flag_option(const char *argument, struct benchmark_options *ou
     if (strcmp(argument, "--seed-only") == 0) {
         out_options->seed_only = true;
         out_options->keep_databases = true;
+        return true;
+    }
+    if (strcmp(argument, "--attribution-seed") == 0) {
+        out_options->attribution_seed = true;
         return true;
     }
     if (strcmp(argument, "--analyze") == 0) {
@@ -1123,7 +1350,7 @@ static void print_usage(const char *program_name, FILE *stream) {
         "usage: %s [--rows N] [--samples N] [--warmup N] [--iterations N]\n"
         "          [--scenario NAME] [--database-dir PATH] [--database-base PATH]\n"
         "          [--output PATH] [--keep-databases] [--reuse-databases]\n"
-        "          [--seed-only] [--analyze] [--list] [--help]\n",
+        "          [--seed-only] [--attribution-seed] [--analyze] [--list] [--help]\n",
         program_name
     );
 }
@@ -1215,6 +1442,916 @@ cleanup:
     }
     return result;
 }
+
+#ifdef MYLITE_ENABLE_PROFILING
+static int run_attribution_seed(const struct benchmark_options *options) {
+    struct attribution_program_set programs = {0};
+    const struct benchmark_dataset dataset = {
+        .row_count = options->row_count,
+        .account_count = account_count_for_rows(options->row_count),
+        .tag_count = tag_count_for_rows(options->row_count),
+    };
+    FILE *output = NULL;
+    int result = 1;
+
+    if (!attribution_options_are_valid(options)) {
+        return 1;
+    }
+    output = open_attribution_output(options);
+    if (output == NULL) {
+        return 1;
+    }
+    if (discover_attribution_programs(options, &dataset, &programs) != 0) {
+        goto cleanup;
+    }
+    print_attribution_header(output, &dataset, &programs);
+    if (run_attribution_samples(options, &dataset, &programs, output) != 0) {
+        goto cleanup;
+    }
+    result = 0;
+
+cleanup:
+    deinit_attribution_programs(&programs);
+    if (output != stdout && fclose(output) != 0) {
+        result = 1;
+    }
+    return result;
+}
+
+static bool attribution_options_are_valid(const struct benchmark_options *options) {
+    if (options->reuse_databases || options->seed_only || options->analyze ||
+        options->scenario_name != NULL || options->iteration_override != 0U) {
+        fprintf(
+            stderr,
+            "--attribution-seed cannot be combined with scenario/database reuse flags\n"
+        );
+        return false;
+    }
+    return true;
+}
+
+static FILE *open_attribution_output(const struct benchmark_options *options) {
+    FILE *output = stdout;
+
+    if (options->output_path == NULL) {
+        return output;
+    }
+    output = fopen(options->output_path, "wb");
+    if (output == NULL) {
+        fprintf(stderr, "failed to open output %s: %s\n", options->output_path, strerror(errno));
+    }
+    return output;
+}
+
+static void print_attribution_header(
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs
+) {
+    fprintf(
+        output,
+        "record,rows,sample,layer,phase,logical_table,physical_table,parameters,guarded,"
+        "hash,total_ms,process_cpu_ms,sqlite_steps,vm_steps,fullscan_steps,sorts,autoindexes,"
+        "reprepares,"
+        "runs,filter_hits,filter_misses,metadata_vm_steps,scalar_callbacks,scalar_ms,"
+        "collation_callbacks,collation_ms,mylite_allocations,mylite_allocation_bytes,"
+        "dml_plans,dml_plan_hits,statement_cache_hits,statement_cache_misses\n"
+    );
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        const struct attribution_program *program = &programs->programs[index];
+
+        if (!program->is_seeded) {
+            continue;
+        }
+        fprintf(
+            output,
+            "program,%zu,0,discovery,program,%s,%s,%zu,%d,%" PRIu64
+            ",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n",
+            dataset->row_count,
+            program->logical_table,
+            program->physical_table,
+            program->parameter_count,
+            program->has_guard ? 1 : 0,
+            program->sql_hash
+        );
+    }
+}
+
+static int run_attribution_samples(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs,
+    FILE *output
+) {
+    for (size_t sample = 0U; sample < options->sample_count; ++sample) {
+        if (run_attribution_sample(options, dataset, programs, output, sample) != 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int run_attribution_sample(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs,
+    FILE *output,
+    size_t sample
+) {
+    static const enum benchmark_engine_kind layers[attribution_layer_count] = {
+        benchmark_engine_sqlite,
+        benchmark_engine_mylite_physical,
+        benchmark_engine_mylite_guarded,
+        benchmark_engine_mylite,
+    };
+
+    uint64_t checksums[attribution_layer_count][attribution_table_count] = {{0}};
+    size_t rotation = (sample / 2U) % attribution_layer_count;
+    bool reverse = sample % 2U != 0U;
+
+    for (size_t position = 0U; position < attribution_layer_count; ++position) {
+        size_t layer_index = reverse ? ((attribution_layer_count - 1U) + rotation - position) %
+                                           attribution_layer_count
+                                     : (position + rotation) % attribution_layer_count;
+        enum benchmark_engine_kind kind = layers[layer_index];
+        char suffix[generated_text_capacity];
+        char path[path_capacity];
+        int written =
+            snprintf(suffix, sizeof(suffix), "attribution-%zu-%s", sample + 1U, engine_name(kind));
+
+        if (written < 0 || (size_t)written >= sizeof(suffix) ||
+            make_attribution_path(options, suffix, path, sizeof(path)) != 0 ||
+            run_attribution_layer(
+                options,
+                dataset,
+                programs,
+                kind,
+                path,
+                output,
+                sample + 1U,
+                checksums[layer_index]
+            ) != 0) {
+            return 1;
+        }
+    }
+    return verify_attribution_checksums(sample + 1U, checksums);
+}
+
+static int discover_attribution_programs(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    struct attribution_program_set *out_programs
+) {
+    const struct benchmark_dataset discovery_dataset = {
+        .row_count = minimum_account_count,
+        .account_count = account_count_for_rows(minimum_account_count),
+        .tag_count = tag_count_for_rows(minimum_account_count),
+    };
+    const struct attribution_program initial_programs[attribution_table_count] = {
+        [attribution_table_accounts] = {.logical_table = "accounts", .is_seeded = true},
+        [attribution_table_items] = {.logical_table = "items", .is_seeded = true},
+        [attribution_table_item_tags] = {.logical_table = "item_tags", .is_seeded = true},
+        [attribution_table_write_log] = {.logical_table = "write_log"},
+        [attribution_table_upsert_targets] =
+            {
+                .logical_table = "upsert_targets",
+                .is_seeded = true,
+            },
+        [attribution_table_composite_parents] =
+            {
+                .logical_table = "composite_parents",
+                .is_seeded = true,
+            },
+        [attribution_table_composite_children] = {.logical_table = "composite_children"},
+        [attribution_table_fanout_parents] =
+            {
+                .logical_table = "fanout_parents",
+                .is_seeded = true,
+            },
+        [attribution_table_fanout_children] =
+            {
+                .logical_table = "fanout_children",
+                .is_seeded = true,
+            },
+        [attribution_table_restrict_parents] =
+            {
+                .logical_table = "restrict_parents",
+                .is_seeded = true,
+            },
+        [attribution_table_restrict_children] =
+            {
+                .logical_table = "restrict_children",
+                .is_seeded = true,
+            },
+        [attribution_table_set_null_parents] =
+            {
+                .logical_table = "set_null_parents",
+                .is_seeded = true,
+            },
+        [attribution_table_set_null_children] =
+            {
+                .logical_table = "set_null_children",
+                .is_seeded = true,
+            },
+    };
+    struct benchmark_database discovery = {0};
+    struct benchmark_load_measurement measurement = {0};
+    char path[path_capacity];
+    int result = 1;
+
+    (void)dataset;
+    memset(out_programs, 0, sizeof(*out_programs));
+    memcpy(out_programs->programs, initial_programs, sizeof(initial_programs));
+    if (make_attribution_path(options, "attribution-discovery", path, sizeof(path)) != 0) {
+        return 1;
+    }
+    remove_database_files(path);
+    if (open_benchmark_database(benchmark_engine_mylite, path, &discovery) != 0) {
+        goto cleanup;
+    }
+    discovery.profile_seed = false;
+    if (create_benchmark_schema(&discovery) != 0 ||
+        load_attribution_physical_names(discovery.sqlite, out_programs) != 0 ||
+        sqlite3_trace_v2(
+            discovery.sqlite,
+            SQLITE_TRACE_STMT,
+            attribution_trace_callback,
+            out_programs
+        ) != SQLITE_OK ||
+        seed_benchmark_database(&discovery, &discovery_dataset, &measurement) != 0) {
+        goto cleanup;
+    }
+    (void)sqlite3_trace_v2(discovery.sqlite, 0U, NULL, NULL);
+    if (validate_attribution_programs(out_programs) != 0) {
+        goto cleanup;
+    }
+    result = 0;
+
+cleanup:
+    if (discovery.sqlite != NULL) {
+        (void)sqlite3_trace_v2(discovery.sqlite, 0U, NULL, NULL);
+    }
+    close_benchmark_database(&discovery);
+    remove_database_files(path);
+    return result;
+}
+
+static int run_attribution_layer(
+    const struct benchmark_options *options,
+    const struct benchmark_dataset *dataset,
+    const struct attribution_program_set *programs,
+    enum benchmark_engine_kind kind,
+    const char *path,
+    FILE *output,
+    size_t sample,
+    uint64_t out_checksums[attribution_table_count]
+) {
+    struct benchmark_database database = {0};
+    struct benchmark_load_measurement measurement = {0};
+    int result = 1;
+
+    remove_database_files(path);
+    if (open_benchmark_database(kind, path, &database) != 0) {
+        goto cleanup;
+    }
+    database.attribution_programs = programs;
+    if (create_benchmark_schema(&database) != 0 ||
+        (engine_uses_mylite_storage(kind) &&
+         validate_attribution_layout(database.sqlite, programs) != 0) ||
+        seed_benchmark_database(&database, dataset, &measurement) != 0 ||
+        verify_attribution_database(&database, dataset, out_checksums) != 0) {
+        goto cleanup;
+    }
+    print_attribution_measurement(output, dataset, kind, sample, &measurement, out_checksums);
+    result = 0;
+
+cleanup:
+    close_benchmark_database(&database);
+    if (!options->keep_databases) {
+        remove_database_files(path);
+    } else if (result == 0) {
+        fprintf(stderr, "large-dataset: kept %s\n", path);
+    }
+    return result;
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters): SQLite fixes this callback signature.
+static int attribution_trace_callback(
+    unsigned int event,
+    void *context,
+    void *statement_pointer,
+    void *sql_pointer
+)
+// NOLINTEND(bugprone-easily-swappable-parameters)
+{
+    struct attribution_program_set *programs = context;
+    sqlite3_stmt *statement = statement_pointer;
+    const char *sql = sqlite3_sql(statement);
+
+    (void)sql_pointer;
+    if (event != SQLITE_TRACE_STMT || sql == NULL ||
+        strncmp(sql, "INSERT INTO ", attribution_insert_prefix_size) != 0) {
+        return 0;
+    }
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        struct attribution_program *program = &programs->programs[index];
+        char prefix[MYLITE_CATALOG_IDENTIFIER_CAPACITY + attribution_identifier_sql_extra];
+        int written =
+            snprintf(prefix, sizeof(prefix), "INSERT INTO \"%s\" ", program->physical_table);
+
+        if (written < 0 || (size_t)written >= sizeof(prefix) ||
+            strncmp(sql, prefix, (size_t)written) != 0) {
+            continue;
+        }
+        if (!program->is_seeded) {
+            programs->capture_failed = true;
+            return 0;
+        }
+        if (program->guarded_sql != NULL) {
+            if (strcmp(program->guarded_sql, sql) != 0 ||
+                program->parameter_count != (size_t)sqlite3_bind_parameter_count(statement)) {
+                programs->capture_failed = true;
+            }
+            return 0;
+        }
+        program->guarded_sql = malloc(strlen(sql) + 1U);
+        if (program->guarded_sql == NULL) {
+            programs->capture_failed = true;
+            return 0;
+        }
+        memcpy(program->guarded_sql, sql, strlen(sql) + 1U);
+        program->parameter_count = (size_t)sqlite3_bind_parameter_count(statement);
+        program->has_guard = strstr(sql, " WHERE ") != NULL;
+        program->sql_hash = hash_bytes(fnv_offset_basis, sql, strlen(sql));
+        ++programs->captured_program_count;
+        return 0;
+    }
+    return 0;
+}
+
+static int load_attribution_physical_names(
+    sqlite3 *sqlite,
+    struct attribution_program_set *programs
+) {
+    static const char sql[] =
+        "SELECT tables.name, tables.physical_name "
+        "FROM _mylite_catalog_tables AS tables "
+        "JOIN _mylite_catalog_schemas AS schemas ON schemas.schema_id = tables.schema_id "
+        "WHERE schemas.name = 'perf' AND tables.kind = 1";
+    sqlite3_stmt *statement = NULL;
+    size_t matched_count = 0U;
+    int rc = sqlite3_prepare_v2(sqlite, sql, -1, &statement, NULL);
+
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "large-dataset: prepare physical-name discovery failed\n");
+        return 1;
+    }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *logical = (const char *)sqlite3_column_text(statement, 0);
+        const char *physical = (const char *)sqlite3_column_text(statement, 1);
+
+        for (size_t index = 0U; index < attribution_table_count; ++index) {
+            struct attribution_program *program = &programs->programs[index];
+
+            if (logical == NULL || physical == NULL ||
+                strcmp(program->logical_table, logical) != 0) {
+                continue;
+            }
+            if (program->physical_table[0] != '\0' ||
+                strlen(physical) >= sizeof(program->physical_table)) {
+                (void)sqlite3_finalize(statement);
+                return 1;
+            }
+            memcpy(program->physical_table, physical, strlen(physical) + 1U);
+            ++matched_count;
+            break;
+        }
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK || rc != SQLITE_DONE ||
+        matched_count != attribution_table_count) {
+        fprintf(stderr, "large-dataset: incomplete physical-name discovery\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int validate_attribution_programs(struct attribution_program_set *programs) {
+    size_t expected_count = 0U;
+
+    if (programs->capture_failed) {
+        fprintf(stderr, "large-dataset: generated-program capture drifted\n");
+        return 1;
+    }
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        struct attribution_program *program = &programs->programs[index];
+
+        if (!program->is_seeded) {
+            continue;
+        }
+        ++expected_count;
+        if (program->guarded_sql == NULL || program->parameter_count == 0U ||
+            build_plain_attribution_sql(program) != 0) {
+            fprintf(
+                stderr,
+                "large-dataset: missing generated program for %s\n",
+                program->logical_table
+            );
+            return 1;
+        }
+    }
+    if (programs->captured_program_count != expected_count) {
+        fprintf(
+            stderr,
+            "large-dataset: expected %zu generated programs, captured %zu\n",
+            expected_count,
+            programs->captured_program_count
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int validate_attribution_layout(
+    sqlite3 *sqlite,
+    const struct attribution_program_set *programs
+) {
+    static const char sql[] =
+        "SELECT tables.physical_name "
+        "FROM _mylite_catalog_tables AS tables "
+        "JOIN _mylite_catalog_schemas AS schemas ON schemas.schema_id = tables.schema_id "
+        "WHERE schemas.name = 'perf' AND tables.kind = 1 AND tables.name = ?1";
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(sqlite, sql, -1, &statement, NULL);
+
+    if (rc != SQLITE_OK) {
+        return 1;
+    }
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        const struct attribution_program *program = &programs->programs[index];
+        const char *physical = NULL;
+
+        (void)sqlite3_reset(statement);
+        if (sqlite3_clear_bindings(statement) != SQLITE_OK ||
+            sqlite3_bind_text(statement, 1, program->logical_table, -1, SQLITE_STATIC) !=
+                SQLITE_OK ||
+            sqlite3_step(statement) != SQLITE_ROW) {
+            (void)sqlite3_finalize(statement);
+            return 1;
+        }
+        physical = (const char *)sqlite3_column_text(statement, 0);
+        if (physical == NULL || strcmp(physical, program->physical_table) != 0 ||
+            sqlite3_step(statement) != SQLITE_DONE) {
+            fprintf(stderr, "large-dataset: physical-name drift for %s\n", program->logical_table);
+            (void)sqlite3_finalize(statement);
+            return 1;
+        }
+    }
+    return sqlite3_finalize(statement) == SQLITE_OK ? 0 : 1;
+}
+
+static int build_plain_attribution_sql(struct attribution_program *program) {
+    const char *select_marker = strstr(program->guarded_sql, ") SELECT ");
+    size_t capacity = 0U;
+    size_t used = 0U;
+
+    if (!program->has_guard) {
+        program->plain_sql = malloc(strlen(program->guarded_sql) + 1U);
+        if (program->plain_sql == NULL) {
+            return 1;
+        }
+        memcpy(program->plain_sql, program->guarded_sql, strlen(program->guarded_sql) + 1U);
+        return 0;
+    }
+    if (select_marker == NULL) {
+        return 1;
+    }
+    capacity = (size_t)(select_marker - program->guarded_sql) +
+               (program->parameter_count * attribution_parameter_sql_capacity) +
+               attribution_identifier_sql_extra;
+    program->plain_sql = malloc(capacity);
+    if (program->plain_sql == NULL) {
+        return 1;
+    }
+    used = (size_t)(select_marker - program->guarded_sql) + 1U;
+    memcpy(program->plain_sql, program->guarded_sql, used);
+    {
+        int written = snprintf(program->plain_sql + used, capacity - used, " VALUES (");
+
+        if (written < 0 || (size_t)written >= capacity - used) {
+            return 1;
+        }
+        used += (size_t)written;
+    }
+    for (size_t parameter = 1U; parameter <= program->parameter_count; ++parameter) {
+        int written = snprintf(
+            program->plain_sql + used,
+            capacity - used,
+            parameter == 1U ? "?%zu" : ", ?%zu",
+            parameter
+        );
+
+        if (written < 0 || (size_t)written >= capacity - used) {
+            return 1;
+        }
+        used += (size_t)written;
+    }
+    if (used + 2U > capacity) {
+        return 1;
+    }
+    program->plain_sql[used] = ')';
+    program->plain_sql[used + 1U] = '\0';
+    return 0;
+}
+
+static void deinit_attribution_programs(struct attribution_program_set *programs) {
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        free(programs->programs[index].guarded_sql);
+        free(programs->programs[index].plain_sql);
+        programs->programs[index].guarded_sql = NULL;
+        programs->programs[index].plain_sql = NULL;
+    }
+}
+
+static const struct attribution_program *find_attribution_program(
+    const struct attribution_program_set *programs,
+    const char *logical_sql
+) {
+    if (programs == NULL || logical_sql == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        const struct attribution_program *program = &programs->programs[index];
+        char prefix[MYLITE_CATALOG_IDENTIFIER_CAPACITY + attribution_identifier_sql_extra];
+        int written = snprintf(prefix, sizeof(prefix), "INSERT INTO %s ", program->logical_table);
+
+        if (written > 0 && (size_t)written < sizeof(prefix) &&
+            strncmp(logical_sql, prefix, (size_t)written) == 0) {
+            return program->is_seeded ? program : NULL;
+        }
+    }
+    return NULL;
+}
+
+static int make_attribution_path(
+    const struct benchmark_options *options,
+    const char *suffix,
+    char *out_path,
+    size_t out_path_capacity
+) {
+    const char *directory = options->database_directory == NULL ? default_database_directory()
+                                                                : options->database_directory;
+#  if defined(_WIN32)
+    const char separator = '\\';
+#  else
+    const char separator = '/';
+#  endif
+    int written =
+        options->database_base != NULL
+            ? snprintf(out_path, out_path_capacity, "%s.%s", options->database_base, suffix)
+            : snprintf(
+                  out_path,
+                  out_path_capacity,
+                  "%s%cmylite-large-%ld-%zu-%s.db",
+                  directory,
+                  separator,
+                  benchmark_process_id(),
+                  options->row_count,
+                  suffix
+              );
+
+    if (written < 0 || (size_t)written >= out_path_capacity) {
+        fprintf(stderr, "large-dataset: attribution database path is too long\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int verify_attribution_database(
+    struct benchmark_database *database,
+    const struct benchmark_dataset *dataset,
+    uint64_t out_checksums[attribution_table_count]
+) {
+    const uint64_t expected[attribution_table_count] = {
+        [attribution_table_accounts] = dataset->account_count,
+        [attribution_table_items] = dataset->row_count,
+        [attribution_table_item_tags] = dataset->row_count,
+        [attribution_table_write_log] = 0U,
+        [attribution_table_upsert_targets] = dataset->account_count,
+        [attribution_table_composite_parents] = dataset->account_count,
+        [attribution_table_composite_children] = 0U,
+        [attribution_table_fanout_parents] = fanout_parent_count_for_rows(dataset->row_count),
+        [attribution_table_fanout_children] = dataset->row_count,
+        [attribution_table_restrict_parents] = fanout_parent_count_for_rows(dataset->row_count),
+        [attribution_table_restrict_children] =
+            fanout_parent_count_for_rows(dataset->row_count) - 1U,
+        [attribution_table_set_null_parents] = fanout_parent_count_for_rows(dataset->row_count),
+        [attribution_table_set_null_children] = dataset->row_count,
+    };
+
+    if (!engine_uses_direct_sqlite(database->kind)) {
+        if (verify_benchmark_database(database, dataset) != 0) {
+            return 1;
+        }
+    } else {
+        for (size_t index = 0U; index < attribution_table_count; ++index) {
+            const struct attribution_program *program =
+                &database->attribution_programs->programs[index];
+            char sql[MYLITE_CATALOG_IDENTIFIER_CAPACITY + attribution_query_sql_extra];
+            sqlite3_stmt *statement = NULL;
+            uint64_t actual = 0U;
+            int written =
+                snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM \"%s\"", program->physical_table);
+
+            if (written < 0 || (size_t)written >= sizeof(sql) ||
+                sqlite3_prepare_v2(database->sqlite, sql, -1, &statement, NULL) != SQLITE_OK ||
+                sqlite3_step(statement) != SQLITE_ROW) {
+                (void)sqlite3_finalize(statement);
+                return 1;
+            }
+            actual = (uint64_t)sqlite3_column_int64(statement, 0);
+            if (sqlite3_step(statement) != SQLITE_DONE ||
+                sqlite3_finalize(statement) != SQLITE_OK || actual != expected[index]) {
+                fprintf(
+                    stderr,
+                    "large-dataset: %s physical verification for %s expected %" PRIu64
+                    ", got %" PRIu64 "\n",
+                    engine_name(database->kind),
+                    program->logical_table,
+                    expected[index],
+                    actual
+                );
+                return 1;
+            }
+        }
+    }
+    return read_attribution_checksums(database, out_checksums);
+}
+
+static int read_attribution_checksums(
+    struct benchmark_database *database,
+    uint64_t out_checksums[attribution_table_count]
+) {
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        const struct attribution_program *program =
+            &database->attribution_programs->programs[index];
+        const char *table = database->kind == benchmark_engine_sqlite ? program->logical_table
+                                                                      : program->physical_table;
+        char sql[MYLITE_CATALOG_IDENTIFIER_CAPACITY + attribution_query_sql_extra];
+        sqlite3_stmt *statement = NULL;
+        uint64_t checksum = fnv_offset_basis;
+        int written = snprintf(sql, sizeof(sql), "SELECT * FROM \"%s\" ORDER BY 1", table);
+        int rc = SQLITE_OK;
+
+        if (written < 0 || (size_t)written >= sizeof(sql) ||
+            sqlite3_prepare_v2(database->sqlite, sql, -1, &statement, NULL) != SQLITE_OK) {
+            (void)sqlite3_finalize(statement);
+            return 1;
+        }
+        while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+            int column_count = sqlite3_column_count(statement);
+
+            hash_uint64(&checksum, (uint64_t)column_count);
+            for (int column = 0; column < column_count; ++column) {
+                int type = sqlite3_column_type(statement, column);
+
+                hash_uint64(&checksum, (uint64_t)type);
+                if (type != SQLITE_NULL) {
+                    int size = sqlite3_column_bytes(statement, column);
+                    const void *value = sqlite3_column_blob(statement, column);
+
+                    if (size < 0 || (value == NULL && size != 0)) {
+                        (void)sqlite3_finalize(statement);
+                        return 1;
+                    }
+                    hash_uint64(&checksum, (uint64_t)size);
+                    checksum = hash_bytes(checksum, value, (size_t)size);
+                }
+            }
+        }
+        if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+            return 1;
+        }
+        out_checksums[index] = checksum;
+    }
+    return 0;
+}
+
+static int verify_attribution_checksums(
+    size_t sample,
+    uint64_t checksums[attribution_layer_count][attribution_table_count]
+) {
+    static const enum benchmark_engine_kind layers[] = {
+        benchmark_engine_sqlite,
+        benchmark_engine_mylite_physical,
+        benchmark_engine_mylite_guarded,
+        benchmark_engine_mylite,
+    };
+
+    for (size_t layer = 1U; layer < sizeof(layers) / sizeof(layers[0]); ++layer) {
+        for (size_t table = 0U; table < attribution_table_count; ++table) {
+            if (checksums[layer][table] != checksums[0][table]) {
+                fprintf(
+                    stderr,
+                    "large-dataset: sample %zu %s checksum mismatch for %s\n",
+                    sample,
+                    engine_name(layers[layer]),
+                    (const char *const[attribution_table_count]){"accounts",
+                                                                 "items",
+                                                                 "item_tags",
+                                                                 "write_log",
+                                                                 "upsert_targets",
+                                                                 "composite_parents",
+                                                                 "composite_children",
+                                                                 "fanout_parents",
+                                                                 "fanout_children",
+                                                                 "restrict_parents",
+                                                                 "restrict_children",
+                                                                 "set_null_parents",
+                                                                 "set_null_children"}[table]
+                );
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static void print_attribution_measurement(
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    enum benchmark_engine_kind kind,
+    size_t sample,
+    const struct benchmark_load_measurement *measurement,
+    const uint64_t checksums[attribution_table_count]
+) {
+    const struct mylite_profile_snapshot zero = {0};
+    uint64_t dataset_hash = fnv_offset_basis;
+
+    for (size_t index = 0U; index < attribution_table_count; ++index) {
+        hash_uint64(&dataset_hash, checksums[index]);
+    }
+
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "total",
+        dataset_hash,
+        measurement->total_ns,
+        measurement->total_cpu_ns,
+        &measurement->profile,
+        &zero
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "accounts",
+        dataset_hash,
+        measurement->accounts_ns,
+        measurement->accounts_cpu_ns,
+        &measurement->accounts_profile,
+        &zero
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "items",
+        dataset_hash,
+        measurement->items_ns,
+        measurement->items_cpu_ns,
+        &measurement->items_profile,
+        &measurement->accounts_profile
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "tags",
+        dataset_hash,
+        measurement->tags_ns,
+        measurement->tags_cpu_ns,
+        &measurement->tags_profile,
+        &measurement->items_profile
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "support",
+        dataset_hash,
+        measurement->support_ns,
+        measurement->support_cpu_ns,
+        &measurement->support_profile,
+        &measurement->tags_profile
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "support.upsert_composite",
+        dataset_hash,
+        measurement->support_upsert_ns,
+        measurement->support_upsert_cpu_ns,
+        &measurement->support_upsert_profile,
+        &measurement->tags_profile
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "support.fanout",
+        dataset_hash,
+        measurement->support_fanout_ns,
+        measurement->support_fanout_cpu_ns,
+        &measurement->support_fanout_profile,
+        &measurement->support_upsert_profile
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "support.restrict",
+        dataset_hash,
+        measurement->support_restrict_ns,
+        measurement->support_restrict_cpu_ns,
+        &measurement->support_restrict_profile,
+        &measurement->support_fanout_profile
+    );
+    print_attribution_phase(
+        output,
+        dataset,
+        kind,
+        sample,
+        "support.set_null",
+        dataset_hash,
+        measurement->support_set_null_ns,
+        measurement->support_set_null_cpu_ns,
+        &measurement->support_set_null_profile,
+        &measurement->support_restrict_profile
+    );
+}
+
+static void print_attribution_phase(
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    enum benchmark_engine_kind kind,
+    size_t sample,
+    const char *phase,
+    uint64_t dataset_hash,
+    uint64_t elapsed_ns,
+    uint64_t cpu_ns,
+    const struct mylite_profile_snapshot *profile,
+    const struct mylite_profile_snapshot *previous
+) {
+#  define PROFILE_DELTA(field)                                                                     \
+      (profile->field >= previous->field ? profile->field - previous->field : 0U)
+    fprintf(
+        output,
+        "measurement,%zu,%zu,%s,%s,,,,,%" PRIu64 ",%.3f,%.3f,%" PRIu64 ",%" PRIu64 ",%" PRIu64
+        ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
+        ",%" PRIu64 ",%.3f,%" PRIu64 ",%.3f,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
+        ",%" PRIu64 ",%" PRIu64 "\n",
+        dataset->row_count,
+        sample,
+        engine_name(kind),
+        phase,
+        dataset_hash,
+        (double)elapsed_ns / (double)nanoseconds_per_millisecond,
+        (double)cpu_ns / (double)nanoseconds_per_millisecond,
+        PROFILE_DELTA(sqlite_step_count),
+        PROFILE_DELTA(sqlite_vm_step_count),
+        PROFILE_DELTA(sqlite_fullscan_step_count),
+        PROFILE_DELTA(sqlite_sort_count),
+        PROFILE_DELTA(sqlite_autoindex_count),
+        PROFILE_DELTA(sqlite_reprepare_count),
+        PROFILE_DELTA(sqlite_run_count),
+        PROFILE_DELTA(sqlite_filter_hit_count),
+        PROFILE_DELTA(sqlite_filter_miss_count),
+        PROFILE_DELTA(metadata_vm_step_count),
+        PROFILE_DELTA(scalar_callback_count),
+        (double)PROFILE_DELTA(scalar_callback_ns) / (double)nanoseconds_per_millisecond,
+        PROFILE_DELTA(collation_callback_count),
+        (double)PROFILE_DELTA(collation_callback_ns) / (double)nanoseconds_per_millisecond,
+        PROFILE_DELTA(allocation_count),
+        PROFILE_DELTA(allocation_bytes),
+        PROFILE_DELTA(dml_plan_count),
+        PROFILE_DELTA(dml_plan_cache_hit_count),
+        PROFILE_DELTA(execution_statement_cache_hit_count),
+        PROFILE_DELTA(execution_statement_cache_miss_count)
+    );
+#  undef PROFILE_DELTA
+}
+#endif
 
 static int prepare_benchmark_databases(
     const struct benchmark_options *options,
@@ -1342,13 +2479,19 @@ static int open_benchmark_database(
         .mylite = NULL,
         .sqlite = NULL,
         .path = path,
+        .attribution_programs = NULL,
+        .profile_seed = true,
+#ifdef MYLITE_ENABLE_PROFILING
+        .manual_profile = NULL,
+#endif
     };
-    if (kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_storage(kind)) {
         rc = mylite_open(path, &out_database->mylite);
         if (rc != MYLITE_OK) {
             fprintf(stderr, "large-dataset: MyLite open failed: %d\n", rc);
             return 1;
         }
+        out_database->sqlite = mylite_connection_sqlite_for_test(out_database->mylite);
         return 0;
     }
     rc = sqlite3_open(path, &out_database->sqlite);
@@ -1527,13 +2670,25 @@ static int create_benchmark_schema(struct benchmark_database *database) {
         "CREATE INDEX idx_set_null_parent ON set_null_children(parent_id)",
     };
     const char *const *queries =
-        database->kind == benchmark_engine_mylite ? mylite_schema : sqlite_schema;
-    size_t query_count = database->kind == benchmark_engine_mylite
+        engine_uses_mylite_storage(database->kind) ? mylite_schema : sqlite_schema;
+    size_t query_count = engine_uses_mylite_storage(database->kind)
                              ? sizeof(mylite_schema) / sizeof(mylite_schema[0])
                              : sizeof(sqlite_schema) / sizeof(sqlite_schema[0]);
 
     for (size_t index = 0U; index < query_count; ++index) {
-        if (execute_sql(database, queries[index]) != 0) {
+        int statement_result = 0;
+
+        if (engine_uses_mylite_storage(database->kind)) {
+            mylite_result *result = NULL;
+            int rc =
+                mylite_execute(database->mylite, queries[index], strlen(queries[index]), &result);
+
+            mylite_result_free(result);
+            statement_result = rc == MYLITE_OK ? 0 : 1;
+        } else {
+            statement_result = execute_sql(database, queries[index]);
+        }
+        if (statement_result != 0) {
             fprintf(
                 stderr,
                 "large-dataset: %s schema statement %zu failed\n",
@@ -1552,15 +2707,24 @@ static int seed_benchmark_database(
     struct benchmark_load_measurement *out_measurement
 ) {
     uint64_t total_started = monotonic_now_ns();
+    uint64_t total_cpu_started = process_cpu_now_ns();
     uint64_t phase_started = 0U;
+    uint64_t phase_cpu_started = 0U;
 #ifdef MYLITE_ENABLE_PROFILING
     bool profile_started = false;
 
-    if (database->kind == benchmark_engine_mylite) {
+    if (database->profile_seed && engine_uses_mylite_storage(database->kind)) {
         if (mylite_profile_start(database->mylite) != MYLITE_OK) {
             fprintf(stderr, "large-dataset: failed to start load profile\n");
             return 1;
         }
+        profile_started = true;
+        if (engine_uses_direct_sqlite(database->kind)) {
+            mylite_profile_enter_api(database->mylite);
+        }
+    } else if (database->profile_seed) {
+        memset(&out_measurement->profile, 0, sizeof(out_measurement->profile));
+        database->manual_profile = &out_measurement->profile;
         profile_started = true;
     }
 #endif
@@ -1572,6 +2736,7 @@ static int seed_benchmark_database(
         return 1;
     }
     phase_started = monotonic_now_ns();
+    phase_cpu_started = process_cpu_now_ns();
     if (seed_accounts(database, dataset) != 0) {
         (void)rollback_transaction(database);
 #ifdef MYLITE_ENABLE_PROFILING
@@ -1580,7 +2745,12 @@ static int seed_benchmark_database(
         return 1;
     }
     out_measurement->accounts_ns = monotonic_now_ns() - phase_started;
+    out_measurement->accounts_cpu_ns = process_cpu_now_ns() - phase_cpu_started;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &out_measurement->accounts_profile);
+#endif
     phase_started = monotonic_now_ns();
+    phase_cpu_started = process_cpu_now_ns();
     if (seed_items(database, dataset) != 0) {
         (void)rollback_transaction(database);
 #ifdef MYLITE_ENABLE_PROFILING
@@ -1589,7 +2759,12 @@ static int seed_benchmark_database(
         return 1;
     }
     out_measurement->items_ns = monotonic_now_ns() - phase_started;
+    out_measurement->items_cpu_ns = process_cpu_now_ns() - phase_cpu_started;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &out_measurement->items_profile);
+#endif
     phase_started = monotonic_now_ns();
+    phase_cpu_started = process_cpu_now_ns();
     if (seed_tags(database, dataset) != 0) {
         (void)rollback_transaction(database);
 #ifdef MYLITE_ENABLE_PROFILING
@@ -1598,8 +2773,13 @@ static int seed_benchmark_database(
         return 1;
     }
     out_measurement->tags_ns = monotonic_now_ns() - phase_started;
+    out_measurement->tags_cpu_ns = process_cpu_now_ns() - phase_cpu_started;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &out_measurement->tags_profile);
+#endif
     phase_started = monotonic_now_ns();
-    if (seed_support_tables(database, dataset) != 0) {
+    phase_cpu_started = process_cpu_now_ns();
+    if (seed_support_tables(database, dataset, out_measurement) != 0) {
         (void)rollback_transaction(database);
 #ifdef MYLITE_ENABLE_PROFILING
         (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
@@ -1607,6 +2787,10 @@ static int seed_benchmark_database(
         return 1;
     }
     out_measurement->support_ns = monotonic_now_ns() - phase_started;
+    out_measurement->support_cpu_ns = process_cpu_now_ns() - phase_cpu_started;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &out_measurement->support_profile);
+#endif
     if (commit_transaction(database) != 0) {
 #ifdef MYLITE_ENABLE_PROFILING
         (void)finish_load_profile(database, dataset, out_measurement, &profile_started);
@@ -1614,6 +2798,7 @@ static int seed_benchmark_database(
         return 1;
     }
     out_measurement->total_ns = monotonic_now_ns() - total_started;
+    out_measurement->total_cpu_ns = process_cpu_now_ns() - total_cpu_started;
 #ifdef MYLITE_ENABLE_PROFILING
     if (finish_load_profile(database, dataset, out_measurement, &profile_started) != 0) {
         return 1;
@@ -1633,9 +2818,16 @@ static int finish_load_profile(
         return 0;
     }
     *profile_started = false;
-    if (mylite_profile_stop(database->mylite, &measurement->profile) != MYLITE_OK) {
-        fprintf(stderr, "large-dataset: failed to stop load profile\n");
-        return 1;
+    if (engine_uses_mylite_storage(database->kind)) {
+        if (engine_uses_direct_sqlite(database->kind)) {
+            mylite_profile_leave_api(database->mylite);
+        }
+        if (mylite_profile_stop(database->mylite, &measurement->profile) != MYLITE_OK) {
+            fprintf(stderr, "large-dataset: failed to stop load profile\n");
+            return 1;
+        }
+    } else {
+        database->manual_profile = NULL;
     }
     fprintf(
         stderr,
@@ -1659,6 +2851,19 @@ static int finish_load_profile(
         measurement->profile.execution_statement_cache_miss_count
     );
     return 0;
+}
+
+static void capture_load_profile(
+    const struct benchmark_database *database,
+    struct mylite_profile_snapshot *out_profile
+) {
+    if (engine_uses_mylite_storage(database->kind) && database->mylite->profile_active) {
+        *out_profile = database->mylite->profile;
+        return;
+    }
+    if (database->manual_profile != NULL) {
+        *out_profile = *database->manual_profile;
+    }
 }
 #endif
 
@@ -1932,8 +3137,10 @@ static int run_scenario_engine(
         database,
         scenario,
         dataset,
-        iterations,
-        warmup_iterations,
+        (struct benchmark_statement_run_options){
+            .iterations = iterations,
+            .warmup_iterations = warmup_iterations,
+        },
         out_measurement
     );
 }
@@ -1942,55 +3149,31 @@ static int run_statement_scenario_engine(
     struct benchmark_database *database,
     const struct benchmark_scenario *scenario,
     const struct benchmark_dataset *dataset,
-    size_t iterations,
-    size_t warmup_iterations,
+    struct benchmark_statement_run_options options,
     struct benchmark_measurement *out_measurement
 ) {
     struct benchmark_statement statement = {0};
-    struct benchmark_measurement warmup = {0};
     struct benchmark_statement *prepared_statement = NULL;
     uint64_t started = 0U;
 #ifdef MYLITE_ENABLE_PROFILING
     bool profile_started = false;
 #endif
     int result = 1;
-    const char *sql = scenario_sql(database, scenario);
 
-    if (scenario->mode != benchmark_execution_prepare_each) {
-        if (prepare_statement(database, sql, &statement) != 0) {
-            return 1;
-        }
-        prepared_statement = &statement;
-    }
-    if (scenario_uses_rollback(scenario) && begin_transaction(database) != 0) {
+    if (prepare_statement_scenario(
+            database,
+            scenario,
+            dataset,
+            options.warmup_iterations,
+            &statement,
+            &prepared_statement
+        ) != 0) {
         goto cleanup;
-    }
-    if (warmup_iterations > 0U && run_scenario_phase(
-                                      database,
-                                      scenario,
-                                      dataset,
-                                      prepared_statement,
-                                      warmup_iterations,
-                                      &warmup
-                                  ) != 0) {
-        if (scenario_uses_rollback(scenario)) {
-            (void)rollback_transaction(database);
-        }
-        goto cleanup;
-    }
-    if (scenario_uses_rollback(scenario)) {
-        if (rollback_transaction(database) != 0 || begin_transaction(database) != 0) {
-            goto cleanup;
-        }
     }
     *out_measurement = (struct benchmark_measurement){0};
 #ifdef MYLITE_ENABLE_PROFILING
-    if (database->kind == benchmark_engine_mylite) {
-        if (mylite_profile_start(database->mylite) != MYLITE_OK) {
-            fprintf(stderr, "large-dataset: failed to start profile for %s\n", scenario->name);
-            goto cleanup;
-        }
-        profile_started = true;
+    if (start_statement_scenario_profile(database, scenario, &profile_started) != 0) {
+        goto cleanup;
     }
 #endif
     started = monotonic_now_ns();
@@ -1999,7 +3182,7 @@ static int run_statement_scenario_engine(
             scenario,
             dataset,
             prepared_statement,
-            iterations,
+            options.iterations,
             out_measurement
         ) != 0) {
         if (scenario_uses_rollback(scenario)) {
@@ -2015,40 +3198,14 @@ static int run_statement_scenario_engine(
     }
     out_measurement->elapsed_ns = monotonic_now_ns() - started;
 #ifdef MYLITE_ENABLE_PROFILING
-    if (profile_started) {
-        if (mylite_profile_stop(database->mylite, &out_measurement->profile) != MYLITE_OK) {
-            fprintf(stderr, "large-dataset: failed to stop profile for %s\n", scenario->name);
-            profile_started = false;
-            goto cleanup;
-        }
-        profile_started = false;
-        fprintf(
-            stderr,
-            "large-dataset-profile: scenario=%s iterations=%zu total_ms=%.3f "
-            "api_ms=%.3f sqlite_step_ms=%.3f metadata_step_ms=%.3f cursor_step_ms=%.3f "
-            "cursor_finalize_ms=%.3f statements=%" PRIu64 " sqlite_steps=%" PRIu64
-            " metadata_steps=%" PRIu64 " dml_plans=%" PRIu64 " dml_plan_hits=%" PRIu64
-            " allocations=%" PRIu64 " allocation_bytes=%" PRIu64 " statement_cache_hits=%" PRIu64
-            " statement_cache_misses=%" PRIu64 "\n",
-            scenario->name,
-            iterations,
-            (double)out_measurement->elapsed_ns / (double)nanoseconds_per_millisecond,
-            (double)out_measurement->profile.statement_api_ns / (double)nanoseconds_per_millisecond,
-            (double)out_measurement->profile.sqlite_step_ns / (double)nanoseconds_per_millisecond,
-            (double)out_measurement->profile.metadata_step_ns / (double)nanoseconds_per_millisecond,
-            (double)out_measurement->profile.cursor_step_ns / (double)nanoseconds_per_millisecond,
-            (double)out_measurement->profile.cursor_finalize_ns /
-                (double)nanoseconds_per_millisecond,
-            out_measurement->profile.statement_count,
-            out_measurement->profile.sqlite_step_count,
-            out_measurement->profile.metadata_step_count,
-            out_measurement->profile.dml_plan_count,
-            out_measurement->profile.dml_plan_cache_hit_count,
-            out_measurement->profile.allocation_count,
-            out_measurement->profile.allocation_bytes,
-            out_measurement->profile.execution_statement_cache_hit_count,
-            out_measurement->profile.execution_statement_cache_miss_count
-        );
+    if (finish_statement_scenario_profile(
+            database,
+            scenario,
+            options.iterations,
+            out_measurement,
+            &profile_started
+        ) != 0) {
+        goto cleanup;
     }
 #endif
     if (scenario_uses_rollback(scenario) && rollback_transaction(database) != 0) {
@@ -2067,6 +3224,109 @@ cleanup:
     }
     return result;
 }
+
+static int prepare_statement_scenario(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    const struct benchmark_dataset *dataset,
+    size_t warmup_iterations,
+    struct benchmark_statement *statement,
+    struct benchmark_statement **out_prepared_statement
+) {
+    struct benchmark_measurement warmup = {0};
+
+    *out_prepared_statement = NULL;
+    if (scenario->mode != benchmark_execution_prepare_each) {
+        if (prepare_statement(database, scenario_sql(database, scenario), statement) != 0) {
+            return 1;
+        }
+        *out_prepared_statement = statement;
+    }
+    if (scenario_uses_rollback(scenario) && begin_transaction(database) != 0) {
+        return 1;
+    }
+    if (warmup_iterations > 0U && run_scenario_phase(
+                                      database,
+                                      scenario,
+                                      dataset,
+                                      *out_prepared_statement,
+                                      warmup_iterations,
+                                      &warmup
+                                  ) != 0) {
+        if (scenario_uses_rollback(scenario)) {
+            (void)rollback_transaction(database);
+        }
+        return 1;
+    }
+    if (scenario_uses_rollback(scenario) &&
+        (rollback_transaction(database) != 0 || begin_transaction(database) != 0)) {
+        return 1;
+    }
+    return 0;
+}
+
+#ifdef MYLITE_ENABLE_PROFILING
+static int start_statement_scenario_profile(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    bool *profile_started
+) {
+    if (database->kind != benchmark_engine_mylite) {
+        return 0;
+    }
+    if (mylite_profile_start(database->mylite) != MYLITE_OK) {
+        fprintf(stderr, "large-dataset: failed to start profile for %s\n", scenario->name);
+        return 1;
+    }
+    *profile_started = true;
+    return 0;
+}
+
+static int finish_statement_scenario_profile(
+    struct benchmark_database *database,
+    const struct benchmark_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *measurement,
+    bool *profile_started
+) {
+    if (!*profile_started) {
+        return 0;
+    }
+    if (mylite_profile_stop(database->mylite, &measurement->profile) != MYLITE_OK) {
+        fprintf(stderr, "large-dataset: failed to stop profile for %s\n", scenario->name);
+        *profile_started = false;
+        return 1;
+    }
+    *profile_started = false;
+    fprintf(
+        stderr,
+        "large-dataset-profile: scenario=%s iterations=%zu total_ms=%.3f "
+        "api_ms=%.3f sqlite_step_ms=%.3f metadata_step_ms=%.3f cursor_step_ms=%.3f "
+        "cursor_finalize_ms=%.3f statements=%" PRIu64 " sqlite_steps=%" PRIu64
+        " metadata_steps=%" PRIu64 " dml_plans=%" PRIu64 " dml_plan_hits=%" PRIu64
+        " allocations=%" PRIu64 " allocation_bytes=%" PRIu64 " statement_cache_hits=%" PRIu64
+        " statement_cache_misses=%" PRIu64 "\n",
+        scenario->name,
+        iterations,
+        (double)measurement->elapsed_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.statement_api_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.sqlite_step_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.metadata_step_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.cursor_step_ns / (double)nanoseconds_per_millisecond,
+        (double)measurement->profile.cursor_finalize_ns / (double)nanoseconds_per_millisecond,
+        measurement->profile.statement_count,
+        measurement->profile.sqlite_step_count,
+        measurement->profile.metadata_step_count,
+        measurement->profile.dml_plan_count,
+        measurement->profile.dml_plan_cache_hit_count,
+        measurement->profile.allocation_count,
+        measurement->profile.allocation_bytes,
+        measurement->profile.execution_statement_cache_hit_count,
+        measurement->profile.execution_statement_cache_miss_count
+    );
+    return 0;
+}
+#endif
 
 static int run_bulk_import_engine(
     struct benchmark_database *database,
@@ -2115,7 +3375,6 @@ static int run_bulk_import_engine(
             profile_started = false;
             goto rollback;
         }
-        profile_started = false;
         fprintf(
             stderr,
             "large-dataset-profile: scenario=%s iterations=%zu total_ms=%.3f "
@@ -3050,7 +4309,7 @@ static int verify_sample_pair(
 }
 
 static int begin_transaction(struct benchmark_database *database) {
-    if (database->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(database->kind)) {
         mylite_result *result = NULL;
         int rc = mylite_execute_transaction_control(
             database->mylite,
@@ -3069,7 +4328,7 @@ static int begin_transaction(struct benchmark_database *database) {
 }
 
 static int commit_transaction(struct benchmark_database *database) {
-    if (database->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(database->kind)) {
         mylite_result *result = NULL;
         int rc = mylite_execute_transaction_control(
             database->mylite,
@@ -3088,7 +4347,7 @@ static int commit_transaction(struct benchmark_database *database) {
 }
 
 static int rollback_transaction(struct benchmark_database *database) {
-    if (database->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(database->kind)) {
         mylite_result *result = NULL;
         int rc = mylite_execute_transaction_control(
             database->mylite,
@@ -3111,12 +4370,17 @@ static int prepare_statement(
     const char *sql,
     struct benchmark_statement *out_statement
 ) {
+    const struct attribution_program *attribution_program = NULL;
+
     *out_statement = (struct benchmark_statement){
         .kind = database->kind,
         .mylite = NULL,
         .sqlite = NULL,
+#ifdef MYLITE_ENABLE_PROFILING
+        .manual_profile = database->manual_profile,
+#endif
     };
-    if (database->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(database->kind)) {
         int rc = mylite_prepare(database->mylite, sql, strlen(sql), &out_statement->mylite);
 
         if (rc != MYLITE_OK) {
@@ -3130,6 +4394,18 @@ static int prepare_statement(
         }
         return 0;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    if (engine_uses_direct_sqlite(database->kind)) {
+        attribution_program = find_attribution_program(database->attribution_programs, sql);
+
+        if (attribution_program == NULL) {
+            fprintf(stderr, "large-dataset: no attribution program for SQL: %s\n", sql);
+            return 1;
+        }
+        sql = database->kind == benchmark_engine_mylite_physical ? attribution_program->plain_sql
+                                                                 : attribution_program->guarded_sql;
+    }
+#endif
     if (sqlite3_prepare_v2(database->sqlite, sql, -1, &out_statement->sqlite, NULL) != SQLITE_OK) {
         fprintf(
             stderr,
@@ -3139,11 +4415,22 @@ static int prepare_statement(
         );
         return 1;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    if (attribution_program != NULL && (size_t)sqlite3_bind_parameter_count(out_statement->sqlite
+                                       ) != attribution_program->parameter_count) {
+        fprintf(stderr, "large-dataset: attribution parameter count drift for %s\n", sql);
+        (void)sqlite3_finalize(out_statement->sqlite);
+        out_statement->sqlite = NULL;
+        return 1;
+    }
+#else
+    (void)attribution_program;
+#endif
     return 0;
 }
 
 static int reset_statement(struct benchmark_statement *statement) {
-    if (statement->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(statement->kind)) {
         return mylite_stmt_reset(statement->mylite) == MYLITE_OK ? 0 : 1;
     }
     /*
@@ -3160,7 +4447,7 @@ static int reset_statement(struct benchmark_statement *statement) {
 static int finalize_statement(struct benchmark_statement *statement) {
     int rc = 0;
 
-    if (statement->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(statement->kind)) {
         rc = mylite_stmt_finalize(statement->mylite);
         statement->mylite = NULL;
         if (rc != MYLITE_OK) {
@@ -3177,21 +4464,21 @@ static int finalize_statement(struct benchmark_statement *statement) {
 }
 
 static int bind_int64(struct benchmark_statement *statement, size_t index, int64_t value) {
-    if (statement->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(statement->kind)) {
         return mylite_stmt_bind_int64(statement->mylite, index, value) == MYLITE_OK ? 0 : 1;
     }
     return sqlite3_bind_int64(statement->sqlite, (int)index + 1, value) == SQLITE_OK ? 0 : 1;
 }
 
 static int bind_null(struct benchmark_statement *statement, size_t index) {
-    if (statement->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(statement->kind)) {
         return mylite_stmt_bind_null(statement->mylite, index) == MYLITE_OK ? 0 : 1;
     }
     return sqlite3_bind_null(statement->sqlite, (int)index + 1) == SQLITE_OK ? 0 : 1;
 }
 
 static int bind_text(struct benchmark_statement *statement, size_t index, const char *value) {
-    if (statement->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(statement->kind)) {
         return mylite_stmt_bind_text(statement->mylite, index, value, strlen(value)) == MYLITE_OK
                    ? 0
                    : 1;
@@ -3203,7 +4490,7 @@ static int bind_text(struct benchmark_statement *statement, size_t index, const 
 }
 
 static int execute_sql(struct benchmark_database *database, const char *sql) {
-    if (database->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(database->kind)) {
         mylite_result *result = NULL;
         int rc = mylite_execute(database->mylite, sql, strlen(sql), &result);
 
@@ -3243,7 +4530,7 @@ static int fetch_scalar_count(
     if (prepare_statement(database, sql, &statement) != 0 || reset_statement(&statement) != 0) {
         return 1;
     }
-    if (database->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(database->kind)) {
         if (mylite_stmt_step(statement.mylite) != MYLITE_ROW) {
             goto cleanup;
         }
@@ -3364,14 +4651,50 @@ cleanup:
 
 static int seed_support_tables(
     struct benchmark_database *database,
-    const struct benchmark_dataset *dataset
+    const struct benchmark_dataset *dataset,
+    struct benchmark_load_measurement *measurement
 ) {
-    if (seed_upsert_and_composite_parents(database, dataset) != 0 ||
-        seed_fanout_tables(database, dataset) != 0 ||
-        seed_restrict_tables(database, dataset) != 0 ||
-        seed_set_null_tables(database, dataset) != 0) {
+    uint64_t started_ns = monotonic_now_ns();
+    uint64_t started_cpu_ns = process_cpu_now_ns();
+
+    if (seed_upsert_and_composite_parents(database, dataset) != 0) {
         return 1;
     }
+    measurement->support_upsert_ns = monotonic_now_ns() - started_ns;
+    measurement->support_upsert_cpu_ns = process_cpu_now_ns() - started_cpu_ns;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &measurement->support_upsert_profile);
+#endif
+    started_ns = monotonic_now_ns();
+    started_cpu_ns = process_cpu_now_ns();
+    if (seed_fanout_tables(database, dataset) != 0) {
+        return 1;
+    }
+    measurement->support_fanout_ns = monotonic_now_ns() - started_ns;
+    measurement->support_fanout_cpu_ns = process_cpu_now_ns() - started_cpu_ns;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &measurement->support_fanout_profile);
+#endif
+    started_ns = monotonic_now_ns();
+    started_cpu_ns = process_cpu_now_ns();
+    if (seed_restrict_tables(database, dataset) != 0) {
+        return 1;
+    }
+    measurement->support_restrict_ns = monotonic_now_ns() - started_ns;
+    measurement->support_restrict_cpu_ns = process_cpu_now_ns() - started_cpu_ns;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &measurement->support_restrict_profile);
+#endif
+    started_ns = monotonic_now_ns();
+    started_cpu_ns = process_cpu_now_ns();
+    if (seed_set_null_tables(database, dataset) != 0) {
+        return 1;
+    }
+    measurement->support_set_null_ns = monotonic_now_ns() - started_ns;
+    measurement->support_set_null_cpu_ns = process_cpu_now_ns() - started_cpu_ns;
+#ifdef MYLITE_ENABLE_PROFILING
+    capture_load_profile(database, &measurement->support_set_null_profile);
+#endif
     return 0;
 }
 
@@ -3672,18 +4995,80 @@ static int insert_tag(
 }
 
 static int step_write_statement(struct benchmark_statement *statement) {
-    if (statement->kind == benchmark_engine_mylite) {
+    if (engine_uses_mylite_api(statement->kind)) {
         return mylite_stmt_step(statement->mylite) == MYLITE_DONE ? 0 : 1;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    if (engine_uses_direct_sqlite(statement->kind) || statement->manual_profile != NULL) {
+        return step_profiled_sqlite_statement(statement) == SQLITE_DONE ? 0 : 1;
+    }
+#endif
     return sqlite3_step(statement->sqlite) == SQLITE_DONE ? 0 : 1;
 }
+
+#ifdef MYLITE_ENABLE_PROFILING
+static int step_profiled_sqlite_statement(struct benchmark_statement *statement) {
+    uint64_t started_ns = monotonic_now_ns();
+    int rc = SQLITE_OK;
+
+    if (engine_uses_direct_sqlite(statement->kind)) {
+        return mylite_profile_sqlite3_step(statement->sqlite);
+    }
+    rc = sqlite3_step(statement->sqlite);
+    record_manual_statement_status(
+        statement->manual_profile,
+        statement->sqlite,
+        monotonic_now_ns() - started_ns
+    );
+    return rc;
+}
+
+static void record_manual_statement_status(
+    struct mylite_profile_snapshot *profile,
+    sqlite3_stmt *statement,
+    uint64_t elapsed_ns
+) {
+    struct statement_status_counter {
+        uint64_t *counter;
+        int operation;
+    };
+    const struct statement_status_counter counters[] = {
+        {&profile->sqlite_vm_step_count, SQLITE_STMTSTATUS_VM_STEP},
+        {&profile->sqlite_fullscan_step_count, SQLITE_STMTSTATUS_FULLSCAN_STEP},
+        {&profile->sqlite_sort_count, SQLITE_STMTSTATUS_SORT},
+        {&profile->sqlite_autoindex_count, SQLITE_STMTSTATUS_AUTOINDEX},
+        {&profile->sqlite_reprepare_count, SQLITE_STMTSTATUS_REPREPARE},
+        {&profile->sqlite_run_count, SQLITE_STMTSTATUS_RUN},
+        {&profile->sqlite_filter_hit_count, SQLITE_STMTSTATUS_FILTER_HIT},
+        {&profile->sqlite_filter_miss_count, SQLITE_STMTSTATUS_FILTER_MISS},
+    };
+
+    add_manual_profile_counter(&profile->sqlite_step_ns, elapsed_ns);
+    add_manual_profile_counter(&profile->sqlite_step_count, 1U);
+    for (size_t index = 0U; index < sizeof(counters) / sizeof(counters[0]); ++index) {
+        int value = sqlite3_stmt_status(statement, counters[index].operation, 1);
+
+        if (value > 0) {
+            add_manual_profile_counter(counters[index].counter, (uint64_t)value);
+        }
+    }
+}
+
+static void add_manual_profile_counter(uint64_t *counter, uint64_t value) {
+    if (value > UINT64_MAX - *counter) {
+        *counter = UINT64_MAX;
+        return;
+    }
+    *counter += value;
+}
+#endif
 
 static void close_benchmark_database(struct benchmark_database *database) {
     if (database->mylite != NULL) {
         mylite_close(database->mylite);
         database->mylite = NULL;
-    }
-    if (database->sqlite != NULL) {
+        database->sqlite = NULL;
+    } else if (database->sqlite != NULL) {
         (void)sqlite3_close(database->sqlite);
         database->sqlite = NULL;
     }
@@ -3728,6 +5113,21 @@ static uint64_t monotonic_now_ns(void) {
     }
     return ((uint64_t)timestamp.tv_sec * nanoseconds_per_second) + (uint64_t)timestamp.tv_nsec;
 #endif
+}
+
+static uint64_t process_cpu_now_ns(void) {
+    clock_t ticks = clock();
+    uint64_t ticks_per_second = (uint64_t)CLOCKS_PER_SEC;
+    uint64_t whole_seconds = 0U;
+    uint64_t remaining_ticks = 0U;
+
+    if (ticks == (clock_t)-1 || ticks_per_second == 0U) {
+        return 0U;
+    }
+    whole_seconds = (uint64_t)ticks / ticks_per_second;
+    remaining_ticks = (uint64_t)ticks % ticks_per_second;
+    return (whole_seconds * nanoseconds_per_second) +
+           ((remaining_ticks * nanoseconds_per_second) / ticks_per_second);
 }
 
 static uint64_t hash_bytes(uint64_t hash, const void *bytes, size_t size) {
@@ -3800,8 +5200,33 @@ static int compare_double(const void *left, const void *right) {
 }
 
 static const char *engine_name(enum benchmark_engine_kind kind) {
-    return kind == benchmark_engine_mylite ? "mylite" : "sqlite";
+    switch (kind) {
+    case benchmark_engine_mylite:
+        return "mylite";
+    case benchmark_engine_sqlite:
+        return "sqlite";
+    case benchmark_engine_mylite_physical:
+        return "mylite_physical";
+    case benchmark_engine_mylite_guarded:
+        return "mylite_guarded";
+    }
+    return "unknown";
 }
+
+static bool engine_uses_mylite_api(enum benchmark_engine_kind kind) {
+    return kind == benchmark_engine_mylite;
+}
+
+static bool engine_uses_mylite_storage(enum benchmark_engine_kind kind) {
+    return kind == benchmark_engine_mylite || kind == benchmark_engine_mylite_physical ||
+           kind == benchmark_engine_mylite_guarded;
+}
+
+#ifdef MYLITE_ENABLE_PROFILING
+static bool engine_uses_direct_sqlite(enum benchmark_engine_kind kind) {
+    return kind == benchmark_engine_mylite_physical || kind == benchmark_engine_mylite_guarded;
+}
+#endif
 
 static const char *mode_name(enum benchmark_execution_mode mode) {
     switch (mode) {

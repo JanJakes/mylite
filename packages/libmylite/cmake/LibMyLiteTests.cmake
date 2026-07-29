@@ -167,12 +167,21 @@ add_test(
 )
 
 if(MYLITE_ENABLE_PROFILING)
+  add_dependencies(mylite_runtime_profile_test mylite_large_dataset_benchmark)
   add_test(
     NAME libmylite.benchmark.profile_cli
     COMMAND "${CMAKE_COMMAND}"
       "-DBENCHMARK=$<TARGET_FILE:mylite_benchmark>"
       "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/benchmark-profile-cli.jsonl"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_profile_cli_test.cmake"
+  )
+  add_test(
+    NAME libmylite.benchmark.large_dataset_attribution_cli
+    COMMAND "${CMAKE_COMMAND}"
+      "-DBENCHMARK=$<TARGET_FILE:mylite_large_dataset_benchmark>"
+      "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/large-dataset-attribution-cli.csv"
+      "-DDATABASE_BASE=${CMAKE_CURRENT_BINARY_DIR}/large-dataset-attribution-cli"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/large_dataset_attribution_cli_test.cmake"
   )
 endif()
 

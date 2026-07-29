@@ -210,8 +210,16 @@ install_wordpress_phpunit_dependencies() {
   mkdir -p "${HOME}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}"
   phase "Install WordPress PHPUnit dependencies"
   local deps_start
+  local composer_override
   deps_start="$(date +%s)"
-  composer --working-dir="${MYLITE_WORDPRESS_DIR}" install --no-interaction --no-progress --prefer-dist
+  composer_override="${MYLITE_WORDPRESS_DIR}/composer.mylite.json"
+  cp "${MYLITE_WORDPRESS_DIR}/composer.json" "${composer_override}"
+  COMPOSER="${composer_override}" composer --working-dir="${MYLITE_WORDPRESS_DIR}" \
+    config --json policy.advisories.ignore-id \
+    '{"PKSA-mh9b-91zm-m1gy":"Pinned upstream WordPress development-only coding-standard dependency; not loaded by MyLite runtime tests."}'
+  COMPOSER="${composer_override}" composer --working-dir="${MYLITE_WORDPRESS_DIR}" \
+    install --no-interaction --no-progress --prefer-dist
+  rm -f "${composer_override}"
   if [ ! -x "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" ]; then
     composer --working-dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}" require --no-interaction --no-progress --prefer-dist phpunit/phpunit:9.6.35
   fi

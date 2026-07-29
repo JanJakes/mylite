@@ -36,6 +36,7 @@ enum {
     lock_gap_control_size = 1024 * 1024,
     path_wait_attempt_count = 500,
     path_wait_sleep_ms = 10,
+    sqlite_synchronous_extra = 3,
 };
 
 struct initialization_child_paths {
@@ -1422,6 +1423,7 @@ static int test_journal_mode_policy(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     sqlite3 *sqlite = NULL;
+    int synchronous = 0;
     int failures = 0;
 
     if (mylite_test_make_path(path, sizeof(path), "journal_policy") != 0) {
@@ -1434,10 +1436,33 @@ static int test_journal_mode_policy(void) {
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_single_text_equals(sqlite, "PRAGMA journal_mode", "delete");
+        failures += query_single_int(sqlite, "PRAGMA synchronous", &synchronous);
+        failures += mylite_test_expect_int(
+            synchronous,
+            sqlite_synchronous_extra,
+            "new file uses EXTRA synchronization"
+        );
         failures += query_single_text_equals(sqlite, "PRAGMA journal_mode=WAL", "delete");
         failures += query_single_text_equals(sqlite, "PRAGMA journal_mode", "delete");
     }
 
+    mylite_close(database);
+    database = NULL;
+    failures += mylite_test_expect_int(
+        mylite_open(path, &database),
+        MYLITE_OK,
+        "reopen journal-policy file"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        synchronous = 0;
+        failures += query_single_int(sqlite, "PRAGMA synchronous", &synchronous);
+        failures += mylite_test_expect_int(
+            synchronous,
+            sqlite_synchronous_extra,
+            "reopened file uses EXTRA synchronization"
+        );
+    }
     mylite_close(database);
     failures +=
         mylite_test_expect_int(file_exists_with_suffix(path, "-wal"), 0, "WAL file is not created");

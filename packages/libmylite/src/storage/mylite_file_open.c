@@ -81,6 +81,11 @@ int mylite_storage_configure_sqlite_payload(sqlite3 *sqlite) {
         return sqlite_status_to_mylite(rc);
     }
 
+    rc = sqlite3_exec(sqlite, "PRAGMA synchronous=EXTRA", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) {
+        return sqlite_status_to_mylite(rc);
+    }
+
     rc = sqlite3_exec(sqlite, "PRAGMA mmap_size=0", NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         return sqlite_status_to_mylite(rc);

@@ -180,6 +180,7 @@ struct benchmark_options {
     bool reuse_databases;
     bool seed_only;
     bool attribution_seed;
+    bool attribution_timing;
     bool analyze;
     bool list_scenarios;
     bool show_help;
@@ -329,8 +330,7 @@ static int parse_named_option(
 static void print_usage(const char *program_name, FILE *stream);
 static void print_scenarios(FILE *stream);
 static int run_benchmark(const struct benchmark_options *options);
-#ifdef MYLITE_ENABLE_PROFILING
-static int run_attribution_seed(const struct benchmark_options *options);
+static int run_attribution(const struct benchmark_options *options);
 static bool attribution_options_are_valid(const struct benchmark_options *options);
 static FILE *open_attribution_output(const struct benchmark_options *options);
 static void print_attribution_header(
@@ -415,6 +415,7 @@ static void print_attribution_measurement(
     const uint64_t checksums[attribution_table_count]
 );
 static void print_attribution_phase(
+#ifdef MYLITE_ENABLE_PROFILING
     FILE *output,
     const struct benchmark_dataset *dataset,
     enum benchmark_engine_kind kind,
@@ -426,12 +427,20 @@ static void print_attribution_phase(
     const struct mylite_profile_snapshot *profile,
     const struct mylite_profile_snapshot *previous
 );
+#else
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    enum benchmark_engine_kind kind,
+    size_t sample,
+    const char *phase,
+    uint64_t dataset_hash,
+    uint64_t elapsed_ns,
+    uint64_t cpu_ns
+);
 #endif
 static bool engine_uses_mylite_api(enum benchmark_engine_kind kind);
 static bool engine_uses_mylite_storage(enum benchmark_engine_kind kind);
-#ifdef MYLITE_ENABLE_PROFILING
 static bool engine_uses_direct_sqlite(enum benchmark_engine_kind kind);
-#endif
 static int prepare_benchmark_databases(
     const struct benchmark_options *options,
     struct benchmark_paths *paths,
@@ -1219,6 +1228,7 @@ int main(int argc, char **argv) {
         .reuse_databases = false,
         .seed_only = false,
         .attribution_seed = false,
+        .attribution_timing = false,
         .analyze = false,
         .list_scenarios = false,
         .show_help = false,
@@ -1240,13 +1250,23 @@ int main(int argc, char **argv) {
         fprintf(stderr, "--reuse-databases requires --database-base\n");
         return 1;
     }
+    if (options.attribution_seed && options.attribution_timing) {
+        fprintf(stderr, "--attribution-seed and --attribution-timing are mutually exclusive\n");
+        return 1;
+    }
     if (options.attribution_seed) {
 #ifndef MYLITE_ENABLE_PROFILING
         fprintf(stderr, "--attribution-seed requires MYLITE_ENABLE_PROFILING=ON\n");
         return 1;
-#else
-        return run_attribution_seed(&options);
 #endif
+        return run_attribution(&options);
+    }
+    if (options.attribution_timing) {
+#ifdef MYLITE_ENABLE_PROFILING
+        fprintf(stderr, "--attribution-timing requires MYLITE_ENABLE_PROFILING=OFF\n");
+        return 1;
+#endif
+        return run_attribution(&options);
     }
     return run_benchmark(&options);
 }
@@ -1297,6 +1317,10 @@ static bool parse_flag_option(const char *argument, struct benchmark_options *ou
     }
     if (strcmp(argument, "--attribution-seed") == 0) {
         out_options->attribution_seed = true;
+        return true;
+    }
+    if (strcmp(argument, "--attribution-timing") == 0) {
+        out_options->attribution_timing = true;
         return true;
     }
     if (strcmp(argument, "--analyze") == 0) {
@@ -1350,7 +1374,8 @@ static void print_usage(const char *program_name, FILE *stream) {
         "usage: %s [--rows N] [--samples N] [--warmup N] [--iterations N]\n"
         "          [--scenario NAME] [--database-dir PATH] [--database-base PATH]\n"
         "          [--output PATH] [--keep-databases] [--reuse-databases]\n"
-        "          [--seed-only] [--attribution-seed] [--analyze] [--list] [--help]\n",
+        "          [--seed-only] [--attribution-seed] [--attribution-timing]\n"
+        "          [--analyze] [--list] [--help]\n",
         program_name
     );
 }
@@ -1443,8 +1468,7 @@ cleanup:
     return result;
 }
 
-#ifdef MYLITE_ENABLE_PROFILING
-static int run_attribution_seed(const struct benchmark_options *options) {
+static int run_attribution(const struct benchmark_options *options) {
     struct attribution_program_set programs = {0};
     const struct benchmark_dataset dataset = {
         .row_count = options->row_count,
@@ -1480,10 +1504,11 @@ cleanup:
 
 static bool attribution_options_are_valid(const struct benchmark_options *options) {
     if (options->reuse_databases || options->seed_only || options->analyze ||
-        options->scenario_name != NULL || options->iteration_override != 0U) {
+        options->scenario_name != NULL || options->iteration_override != 0U ||
+        options->warmup_iterations != 0U) {
         fprintf(
             stderr,
-            "--attribution-seed cannot be combined with scenario/database reuse flags\n"
+            "attribution requires --warmup 0 and cannot use scenario/database reuse flags\n"
         );
         return false;
     }
@@ -1715,6 +1740,7 @@ static int run_attribution_layer(
         goto cleanup;
     }
     database.attribution_programs = programs;
+    database.profile_seed = options->attribution_seed;
     if (create_benchmark_schema(&database) != 0 ||
         (engine_uses_mylite_storage(kind) &&
          validate_attribution_layout(database.sqlite, programs) != 0) ||
@@ -2000,11 +2026,11 @@ static int make_attribution_path(
 ) {
     const char *directory = options->database_directory == NULL ? default_database_directory()
                                                                 : options->database_directory;
-#  if defined(_WIN32)
+#if defined(_WIN32)
     const char separator = '\\';
-#  else
+#else
     const char separator = '/';
-#  endif
+#endif
     int written =
         options->database_base != NULL
             ? snprintf(out_path, out_path_capacity, "%s.%s", options->database_base, suffix)
@@ -2184,124 +2210,120 @@ static void print_attribution_measurement(
     const struct benchmark_load_measurement *measurement,
     const uint64_t checksums[attribution_table_count]
 ) {
+#ifdef MYLITE_ENABLE_PROFILING
     const struct mylite_profile_snapshot zero = {0};
+#  define PRINT_ATTRIBUTION_PHASE(                                                                 \
+      phase_name,                                                                                  \
+      elapsed_value,                                                                               \
+      cpu_value,                                                                                   \
+      profile_value,                                                                               \
+      previous_value                                                                               \
+  )                                                                                                \
+      print_attribution_phase(                                                                     \
+          output,                                                                                  \
+          dataset,                                                                                 \
+          kind,                                                                                    \
+          sample,                                                                                  \
+          phase_name,                                                                              \
+          dataset_hash,                                                                            \
+          elapsed_value,                                                                           \
+          cpu_value,                                                                               \
+          profile_value,                                                                           \
+          previous_value                                                                           \
+      )
+#else
+#  define PRINT_ATTRIBUTION_PHASE(                                                                 \
+      phase_name,                                                                                  \
+      elapsed_value,                                                                               \
+      cpu_value,                                                                                   \
+      profile_value,                                                                               \
+      previous_value                                                                               \
+  )                                                                                                \
+      print_attribution_phase(                                                                     \
+          output,                                                                                  \
+          dataset,                                                                                 \
+          kind,                                                                                    \
+          sample,                                                                                  \
+          phase_name,                                                                              \
+          dataset_hash,                                                                            \
+          elapsed_value,                                                                           \
+          cpu_value                                                                                \
+      )
+#endif
     uint64_t dataset_hash = fnv_offset_basis;
 
     for (size_t index = 0U; index < attribution_table_count; ++index) {
         hash_uint64(&dataset_hash, checksums[index]);
     }
 
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "total",
-        dataset_hash,
         measurement->total_ns,
         measurement->total_cpu_ns,
         &measurement->profile,
         &zero
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "accounts",
-        dataset_hash,
         measurement->accounts_ns,
         measurement->accounts_cpu_ns,
         &measurement->accounts_profile,
         &zero
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "items",
-        dataset_hash,
         measurement->items_ns,
         measurement->items_cpu_ns,
         &measurement->items_profile,
         &measurement->accounts_profile
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "tags",
-        dataset_hash,
         measurement->tags_ns,
         measurement->tags_cpu_ns,
         &measurement->tags_profile,
         &measurement->items_profile
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "support",
-        dataset_hash,
         measurement->support_ns,
         measurement->support_cpu_ns,
         &measurement->support_profile,
         &measurement->tags_profile
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "support.upsert_composite",
-        dataset_hash,
         measurement->support_upsert_ns,
         measurement->support_upsert_cpu_ns,
         &measurement->support_upsert_profile,
         &measurement->tags_profile
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "support.fanout",
-        dataset_hash,
         measurement->support_fanout_ns,
         measurement->support_fanout_cpu_ns,
         &measurement->support_fanout_profile,
         &measurement->support_upsert_profile
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "support.restrict",
-        dataset_hash,
         measurement->support_restrict_ns,
         measurement->support_restrict_cpu_ns,
         &measurement->support_restrict_profile,
         &measurement->support_fanout_profile
     );
-    print_attribution_phase(
-        output,
-        dataset,
-        kind,
-        sample,
+    PRINT_ATTRIBUTION_PHASE(
         "support.set_null",
-        dataset_hash,
         measurement->support_set_null_ns,
         measurement->support_set_null_cpu_ns,
         &measurement->support_set_null_profile,
         &measurement->support_restrict_profile
     );
+#undef PRINT_ATTRIBUTION_PHASE
 }
 
 static void print_attribution_phase(
+#ifdef MYLITE_ENABLE_PROFILING
     FILE *output,
     const struct benchmark_dataset *dataset,
     enum benchmark_engine_kind kind,
@@ -2350,6 +2372,29 @@ static void print_attribution_phase(
         PROFILE_DELTA(execution_statement_cache_miss_count)
     );
 #  undef PROFILE_DELTA
+}
+#else
+    FILE *output,
+    const struct benchmark_dataset *dataset,
+    enum benchmark_engine_kind kind,
+    size_t sample,
+    const char *phase,
+    uint64_t dataset_hash,
+    uint64_t elapsed_ns,
+    uint64_t cpu_ns
+) {
+    fprintf(
+        output,
+        "measurement,%zu,%zu,%s,%s,,,,,%" PRIu64 ",%.3f,%.3f,"
+        "0,0,0,0,0,0,0,0,0,0,0,0.000,0,0.000,0,0,0,0,0,0\n",
+        dataset->row_count,
+        sample,
+        engine_name(kind),
+        phase,
+        dataset_hash,
+        (double)elapsed_ns / (double)nanoseconds_per_millisecond,
+        (double)cpu_ns / (double)nanoseconds_per_millisecond
+    );
 }
 #endif
 
@@ -4394,7 +4439,6 @@ static int prepare_statement(
         }
         return 0;
     }
-#ifdef MYLITE_ENABLE_PROFILING
     if (engine_uses_direct_sqlite(database->kind)) {
         attribution_program = find_attribution_program(database->attribution_programs, sql);
 
@@ -4405,7 +4449,6 @@ static int prepare_statement(
         sql = database->kind == benchmark_engine_mylite_physical ? attribution_program->plain_sql
                                                                  : attribution_program->guarded_sql;
     }
-#endif
     if (sqlite3_prepare_v2(database->sqlite, sql, -1, &out_statement->sqlite, NULL) != SQLITE_OK) {
         fprintf(
             stderr,
@@ -4415,7 +4458,6 @@ static int prepare_statement(
         );
         return 1;
     }
-#ifdef MYLITE_ENABLE_PROFILING
     if (attribution_program != NULL && (size_t)sqlite3_bind_parameter_count(out_statement->sqlite
                                        ) != attribution_program->parameter_count) {
         fprintf(stderr, "large-dataset: attribution parameter count drift for %s\n", sql);
@@ -4423,9 +4465,6 @@ static int prepare_statement(
         out_statement->sqlite = NULL;
         return 1;
     }
-#else
-    (void)attribution_program;
-#endif
     return 0;
 }
 
@@ -5222,11 +5261,9 @@ static bool engine_uses_mylite_storage(enum benchmark_engine_kind kind) {
            kind == benchmark_engine_mylite_guarded;
 }
 
-#ifdef MYLITE_ENABLE_PROFILING
 static bool engine_uses_direct_sqlite(enum benchmark_engine_kind kind) {
     return kind == benchmark_engine_mylite_physical || kind == benchmark_engine_mylite_guarded;
 }
-#endif
 
 static const char *mode_name(enum benchmark_execution_mode mode) {
     switch (mode) {

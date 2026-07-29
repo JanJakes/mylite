@@ -184,3 +184,17 @@ execute_process(
 if(attribution_without_profile_result EQUAL 0)
   message(FATAL_ERROR "attribution unexpectedly succeeded without profiling")
 endif()
+
+execute_process(
+  COMMAND "${CMAKE_COMMAND}"
+    "-DBENCHMARK=${BENCHMARK}"
+    "-DOUTPUT=${OUTPUT}.attribution-timing.csv"
+    "-DDATABASE_BASE=${DATABASE_BASE}-attribution-timing"
+    "-DMODE=timing"
+    -P "${CMAKE_CURRENT_LIST_DIR}/large_dataset_attribution_cli_test.cmake"
+  RESULT_VARIABLE attribution_timing_result
+  ERROR_VARIABLE attribution_timing_error
+)
+if(NOT attribution_timing_result EQUAL 0)
+  message(FATAL_ERROR "timing attribution smoke failed: ${attribution_timing_error}")
+endif()

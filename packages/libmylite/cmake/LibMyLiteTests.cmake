@@ -181,6 +181,17 @@ if(MYLITE_ENABLE_PROFILING)
       "-DBENCHMARK=$<TARGET_FILE:mylite_large_dataset_benchmark>"
       "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/large-dataset-attribution-cli.csv"
       "-DDATABASE_BASE=${CMAKE_CURRENT_BINARY_DIR}/large-dataset-attribution-cli"
+      "-DMODE=profile"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/large_dataset_attribution_cli_test.cmake"
+  )
+else()
+  add_test(
+    NAME libmylite.benchmark.large_dataset_attribution_timing_cli
+    COMMAND "${CMAKE_COMMAND}"
+      "-DBENCHMARK=$<TARGET_FILE:mylite_large_dataset_benchmark>"
+      "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/large-dataset-attribution-timing-cli.csv"
+      "-DDATABASE_BASE=${CMAKE_CURRENT_BINARY_DIR}/large-dataset-attribution-timing-cli"
+      "-DMODE=timing"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/large_dataset_attribution_cli_test.cmake"
   )
 endif()

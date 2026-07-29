@@ -1,13 +1,23 @@
 cmake_policy(SET CMP0007 NEW)
 cmake_policy(SET CMP0057 NEW)
 
-if(NOT DEFINED BENCHMARK OR NOT DEFINED OUTPUT OR NOT DEFINED DATABASE_BASE)
-  message(FATAL_ERROR "BENCHMARK, OUTPUT, and DATABASE_BASE are required")
+if(NOT DEFINED BENCHMARK
+    OR NOT DEFINED OUTPUT
+    OR NOT DEFINED DATABASE_BASE
+    OR NOT DEFINED MODE)
+  message(FATAL_ERROR "BENCHMARK, OUTPUT, DATABASE_BASE, and MODE are required")
+endif()
+if(MODE STREQUAL "profile")
+  set(attribution_flag --attribution-seed)
+elseif(MODE STREQUAL "timing")
+  set(attribution_flag --attribution-timing)
+else()
+  message(FATAL_ERROR "MODE must be profile or timing")
 endif()
 
 execute_process(
   COMMAND "${BENCHMARK}"
-    --attribution-seed
+    "${attribution_flag}"
     --rows 100
     --samples 2
     --warmup 0
@@ -71,14 +81,24 @@ foreach(output_line IN LISTS output_lines)
         OR dataset_hash STREQUAL "0"
         OR elapsed_ms LESS 0
         OR cpu_ms LESS 0
-        OR sqlite_steps LESS 1
-        OR vm_steps LESS 1)
+        OR (MODE STREQUAL "profile"
+          AND (sqlite_steps LESS 1 OR vm_steps LESS 1)))
       message(FATAL_ERROR "invalid attribution measurement: ${output_line}")
+    endif()
+    if(MODE STREQUAL "timing")
+      foreach(counter_index RANGE 12 31)
+        list(GET fields ${counter_index} counter)
+        if(NOT counter EQUAL 0)
+          message(FATAL_ERROR "timing attribution contains profile counters: ${output_line}")
+        endif()
+      endforeach()
     endif()
     if(phase STREQUAL "total")
       set("${sample}_${layer}_hash" "${dataset_hash}")
       set("${sample}_${layer}_vm_steps" "${vm_steps}")
-      if(layer STREQUAL "sqlite")
+      if(MODE STREQUAL "timing")
+        # The field loop above verifies that the uninstrumented client reports no counters.
+      elseif(layer STREQUAL "sqlite")
         if(NOT metadata_vm_steps EQUAL 0
             OR NOT scalar_callbacks EQUAL 0
             OR NOT collation_callbacks EQUAL 0)
@@ -116,8 +136,25 @@ foreach(sample 1 2)
       message(FATAL_ERROR "sample ${sample} ${layer} checksum differs from SQLite")
     endif()
   endforeach()
-  if(NOT ${sample}_mylite_physical_vm_steps LESS ${sample}_mylite_guarded_vm_steps
-      OR NOT ${sample}_mylite_guarded_vm_steps LESS ${sample}_mylite_vm_steps)
+  if(MODE STREQUAL "profile"
+      AND (NOT ${sample}_mylite_physical_vm_steps LESS ${sample}_mylite_guarded_vm_steps
+        OR NOT ${sample}_mylite_guarded_vm_steps LESS ${sample}_mylite_vm_steps))
     message(FATAL_ERROR "sample ${sample} VM attribution layers are not ordered")
   endif()
 endforeach()
+
+if(MODE STREQUAL "profile")
+  execute_process(
+    COMMAND "${BENCHMARK}"
+      --attribution-timing
+      --rows 100
+      --samples 1
+      --warmup 0
+    RESULT_VARIABLE timing_with_profile_result
+    OUTPUT_QUIET
+    ERROR_QUIET
+  )
+  if(timing_with_profile_result EQUAL 0)
+    message(FATAL_ERROR "timing attribution unexpectedly accepted profiling")
+  endif()
+endif()

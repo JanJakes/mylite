@@ -2,7 +2,12 @@
 
 ## Status
 
-Specified; implementation pending.
+Implemented; performance qualification did not pass.
+
+The allocation, memory, correctness, and indexed absolute-time gates pass.
+The measured zero-index improvement is below the specified 15% threshold, and
+the 100K timing matrix exceeds the timing-noise ceiling. See the
+[July 2026 qualification report](../../performance/load-data-streaming-qualification-2026-07.md).
 
 ## Objective
 

@@ -67,6 +67,10 @@ longer the dominant cost.
 
 ## `LOAD DATA` Results
 
+These results predate the chunked streaming and retained-field follow-up. The
+new implementation and its failed 15% performance gate are documented in the
+[LOAD DATA streaming qualification](load-data-streaming-qualification-2026-07.md).
+
 Each sample imports a deterministic three-integer TSV file in one transaction
 and rolls it back after timing. The SQLite baseline reads the same file and
 uses one retained native INSERT VM. Three measured samples follow one warmup.

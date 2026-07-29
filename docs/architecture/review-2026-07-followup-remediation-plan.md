@@ -897,15 +897,28 @@ remain pending.
 
 ### `PERF-03`: `LOAD DATA`
 
-- [ ] Replace per-byte `fgetc()` input with chunked buffered reads.
-- [ ] Replace per-field allocation/free churn with reusable row/field storage
+- [x] Replace per-byte `fgetc()` input with chunked buffered reads.
+- [x] Replace per-field allocation/free churn with reusable row/field storage
   or bounded slices.
 - [ ] Preserve escape, enclosure, line, warning, conversion, transaction, and
   error semantics.
-- [ ] Benchmark by row width, field count, escape density, index count, and
+- [x] Benchmark by row width, field count, escape density, index count, and
   input size.
 - [ ] Gate allocations per row, bytes per second, peak RSS, and MySQL-visible
   results.
+
+The implementation now uses 16 KiB reads and retained high-water field
+buffers. A profiling Release matrix covers narrow, wide, many-field,
+escape-dense, zero-index, five-index, 100K-row, and 1M-row inputs. Allocation
+count and bytes are row-count independent, and narrow process peak RSS grows
+only 120 KiB from 100K to 1M rows.
+
+The [July 2026 qualification](../performance/load-data-streaming-qualification-2026-07.md)
+did not pass: the 100K zero-index improvement was 8.160%, below the specified
+15%, and that timing matrix exceeded the 10% noise ceiling. The final gate
+therefore remains open. Compatibility verification remains open until the
+complete native, sanitizer, and MySQL expectation suites are rerun against the
+final tree.
 
 ### `PERF-04`: buffering, cold data, scale, and application breadth
 

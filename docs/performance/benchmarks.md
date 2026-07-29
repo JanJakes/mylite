@@ -145,6 +145,34 @@ the expanded methodology and final 100K/500K/1M results are in
 The repeated-write implementation and final import measurements are in
 [repeated-write-import-qualification-2026-07.md](repeated-write-import-qualification-2026-07.md).
 
+### Focused `LOAD DATA` benchmark
+
+Build and smoke the shape-aware import benchmark in either the normal Release
+or profiling configuration:
+
+```sh
+cmake --build build/ci --target mylite_load_data_benchmark_check
+cmake --build build/perf-profile --target mylite_load_data_benchmark_check
+
+build/ci/packages/libmylite/mylite_load_data_benchmark \
+  --shape narrow \
+  --indexes 0 \
+  --rows 100000 \
+  --samples 5 \
+  --warmup 1 \
+  --output build/perf-data/load-data-narrow-100000.csv
+```
+
+The available shapes are `narrow`, `wide`, `many`, and `escaped`.
+`--indexes 5` is valid for `narrow`; the other shapes intentionally isolate
+row width, field count, and escape density without index maintenance. The
+benchmark records input bytes, rows/s, bytes/s, process peak RSS, affected
+rows, an aggregate result checksum, and profiling counters when enabled. It
+uses a temporary file-backed database, rolls every import back, and verifies
+that rollback leaves the table empty. The July 2026 paired results and gate
+decision are in
+[load-data-streaming-qualification-2026-07.md](load-data-streaming-qualification-2026-07.md).
+
 ### Retained-write attribution
 
 Build separate Release clients for wall-time and counter collection:

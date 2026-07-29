@@ -137,6 +137,29 @@ static DWORD WINAPI run_worker(LPVOID argument);
 static void *run_worker(void *argument);
 #endif
 static void execute_worker(struct worker_context *context);
+static int initialize_worker(
+    struct worker_context *context,
+    struct system_database *database,
+    struct system_statement *statement
+);
+static void await_worker_start(const struct worker_context *context);
+static int start_worker_transaction(
+    struct worker_context *context,
+    struct system_database *database
+);
+static void execute_worker_iterations(
+    struct worker_context *context,
+    struct system_database *database,
+    struct system_statement *statement
+);
+static void cleanup_worker(
+    struct worker_context *context,
+    struct system_database *database,
+    struct system_statement *statement,
+    bool transaction_started
+);
+static const char *worker_role(const struct worker_context *context);
+static const char *database_error_message(const struct system_database *database);
 static int run_lifecycle_scenario(
     FILE *output,
     enum system_engine_kind kind,
@@ -526,19 +549,49 @@ static void execute_worker(struct worker_context *context) {
     struct system_statement statement = {0};
     bool transaction_started = false;
 
-    if (open_database(context->kind, context->path, &database) != 0 ||
-        prepare_statement(&database, context->sql, &statement) != 0 ||
-        (context->writer &&
-         execute_sql(
-             &database,
-             context->kind == system_engine_mylite ? "START TRANSACTION" : "BEGIN"
-         ) != 0)) {
+    if (initialize_worker(context, &database, &statement) == 0) {
+        atomic_fetch_add_explicit(context->ready, 1U, memory_order_release);
+        await_worker_start(context);
+        if (start_worker_transaction(context, &database) == 0) {
+            transaction_started = context->writer;
+            execute_worker_iterations(context, &database, &statement);
+            if (transaction_started && execute_sql(&database, "ROLLBACK") != 0) {
+                ++context->errors;
+            }
+            transaction_started = false;
+        }
+    } else {
         ++context->errors;
         atomic_fetch_add_explicit(context->ready, 1U, memory_order_release);
-        goto cleanup;
     }
-    transaction_started = context->writer;
-    atomic_fetch_add_explicit(context->ready, 1U, memory_order_release);
+    cleanup_worker(context, &database, &statement, transaction_started);
+}
+
+static int initialize_worker(
+    struct worker_context *context,
+    struct system_database *database,
+    struct system_statement *statement
+) {
+    if (open_database(context->kind, context->path, database) != 0) {
+        fprintf(stderr, "system-benchmark: %s worker open failed\n", engine_name(context->kind));
+        return 1;
+    }
+    if (prepare_statement(database, context->sql, statement) != 0) {
+        fprintf(
+            stderr,
+            "system-benchmark: %s %s prepare failed: %s\nSQL: %s\n",
+            engine_name(context->kind),
+            worker_role(context),
+            database_error_message(database),
+            context->sql
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static void await_worker_start(const struct worker_context *context) {
     while (!atomic_load_explicit(context->start, memory_order_acquire)) {
 #if defined(_WIN32)
         Sleep(0U);
@@ -546,29 +599,81 @@ static void execute_worker(struct worker_context *context) {
         (void)sched_yield();
 #endif
     }
+}
+
+static int start_worker_transaction(
+    struct worker_context *context,
+    struct system_database *database
+) {
+    if (!context->writer) {
+        return 0;
+    }
+    if (execute_sql(
+            database,
+            context->kind == system_engine_mylite ? "START TRANSACTION" : "BEGIN"
+        ) != 0) {
+        ++context->errors;
+        return 1;
+    }
+
+    return 0;
+}
+
+static void execute_worker_iterations(
+    struct worker_context *context,
+    struct system_database *database,
+    struct system_statement *statement
+) {
     for (size_t iteration = 0U; iteration < context->iterations; ++iteration) {
-        if (reset_statement(&statement) != 0 ||
-            step_and_hash(&database, &statement, &context->checksum) != 0) {
+        if (reset_statement(statement) != 0) {
+            fprintf(
+                stderr,
+                "system-benchmark: %s %s reset failed: %s\n",
+                engine_name(context->kind),
+                worker_role(context),
+                database_error_message(database)
+            );
+            ++context->errors;
+            break;
+        }
+        if (step_and_hash(database, statement, &context->checksum) != 0) {
             ++context->errors;
             break;
         }
         ++context->operations;
     }
-    if (transaction_started && execute_sql(&database, "ROLLBACK") != 0) {
-        ++context->errors;
-    }
-    transaction_started = false;
+}
 
-cleanup:
+static void cleanup_worker(
+    struct worker_context *context,
+    struct system_database *database,
+    struct system_statement *statement,
+    bool transaction_started
+) {
     if (transaction_started) {
-        (void)execute_sql(&database, "ROLLBACK");
+        (void)execute_sql(database, "ROLLBACK");
     }
-    if (statement.mylite != NULL || statement.sqlite != NULL) {
-        if (finalize_statement(&statement) != 0) {
+    if (statement->mylite != NULL || statement->sqlite != NULL) {
+        if (finalize_statement(statement) != 0) {
+            fprintf(
+                stderr,
+                "system-benchmark: %s %s finalize failed\n",
+                engine_name(context->kind),
+                worker_role(context)
+            );
             ++context->errors;
         }
     }
-    close_database(&database);
+    close_database(database);
+}
+
+static const char *worker_role(const struct worker_context *context) {
+    return context->writer ? "writer" : "reader";
+}
+
+static const char *database_error_message(const struct system_database *database) {
+    return database->kind == system_engine_mylite ? mylite_errmsg(database->mylite)
+                                                  : sqlite3_errmsg(database->sqlite);
 }
 
 static int run_lifecycle_scenario(
@@ -708,8 +813,19 @@ static int open_database(
 ) {
     *out_database = (struct system_database){.kind = kind};
     if (kind == system_engine_mylite) {
-        if (mylite_open(path, &out_database->mylite) != MYLITE_OK ||
-            execute_sql(out_database, "USE perf") != 0) {
+        struct mylite_open_diagnostic diagnostic = {0};
+
+        if (mylite_open_with_diagnostic(path, &out_database->mylite, &diagnostic) != MYLITE_OK) {
+            fprintf(
+                stderr,
+                "system-benchmark: MyLite open failed: [%s/%d] %s\n",
+                diagnostic.sqlstate,
+                diagnostic.error_code,
+                diagnostic.message
+            );
+            return 1;
+        }
+        if (execute_sql(out_database, "USE perf") != 0) {
             return 1;
         }
         return 0;

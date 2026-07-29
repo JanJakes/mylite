@@ -20,6 +20,12 @@ enum {
     test_path_capacity = 1024,
     sql_capacity = 4096,
     sql_escape_probe_capacity = 64,
+    load_data_chunk_size = 16 * 1024,
+    first_chunk_suffix_size = sizeof("\tfirst\n2\t") - 1,
+    second_chunk_suffix_size = sizeof("\\tinside\t\\N\n3\t") - 1,
+    final_field_size = sizeof("\tlast") - 1,
+    long_field_size = 40000,
+    repeated_byte_buffer_size = 256,
     loaded_column_count = 5,
     mysql_error_cant_get_stat = 13,
     mysql_error_no_database_selected = 1046,
@@ -62,10 +68,16 @@ struct load_data_sql {
     const char *tail;
 };
 
+struct repeated_byte_request {
+    size_t count;
+    char byte;
+};
+
 static int test_load_data_success_persistence_and_metadata(void);
 static int test_load_data_diagnostics_and_nonstrict_adjustment(void);
 static int test_load_data_independent_handles(void);
 static int test_load_data_sql_string_escaping(void);
+static int test_load_data_chunk_boundaries(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -87,6 +99,8 @@ static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int write_text_file(struct text_file file);
+static int write_chunk_boundary_file(const char *path);
+static int write_repeated_byte(FILE *file, struct repeated_byte_request request);
 static int build_load_sql(char *sql, size_t sql_size, struct load_data_sql load_sql);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int expect_bytes(
@@ -103,6 +117,7 @@ int main(void) {
     failures += test_load_data_diagnostics_and_nonstrict_adjustment();
     failures += test_load_data_independent_handles();
     failures += test_load_data_sql_string_escaping();
+    failures += test_load_data_chunk_boundaries();
 
     return failures == 0 ? 0 : 1;
 }
@@ -121,6 +136,75 @@ static int test_load_data_sql_string_escaping(void) {
         "C:\\\\Temp\\\\O\\'Brien.tsv",
         "escaped Windows LOAD DATA path"
     );
+    return failures;
+}
+
+static int test_load_data_chunk_boundaries(void) {
+    static const char *const expected_rows[] = {
+        "1",
+        "16381",
+        "a",
+        "first",
+        "2",
+        "16382",
+        "\t",
+        NULL,
+        "3",
+        "40000",
+        "z",
+        "last",
+    };
+    char import_path[test_path_capacity];
+    char sql[sql_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(import_path, sizeof(import_path), "chunk_boundaries", ".tsv") != 0) {
+        return 1;
+    }
+    (void)remove(import_path);
+    failures += write_chunk_boundary_file(import_path);
+    failures += mylite_test_expect_int(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open chunk-boundary database"
+    );
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE chunked (id INT NOT NULL, body TEXT NOT NULL, note TEXT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += build_load_sql(
+        sql,
+        sizeof(sql),
+        (struct load_data_sql){.file_path = import_path, .tail = "INTO TABLE chunked"}
+    );
+    failures += expect_load_ok(
+        database,
+        sql,
+        (struct expected_load_result){.affected_rows = 3, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LENGTH(body), SUBSTRING(body, 16376, 1), note "
+                   "FROM chunked ORDER BY id",
+            .values = expected_rows,
+            .column_count = 4U,
+            .row_count = 3U,
+            .context = "chunk-boundary rows",
+        }
+    );
+
+    mylite_close(database);
+    (void)remove(import_path);
     return failures;
 }
 
@@ -930,6 +1014,71 @@ static int write_text_file(struct text_file file_data) {
         return 1;
     }
 
+    return 0;
+}
+
+static int write_chunk_boundary_file(const char *path) {
+    FILE *file = fopen(path, "wb");
+    int rc = 0;
+
+    if (file == NULL) {
+        fprintf(stderr, "failed to open %s for writing\n", path);
+        return 1;
+    }
+
+    /*
+     * Row 1 ends its second-field delimiter at the end of the first chunk.
+     * Row 2 puts a backslash at the end of the second chunk. Row 3 is larger
+     * than two chunks and has no final newline.
+     */
+    if (fwrite("1\t", 1U, 2U, file) != 2U ||
+        write_repeated_byte(
+            file,
+            (struct repeated_byte_request){
+                .count = load_data_chunk_size - 3U,
+                .byte = 'a',
+            }
+        ) != 0 ||
+        fwrite("\tfirst\n2\t", 1U, first_chunk_suffix_size, file) != first_chunk_suffix_size ||
+        write_repeated_byte(
+            file,
+            (struct repeated_byte_request){
+                .count = load_data_chunk_size - first_chunk_suffix_size,
+                .byte = 'b',
+            }
+        ) != 0 ||
+        fwrite("\\tinside\t\\N\n3\t", 1U, second_chunk_suffix_size, file) !=
+            second_chunk_suffix_size ||
+        write_repeated_byte(
+            file,
+            (struct repeated_byte_request){
+                .count = long_field_size,
+                .byte = 'z',
+            }
+        ) != 0 ||
+        fwrite("\tlast", 1U, final_field_size, file) != final_field_size) {
+        fprintf(stderr, "failed to write chunk-boundary fixture %s\n", path);
+        rc = 1;
+    }
+    if (fclose(file) != 0) {
+        fprintf(stderr, "failed to close %s\n", path);
+        rc = 1;
+    }
+    return rc;
+}
+
+static int write_repeated_byte(FILE *file, struct repeated_byte_request request) {
+    char buffer[repeated_byte_buffer_size];
+
+    memset(buffer, request.byte, sizeof(buffer));
+    while (request.count != 0U) {
+        size_t write_size = request.count < sizeof(buffer) ? request.count : sizeof(buffer);
+
+        if (fwrite(buffer, 1U, write_size, file) != write_size) {
+            return 1;
+        }
+        request.count -= write_size;
+    }
     return 0;
 }
 

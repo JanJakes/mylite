@@ -39,6 +39,8 @@ enum {
     mysql_group_concat_blob_type_threshold = 512,
     predicate_planning_stack_initial_capacity = 8,
     dml_parameter_context_stack_initial_capacity = 32,
+    load_data_input_chunk_size = 16 * 1024,
+    load_data_field_initial_capacity = 128,
     index_display_group_primary = 0,
     index_display_group_spatial = 1,
     index_display_group_not_null_unique = 2,

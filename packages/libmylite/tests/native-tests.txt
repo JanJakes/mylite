@@ -309,6 +309,7 @@ tests/runtime_last_insert_id_function_test.c|internal|always
 tests/runtime_left_join_select_test.c|internal-sqlite|always
 tests/runtime_like_predicates_test.c|internal|always
 tests/runtime_load_data_infile_test.c|internal|always
+tests/runtime_load_data_profile_test.c|profile|profiling
 tests/runtime_lock_tables_lifecycle_test.c|internal|always
 tests/runtime_long_character_binary_aliases_test.c|internal|always
 tests/runtime_m_server_limit_system_variables_test.c|internal|always

@@ -1064,6 +1064,7 @@ struct planned_load_data_infile {
 struct load_data_field {
     char *text;
     size_t text_length;
+    size_t text_capacity;
     bool is_null;
 };
 

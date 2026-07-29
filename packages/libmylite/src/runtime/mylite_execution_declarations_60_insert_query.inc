@@ -1,3 +1,5 @@
+struct load_data_reader;
+
 static int plan_insert(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -51,25 +53,32 @@ static int execute_load_data_file_rows(
     const struct planned_load_data_infile *plan,
     struct insert_execution_counters *counters
 );
-static int finish_load_data_field(
+static int consume_load_data_input(
     struct mylite_db *database,
-    struct load_data_row *row,
-    struct mylite_dynamic_string *field,
-    bool *escape_pending
+    sqlite3_stmt *statement,
+    const struct planned_load_data_infile *plan,
+    struct insert_execution_counters *counters,
+    const unsigned char *input,
+    size_t input_size,
+    struct load_data_reader *reader
 );
+static int finish_load_data_field(struct mylite_db *database, struct load_data_reader *reader);
 static int load_data_row_append_field(
     struct mylite_db *database,
     struct load_data_row *row,
-    char *raw_text,
-    size_t raw_text_length
+    struct mylite_dynamic_string *raw_field,
+    bool has_escape
 );
 static int decode_load_data_field_text(
     struct mylite_db *database,
-    char *raw_text,
+    const char *raw_text,
     size_t raw_text_length,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
+    struct load_data_field *out_field
+);
+static int reserve_load_data_field_text(
+    struct mylite_db *database,
+    struct load_data_field *field,
+    size_t required_capacity
 );
 static int process_load_data_row(
     struct mylite_db *database,

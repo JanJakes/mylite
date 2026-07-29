@@ -302,6 +302,17 @@ static int rebase_insert_auto_increment_after_write_lock(
     return MYLITE_OK;
 }
 
+struct load_data_reader {
+    struct mylite_dynamic_string field;
+    struct load_data_row row;
+    struct planned_insert_row insert_row;
+    uint64_t physical_row_number;
+    size_t loaded_row_count;
+    bool escape_pending;
+    bool field_has_escape;
+    bool row_pending;
+};
+
 static int execute_load_data_infile_from_plan(
     struct mylite_db *database,
     const struct planned_load_data_infile *plan,
@@ -429,102 +440,143 @@ static int execute_load_data_file_rows(
     const struct planned_load_data_infile *plan,
     struct insert_execution_counters *counters
 ) {
-    struct mylite_dynamic_string field;
-    struct load_data_row row = {0};
-    struct planned_insert_row insert_row = {0};
-    uint64_t physical_row_number = 0U;
-    size_t loaded_row_count = 0U;
-    bool escape_pending = false;
-    bool row_pending = false;
+    unsigned char input[load_data_input_chunk_size];
+    struct load_data_reader reader = {0};
     int rc = MYLITE_OK;
-    int byte = 0;
 
-    mylite_dynamic_string_init(&field);
-    while (rc == MYLITE_OK && (byte = fgetc(file)) != EOF) {
-        row_pending = true;
-        if (escape_pending) {
-            rc = mylite_dynamic_string_append_char(&field, '\\');
-            if (rc == MYLITE_OK) {
-                rc = mylite_dynamic_string_append_char(&field, (char)byte);
+    mylite_dynamic_string_init(&reader.field);
+    while (rc == MYLITE_OK) {
+        size_t input_size = fread(input, 1U, sizeof(input), file);
+
+        rc = consume_load_data_input(
+            database,
+            statement,
+            plan,
+            counters,
+            input,
+            input_size,
+            &reader
+        );
+        if (input_size < sizeof(input)) {
+            if (rc == MYLITE_OK && ferror(file) != 0) {
+                set_load_data_file_error(database, plan->file_path, errno);
+                rc = MYLITE_ERROR;
             }
-            escape_pending = false;
-            continue;
+            break;
         }
-        if (byte == '\\') {
-            escape_pending = true;
-            continue;
-        }
-        if (byte == '\t') {
-            rc = finish_load_data_field(database, &row, &field, &escape_pending);
-            continue;
-        }
-        if (byte == '\n') {
-            rc = finish_load_data_field(database, &row, &field, &escape_pending);
-            if (rc == MYLITE_OK) {
-                ++physical_row_number;
-                rc = process_load_data_row(
-                    database,
-                    plan,
-                    statement,
-                    &row,
-                    physical_row_number,
-                    &loaded_row_count,
-                    &insert_row,
-                    counters
-                );
-            }
-            load_data_row_reset(&row);
-            row_pending = false;
-            continue;
-        }
-        rc = mylite_dynamic_string_append_char(&field, (char)byte);
     }
-    if (rc == MYLITE_OK && ferror(file) != 0) {
-        set_load_data_file_error(database, plan->file_path, errno);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && row_pending) {
-        rc = finish_load_data_field(database, &row, &field, &escape_pending);
+    if (rc == MYLITE_OK && reader.row_pending) {
+        rc = finish_load_data_field(database, &reader);
         if (rc == MYLITE_OK) {
-            ++physical_row_number;
+            ++reader.physical_row_number;
             rc = process_load_data_row(
                 database,
                 plan,
                 statement,
-                &row,
-                physical_row_number,
-                &loaded_row_count,
-                &insert_row,
+                &reader.row,
+                reader.physical_row_number,
+                &reader.loaded_row_count,
+                &reader.insert_row,
                 counters
             );
         }
     }
 
-    planned_insert_row_deinit(&insert_row, plan->insert.column_count);
-    load_data_row_deinit(&row);
-    mylite_dynamic_string_deinit(&field);
+    planned_insert_row_deinit(&reader.insert_row, plan->insert.column_count);
+    load_data_row_deinit(&reader.row);
+    mylite_dynamic_string_deinit(&reader.field);
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
     }
     return rc;
 }
 
-static int finish_load_data_field(
+static int consume_load_data_input(
     struct mylite_db *database,
-    struct load_data_row *row,
-    struct mylite_dynamic_string *field,
-    bool *escape_pending
+    sqlite3_stmt *statement,
+    const struct planned_load_data_infile *plan,
+    struct insert_execution_counters *counters,
+    const unsigned char *input,
+    size_t input_size,
+    struct load_data_reader *reader
 ) {
-    char *raw_text = NULL;
-    size_t raw_text_length = 0U;
+    int rc = MYLITE_OK;
+    size_t index = 0U;
+
+    while (rc == MYLITE_OK && index < input_size) {
+        size_t run_start = index;
+        unsigned char byte = 0U;
+
+        if (reader->escape_pending) {
+            rc = mylite_dynamic_string_append_char(&reader->field, '\\');
+            if (rc == MYLITE_OK) {
+                rc = mylite_dynamic_string_append_char(&reader->field, (char)input[index]);
+            }
+            reader->escape_pending = false;
+            reader->row_pending = true;
+            ++index;
+            continue;
+        }
+        while (index < input_size && input[index] != '\\' && input[index] != '\t' &&
+               input[index] != '\n') {
+            ++index;
+        }
+        if (index != run_start) {
+            rc = mylite_dynamic_string_append_bytes(
+                &reader->field,
+                (const char *)&input[run_start],
+                index - run_start
+            );
+            reader->row_pending = true;
+        }
+        if (rc != MYLITE_OK || index == input_size) {
+            continue;
+        }
+
+        byte = input[index];
+        ++index;
+        reader->row_pending = true;
+        if (byte == '\\') {
+            reader->escape_pending = true;
+            reader->field_has_escape = true;
+            continue;
+        }
+        if (byte == '\t') {
+            rc = finish_load_data_field(database, reader);
+            continue;
+        }
+        if (byte == '\n') {
+            rc = finish_load_data_field(database, reader);
+            if (rc == MYLITE_OK) {
+                ++reader->physical_row_number;
+                rc = process_load_data_row(
+                    database,
+                    plan,
+                    statement,
+                    &reader->row,
+                    reader->physical_row_number,
+                    &reader->loaded_row_count,
+                    &reader->insert_row,
+                    counters
+                );
+            }
+            load_data_row_reset(&reader->row);
+            reader->row_pending = false;
+            continue;
+        }
+    }
+    return rc;
+}
+
+static int finish_load_data_field(struct mylite_db *database, struct load_data_reader *reader) {
     int rc = MYLITE_OK;
 
-    if (*escape_pending) {
-        rc = mylite_dynamic_string_append_char(field, '\\');
-        *escape_pending = false;
+    if (reader->escape_pending) {
+        rc = mylite_dynamic_string_append_char(&reader->field, '\\');
+        reader->escape_pending = false;
     }
-    if (rc == MYLITE_OK && field->text == NULL) {
-        rc = mylite_dynamic_string_append(field, "");
+    if (rc == MYLITE_OK && reader->field.text == NULL) {
+        rc = mylite_dynamic_string_append(&reader->field, "");
     }
     if (rc != MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {
@@ -533,144 +585,169 @@ static int finish_load_data_field(
         return rc;
     }
 
-    raw_text_length = field->length;
-    raw_text = mylite_dynamic_string_take(field);
-    mylite_dynamic_string_init(field);
-    if (raw_text == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    rc = load_data_row_append_field(
+        database,
+        &reader->row,
+        &reader->field,
+        reader->field_has_escape
+    );
+    if (rc == MYLITE_OK) {
+        reader->field_has_escape = false;
     }
-
-    return load_data_row_append_field(database, row, raw_text, raw_text_length);
+    return rc;
 }
 
 static int load_data_row_append_field(
     struct mylite_db *database,
     struct load_data_row *row,
-    char *raw_text,
-    size_t raw_text_length
+    struct mylite_dynamic_string *raw_field,
+    bool has_escape
 ) {
-    char *text = NULL;
-    size_t text_length = 0U;
-    bool is_null = false;
-    int rc = decode_load_data_field_text(
-        database,
-        raw_text,
-        raw_text_length,
-        &text,
-        &text_length,
-        &is_null
-    );
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     if (row->field_count == row->field_capacity) {
         size_t new_capacity = row->field_capacity == 0U ? 4U : row->field_capacity * 2U;
         struct load_data_field *new_fields = NULL;
 
         if (new_capacity < row->field_capacity || new_capacity > SIZE_MAX / sizeof(*new_fields)) {
-            free(text);
             set_nomem_error(database);
             return MYLITE_NOMEM;
         }
         new_fields = realloc(row->fields, new_capacity * sizeof(*new_fields));
         if (new_fields == NULL) {
-            free(text);
             set_nomem_error(database);
             return MYLITE_NOMEM;
         }
+        memset(
+            &new_fields[row->field_capacity],
+            0,
+            (new_capacity - row->field_capacity) * sizeof(*new_fields)
+        );
         row->fields = new_fields;
         row->field_capacity = new_capacity;
     }
 
-    row->fields[row->field_count] = (struct load_data_field){
-        .text = text,
-        .text_length = text_length,
-        .is_null = is_null,
-    };
+    struct load_data_field *field = &row->fields[row->field_count];
+    if (!has_escape) {
+        char *reusable_text = field->text;
+        size_t reusable_capacity = field->text_capacity;
+
+        field->text = raw_field->text;
+        field->text_length = raw_field->length;
+        field->text_capacity = raw_field->capacity;
+        field->is_null = false;
+        raw_field->text = reusable_text;
+        raw_field->length = 0U;
+        raw_field->capacity = reusable_capacity;
+        if (raw_field->text != NULL) {
+            raw_field->text[0] = '\0';
+        }
+        ++row->field_count;
+        return MYLITE_OK;
+    }
+
+    int rc = decode_load_data_field_text(database, raw_field->text, raw_field->length, field);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    raw_field->length = 0U;
+    raw_field->text[0] = '\0';
     ++row->field_count;
     return MYLITE_OK;
 }
 
 static int decode_load_data_field_text(
     struct mylite_db *database,
-    char *raw_text,
+    const char *raw_text,
     size_t raw_text_length,
-    char **out_text,
-    size_t *out_text_length,
-    bool *out_is_null
+    struct load_data_field *out_field
 ) {
-    struct mylite_dynamic_string decoded;
+    size_t write_index = 0U;
     int rc = MYLITE_OK;
 
-    *out_text = NULL;
-    *out_text_length = 0U;
-    *out_is_null = false;
+    out_field->text_length = 0U;
+    out_field->is_null = false;
     if (raw_text_length == 2U && raw_text[0] == '\\' && raw_text[1] == 'N') {
-        free(raw_text);
-        *out_is_null = true;
+        out_field->is_null = true;
         return MYLITE_OK;
     }
-    if (memchr(raw_text, '\\', raw_text_length) == NULL) {
-        *out_text = raw_text;
-        *out_text_length = raw_text_length;
-        return MYLITE_OK;
+    if (raw_text_length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    rc = reserve_load_data_field_text(database, out_field, raw_text_length + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
-    mylite_dynamic_string_init(&decoded);
-    for (size_t index = 0U; rc == MYLITE_OK && index < raw_text_length; ++index) {
+    for (size_t index = 0U; index < raw_text_length; ++index) {
         char byte = raw_text[index];
 
         if (byte != '\\' || index + 1U >= raw_text_length) {
-            rc = mylite_dynamic_string_append_char(&decoded, byte);
+            out_field->text[write_index++] = byte;
             continue;
         }
 
         ++index;
         switch (raw_text[index]) {
         case '0':
-            rc = mylite_dynamic_string_append_char(&decoded, '\0');
+            out_field->text[write_index++] = '\0';
             break;
         case 'b':
-            rc = mylite_dynamic_string_append_char(&decoded, '\b');
+            out_field->text[write_index++] = '\b';
             break;
         case 'n':
-            rc = mylite_dynamic_string_append_char(&decoded, '\n');
+            out_field->text[write_index++] = '\n';
             break;
         case 'r':
-            rc = mylite_dynamic_string_append_char(&decoded, '\r');
+            out_field->text[write_index++] = '\r';
             break;
         case 't':
-            rc = mylite_dynamic_string_append_char(&decoded, '\t');
+            out_field->text[write_index++] = '\t';
             break;
         case 'Z':
-            rc = mylite_dynamic_string_append_char(&decoded, '\032');
+            out_field->text[write_index++] = '\032';
             break;
         case '\\':
-            rc = mylite_dynamic_string_append_char(&decoded, '\\');
+            out_field->text[write_index++] = '\\';
             break;
         default:
-            rc = mylite_dynamic_string_append_char(&decoded, raw_text[index]);
+            out_field->text[write_index++] = raw_text[index];
             break;
         }
     }
-    free(raw_text);
-    if (rc == MYLITE_OK && decoded.text == NULL) {
-        rc = mylite_dynamic_string_append(&decoded, "");
+    out_field->text[write_index] = '\0';
+    out_field->text_length = write_index;
+    return MYLITE_OK;
+}
+
+static int reserve_load_data_field_text(
+    struct mylite_db *database,
+    struct load_data_field *field,
+    size_t required_capacity
+) {
+    size_t capacity = field->text_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
     }
-    if (rc == MYLITE_OK) {
-        *out_text_length = decoded.length;
-        *out_text = mylite_dynamic_string_take(&decoded);
-        if (*out_text == NULL) {
-            rc = MYLITE_NOMEM;
+    if (capacity == 0U) {
+        capacity = load_data_field_initial_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
         }
+        capacity *= 2U;
     }
-    if (rc == MYLITE_NOMEM) {
+
+    char *text = realloc(field->text, capacity);
+    if (text == NULL) {
         set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
-    mylite_dynamic_string_deinit(&decoded);
-    return rc;
+    field->text = text;
+    field->text_capacity = capacity;
+    return MYLITE_OK;
 }
 
 static int process_load_data_row(
@@ -1163,7 +1240,7 @@ static void load_data_row_deinit(struct load_data_row *row) {
         return;
     }
 
-    for (size_t index = 0U; index < row->field_count; ++index) {
+    for (size_t index = 0U; index < row->field_capacity; ++index) {
         free(row->fields[index].text);
     }
     free(row->fields);
@@ -1175,7 +1252,11 @@ static void load_data_row_reset(struct load_data_row *row) {
         return;
     }
     for (size_t index = 0U; index < row->field_count; ++index) {
-        free(row->fields[index].text);
+        row->fields[index].text_length = 0U;
+        row->fields[index].is_null = false;
+        if (row->fields[index].text != NULL) {
+            row->fields[index].text[0] = '\0';
+        }
     }
     row->field_count = 0U;
 }

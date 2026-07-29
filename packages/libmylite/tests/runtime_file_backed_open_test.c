@@ -92,6 +92,7 @@ static int wait_for_path(const char *path);
 static int path_exists(const char *path);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
+static void remove_path(const char *path);
 static int write_file_bytes(const char *path, const void *bytes, size_t size);
 static int write_file_at(const char *path, long offset, const void *bytes, size_t size);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
@@ -2007,6 +2008,21 @@ static int wait_for_path(const char *path) {
 }
 
 static int path_exists(const char *path) {
+#ifdef _WIN32
+    wchar_t wide_path[test_path_capacity];
+
+    if (MultiByteToWideChar(
+            CP_UTF8,
+            MB_ERR_INVALID_CHARS,
+            path,
+            -1,
+            wide_path,
+            test_path_capacity
+        ) == 0) {
+        return 0;
+    }
+    return GetFileAttributesW(wide_path) != INVALID_FILE_ATTRIBUTES;
+#else
     FILE *file = fopen(path, "rb");
 
     if (file == NULL) {
@@ -2014,10 +2030,11 @@ static int path_exists(const char *path) {
     }
     (void)fclose(file);
     return 1;
+#endif
 }
 
 static void remove_related_files(const char *path) {
-    (void)remove(path);
+    remove_path(path);
     remove_with_suffix(path, "-journal");
     remove_with_suffix(path, "-wal");
     remove_with_suffix(path, "-shm");
@@ -2031,7 +2048,26 @@ static void remove_with_suffix(const char *path, const char *suffix) {
         return;
     }
 
-    (void)remove(related_path);
+    remove_path(related_path);
+}
+
+static void remove_path(const char *path) {
+#ifdef _WIN32
+    wchar_t wide_path[test_path_capacity];
+
+    if (MultiByteToWideChar(
+            CP_UTF8,
+            MB_ERR_INVALID_CHARS,
+            path,
+            -1,
+            wide_path,
+            test_path_capacity
+        ) != 0) {
+        (void)DeleteFileW(wide_path);
+    }
+#else
+    (void)remove(path);
+#endif
 }
 
 static int write_file_bytes(const char *path, const void *bytes, size_t size) {

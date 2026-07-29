@@ -108,6 +108,19 @@ allocation-request bytes, and 120 KiB of process peak RSS. The 103 MB wide
 input also remains near 12 MiB RSS. Input storage is therefore bounded by the
 largest retained row shape rather than total file size.
 
+## Verification
+
+The final tree passed:
+
+- 707 of 707 Developer CTest tests;
+- 707 of 707 ASan/UBSan CTest tests;
+- the profiling Release LOAD DATA runtime, allocation, and benchmark smoke
+  tests;
+- the MySQL 8.4.9 LOAD DATA runtime expectation fixture;
+- compatibility validation for 716 green claims backed by 810 MySQL fixtures;
+- the first-party formatting check and changed-source `clang-tidy` checks in
+  profiling-disabled and profiling-enabled configurations.
+
 ## Gate Decision
 
 | Gate | Result |

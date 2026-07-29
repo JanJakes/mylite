@@ -900,7 +900,7 @@ remain pending.
 - [x] Replace per-byte `fgetc()` input with chunked buffered reads.
 - [x] Replace per-field allocation/free churn with reusable row/field storage
   or bounded slices.
-- [ ] Preserve escape, enclosure, line, warning, conversion, transaction, and
+- [x] Preserve escape, enclosure, line, warning, conversion, transaction, and
   error semantics.
 - [x] Benchmark by row width, field count, escape density, index count, and
   input size.
@@ -916,9 +916,12 @@ only 120 KiB from 100K to 1M rows.
 The [July 2026 qualification](../performance/load-data-streaming-qualification-2026-07.md)
 did not pass: the 100K zero-index improvement was 8.160%, below the specified
 15%, and that timing matrix exceeded the 10% noise ceiling. The final gate
-therefore remains open. Compatibility verification remains open until the
-complete native, sanitizer, and MySQL expectation suites are rerun against the
-final tree.
+therefore remains open.
+
+Compatibility verification is complete. The full Developer and ASan/UBSan
+suites each pass 707 tests, the profiling Release LOAD DATA tests and benchmark
+smoke pass, the MySQL 8.4.9 LOAD DATA expectation fixture passes, and the claim
+validator verifies 716 green claims backed by 810 MySQL fixtures.
 
 ### `PERF-04`: buffering, cold data, scale, and application breadth
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified; implementation pending.
+Implemented and release-qualified.
 
 ## Summary
 
@@ -274,3 +274,38 @@ must remain green. Release qualification additionally runs the ABI, formatting,
 static-analysis, sanitizer, install, package-config, compatibility-ledger, and
 production-size gates.
 
+## Qualification
+
+The independently authored specification and pinned MySQL 8.4.9 fixture landed
+at `c71e670f2`. Spatial and `CONVERT_TZ()` descriptors landed at `6463c151e`;
+aggregate, grouped, and window descriptors landed at `a6511e120`; PDO now
+expects typed aggregate values at `da9d43748`; and the additive public type ids
+were reviewed against the ABI-0 contract at `2e00f221d`.
+
+Release qualification covered:
+
+- all 706 Development tests, including fault, crash, concurrency, install
+  consumer, and pkg-config coverage;
+- the 16 affected aggregate, window, spatial, and result-metadata suites in
+  Debug, Release, and ASan/UBSan builds, with leak detection enabled for the
+  sanitizer run;
+- all 53 governed MySQL fixtures selected for the affected spatial, aggregate,
+  window, scalar-result, metadata-connection, result-metadata, and
+  `CONVERT_TZ()` surfaces, including the exact field-metadata matrix in this
+  specification's pinned fixture;
+- all 16 PHP core, mysqli, and PDO tests;
+- Doctrine DBAL 4.4.3 with two tests and 22 assertions, and Doctrine ORM 3.6.7
+  with one test and eight assertions, on PHP 8.4.23;
+- LLVM 19 static analysis across all 931 first-party translation units,
+  first-party formatting, whitespace, compatibility-ledger, and exact
+  shared-library symbol/header checks;
+- a 12,386,856-byte native production archive against the 15,000,000-byte
+  ceiling, plus PHP-production artifacts of 12,382,104 bytes for the archive,
+  8,945,320 bytes for `mylite.so`, 242,800 bytes for `mysqli.so`, and 33,488
+  bytes for `pdo_mylite.so`, all below their configured ceilings.
+
+Self-review confirmed that each corrected descriptor agrees with the existing
+value family and is shared by native, mysqli, PDO, and prepared execution.
+The change adds no dependency, persistent state, catalog or file-format
+mutation, SQLite-fork patch, row scan, or second function evaluation. Broader
+joined, `SHOW`, and synthetic result metadata remains outside this claim.

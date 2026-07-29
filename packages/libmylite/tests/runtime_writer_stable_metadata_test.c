@@ -26,7 +26,7 @@ enum {
     sql_capacity = 4096,
     sqlite_use_nul_terminated_string = -1,
     process_child_argument_count = 6,
-    process_child_ddl_argument = 5,
+    process_child_operation_argument = 5,
     process_exec_failure_status = 127,
     process_stress_round_count = 32,
     path_wait_attempt_count = 10000,
@@ -57,7 +57,7 @@ static int process_stress_child_main(
     const char *database_path,
     const char *ready_path,
     const char *done_path,
-    const char *ddl
+    const char *operation
 );
 static int run_process_stress_round(
     mylite_db *database,
@@ -72,7 +72,7 @@ static int spawn_process_stress_child(
     const char *database_path,
     const char *ready_path,
     const char *done_path,
-    const char *ddl,
+    const char *operation,
     child_process *out_child
 );
 static int wait_process_stress_child(child_process child);
@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
             argv[2],
             argv[3],
             argv[4],
-            argv[process_child_ddl_argument]
+            argv[process_child_operation_argument]
         );
     }
     failures += test_writer_stable_dml_matrix();
@@ -305,11 +305,25 @@ static int process_stress_child_main(
     const char *database_path,
     const char *ready_path,
     const char *done_path,
-    const char *ddl
+    const char *operation
 ) {
+    static const char add_index_sql[] =
+        "ALTER TABLE process_race ADD INDEX idx_process_race (value)";
+    static const char drop_index_sql[] = "ALTER TABLE process_race DROP INDEX idx_process_race";
+    const char *ddl = NULL;
     mylite_db *database = NULL;
-    int failures = wait_for_path(ready_path);
+    int failures = 0;
 
+    if (strcmp(operation, "add-index") == 0) {
+        ddl = add_index_sql;
+    } else if (strcmp(operation, "drop-index") == 0) {
+        ddl = drop_index_sql;
+    } else {
+        fprintf(stderr, "unknown process-stress operation: %s\n", operation);
+        return 1;
+    }
+
+    failures += wait_for_path(ready_path);
     if (failures == 0) {
         failures += mylite_test_expect_int(
             mylite_open(database_path, &database),
@@ -336,11 +350,8 @@ static int run_process_stress_round(
     const char *done_path,
     int round
 ) {
-    static const char add_index_sql[] =
-        "ALTER TABLE process_race ADD INDEX idx_process_race (value)";
-    static const char drop_index_sql[] = "ALTER TABLE process_race DROP INDEX idx_process_race";
     char update_sql[sql_capacity];
-    const char *ddl = round % 2 == 0 ? add_index_sql : drop_index_sql;
+    const char *operation = round % 2 == 0 ? "add-index" : "drop-index";
     child_process child = (child_process)-1;
     struct process_writer_race race = {
         .ready_path = ready_path,
@@ -370,7 +381,7 @@ static int run_process_stress_round(
             database_path,
             ready_path,
             done_path,
-            ddl,
+            operation,
             &child
         );
     }
@@ -436,7 +447,7 @@ static int spawn_process_stress_child(
     const char *database_path,
     const char *ready_path,
     const char *done_path,
-    const char *ddl,
+    const char *operation,
     child_process *out_child
 ) {
 #ifdef _WIN32
@@ -448,7 +459,7 @@ static int spawn_process_stress_child(
         database_path,
         ready_path,
         done_path,
-        ddl,
+        operation,
         NULL
     );
 #else
@@ -461,7 +472,7 @@ static int spawn_process_stress_child(
             database_path,
             ready_path,
             done_path,
-            ddl,
+            operation,
             (char *)NULL
         );
         _exit(process_exec_failure_status);

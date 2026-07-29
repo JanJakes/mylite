@@ -168,11 +168,14 @@ static int expect_parser_allocation_sweep(const struct parser_retry_case *test_c
         mylite_test_allocator_clear();
 
         if (!allocation_failed) {
-            failures +=
-                mylite_test_expect_int(status, test_case->expected_status, test_case->context);
             failures += mylite_test_expect_int(
-                result.status,
-                test_case->expected_status,
+                (int)status,
+                (int)test_case->expected_status,
+                test_case->context
+            );
+            failures += mylite_test_expect_int(
+                (int)result.status,
+                (int)test_case->expected_status,
                 test_case->context
             );
             failures += mylite_test_expect_true(
@@ -238,7 +241,7 @@ static int expect_typed_retry_allocation_sweep(
         mylite_test_allocator_clear();
 
         if (!allocation_failed) {
-            failures += mylite_test_expect_int(status, MYLITE_SQL_PARSE_OK, context);
+            failures += mylite_test_expect_int((int)status, MYLITE_SQL_PARSE_OK, context);
             failures += mylite_test_expect_true(handled, context);
             completed_sweep = true;
             mylite_sql_parser_retry_context_deinit(&retry_context);
@@ -300,7 +303,7 @@ static int expect_direct_growable_stack_allocation_sweep(const char *sql, size_t
 
         if (!allocation_failed) {
             failures += mylite_test_expect_int(
-                status,
+                (int)status,
                 MYLITE_SQL_PARSE_OK,
                 "complete growable parser stack sweep"
             );

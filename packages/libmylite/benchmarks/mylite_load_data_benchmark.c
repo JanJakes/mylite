@@ -109,9 +109,14 @@ static int write_many_row(FILE *file, size_t row, struct fixture_summary *summar
 static int write_escaped_row(FILE *file, size_t row, struct fixture_summary *summary);
 static int add_written_bytes(int written, struct fixture_summary *summary);
 static int add_summary_value(uint64_t *value, uint64_t addition);
-static int open_database(const struct benchmark_options *options, mylite_db **out_database);
+static int open_database(
+    const struct benchmark_options *options,
+    const char *database_path,
+    mylite_db **out_database
+);
 static const char *table_schema(const struct benchmark_options *options);
 static int execute_sql(mylite_db *database, const char *sql);
+static void remove_database_files(const char *path);
 static int run_benchmark(
     FILE *output,
     mylite_db *database,
@@ -162,7 +167,9 @@ int main(int argc, char **argv) {
     struct benchmark_options options = {0};
     struct fixture_summary fixture = {0};
     char fixture_path[path_capacity] = {0};
+    char database_path[path_capacity] = {0};
     mylite_db *database = NULL;
+    bool database_path_ready = false;
     FILE *output = stdout;
     bool fixture_path_ready = false;
     bool output_owned = false;
@@ -187,6 +194,8 @@ int main(int argc, char **argv) {
 #if defined(_WIN32)
     int written =
         snprintf(fixture_path, sizeof(fixture_path), "mylite-load-data-%d.tsv", _getpid());
+    int database_written =
+        snprintf(database_path, sizeof(database_path), "mylite-load-data-%d.mylite", _getpid());
 #else
     int written = snprintf(
         fixture_path,
@@ -194,12 +203,20 @@ int main(int argc, char **argv) {
         "/tmp/mylite-load-data-%ld.tsv",
         (long)getpid()
     );
+    int database_written = snprintf(
+        database_path,
+        sizeof(database_path),
+        "/tmp/mylite-load-data-%ld.mylite",
+        (long)getpid()
+    );
 #endif
 
-    if (written < 0 || (size_t)written >= sizeof(fixture_path)) {
-        fprintf(stderr, "load-data-benchmark: failed to create fixture path\n");
+    if (written < 0 || (size_t)written >= sizeof(fixture_path) || database_written < 0 ||
+        (size_t)database_written >= sizeof(database_path)) {
+        fprintf(stderr, "load-data-benchmark: failed to create temporary path\n");
         goto cleanup;
     }
+    database_path_ready = true;
     fixture_path_ready = true;
     if (write_fixture(fixture_path, &options, &fixture) != 0) {
         fprintf(stderr, "load-data-benchmark: failed to create fixture\n");
@@ -213,7 +230,8 @@ int main(int argc, char **argv) {
         }
         output_owned = true;
     }
-    if (open_database(&options, &database) != 0) {
+    remove_database_files(database_path);
+    if (open_database(&options, database_path, &database) != 0) {
         goto cleanup;
     }
     result = run_benchmark(output, database, fixture_path, &options, &fixture);
@@ -221,6 +239,9 @@ int main(int argc, char **argv) {
 cleanup:
     if (database != NULL) {
         mylite_close(database);
+    }
+    if (database_path_ready) {
+        remove_database_files(database_path);
     }
     if (output_owned && fclose(output) != 0) {
         result = 1;
@@ -526,8 +547,12 @@ static int add_summary_value(uint64_t *value, uint64_t addition) {
     return 0;
 }
 
-static int open_database(const struct benchmark_options *options, mylite_db **out_database) {
-    if (mylite_open_memory(out_database) != MYLITE_OK) {
+static int open_database(
+    const struct benchmark_options *options,
+    const char *database_path,
+    mylite_db **out_database
+) {
+    if (mylite_open(database_path, out_database) != MYLITE_OK) {
         fprintf(stderr, "load-data-benchmark: failed to open MyLite database\n");
         return 1;
     }
@@ -584,6 +609,22 @@ static int execute_sql(mylite_db *database, const char *sql) {
         return 1;
     }
     return 0;
+}
+
+static void remove_database_files(const char *path) {
+    static const char *const suffixes[] = {"", "-journal", "-wal", "-shm"};
+    char related[path_capacity];
+
+    if (path == NULL || path[0] == '\0') {
+        return;
+    }
+    for (size_t index = 0U; index < sizeof(suffixes) / sizeof(suffixes[0]); ++index) {
+        int written = snprintf(related, sizeof(related), "%s%s", path, suffixes[index]);
+
+        if (written >= 0 && (size_t)written < sizeof(related)) {
+            (void)remove(related);
+        }
+    }
 }
 
 static int run_benchmark(

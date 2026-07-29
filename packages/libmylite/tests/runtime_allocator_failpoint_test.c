@@ -804,7 +804,7 @@ static int expect_spatial_allocation_sweep(
 
         failures += mylite_test_expect_int(rc, -1, context);
         failures += expect_true(error.is_nomem, context);
-        failures += mylite_test_expect_int(result.kind, MYLITE_SPATIAL_RESULT_NULL, context);
+        failures += mylite_test_expect_int((int)result.kind, MYLITE_SPATIAL_RESULT_NULL, context);
         mylite_spatial_result_deinit(&result);
         mylite_test_allocator_clear();
 
@@ -834,7 +834,7 @@ static int expect_spatial_terminal_result(
     } else {
         failures += mylite_test_expect_int(error->code, mysql_error_invalid_gis_data, context);
         failures += expect_true(!error->is_nomem, context);
-        failures += mylite_test_expect_int(result->kind, MYLITE_SPATIAL_RESULT_NULL, context);
+        failures += mylite_test_expect_int((int)result->kind, MYLITE_SPATIAL_RESULT_NULL, context);
     }
     return failures;
 }

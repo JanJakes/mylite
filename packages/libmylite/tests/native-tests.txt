@@ -62,7 +62,7 @@ tests/runtime_addtime_subtime_functions_test.c|internal|always
 tests/runtime_admin_listener_system_variables_test.c|internal|always
 tests/runtime_admin_stored_program_placeholders_test.c|internal|always
 tests/runtime_aes_encryption_functions_test.c|internal|always
-tests/runtime_allocator_failpoint_test.c|internal|allocator-failpoints
+tests/runtime_allocator_failpoint_test.c|internal-sqlite|allocator-failpoints
 tests/runtime_alter_check_constraint_lifecycle_test.c|internal|always
 tests/runtime_alter_column_visibility_test.c|internal-sqlite|always
 tests/runtime_alter_index_visibility_test.c|internal-sqlite|always
@@ -545,7 +545,7 @@ tests/runtime_spatial_simplicity_function_test.c|internal|always
 tests/runtime_spatial_simplify_function_test.c|internal|always
 tests/runtime_spatial_touches_function_test.c|internal|always
 tests/runtime_spatial_validity_functions_test.c|internal|always
-tests/runtime_spatial_validation_scaling_cancellation_test.c|internal|always
+tests/runtime_spatial_validation_scaling_cancellation_test.c|internal-sqlite|always
 tests/runtime_sql_auto_is_null_system_variable_test.c|internal|always
 tests/runtime_sql_big_selects_system_variable_test.c|internal|always
 tests/runtime_sql_buffer_result_system_variable_test.c|internal|always

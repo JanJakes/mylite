@@ -758,7 +758,7 @@ static void populate_scalar_convert_tz_result_column_descriptor(
 ) {
     const struct mylite_sql_ast_node *argument =
         expression == NULL ? NULL : unwrap_parenthesized_expression(child_at(expression, 0U));
-    uint16_t fractional_precision = 6U;
+    uint16_t fractional_precision = mysql_temporal_max_fractional_precision;
 
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL) {
         enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
@@ -778,7 +778,7 @@ static void populate_scalar_convert_tz_result_column_descriptor(
                     &text,
                     &text_length
                 ) == MYLITE_OK) {
-                fractional_precision = temporal_text_fractional_precision(text, text_length, 0U);
+                fractional_precision = temporal_text_fractional_precision(text, text_length);
             }
             free(text);
         }

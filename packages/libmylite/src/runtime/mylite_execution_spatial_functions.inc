@@ -376,7 +376,8 @@ static int populate_spatial_function_result_column_descriptor(
             database,
             descriptor,
             (struct scalar_connection_string_result_column_shape){
-                .display_length = 15U * max_bytes_per_character,
+                .display_length =
+                    mysql_spatial_geometry_type_display_length * max_bytes_per_character,
                 .extra_flags = 0U,
                 .nullable = true,
             }
@@ -387,7 +388,7 @@ static int populate_spatial_function_result_column_descriptor(
             database,
             descriptor,
             (struct scalar_connection_string_result_column_shape){
-                .display_length = 100U * max_bytes_per_character,
+                .display_length = mysql_spatial_geohash_display_length * max_bytes_per_character,
                 .extra_flags = 0U,
                 .nullable = true,
             }
@@ -409,7 +410,7 @@ static int populate_spatial_function_result_column_descriptor(
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;
         descriptor->collation_id = mysql_collation_binary_id;
-        descriptor->display_length = 16U;
+        descriptor->display_length = mysql_spatial_buffer_strategy_display_length;
         descriptor->decimals = mysql_approximate_decimals;
         descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;
@@ -439,7 +440,7 @@ static int populate_spatial_function_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
                 .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
-                .display_length = is_property ? 10U : 1U,
+                .display_length = is_property ? mysql_spatial_integer_property_display_length : 1U,
                 .decimals = 0U,
                 .extra_flags = 0U,
                 .nullable = true,

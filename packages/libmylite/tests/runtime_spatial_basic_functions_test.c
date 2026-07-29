@@ -20,6 +20,12 @@ enum {
     mysql_error_unexpected_geometry_type = 3516,
     mysql_error_srs_not_found = 3548,
     mysql_error_cannot_get_geometry_object = 1416,
+    mysql_binary_collation_id = 63,
+    mysql_utf8mb4_0900_ai_ci_collation_id = 255,
+    mysql_approximate_decimals = 31,
+    mysql_spatial_text_display_length = 268435456,
+    mysql_spatial_integer_property_display_length = 10,
+    mysql_spatial_double_display_length = 23,
 };
 
 struct expected_sql_error {
@@ -514,7 +520,7 @@ static int expect_spatial_metadata(mylite_db *database) {
         );
         failures += mylite_test_expect_uint32(
             mylite_result_column_collation_id(result, 0U),
-            63U,
+            mysql_binary_collation_id,
             "Point() metadata collation"
         );
         failures += mylite_test_expect_uint64(
@@ -539,7 +545,7 @@ static int expect_spatial_metadata(mylite_db *database) {
         );
         failures += mylite_test_expect_uint32(
             mylite_result_column_collation_id(result, 1U),
-            63U,
+            mysql_binary_collation_id,
             "ST_AsWKB() metadata collation"
         );
         failures += mylite_test_expect_uint64(
@@ -549,7 +555,7 @@ static int expect_spatial_metadata(mylite_db *database) {
         );
         failures += mylite_test_expect_uint16(
             mylite_result_column_decimals(result, 1U),
-            31U,
+            mysql_approximate_decimals,
             "ST_AsWKB() metadata decimals"
         );
         failures += mylite_test_expect_int(
@@ -564,17 +570,17 @@ static int expect_spatial_metadata(mylite_db *database) {
         );
         failures += mylite_test_expect_uint32(
             mylite_result_column_collation_id(result, 2U),
-            255U,
+            mysql_utf8mb4_0900_ai_ci_collation_id,
             "ST_AsText() metadata collation"
         );
         failures += mylite_test_expect_uint64(
             mylite_result_column_display_length(result, 2U),
-            268435456U,
+            mysql_spatial_text_display_length,
             "ST_AsText() metadata display length"
         );
         failures += mylite_test_expect_uint16(
             mylite_result_column_decimals(result, 2U),
-            31U,
+            mysql_approximate_decimals,
             "ST_AsText() metadata decimals"
         );
         failures += mylite_test_expect_int(
@@ -589,7 +595,7 @@ static int expect_spatial_metadata(mylite_db *database) {
         );
         failures += mylite_test_expect_uint64(
             mylite_result_column_display_length(result, 3U),
-            10U,
+            mysql_spatial_integer_property_display_length,
             "ST_SRID() metadata display length"
         );
         failures += mylite_test_expect_uint16(
@@ -609,12 +615,12 @@ static int expect_spatial_metadata(mylite_db *database) {
         );
         failures += mylite_test_expect_uint64(
             mylite_result_column_display_length(result, 4U),
-            23U,
+            mysql_spatial_double_display_length,
             "ST_X() metadata display length"
         );
         failures += mylite_test_expect_uint16(
             mylite_result_column_decimals(result, 4U),
-            31U,
+            mysql_approximate_decimals,
             "ST_X() metadata decimals"
         );
     }

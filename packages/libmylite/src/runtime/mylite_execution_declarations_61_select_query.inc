@@ -681,11 +681,7 @@ static uint16_t planned_convert_tz_fractional_precision(
 static uint16_t temporal_descriptor_fractional_precision(
     const struct mylite_catalog_column_descriptor *column
 );
-static uint16_t temporal_text_fractional_precision(
-    const char *text,
-    size_t text_length,
-    uint16_t fallback
-);
+static uint16_t temporal_text_fractional_precision(const char *text, size_t text_length);
 static void populate_convert_tz_result_column_descriptor(
     uint16_t fractional_precision,
     struct mylite_result_column_descriptor *descriptor

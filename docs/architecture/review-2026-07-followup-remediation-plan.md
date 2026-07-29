@@ -846,13 +846,30 @@ mutation, SQLite-fork patch, row scan, or second function evaluation.
 
 ### `PERF-01`: durable autocommit qualification
 
-- [ ] Match MyLite, SQLite, and MySQL durability configurations explicitly.
+- [x] Match MyLite, SQLite, and MySQL durability configurations explicitly.
 - [ ] Measure 1, 4, and 100 writes per transaction on block-backed ext4 and
   XFS, including single-row and multi-row statements.
 - [ ] Record p50, p95, p99, throughput, sync syscall counts, journal behavior,
   and device/environment metadata.
-- [ ] Preserve durability; do not improve a benchmark by weakening sync
+- [x] Preserve durability; do not improve a benchmark by weakening sync
   semantics.
+
+`PERF-01` implementation status:
+
+- File-backed MyLite now explicitly uses rollback `DELETE` journaling with
+  `synchronous=EXTRA` and disabled memory mapping. The bundled SQLite client
+  uses and reads back the same settings, while the MySQL 8.4.9 client rejects
+  weak flush-at-commit, binary-log, sync-binlog, doublewrite, and flush-method
+  configurations.
+- Engine-specific clients, measurement barriers, a server-PID-aware trace
+  harness, deterministic artifact summarization, and negative tool tests are
+  implemented. A local block-backed ext4 smoke run completed all twelve native
+  MyLite/SQLite scenarios.
+- Complete ext4/XFS evidence remains pending. This host has no block-backed XFS
+  mount, its MySQL data is a Docker volume rather than a qualification bind
+  mount, and the unprivileged session cannot attach `strace` to the root-owned
+  MySQL server process. The harness rejects those conditions rather than
+  substituting client-only traces or weaker storage.
 
 ### `PERF-02`: retained-write attribution
 

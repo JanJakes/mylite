@@ -1,0 +1,483 @@
+#!/bin/sh
+
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+artifact_argument=
+expected_filesystem=
+mysql_data_argument=
+mysql_mount_probe_argument=
+mysql_server_pid=
+native_client="$root/build/ci/packages/libmylite/mylite_durable_autocommit_benchmark"
+mysql_client="$root/tools/durable-autocommit-mysql-benchmark"
+summarizer="$root/tools/summarize-durable-autocommit-qualification"
+samples=7
+transactions=1000
+warmup=10
+allow_smoke=0
+mysql_bind_mount=0
+active_client_pid=
+active_tracer_pid=
+
+usage() {
+  cat <<'EOF'
+usage: tools/run-durable-autocommit-qualification [options]
+
+Required:
+  --artifact-dir PATH          fresh artifact directory on the measured filesystem
+  --filesystem FSTYPE          expected filesystem identity
+  --mysql-data-dir PATH        host path containing the MySQL data directory
+  --mysql-mount-probe PATH     accessible path on the same MySQL data mount
+  --mysql-server-pid PID       host PID of the MySQL server process
+
+Optional:
+  --native-client PATH         native benchmark executable
+  --mysql-client PATH          MySQL benchmark executable
+  --summarizer PATH            deterministic summarizer executable
+  --samples N                  independent samples per scenario (default: 7)
+  --transactions N             transactions per sample (default: 1000)
+  --warmup N                   warmup transactions per sample (default: 10)
+  --mysql-bind-mount           affirm the container data path is a bind mount
+  --allow-smoke                permit nonqualification counts or storage
+  --help
+
+MySQL connection credentials are read only by the MySQL client from:
+  MYLITE_DURABLE_MYSQL_DSN
+  MYLITE_DURABLE_MYSQL_USER
+  MYLITE_DURABLE_MYSQL_PASSWORD
+EOF
+}
+
+die() {
+  printf '%s\n' "run-durable-autocommit-qualification: $*" >&2
+  exit 1
+}
+
+cleanup_processes() {
+  if [ -n "$active_tracer_pid" ] && kill -0 "$active_tracer_pid" 2>/dev/null; then
+    kill -INT "$active_tracer_pid" 2>/dev/null || true
+    wait "$active_tracer_pid" 2>/dev/null || true
+  fi
+  if [ -n "$active_client_pid" ] && kill -0 "$active_client_pid" 2>/dev/null; then
+    kill -TERM "$active_client_pid" 2>/dev/null || true
+    wait "$active_client_pid" 2>/dev/null || true
+  fi
+}
+
+trap cleanup_processes EXIT HUP INT TERM
+
+positive_integer() {
+  case "$1" in
+    ''|*[!0-9]*|0)
+      return 1
+      ;;
+  esac
+}
+
+nonnegative_integer() {
+  case "$1" in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+  esac
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --allow-smoke)
+      allow_smoke=1
+      shift
+      ;;
+    --mysql-bind-mount)
+      mysql_bind_mount=1
+      shift
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    --artifact-dir|--filesystem|--mysql-client|--mysql-data-dir|--mysql-mount-probe|\
+    --mysql-server-pid|\
+    --native-client|--samples|--summarizer|--transactions|--warmup)
+      [ "$#" -ge 2 ] || die "missing value for $1"
+      option=$1
+      value=$2
+      shift 2
+      case "$option" in
+        --artifact-dir) artifact_argument=$value ;;
+        --filesystem) expected_filesystem=$value ;;
+        --mysql-client) mysql_client=$value ;;
+        --mysql-data-dir) mysql_data_argument=$value ;;
+        --mysql-mount-probe) mysql_mount_probe_argument=$value ;;
+        --mysql-server-pid) mysql_server_pid=$value ;;
+        --native-client) native_client=$value ;;
+        --samples) samples=$value ;;
+        --summarizer) summarizer=$value ;;
+        --transactions) transactions=$value ;;
+        --warmup) warmup=$value ;;
+      esac
+      ;;
+    *)
+      die "unknown option $1"
+      ;;
+  esac
+done
+
+[ -n "$artifact_argument" ] || die "--artifact-dir is required"
+[ -n "$expected_filesystem" ] || die "--filesystem is required"
+[ -n "$mysql_data_argument" ] || die "--mysql-data-dir is required"
+positive_integer "$mysql_server_pid" || die "--mysql-server-pid must be a positive integer"
+positive_integer "$samples" || die "--samples must be a positive integer"
+positive_integer "$transactions" || die "--transactions must be a positive integer"
+nonnegative_integer "$warmup" || die "--warmup must be a nonnegative integer"
+[ -x "$native_client" ] || die "native client is not executable: $native_client"
+[ -x "$mysql_client" ] || die "MySQL client is not executable: $mysql_client"
+[ -x "$summarizer" ] || die "summarizer is not executable: $summarizer"
+command -v findmnt >/dev/null 2>&1 || die "findmnt is required"
+command -v jq >/dev/null 2>&1 || die "jq is required"
+command -v lsblk >/dev/null 2>&1 || die "lsblk is required"
+command -v strace >/dev/null 2>&1 || die "strace is required"
+[ -d "/proc/$mysql_server_pid" ] || die "MySQL server PID is not running"
+[ -n "${MYLITE_DURABLE_MYSQL_DSN+x}" ] || die "MySQL DSN environment is required"
+[ -n "${MYLITE_DURABLE_MYSQL_USER+x}" ] || die "MySQL user environment is required"
+[ -n "${MYLITE_DURABLE_MYSQL_PASSWORD+x}" ] || die "MySQL password environment is required"
+
+artifact_parent=$(CDPATH='' cd -- "$(dirname -- "$artifact_argument")" 2>/dev/null && pwd) ||
+  die "artifact parent directory does not exist"
+artifact_dir="$artifact_parent/$(basename -- "$artifact_argument")"
+if [ -e "$artifact_dir" ] || [ -L "$artifact_dir" ]; then
+  die "artifact directory already exists"
+fi
+case "$mysql_data_argument" in
+  /*) ;;
+  *) die "MySQL data directory must be absolute" ;;
+esac
+case "$mysql_data_argument" in
+  */../*|*/..) die "MySQL data directory must not contain parent traversal" ;;
+esac
+if mysql_data_dir=$(CDPATH='' cd -- "$mysql_data_argument" 2>/dev/null && pwd); then
+  :
+else
+  mysql_data_dir=$mysql_data_argument
+fi
+if [ -z "$mysql_mount_probe_argument" ]; then
+  mysql_mount_probe_argument=$mysql_data_dir
+fi
+mysql_mount_probe=$(CDPATH='' cd -- "$mysql_mount_probe_argument" 2>/dev/null && pwd) ||
+  die "MySQL mount probe directory does not exist"
+
+mount_record=$(findmnt -T "$artifact_parent" -n -o SOURCE,FSTYPE,OPTIONS) ||
+  die "cannot resolve artifact filesystem"
+mount_source=$(printf '%s\n' "$mount_record" | awk '{print $1}')
+mount_filesystem=$(printf '%s\n' "$mount_record" | awk '{print $2}')
+mount_options=$(printf '%s\n' "$mount_record" | cut -d' ' -f3-)
+[ "$mount_filesystem" = "$expected_filesystem" ] ||
+  die "artifact filesystem is $mount_filesystem, expected $expected_filesystem"
+
+mysql_mount_record=$(findmnt -T "$mysql_mount_probe" -n -o SOURCE,FSTYPE,OPTIONS) ||
+  die "cannot resolve MySQL data filesystem"
+mysql_mount_source=$(printf '%s\n' "$mysql_mount_record" | awk '{print $1}')
+mysql_mount_filesystem=$(printf '%s\n' "$mysql_mount_record" | awk '{print $2}')
+mysql_mount_options=$(printf '%s\n' "$mysql_mount_record" | cut -d' ' -f3-)
+[ "$mysql_mount_filesystem" = "$expected_filesystem" ] ||
+  die "MySQL data filesystem is $mysql_mount_filesystem, expected $expected_filesystem"
+
+block_backed=0
+case "$mount_source" in
+  /dev/loop*) ;;
+  /dev/*)
+    if lsblk -ndo TYPE "$mount_source" >/dev/null 2>&1; then
+      block_backed=1
+    fi
+    ;;
+esac
+mysql_block_backed=0
+case "$mysql_mount_source" in
+  /dev/loop*) ;;
+  /dev/*)
+    if lsblk -ndo TYPE "$mysql_mount_source" >/dev/null 2>&1; then
+      mysql_block_backed=1
+    fi
+    ;;
+esac
+
+if [ "$allow_smoke" -eq 0 ]; then
+  case "$expected_filesystem" in
+    ext4|xfs) ;;
+    *) die "qualification filesystem must be ext4 or xfs" ;;
+  esac
+  [ "$block_backed" -eq 1 ] || die "qualification filesystem is not block-backed"
+  [ "$mysql_block_backed" -eq 1 ] || die "MySQL data filesystem is not block-backed"
+  [ "$samples" -ge 7 ] || die "qualification requires at least seven samples"
+  [ "$transactions" -ge 1000 ] || die "qualification requires at least 1000 transactions"
+  [ "$mysql_bind_mount" -eq 1 ] || die "qualification requires --mysql-bind-mount"
+fi
+
+revision=$(git -C "$root" rev-parse HEAD) || die "cannot resolve git revision"
+if [ -n "$(git -C "$root" status --porcelain)" ]; then
+  dirty_worktree=true
+else
+  dirty_worktree=false
+fi
+started_at=$(date --iso-8601=seconds)
+timezone=$(date +%Z)
+locale_name=${LC_ALL:-${LANG:-C}}
+kernel=$(uname -sr)
+architecture=$(uname -m)
+cpu_model=$(awk -F: '/model name/ {sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
+cpu_count=$(getconf _NPROCESSORS_ONLN)
+memory_kib=$(awk '/MemTotal/ {print $2; exit}' /proc/meminfo)
+compiler_version=$(cc --version 2>/dev/null | head -1 || true)
+php_version=$(php -r 'echo PHP_VERSION;' 2>/dev/null || true)
+virtualization=$(systemd-detect-virt 2>/dev/null || printf '%s' unknown)
+mysql_command=$(tr '\000' ' ' < "/proc/$mysql_server_pid/cmdline" 2>/dev/null || true)
+if [ "$block_backed" -eq 1 ]; then
+  device_json=$(lsblk -J -O "$mount_source" 2>/dev/null || printf '%s' '{}')
+else
+  device_json='{}'
+fi
+
+mkdir "$artifact_dir"
+mkdir "$artifact_dir/databases" "$artifact_dir/logs" "$artifact_dir/markers"
+mkdir "$artifact_dir/metadata" "$artifact_dir/raw" "$artifact_dir/traces"
+
+block_json=false
+[ "$block_backed" -eq 1 ] && block_json=true
+bind_json=false
+[ "$mysql_bind_mount" -eq 1 ] && bind_json=true
+mysql_block_json=false
+[ "$mysql_block_backed" -eq 1 ] && mysql_block_json=true
+jq -n \
+  --arg architecture "$architecture" \
+  --arg artifact_dir "$artifact_dir" \
+  --arg compiler_version "$compiler_version" \
+  --arg cpu_model "$cpu_model" \
+  --arg filesystem "$expected_filesystem" \
+  --arg kernel "$kernel" \
+  --arg locale "$locale_name" \
+  --arg memory_kib "$memory_kib" \
+  --arg mount_options "$mount_options" \
+  --arg mount_source "$mount_source" \
+  --arg mysql_command "$mysql_command" \
+  --arg mysql_data_dir "$mysql_data_dir" \
+  --arg mysql_mount_options "$mysql_mount_options" \
+  --arg mysql_mount_probe "$mysql_mount_probe" \
+  --arg mysql_mount_source "$mysql_mount_source" \
+  --arg php_version "$php_version" \
+  --arg revision "$revision" \
+  --arg started_at "$started_at" \
+  --arg timezone "$timezone" \
+  --arg virtualization "$virtualization" \
+  --argjson block_backed "$block_json" \
+  --argjson cpu_count "$cpu_count" \
+  --argjson device "$device_json" \
+  --argjson dirty_worktree "$dirty_worktree" \
+  --argjson mysql_bind_mount "$bind_json" \
+  --argjson mysql_block_backed "$mysql_block_json" \
+  --argjson mysql_server_pid "$mysql_server_pid" \
+  --argjson samples "$samples" \
+  --argjson transactions "$transactions" \
+  --argjson warmup_transactions "$warmup" \
+  '{
+    schema_version: 1,
+    architecture: $architecture,
+    artifact_dir: $artifact_dir,
+    block_backed: $block_backed,
+    compiler_version: $compiler_version,
+    cpu_count: $cpu_count,
+    cpu_model: $cpu_model,
+    device: $device,
+    dirty_worktree: $dirty_worktree,
+    filesystem: $filesystem,
+    kernel: $kernel,
+    locale: $locale,
+    memory_kib: ($memory_kib | tonumber),
+    mount_options: $mount_options,
+    mount_source: $mount_source,
+    mysql_bind_mount: $mysql_bind_mount,
+    mysql_block_backed: $mysql_block_backed,
+    mysql_command: $mysql_command,
+    mysql_connection_environment_supplied: true,
+    mysql_data_dir: $mysql_data_dir,
+    mysql_mount_options: $mysql_mount_options,
+    mysql_mount_probe: $mysql_mount_probe,
+    mysql_mount_source: $mysql_mount_source,
+    mysql_server_pid: $mysql_server_pid,
+    php_version: $php_version,
+    revision: $revision,
+    samples: $samples,
+    started_at: $started_at,
+    timezone: $timezone,
+    trace_scope: "measurement-only",
+    transactions: $transactions,
+    virtualization: $virtualization,
+    warmup_transactions: $warmup_transactions
+  }' > "$artifact_dir/environment.json"
+
+wait_for_file() {
+  marker=$1
+  process=$2
+  context=$3
+  attempt=0
+  while [ "$attempt" -lt 12000 ]; do
+    if [ -f "$marker" ] && [ ! -L "$marker" ]; then
+      return 0
+    fi
+    if ! kill -0 "$process" 2>/dev/null; then
+      wait "$process" 2>/dev/null || true
+      die "$context process exited before creating $(basename -- "$marker")"
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.01
+  done
+  die "timed out waiting for $context marker"
+}
+
+wait_for_tracer() {
+  traced_pid=$1
+  tracer_pid=$2
+  attempt=0
+  while [ "$attempt" -lt 500 ]; do
+    observed=$(awk '/^TracerPid:/ {print $2}' "/proc/$traced_pid/status" 2>/dev/null || true)
+    if [ "$observed" = "$tracer_pid" ]; then
+      return 0
+    fi
+    if ! kill -0 "$tracer_pid" 2>/dev/null; then
+      wait "$tracer_pid" 2>/dev/null || true
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.01
+  done
+  return 1
+}
+
+run_scenario() {
+  engine=$1
+  shape=$2
+  writes=$3
+  sample=$4
+  stem="$engine-$shape-w$writes-s$sample"
+  ready="$artifact_dir/markers/$stem.ready"
+  start="$artifact_dir/markers/$stem.start"
+  end="$artifact_dir/markers/$stem.end"
+  raw="$artifact_dir/raw/$stem.csv"
+  metadata="$artifact_dir/metadata/$stem.json"
+  trace="$artifact_dir/traces/$stem.strace"
+  client_log="$artifact_dir/logs/$stem.client.log"
+  attach_log="$artifact_dir/logs/$stem.strace.log"
+  database="$artifact_dir/databases/$stem.db"
+  smoke_flag=
+  native_traced=0
+  [ "$allow_smoke" -eq 1 ] && smoke_flag=--allow-smoke
+
+  if [ "$engine" = mysql ]; then
+    schema_shape=$(printf '%s' "$shape" | tr -d '-')
+    schema="mylite_perf_${schema_shape}_w${writes}_s${sample}_$$"
+    "$mysql_client" \
+      --database "$schema" \
+      --filesystem "$expected_filesystem" \
+      --output "$raw" \
+      --metadata-output "$metadata" \
+      --revision "$revision" \
+      --run-id "$stem" \
+      --sample "$sample" \
+      --statement-shape "$shape" \
+      --transactions "$transactions" \
+      --warmup "$warmup" \
+      --writes-per-transaction "$writes" \
+      --ready-file "$ready" \
+      --start-file "$start" \
+      --end-file "$end" \
+      ${smoke_flag:+"$smoke_flag"} >"$client_log" 2>&1 &
+    active_client_pid=$!
+    trace_pid=$mysql_server_pid
+  else
+    native_traced=1
+    strace -f -qq -ttt -yy -s 256 \
+      -e trace=write,fsync,fdatasync,syncfs,msync,openat,creat,ftruncate,rename,renameat,renameat2,unlink,unlinkat \
+      -o "$trace" \
+      "$native_client" \
+        --engine "$engine" \
+        --database "$database" \
+        --filesystem "$expected_filesystem" \
+        --output "$raw" \
+        --metadata-output "$metadata" \
+        --revision "$revision" \
+        --run-id "$stem" \
+        --sample "$sample" \
+        --statement-shape "$shape" \
+        --transactions "$transactions" \
+        --warmup "$warmup" \
+        --writes-per-transaction "$writes" \
+        --ready-file "$ready" \
+        --start-file "$start" \
+        --end-file "$end" \
+        ${smoke_flag:+"$smoke_flag"} >"$client_log" 2>&1 &
+    active_client_pid=$!
+  fi
+
+  wait_for_file "$ready" "$active_client_pid" "$stem"
+  if [ "$native_traced" -eq 1 ]; then
+    touch "$start"
+    wait_for_file "$end" "$active_client_pid" "$stem"
+    if ! wait "$active_client_pid"; then
+      active_client_pid=
+      die "$stem benchmark failed; see $client_log"
+    fi
+    active_client_pid=
+    rm -f -- "$ready" "$start" "$end"
+    printf '%s\n' "completed $stem"
+    return
+  fi
+
+  strace -f -qq -ttt -yy -s 256 \
+    -e trace=fsync,fdatasync,syncfs,msync,openat,creat,ftruncate,rename,renameat,renameat2,unlink,unlinkat \
+    -o "$trace" -p "$trace_pid" 2>"$attach_log" &
+  active_tracer_pid=$!
+  if ! wait_for_tracer "$trace_pid" "$active_tracer_pid"; then
+    touch "$start"
+    wait "$active_client_pid" 2>/dev/null || true
+    active_client_pid=
+    active_tracer_pid=
+    die "strace could not attach to $engine PID $trace_pid; see $attach_log"
+  fi
+  touch "$start"
+  wait_for_file "$end" "$active_client_pid" "$stem"
+  kill -INT "$active_tracer_pid" 2>/dev/null || true
+  wait "$active_tracer_pid" 2>/dev/null || true
+  active_tracer_pid=
+  if ! wait "$active_client_pid"; then
+    active_client_pid=
+    die "$stem benchmark failed; see $client_log"
+  fi
+  active_client_pid=
+  rm -f -- "$ready" "$start" "$end"
+  printf '%s\n' "completed $stem"
+}
+
+for engine in mylite sqlite mysql; do
+  for shape in repeated multi-row; do
+    for writes in 1 4 100; do
+      sample=1
+      while [ "$sample" -le "$samples" ]; do
+        run_scenario "$engine" "$shape" "$writes" "$sample"
+        sample=$((sample + 1))
+      done
+    done
+  done
+done
+
+if [ "$allow_smoke" -eq 1 ]; then
+  "$summarizer" \
+    --artifact-dir "$artifact_dir" \
+    --output "$artifact_dir/summary.json" \
+    --allow-smoke
+else
+  "$summarizer" \
+    --artifact-dir "$artifact_dir" \
+    --output "$artifact_dir/summary.json"
+fi
+
+trap - EXIT HUP INT TERM
+printf '%s\n' "qualification artifacts: $artifact_dir"

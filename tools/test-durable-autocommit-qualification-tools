@@ -1,0 +1,250 @@
+#!/bin/sh
+
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/mylite-durable-qualification.XXXXXX")
+trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
+
+artifact_dir="$temporary_directory/artifacts"
+mkdir "$artifact_dir" "$artifact_dir/metadata" "$artifact_dir/raw" "$artifact_dir/traces"
+
+python3 - "$artifact_dir" <<'PY'
+import csv
+import json
+import sys
+from pathlib import Path
+
+
+artifact = Path(sys.argv[1])
+environment = {
+    "schema_version": 1,
+    "block_backed": False,
+    "filesystem": "tmpfs",
+    "mysql_bind_mount": False,
+    "mysql_block_backed": False,
+    "revision": "fixture",
+    "samples": 1,
+    "trace_scope": "measurement-only",
+    "transactions": 2,
+    "warmup_transactions": 0,
+}
+(artifact / "environment.json").write_text(
+    json.dumps(environment, indent=2) + "\n", encoding="utf-8"
+)
+
+header = [
+    "run_id",
+    "revision",
+    "engine",
+    "filesystem",
+    "statement_shape",
+    "writes_per_transaction",
+    "sample",
+    "transaction_index",
+    "elapsed_ns",
+    "affected_rows",
+    "cumulative_rows",
+    "status",
+]
+for engine in ("mylite", "sqlite", "mysql"):
+    for shape in ("repeated", "multi-row"):
+        for writes in (1, 4, 100):
+            stem = f"{engine}-{shape}-w{writes}-s1"
+            expected_rows = 2 * writes
+            expected_id_sum = expected_rows * (expected_rows + 1) // 2
+            configuration = {
+                "database_path": f"/fixture/{stem}.db",
+                "journal_mode": "delete",
+                "mmap_size": 0,
+                "sqlite_version": "3.53.0",
+                "synchronous": 3,
+            }
+            if engine == "mysql":
+                configuration = {
+                    "database_name": f"mylite_perf_{stem.replace('-', '_')}",
+                    "innodb_doublewrite": "ON",
+                    "innodb_flush_log_at_trx_commit": "1",
+                    "innodb_flush_method": "O_DIRECT",
+                    "innodb_use_fdatasync": "ON",
+                    "log_bin": "ON",
+                    "sync_binlog": "1",
+                    "version": "8.4.9",
+                }
+            metadata = {
+                "configuration": configuration,
+                "correctness": {
+                    "id_sum": expected_id_sum,
+                    "payload_sum": (3 * expected_id_sum) + (7 * expected_rows),
+                    "row_count": expected_rows,
+                },
+                "engine": engine,
+                "filesystem": "tmpfs",
+                "revision": "fixture",
+                "run_id": stem,
+                "sample": 1,
+                "statement_shape": shape,
+                "summary": {
+                    "maximum_ns": 2000000,
+                    "median_absolute_deviation_ns": 0,
+                    "minimum_ns": 1000000,
+                    "p50_ns": 1000000,
+                    "p95_ns": 2000000,
+                    "p99_ns": 2000000,
+                    "transaction_count": 2,
+                    "transactions_per_second": 666.6666666667,
+                    "writes_per_second": 666.6666666667 * writes,
+                },
+                "transactions": 2,
+                "warmup_transactions": 0,
+                "writes_per_transaction": writes,
+            }
+            if engine == "mysql":
+                metadata["mysql_status_delta"] = {
+                    "Innodb_data_fsyncs": 0,
+                    "Innodb_os_log_fsyncs": 0,
+                }
+            (artifact / "metadata" / f"{stem}.json").write_text(
+                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+            )
+            with (artifact / "raw" / f"{stem}.csv").open(
+                "w", encoding="utf-8", newline=""
+            ) as output:
+                writer = csv.writer(output, lineterminator="\n")
+                writer.writerow(header)
+                for transaction, elapsed in ((1, 1000000), (2, 2000000)):
+                    writer.writerow(
+                        [
+                            stem,
+                            "fixture",
+                            engine,
+                            "tmpfs",
+                            shape,
+                            writes,
+                            1,
+                            transaction,
+                            elapsed,
+                            writes,
+                            transaction * writes,
+                            "ok",
+                        ]
+                    )
+            trace = "1 fsync(3</fixture/setup>) = 0\n"
+            if engine != "mysql":
+                trace += (
+                    f'2 write(2, "MYLITE_DURABLE_TRACE_BEGIN {stem}", 40) = 40\n'
+                    "3 fdatasync(3</fixture/file>) = 0\n"
+                    f'4 openat(AT_FDCWD, "/fixture/{stem}.db-journal", '
+                    "O_RDWR|O_CREAT, 0644) = 4\n"
+                    f'5 unlink("/fixture/{stem}.db-journal") = 0\n'
+                    f'6 write(2, "MYLITE_DURABLE_TRACE_END {stem}", 38) = 38\n'
+                    "7 fsync(3</fixture/cleanup>) = 0\n"
+                )
+            else:
+                trace += (
+                    "2 fdatasync(4</var/lib/mysql/#innodb_redo/#ib_redo1>) = 0\n"
+                    "3 fsync(5</var/lib/mysql/binlog.000001>) = 0\n"
+                )
+            (artifact / "traces" / f"{stem}.strace").write_text(trace, encoding="utf-8")
+PY
+
+"$root/tools/summarize-durable-autocommit-qualification" \
+  --artifact-dir "$artifact_dir" \
+  --output "$temporary_directory/summary.json" \
+  --allow-smoke
+jq -e '
+  .qualification == false and
+  .scenario_count == 18 and
+  ([.scenarios[] | select(
+    .engine == "mylite" and
+    .statement_shape == "repeated" and
+    .writes_per_transaction == 1
+  )][0] |
+    .p50_ns == 1000000 and
+    .p95_ns == 2000000 and
+    .transaction_count == 2 and
+    .sync_total == 1 and
+    .journal.create == 1 and
+    .journal.unlink == 1
+  )
+' "$temporary_directory/summary.json" >/dev/null
+
+if "$root/tools/summarize-durable-autocommit-qualification" \
+  --artifact-dir "$artifact_dir" \
+  --output "$temporary_directory/unqualified.json" >/dev/null 2>&1; then
+  echo "test-durable-autocommit-qualification-tools: accepted smoke as qualification" >&2
+  exit 1
+fi
+
+missing_trace="$artifact_dir/traces/mysql-multi-row-w100-s1.strace"
+mv "$missing_trace" "$missing_trace.saved"
+if "$root/tools/summarize-durable-autocommit-qualification" \
+  --artifact-dir "$artifact_dir" \
+  --output "$temporary_directory/incomplete.json" \
+  --allow-smoke >/dev/null 2>&1; then
+  echo "test-durable-autocommit-qualification-tools: accepted an incomplete matrix" >&2
+  exit 1
+fi
+mv "$missing_trace.saved" "$missing_trace"
+
+invalid_metadata="$artifact_dir/metadata/mylite-repeated-w1-s1.json"
+cp "$invalid_metadata" "$invalid_metadata.saved"
+python3 - "$invalid_metadata" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+value = json.loads(path.read_text(encoding="utf-8"))
+value["configuration"]["synchronous"] = 2
+path.write_text(json.dumps(value) + "\n", encoding="utf-8")
+PY
+if "$root/tools/summarize-durable-autocommit-qualification" \
+  --artifact-dir "$artifact_dir" \
+  --output "$temporary_directory/weak-durability.json" \
+  --allow-smoke >/dev/null 2>&1; then
+  echo "test-durable-autocommit-qualification-tools: accepted weak durability" >&2
+  exit 1
+fi
+mv "$invalid_metadata.saved" "$invalid_metadata"
+
+invalid_raw="$artifact_dir/raw/sqlite-multi-row-w4-s1.csv"
+cp "$invalid_raw" "$invalid_raw.saved"
+sed '2s/,ok$/,error/' "$invalid_raw.saved" > "$invalid_raw"
+if "$root/tools/summarize-durable-autocommit-qualification" \
+  --artifact-dir "$artifact_dir" \
+  --output "$temporary_directory/failed-write.json" \
+  --allow-smoke >/dev/null 2>&1; then
+  echo "test-durable-autocommit-qualification-tools: accepted a failed write" >&2
+  exit 1
+fi
+mv "$invalid_raw.saved" "$invalid_raw"
+
+cp "$artifact_dir/environment.json" "$artifact_dir/environment.json.saved"
+python3 - "$artifact_dir/environment.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+value = json.loads(path.read_text(encoding="utf-8"))
+value["mysql_password"] = "must-not-appear"
+path.write_text(json.dumps(value) + "\n", encoding="utf-8")
+PY
+if "$root/tools/summarize-durable-autocommit-qualification" \
+  --artifact-dir "$artifact_dir" \
+  --output "$temporary_directory/credential.json" \
+  --allow-smoke >/dev/null 2>&1; then
+  echo "test-durable-autocommit-qualification-tools: accepted credential metadata" >&2
+  exit 1
+fi
+mv "$artifact_dir/environment.json.saved" "$artifact_dir/environment.json"
+
+if "$root/tools/durable-autocommit-mysql-benchmark" \
+  --engine mysql >/dev/null 2>&1; then
+  echo "test-durable-autocommit-qualification-tools: accepted obsolete engine selection" >&2
+  exit 1
+fi
+
+"$root/tools/run-durable-autocommit-qualification" --help >/dev/null
+printf '%s\n' 'test-durable-autocommit-qualification-tools: passed'

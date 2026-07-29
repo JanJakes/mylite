@@ -68,6 +68,7 @@ jobs:
         run: |
           tools/test-performance-regression-tools
           tools/test-large-dataset-performance-tools
+          tools/test-durable-autocommit-qualification-tools
 
       - name: Build baseline and candidate benchmarks
         env:

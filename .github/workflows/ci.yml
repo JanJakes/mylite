@@ -38,6 +38,9 @@ jobs:
       - name: Test large-dataset performance tooling
         run: tools/test-large-dataset-performance-tools
 
+      - name: Test durable-autocommit qualification tooling
+        run: tools/test-durable-autocommit-qualification-tools
+
       - name: Test release tooling
         run: tools/test-release-tools
 

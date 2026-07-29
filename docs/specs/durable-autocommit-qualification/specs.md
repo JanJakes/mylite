@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified; implementation pending.
+Implemented; block-device qualification pending.
 
 ## Summary
 
@@ -215,8 +215,8 @@ recorded.
 ## Architecture and Ownership
 
 - Product storage policy owns the MyLite `synchronous=EXTRA` setting.
-- A focused benchmark client owns workload construction, timing, correctness
-  checks, and engine configuration validation.
+- Focused native and MySQL benchmark clients own workload construction,
+  timing, correctness checks, and engine configuration validation.
 - A shell orchestrator owns scenario enumeration, process/server tracing, and
   environment capture.
 - A deterministic summarizer owns schema validation, percentile and
@@ -228,6 +228,39 @@ The implementation adds no shipping dependency. Optional benchmark tooling may
 use PHP/PDO, `strace`, standard Linux storage utilities, and a pinned MySQL
 8.4.9 runtime. The shipped MyLite library continues to depend only on its
 bundled SQLite foundation and platform C runtime.
+
+## Implementation Status
+
+- File-backed MyLite explicitly selects rollback `DELETE` journaling,
+  `synchronous=EXTRA`, and disabled memory mapping. Focused open/reopen tests
+  verify the production policy.
+- The native benchmark client links the exact MyLite and bundled SQLite
+  targets. It validates the live pragma values, executes both statement
+  shapes, records raw transactions and configuration, and verifies committed
+  row counts and checksums.
+- The separate PDO MySQL client requires MySQL 8.4.9 and validates the live
+  InnoDB, binary-log, doublewrite, and flush configuration before creating its
+  isolated workload schema.
+- Both clients expose ready, start, and end barriers. The shell harness traces
+  the native process between explicit markers and attaches to the MySQL server
+  PID between the start and end barriers, so client-only MySQL traces cannot
+  be accepted accidentally.
+- The deterministic summarizer recomputes nearest-rank latency statistics from
+  raw transactions, validates the complete engine/shape/transaction/sample
+  matrix, checks durability and correctness metadata, parses sync and journal
+  activity, rejects credential-shaped metadata, and refuses incomplete
+  qualification evidence.
+- The tool test covers valid smoke evidence, percentile calculation,
+  completeness rejection, weak-durability rejection, failed-write rejection,
+  measurement-window trace parsing, and credential redaction.
+
+The local ext4 smoke run completed all twelve native MyLite/SQLite scenarios.
+Server-side MySQL tracing could not run in this unprivileged environment
+because `ptrace` attachment to the root-owned container process was denied.
+The current host also has no block-backed XFS mount, and its MySQL data uses a
+Docker volume rather than the required qualification bind mount. Those
+environment constraints leave the ext4/XFS qualification evidence and report
+pending; they do not relax the acceptance rules.
 
 ## Test and Qualification Plan
 

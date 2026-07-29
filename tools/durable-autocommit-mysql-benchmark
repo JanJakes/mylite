@@ -18,6 +18,7 @@ function parse_options(array $arguments): array
     $options = [];
     $valueOptions = [
         '--database',
+        '--end-file',
         '--filesystem',
         '--metadata-output',
         '--output',
@@ -83,6 +84,7 @@ Optional:
   --warmup N                         default: 10
   --ready-file PATH                  create after setup and warmup
   --start-file PATH                  wait for this file before measuring
+  --end-file PATH                    create immediately after measurement
   --allow-smoke                      permit fewer than 1000 transactions
   --help
 
@@ -132,6 +134,7 @@ function parse_nonnegative_integer(string $value, string $name): int
  * @return array{
  *   allow_smoke: bool,
  *   database: string,
+ *   end_file: ?string,
  *   filesystem: string,
  *   metadata_output: string,
  *   output: string,
@@ -160,6 +163,7 @@ function validate_options(array $options): array
     $allowSmoke = ($options['--allow-smoke'] ?? false) === true;
     $readyFile = $options['--ready-file'] ?? null;
     $startFile = $options['--start-file'] ?? null;
+    $endFile = $options['--end-file'] ?? null;
     $warmup = parse_nonnegative_integer(
         is_string($options['--warmup'] ?? null)
             ? $options['--warmup']
@@ -184,8 +188,13 @@ function validate_options(array $options): array
     if ($warmup > MAXIMUM_TRANSACTIONS) {
         throw new InvalidArgumentException('--warmup exceeds the supported maximum');
     }
-    if (($readyFile === null) !== ($startFile === null)) {
-        throw new InvalidArgumentException('--ready-file and --start-file must be supplied together');
+    if (
+        ($readyFile === null) !== ($startFile === null)
+        || ($readyFile === null) !== ($endFile === null)
+    ) {
+        throw new InvalidArgumentException(
+            '--ready-file, --start-file, and --end-file must be supplied together'
+        );
     }
     foreach (['--run-id', '--revision', '--filesystem'] as $name) {
         if (!preg_match('/^[A-Za-z0-9_.:+-]+$/D', required_option($options, $name))) {
@@ -196,6 +205,7 @@ function validate_options(array $options): array
     return [
         'allow_smoke' => $allowSmoke,
         'database' => required_option($options, '--database'),
+        'end_file' => is_string($endFile) ? $endFile : null,
         'filesystem' => required_option($options, '--filesystem'),
         'metadata_output' => required_option($options, '--metadata-output'),
         'output' => required_option($options, '--output'),
@@ -489,8 +499,11 @@ function wait_for_trace_start(?string $readyPath, ?string $startPath): void
     if ($handle === false) {
         throw new RuntimeException('failed to create ready file');
     }
-    fwrite($handle, "ready\n");
-    fclose($handle);
+    $written = fwrite($handle, "ready\n");
+    $closed = fclose($handle);
+    if ($written !== strlen("ready\n") || !$closed) {
+        throw new RuntimeException('failed to write ready file');
+    }
 
     for ($attempt = 0; $attempt < TRACE_WAIT_ATTEMPTS; ++$attempt) {
         if (is_file($start) && !is_link($start)) {
@@ -499,6 +512,23 @@ function wait_for_trace_start(?string $readyPath, ?string $startPath): void
         usleep(TRACE_WAIT_MICROSECONDS);
     }
     throw new RuntimeException('timed out waiting for trace start file');
+}
+
+function signal_trace_end(?string $endPath): void
+{
+    if ($endPath === null) {
+        return;
+    }
+    $end = exclusive_file_path($endPath, 'end file');
+    $handle = fopen($end, 'x');
+    if ($handle === false) {
+        throw new RuntimeException('failed to create end file');
+    }
+    $written = fwrite($handle, "end\n");
+    $closed = fclose($handle);
+    if ($written !== strlen("end\n") || !$closed) {
+        throw new RuntimeException('failed to write end file');
+    }
 }
 
 /**
@@ -571,6 +601,7 @@ function run_measurements(
     fflush($output);
     fwrite(STDERR, "MYLITE_DURABLE_TRACE_END {$marker}\n");
     fflush(STDERR);
+    signal_trace_end($options['end_file']);
 
     return ['latencies' => $latencies, 'affected_rows' => $cumulativeRows];
 }
@@ -672,6 +703,7 @@ function main(array $arguments): int
         if ($options['ready_file'] !== null) {
             exclusive_file_path($options['ready_file'], 'ready file');
             exclusive_file_path($options['start_file'], 'start file');
+            exclusive_file_path($options['end_file'], 'end file');
         }
     } catch (Throwable $error) {
         fwrite(STDERR, "durable-autocommit-mysql-benchmark: {$error->getMessage()}\n");

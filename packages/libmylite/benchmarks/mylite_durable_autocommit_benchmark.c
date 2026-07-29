@@ -59,6 +59,7 @@ struct benchmark_options {
     enum benchmark_engine engine;
     enum benchmark_statement_shape statement_shape;
     const char *database_path;
+    const char *end_file_path;
     const char *filesystem;
     const char *metadata_output_path;
     const char *output_path;
@@ -196,6 +197,7 @@ static int run_measurements(
     FILE *output,
     struct measurement_outputs *out_measurements
 );
+static int signal_trace_end(const char *end_path);
 static void print_trace_marker(const char *prefix, const struct benchmark_options *options);
 static int verify_rows(
     struct benchmark_database *database,
@@ -278,8 +280,12 @@ static int parse_options(int argc, char **argv, struct benchmark_options *out_op
         fprintf(stderr, "durable-autocommit: required option is missing\n");
         return 1;
     }
-    if ((options.ready_file_path == NULL) != (options.start_file_path == NULL)) {
-        fprintf(stderr, "durable-autocommit: ready and start files must be supplied together\n");
+    if ((options.ready_file_path == NULL) != (options.start_file_path == NULL) ||
+        (options.ready_file_path == NULL) != (options.end_file_path == NULL)) {
+        fprintf(
+            stderr,
+            "durable-autocommit: ready, start, and end files must be supplied together\n"
+        );
         return 1;
     }
     if (!options.allow_smoke && options.transactions < qualification_transaction_minimum) {
@@ -328,6 +334,8 @@ static int parse_option_value(
     }
     if (strcmp(name, "--database") == 0) {
         options->database_path = value;
+    } else if (strcmp(name, "--end-file") == 0) {
+        options->end_file_path = value;
     } else if (strcmp(name, "--filesystem") == 0) {
         options->filesystem = value;
     } else if (strcmp(name, "--metadata-output") == 0) {
@@ -393,7 +401,7 @@ static void print_usage(const char *program, FILE *stream) {
         "  --output PATH --metadata-output PATH --revision REVISION --run-id ID\\\n"
         "  --sample N --statement-shape repeated|multi-row --transactions N\\\n"
         "  --writes-per-transaction 1|4|100 [--warmup N] [--allow-smoke]\\\n"
-        "  [--ready-file PATH --start-file PATH]\n",
+        "  [--ready-file PATH --start-file PATH --end-file PATH]\n",
         program
     );
 }
@@ -430,6 +438,10 @@ static int run_benchmark(const struct benchmark_options *options) {
                                               validate_fresh_path(&(struct path_requirement){
                                                   .context = "start file",
                                                   .path = options->start_file_path,
+                                              }) != 0 ||
+                                              validate_fresh_path(&(struct path_requirement){
+                                                  .context = "end file",
+                                                  .path = options->end_file_path,
                                               }) != 0))) {
         goto cleanup;
     }
@@ -932,7 +944,10 @@ static int create_ready_marker(const char *path) {
         fprintf(stderr, "durable-autocommit: failed to create trace marker\n");
         return 1;
     }
-    if (fputs("ready\n", file) == EOF || fclose(file) != 0) {
+    if (fputs("ready\n", file) == EOF) {
+        result = 1;
+    }
+    if (fclose(file) != 0) {
         result = 1;
     }
     return result;
@@ -1003,8 +1018,32 @@ static int run_measurements(
         return 1;
     }
     print_trace_marker("MYLITE_DURABLE_TRACE_END", options);
+    if (signal_trace_end(options->end_file_path) != 0) {
+        return 1;
+    }
     out_measurements->affected_rows = cumulative_rows;
     return 0;
+}
+
+static int signal_trace_end(const char *end_path) {
+    FILE *file = NULL;
+    int result = 0;
+
+    if (end_path == NULL) {
+        return 0;
+    }
+    file = fopen(end_path, "wx");
+    if (file == NULL) {
+        fprintf(stderr, "durable-autocommit: failed to create trace end marker\n");
+        return 1;
+    }
+    if (fputs("end\n", file) == EOF) {
+        result = 1;
+    }
+    if (fclose(file) != 0) {
+        result = 1;
+    }
+    return result;
 }
 
 static void print_trace_marker(const char *prefix, const struct benchmark_options *options) {
@@ -1242,7 +1281,10 @@ static int write_metadata(
         options->warmup_transactions,
         options->writes_per_transaction
     );
-    if (ferror(output) || fclose(output) != 0) {
+    if (ferror(output)) {
+        result = 1;
+    }
+    if (fclose(output) != 0) {
         result = 1;
     }
     return result;

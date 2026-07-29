@@ -1,0 +1,487 @@
+#!/usr/bin/env python3
+
+import argparse
+import csv
+import json
+import math
+import re
+import sys
+from pathlib import Path
+
+
+ENGINES = ("mylite", "sqlite", "mysql")
+FILESYSTEMS = ("ext4", "xfs")
+SHAPES = ("repeated", "multi-row")
+WRITES = (1, 4, 100)
+QUALIFICATION_SAMPLES = 7
+QUALIFICATION_TRANSACTIONS = 1000
+RAW_COLUMNS = (
+    "run_id",
+    "revision",
+    "engine",
+    "filesystem",
+    "statement_shape",
+    "writes_per_transaction",
+    "sample",
+    "transaction_index",
+    "elapsed_ns",
+    "affected_rows",
+    "cumulative_rows",
+    "status",
+)
+SYNC_CALLS = ("fsync", "fdatasync", "syncfs", "msync")
+JOURNAL_CALLS = ("create", "truncate", "rename", "unlink")
+SYNC_PATTERN = re.compile(r"\b(fsync|fdatasync|syncfs|msync)\(")
+
+
+def fail(message):
+    print("summarize-durable-autocommit-qualification: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def read_json(path):
+    try:
+        with path.open(encoding="utf-8") as input_file:
+            value = json.load(input_file)
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("cannot read JSON {}: {}".format(path, error)) from error
+    if not isinstance(value, dict):
+        raise RuntimeError("{} must contain a JSON object".format(path))
+    return value
+
+
+def require_integer(value, field, path, minimum=0):
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return value
+
+
+def require_number(value, field, path, minimum=0.0):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < minimum:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return parsed
+
+
+def require_text(value, field, path):
+    if not isinstance(value, str) or not value:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return value
+
+
+def nearest_rank(sorted_values, percent):
+    rank = math.ceil((percent / 100) * len(sorted_values))
+    return sorted_values[max(0, rank - 1)]
+
+
+def latency_summary(latencies, writes):
+    ordered = sorted(latencies)
+    median = nearest_rank(ordered, 50)
+    deviations = sorted(abs(value - median) for value in ordered)
+    total_ns = sum(ordered)
+    return {
+        "maximum_ns": ordered[-1],
+        "median_absolute_deviation_ns": nearest_rank(deviations, 50),
+        "minimum_ns": ordered[0],
+        "p50_ns": median,
+        "p95_ns": nearest_rank(ordered, 95),
+        "p99_ns": nearest_rank(ordered, 99),
+        "transaction_count": len(ordered),
+        "transactions_per_second": (
+            len(ordered) * 1_000_000_000 / total_ns if total_ns else 0.0
+        ),
+        "writes_per_second": (
+            len(ordered) * writes * 1_000_000_000 / total_ns if total_ns else 0.0
+        ),
+    }
+
+
+def validate_environment(path, allow_smoke):
+    environment = read_json(path)
+    if environment.get("schema_version") != 1:
+        raise RuntimeError("unsupported environment schema in {}".format(path))
+    filesystem = require_text(environment.get("filesystem"), "filesystem", path)
+    if not allow_smoke and filesystem not in FILESYSTEMS:
+        raise RuntimeError("unsupported filesystem {} in {}".format(filesystem, path))
+    samples = require_integer(environment.get("samples"), "samples", path, 1)
+    transactions = require_integer(
+        environment.get("transactions"), "transactions", path, 1
+    )
+    require_integer(environment.get("warmup_transactions"), "warmup_transactions", path)
+    require_text(environment.get("revision"), "revision", path)
+    if environment.get("trace_scope") != "measurement-only":
+        raise RuntimeError("environment does not declare measurement-only tracing")
+    if not allow_smoke:
+        if environment.get("block_backed") is not True:
+            raise RuntimeError("qualification environment is not block-backed")
+        if environment.get("mysql_block_backed") is not True:
+            raise RuntimeError("qualification MySQL data is not block-backed")
+        if samples < QUALIFICATION_SAMPLES:
+            raise RuntimeError("qualification has fewer than seven samples")
+        if transactions < QUALIFICATION_TRANSACTIONS:
+            raise RuntimeError("qualification has fewer than 1000 transactions")
+        if environment.get("mysql_bind_mount") is not True:
+            raise RuntimeError("qualification MySQL data directory is not a bind mount")
+    reject_credential_metadata(environment, path)
+    return environment
+
+
+def reject_credential_metadata(value, path):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            lowered = str(key).lower()
+            if any(token in lowered for token in ("password", "credential", "dsn")):
+                raise RuntimeError("credential-shaped metadata key {} in {}".format(key, path))
+            reject_credential_metadata(nested, path)
+    elif isinstance(value, list):
+        for nested in value:
+            reject_credential_metadata(nested, path)
+
+
+def scenario_stem(engine, shape, writes, sample):
+    return "{}-{}-w{}-s{}".format(engine, shape, writes, sample)
+
+
+def expected_scenarios(samples):
+    return {
+        scenario_stem(engine, shape, writes, sample)
+        for engine in ENGINES
+        for shape in SHAPES
+        for writes in WRITES
+        for sample in range(1, samples + 1)
+    }
+
+
+def validate_artifact_file_set(directory, suffix, expected):
+    if not directory.is_dir():
+        raise RuntimeError("missing artifact directory {}".format(directory))
+    actual = {path.name[: -len(suffix)] for path in directory.glob("*" + suffix)}
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise RuntimeError(
+            "artifact matrix mismatch in {} (missing={}, extra={})".format(
+                directory, missing, extra
+            )
+        )
+
+
+def validate_configuration(metadata, engine, path):
+    configuration = metadata.get("configuration")
+    if not isinstance(configuration, dict):
+        raise RuntimeError("missing configuration in {}".format(path))
+    if engine in ("mylite", "sqlite"):
+        expected = {
+            "journal_mode": "delete",
+            "mmap_size": 0,
+            "sqlite_version": "3.53.0",
+            "synchronous": 3,
+        }
+        for key, value in expected.items():
+            if configuration.get(key) != value:
+                raise RuntimeError("invalid {} configuration in {}".format(key, path))
+        require_text(configuration.get("database_path"), "database_path", path)
+        return
+    required = {
+        "innodb_doublewrite": "ON",
+        "innodb_flush_log_at_trx_commit": "1",
+        "log_bin": "ON",
+        "sync_binlog": "1",
+        "version": "8.4.9",
+    }
+    for key, value in required.items():
+        if configuration.get(key) != value:
+            raise RuntimeError("invalid MySQL {} configuration in {}".format(key, path))
+    if configuration.get("innodb_flush_method") not in (
+        "O_DIRECT",
+        "O_DSYNC",
+        "fsync",
+        "unbuffered",
+    ):
+        raise RuntimeError("invalid MySQL flush method in {}".format(path))
+    require_text(configuration.get("innodb_use_fdatasync"), "innodb_use_fdatasync", path)
+
+
+def validate_metadata(path, environment, engine, shape, writes, sample, allow_smoke):
+    metadata = read_json(path)
+    expected_fields = {
+        "engine": engine,
+        "filesystem": environment["filesystem"],
+        "revision": environment["revision"],
+        "sample": sample,
+        "statement_shape": shape,
+        "transactions": environment["transactions"],
+        "warmup_transactions": environment["warmup_transactions"],
+        "writes_per_transaction": writes,
+    }
+    for field, expected in expected_fields.items():
+        if metadata.get(field) != expected:
+            raise RuntimeError("unexpected {} in {}".format(field, path))
+    require_text(metadata.get("run_id"), "run_id", path)
+    validate_configuration(metadata, engine, path)
+    expected_rows = environment["transactions"] * writes
+    expected_id_sum = expected_rows * (expected_rows + 1) // 2
+    expected_payload_sum = (3 * expected_id_sum) + (7 * expected_rows)
+    correctness = metadata.get("correctness")
+    if correctness != {
+        "id_sum": expected_id_sum,
+        "payload_sum": expected_payload_sum,
+        "row_count": expected_rows,
+    }:
+        raise RuntimeError("correctness totals do not match in {}".format(path))
+    if engine == "mysql":
+        counters = metadata.get("mysql_status_delta")
+        if not isinstance(counters, dict):
+            raise RuntimeError("missing MySQL status counters in {}".format(path))
+        for counter in ("Innodb_data_fsyncs", "Innodb_os_log_fsyncs"):
+            value = require_integer(counters.get(counter), counter, path)
+            if not allow_smoke and value == 0:
+                raise RuntimeError("zero {} in qualification {}".format(counter, path))
+    return metadata
+
+
+def validate_raw(path, metadata):
+    try:
+        with path.open(encoding="utf-8", newline="") as input_file:
+            reader = csv.DictReader(input_file)
+            if tuple(reader.fieldnames or ()) != RAW_COLUMNS:
+                raise RuntimeError("unexpected raw CSV header in {}".format(path))
+            rows = list(reader)
+    except OSError as error:
+        raise RuntimeError("cannot read {}: {}".format(path, error)) from error
+    transactions = metadata["transactions"]
+    writes = metadata["writes_per_transaction"]
+    if len(rows) != transactions:
+        raise RuntimeError("unexpected transaction count in {}".format(path))
+    latencies = []
+    for index, row in enumerate(rows, 1):
+        expected_text = {
+            "run_id": metadata["run_id"],
+            "revision": metadata["revision"],
+            "engine": metadata["engine"],
+            "filesystem": metadata["filesystem"],
+            "statement_shape": metadata["statement_shape"],
+            "writes_per_transaction": str(writes),
+            "sample": str(metadata["sample"]),
+            "transaction_index": str(index),
+            "affected_rows": str(writes),
+            "cumulative_rows": str(index * writes),
+            "status": "ok",
+        }
+        for field, expected in expected_text.items():
+            if row.get(field) != expected:
+                raise RuntimeError("unexpected {} in {}".format(field, path))
+        try:
+            elapsed_ns = int(row["elapsed_ns"])
+        except (KeyError, ValueError) as error:
+            raise RuntimeError("invalid elapsed_ns in {}".format(path)) from error
+        if elapsed_ns <= 0:
+            raise RuntimeError("nonpositive elapsed_ns in {}".format(path))
+        latencies.append(elapsed_ns)
+    expected_summary = latency_summary(latencies, writes)
+    reported = metadata.get("summary")
+    if not isinstance(reported, dict):
+        raise RuntimeError("missing summary in {}".format(path))
+    for field in (
+        "maximum_ns",
+        "median_absolute_deviation_ns",
+        "minimum_ns",
+        "p50_ns",
+        "p95_ns",
+        "p99_ns",
+        "transaction_count",
+    ):
+        if reported.get(field) != expected_summary[field]:
+            raise RuntimeError("incorrect {} in {}".format(field, path))
+    for field in ("transactions_per_second", "writes_per_second"):
+        actual = require_number(reported.get(field), field, path)
+        expected = expected_summary[field]
+        if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-6):
+            raise RuntimeError("incorrect {} in {}".format(field, path))
+    return latencies
+
+
+def parse_trace(path, engine, allow_smoke):
+    counts = {name: 0 for name in SYNC_CALLS}
+    journal = {name: 0 for name in JOURNAL_CALLS}
+    mysql_sync = {"binary_log": 0, "data": 0, "redo": 0, "unclassified": 0}
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        raise RuntimeError("cannot read trace {}: {}".format(path, error)) from error
+    has_begin = any("MYLITE_DURABLE_TRACE_BEGIN" in line for line in lines)
+    has_end = any("MYLITE_DURABLE_TRACE_END" in line for line in lines)
+    if has_begin != has_end:
+        raise RuntimeError("trace has an incomplete measurement marker pair: {}".format(path))
+    if engine != "mysql" and not allow_smoke and not has_begin:
+        raise RuntimeError("native qualification trace has no measurement markers: {}".format(path))
+    active = not has_begin
+    for line in lines:
+        if "MYLITE_DURABLE_TRACE_BEGIN" in line:
+            active = True
+            continue
+        if "MYLITE_DURABLE_TRACE_END" in line:
+            active = False
+            continue
+        if not active:
+            continue
+        match = SYNC_PATTERN.search(line)
+        if match:
+            call = match.group(1)
+            counts[call] += 1
+            lowered = line.lower()
+            if engine == "mysql":
+                if "binlog" in lowered:
+                    mysql_sync["binary_log"] += 1
+                elif "innodb_redo" in lowered or "ib_logfile" in lowered:
+                    mysql_sync["redo"] += 1
+                elif ".ibd" in lowered or "ibdata" in lowered:
+                    mysql_sync["data"] += 1
+                else:
+                    mysql_sync["unclassified"] += 1
+        if "-journal" not in line:
+            continue
+        if re.search(r"\bopenat\(", line) and "O_CREAT" in line:
+            journal["create"] += 1
+        if re.search(r"\bftruncate\(", line):
+            journal["truncate"] += 1
+        if re.search(r"\brename(?:at2?|)\(", line):
+            journal["rename"] += 1
+        if re.search(r"\bunlink(?:at|)\(", line):
+            journal["unlink"] += 1
+    sync_total = sum(counts.values())
+    if sync_total == 0 and not allow_smoke:
+        raise RuntimeError("trace has no sync syscalls: {}".format(path))
+    return {
+        "journal": journal,
+        "mysql_sync": mysql_sync,
+        "sync": counts,
+        "sync_total": sync_total,
+    }
+
+
+def add_counts(target, source):
+    for key, value in source.items():
+        target[key] = target.get(key, 0) + value
+
+
+def aggregate_scenarios(records):
+    summaries = []
+    for engine in ENGINES:
+        for shape in SHAPES:
+            for writes in WRITES:
+                matching = [
+                    record
+                    for key, record in records.items()
+                    if key[:3] == (engine, shape, writes)
+                ]
+                latencies = [
+                    latency for record in matching for latency in record["latencies"]
+                ]
+                trace = {
+                    "journal": {name: 0 for name in JOURNAL_CALLS},
+                    "mysql_sync": {
+                        "binary_log": 0,
+                        "data": 0,
+                        "redo": 0,
+                        "unclassified": 0,
+                    },
+                    "sync": {name: 0 for name in SYNC_CALLS},
+                    "sync_total": 0,
+                }
+                for record in matching:
+                    add_counts(trace["journal"], record["trace"]["journal"])
+                    add_counts(trace["mysql_sync"], record["trace"]["mysql_sync"])
+                    add_counts(trace["sync"], record["trace"]["sync"])
+                    trace["sync_total"] += record["trace"]["sync_total"]
+                summary = latency_summary(latencies, writes)
+                summary.update(
+                    {
+                        "engine": engine,
+                        "journal": trace["journal"],
+                        "mysql_sync": trace["mysql_sync"],
+                        "samples": len(matching),
+                        "statement_shape": shape,
+                        "sync": trace["sync"],
+                        "sync_calls_per_transaction": (
+                            trace["sync_total"] / len(latencies) if latencies else 0.0
+                        ),
+                        "sync_total": trace["sync_total"],
+                        "writes_per_transaction": writes,
+                    }
+                )
+                summaries.append(summary)
+    return summaries
+
+
+def write_json_exclusive(path, value):
+    if path.exists():
+        raise RuntimeError("output already exists: {}".format(path))
+    try:
+        with path.open("x", encoding="utf-8") as output:
+            json.dump(value, output, indent=2, sort_keys=True)
+            output.write("\n")
+    except OSError as error:
+        raise RuntimeError("cannot write {}: {}".format(path, error)) from error
+
+
+def summarize(artifact_dir, output_path, allow_smoke):
+    environment = validate_environment(artifact_dir / "environment.json", allow_smoke)
+    expected = expected_scenarios(environment["samples"])
+    metadata_dir = artifact_dir / "metadata"
+    raw_dir = artifact_dir / "raw"
+    trace_dir = artifact_dir / "traces"
+    validate_artifact_file_set(metadata_dir, ".json", expected)
+    validate_artifact_file_set(raw_dir, ".csv", expected)
+    validate_artifact_file_set(trace_dir, ".strace", expected)
+    records = {}
+    for engine in ENGINES:
+        for shape in SHAPES:
+            for writes in WRITES:
+                for sample in range(1, environment["samples"] + 1):
+                    stem = scenario_stem(engine, shape, writes, sample)
+                    metadata = validate_metadata(
+                        metadata_dir / (stem + ".json"),
+                        environment,
+                        engine,
+                        shape,
+                        writes,
+                        sample,
+                        allow_smoke,
+                    )
+                    records[(engine, shape, writes, sample)] = {
+                        "latencies": validate_raw(raw_dir / (stem + ".csv"), metadata),
+                        "trace": parse_trace(
+                            trace_dir / (stem + ".strace"), engine, allow_smoke
+                        ),
+                    }
+    summary = {
+        "environment": environment,
+        "qualification": not allow_smoke,
+        "scenario_count": len(records),
+        "scenarios": aggregate_scenarios(records),
+        "schema_version": 1,
+    }
+    write_json_exclusive(output_path, summary)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--allow-smoke", action="store_true")
+    parser.add_argument("--artifact-dir", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    options = parser.parse_args()
+    try:
+        artifact_dir = options.artifact_dir.resolve(strict=True)
+        output_parent = options.output.parent.resolve(strict=True)
+        output_path = output_parent / options.output.name
+        summarize(artifact_dir, output_path, options.allow_smoke)
+    except (OSError, RuntimeError) as error:
+        return fail(str(error))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

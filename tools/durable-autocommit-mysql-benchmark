@@ -1,0 +1,759 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+const QUALIFICATION_TRANSACTION_MINIMUM = 1000;
+const DEFAULT_WARMUP_TRANSACTIONS = 10;
+const MAXIMUM_TRANSACTIONS = 1000000;
+const TRACE_WAIT_ATTEMPTS = 6000;
+const TRACE_WAIT_MICROSECONDS = 10000;
+const MYSQL_DATABASE_PREFIX = 'mylite_perf_';
+
+/**
+ * @return array<string, string|bool>
+ */
+function parse_options(array $arguments): array
+{
+    $options = [];
+    $valueOptions = [
+        '--database',
+        '--filesystem',
+        '--metadata-output',
+        '--output',
+        '--ready-file',
+        '--revision',
+        '--run-id',
+        '--sample',
+        '--start-file',
+        '--statement-shape',
+        '--transactions',
+        '--warmup',
+        '--writes-per-transaction',
+    ];
+
+    for ($index = 1; $index < count($arguments); ++$index) {
+        $argument = $arguments[$index];
+        if ($argument === '--allow-smoke') {
+            if (isset($options[$argument])) {
+                throw new InvalidArgumentException("duplicate option {$argument}");
+            }
+            $options[$argument] = true;
+            continue;
+        }
+        if ($argument === '--help') {
+            $options[$argument] = true;
+            continue;
+        }
+        if (!in_array($argument, $valueOptions, true)) {
+            throw new InvalidArgumentException("unknown option {$argument}");
+        }
+        if (isset($options[$argument])) {
+            throw new InvalidArgumentException("duplicate option {$argument}");
+        }
+        if (++$index >= count($arguments)) {
+            throw new InvalidArgumentException("missing value for {$argument}");
+        }
+        $options[$argument] = $arguments[$index];
+    }
+
+    return $options;
+}
+
+function print_usage(): void
+{
+    fwrite(
+        STDOUT,
+        <<<'USAGE'
+usage: tools/durable-autocommit-mysql-benchmark [options]
+
+Required:
+  --database SCHEMA                  fresh prefixed MySQL schema
+  --filesystem FSTYPE                recorded filesystem identity
+  --output PATH                      exclusive raw transaction CSV output
+  --metadata-output PATH             exclusive JSON metadata output
+  --revision REVISION                measured git revision
+  --run-id ID                        stable run identifier
+  --sample N                         one-based sample index
+  --statement-shape SHAPE            repeated or multi-row
+  --transactions N                   measured transaction count
+  --writes-per-transaction N         1, 4, or 100
+
+Optional:
+  --warmup N                         default: 10
+  --ready-file PATH                  create after setup and warmup
+  --start-file PATH                  wait for this file before measuring
+  --allow-smoke                      permit fewer than 1000 transactions
+  --help
+
+MySQL connection:
+  MYLITE_DURABLE_MYSQL_DSN           PDO DSN without credentials
+  MYLITE_DURABLE_MYSQL_USER          username
+  MYLITE_DURABLE_MYSQL_PASSWORD      password
+USAGE
+    );
+    fwrite(STDOUT, "\n");
+}
+
+function required_option(array $options, string $name): string
+{
+    $value = $options[$name] ?? null;
+    if (!is_string($value) || $value === '') {
+        throw new InvalidArgumentException("{$name} is required");
+    }
+    return $value;
+}
+
+function parse_positive_integer(string $value, string $name): int
+{
+    if (!preg_match('/^[1-9][0-9]*$/D', $value)) {
+        throw new InvalidArgumentException("{$name} must be a positive integer");
+    }
+    $parsed = filter_var($value, FILTER_VALIDATE_INT);
+    if (!is_int($parsed) || $parsed < 1) {
+        throw new InvalidArgumentException("{$name} is outside the supported integer range");
+    }
+    return $parsed;
+}
+
+function parse_nonnegative_integer(string $value, string $name): int
+{
+    if (!preg_match('/^(0|[1-9][0-9]*)$/D', $value)) {
+        throw new InvalidArgumentException("{$name} must be a nonnegative integer");
+    }
+    $parsed = filter_var($value, FILTER_VALIDATE_INT);
+    if (!is_int($parsed) || $parsed < 0) {
+        throw new InvalidArgumentException("{$name} is outside the supported integer range");
+    }
+    return $parsed;
+}
+
+/**
+ * @return array{
+ *   allow_smoke: bool,
+ *   database: string,
+ *   filesystem: string,
+ *   metadata_output: string,
+ *   output: string,
+ *   ready_file: ?string,
+ *   revision: string,
+ *   run_id: string,
+ *   sample: int,
+ *   start_file: ?string,
+ *   statement_shape: string,
+ *   transactions: int,
+ *   warmup: int,
+ *   writes_per_transaction: int
+ * }
+ */
+function validate_options(array $options): array
+{
+    $statementShape = required_option($options, '--statement-shape');
+    $transactions = parse_positive_integer(
+        required_option($options, '--transactions'),
+        '--transactions'
+    );
+    $writes = parse_positive_integer(
+        required_option($options, '--writes-per-transaction'),
+        '--writes-per-transaction'
+    );
+    $allowSmoke = ($options['--allow-smoke'] ?? false) === true;
+    $readyFile = $options['--ready-file'] ?? null;
+    $startFile = $options['--start-file'] ?? null;
+    $warmup = parse_nonnegative_integer(
+        is_string($options['--warmup'] ?? null)
+            ? $options['--warmup']
+            : (string) DEFAULT_WARMUP_TRANSACTIONS,
+        '--warmup'
+    );
+
+    if (!in_array($statementShape, ['repeated', 'multi-row'], true)) {
+        throw new InvalidArgumentException('--statement-shape must be repeated or multi-row');
+    }
+    if (!in_array($writes, [1, 4, 100], true)) {
+        throw new InvalidArgumentException('--writes-per-transaction must be 1, 4, or 100');
+    }
+    if (!$allowSmoke && $transactions < QUALIFICATION_TRANSACTION_MINIMUM) {
+        throw new InvalidArgumentException(
+            '--transactions is below the qualification minimum; use --allow-smoke only for tests'
+        );
+    }
+    if ($transactions > MAXIMUM_TRANSACTIONS) {
+        throw new InvalidArgumentException('--transactions exceeds the supported maximum');
+    }
+    if ($warmup > MAXIMUM_TRANSACTIONS) {
+        throw new InvalidArgumentException('--warmup exceeds the supported maximum');
+    }
+    if (($readyFile === null) !== ($startFile === null)) {
+        throw new InvalidArgumentException('--ready-file and --start-file must be supplied together');
+    }
+    foreach (['--run-id', '--revision', '--filesystem'] as $name) {
+        if (!preg_match('/^[A-Za-z0-9_.:+-]+$/D', required_option($options, $name))) {
+            throw new InvalidArgumentException("{$name} contains unsupported characters");
+        }
+    }
+
+    return [
+        'allow_smoke' => $allowSmoke,
+        'database' => required_option($options, '--database'),
+        'filesystem' => required_option($options, '--filesystem'),
+        'metadata_output' => required_option($options, '--metadata-output'),
+        'output' => required_option($options, '--output'),
+        'ready_file' => is_string($readyFile) ? $readyFile : null,
+        'revision' => required_option($options, '--revision'),
+        'run_id' => required_option($options, '--run-id'),
+        'sample' => parse_positive_integer(required_option($options, '--sample'), '--sample'),
+        'start_file' => is_string($startFile) ? $startFile : null,
+        'statement_shape' => $statementShape,
+        'transactions' => $transactions,
+        'warmup' => $warmup,
+        'writes_per_transaction' => $writes,
+    ];
+}
+
+function exclusive_file_path(string $path, string $context): string
+{
+    if (!str_starts_with($path, '/')) {
+        throw new InvalidArgumentException("{$context} must be an absolute path");
+    }
+    $parent = realpath(dirname($path));
+    if ($parent === false || !is_dir($parent)) {
+        throw new InvalidArgumentException("{$context} parent directory does not exist");
+    }
+    $resolved = $parent . '/' . basename($path);
+    if (file_exists($resolved) || is_link($resolved)) {
+        throw new RuntimeException("{$context} already exists");
+    }
+    return $resolved;
+}
+
+/**
+ * @return array{pdo: PDO, configuration: array<string, mixed>, cleanup: Closure(): void}
+ */
+function open_mysql(string $database): array
+{
+    if (!extension_loaded('pdo_mysql')) {
+        throw new RuntimeException('pdo_mysql must be loaded');
+    }
+    if (!preg_match('/^' . MYSQL_DATABASE_PREFIX . '[a-z0-9_]+$/D', $database)) {
+        throw new InvalidArgumentException(
+            'MySQL database must use the ' . MYSQL_DATABASE_PREFIX . ' prefix'
+        );
+    }
+    $dsn = getenv('MYLITE_DURABLE_MYSQL_DSN');
+    $user = getenv('MYLITE_DURABLE_MYSQL_USER');
+    $password = getenv('MYLITE_DURABLE_MYSQL_PASSWORD');
+    if ($dsn === false || $dsn === '' || $user === false || $password === false) {
+        throw new RuntimeException('MySQL DSN, user, and password environment variables are required');
+    }
+
+    $pdo = new PDO($dsn, $user, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+    $existing = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = ?'
+    );
+    $existing->execute([$database]);
+    if ((int) $existing->fetchColumn() !== 0) {
+        throw new RuntimeException('MySQL benchmark database already exists');
+    }
+
+    $configuration = mysql_configuration($pdo);
+    validate_mysql_configuration($configuration);
+    $quotedDatabase = '`' . $database . '`';
+    $cleanup = static function () use ($pdo, $quotedDatabase): void {
+        try {
+            $pdo->exec("DROP DATABASE {$quotedDatabase}");
+        } catch (Throwable) {
+        }
+    };
+    $pdo->exec("CREATE DATABASE {$quotedDatabase}");
+    try {
+        $pdo->exec("USE {$quotedDatabase}");
+        $pdo->exec(
+            'CREATE TABLE durable_rows (' .
+            'id BIGINT PRIMARY KEY, payload BIGINT NOT NULL) ENGINE=InnoDB'
+        );
+    } catch (Throwable $error) {
+        $cleanup();
+        throw $error;
+    }
+    $configuration['database_name'] = $database;
+
+    return [
+        'pdo' => $pdo,
+        'configuration' => $configuration,
+        'cleanup' => $cleanup,
+    ];
+}
+
+/**
+ * @return array<string, string>
+ */
+function mysql_configuration(PDO $pdo): array
+{
+    $names = [
+        'binlog_format',
+        'innodb_doublewrite',
+        'innodb_file_per_table',
+        'innodb_flush_log_at_trx_commit',
+        'innodb_flush_method',
+        'innodb_page_size',
+        'innodb_redo_log_capacity',
+        'innodb_use_fdatasync',
+        'log_bin',
+        'sync_binlog',
+        'transaction_isolation',
+        'version',
+        'version_compile_machine',
+        'version_compile_os',
+    ];
+    $quoted = implode(',', array_fill(0, count($names), '?'));
+    $statement = $pdo->prepare(
+        "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM performance_schema.global_variables " .
+        "WHERE VARIABLE_NAME IN ({$quoted})"
+    );
+    $statement->execute($names);
+    $configuration = [];
+    while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+        $configuration[strtolower((string) $row[0])] = (string) $row[1];
+    }
+    ksort($configuration);
+    return $configuration;
+}
+
+function validate_mysql_configuration(array $configuration): void
+{
+    $required = [
+        'innodb_doublewrite' => 'ON',
+        'innodb_flush_log_at_trx_commit' => '1',
+        'log_bin' => 'ON',
+        'sync_binlog' => '1',
+    ];
+    foreach ($required as $name => $expected) {
+        if (($configuration[$name] ?? null) !== $expected) {
+            throw new RuntimeException("MySQL durability setting {$name} must be {$expected}");
+        }
+    }
+    if (($configuration['version'] ?? null) !== '8.4.9') {
+        throw new RuntimeException('MySQL server version must be exactly 8.4.9');
+    }
+    $flushMethod = $configuration['innodb_flush_method'] ?? '';
+    if (!in_array($flushMethod, ['O_DIRECT', 'O_DSYNC', 'fsync', 'unbuffered'], true)) {
+        throw new RuntimeException("unsupported MySQL durable flush method {$flushMethod}");
+    }
+}
+
+/**
+ * @return array<string, int>
+ */
+function mysql_status(PDO $pdo): array
+{
+    $names = [
+        'Binlog_cache_disk_use',
+        'Binlog_cache_use',
+        'Innodb_data_fsyncs',
+        'Innodb_log_write_requests',
+        'Innodb_os_log_fsyncs',
+        'Innodb_os_log_written',
+    ];
+    $quoted = implode(',', array_fill(0, count($names), '?'));
+    $statement = $pdo->prepare(
+        "SELECT VARIABLE_NAME, VARIABLE_VALUE FROM performance_schema.global_status " .
+        "WHERE VARIABLE_NAME IN ({$quoted})"
+    );
+    $statement->execute($names);
+    $status = [];
+    while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+        $status[(string) $row[0]] = (int) $row[1];
+    }
+    if (!isset($status['Innodb_data_fsyncs'], $status['Innodb_os_log_fsyncs'])) {
+        throw new RuntimeException('MySQL sync status counters are unavailable');
+    }
+    ksort($status);
+    return $status;
+}
+
+/**
+ * @return array<string, int>
+ */
+function subtract_counters(array $before, array $after): array
+{
+    $deltas = [];
+    foreach ($before as $name => $value) {
+        if (isset($after[$name])) {
+            $deltas[$name] = max(0, $after[$name] - $value);
+        }
+    }
+    return $deltas;
+}
+
+function prepare_insert(PDO $pdo, string $shape, int $writes): PDOStatement
+{
+    if ($shape === 'repeated') {
+        $sql = 'INSERT INTO durable_rows (id, payload) VALUES (?, ?)';
+    } else {
+        $sql = 'INSERT INTO durable_rows (id, payload) VALUES ' .
+            implode(', ', array_fill(0, $writes, '(?, ?)'));
+    }
+    $statement = $pdo->prepare($sql);
+    if (!$statement instanceof PDOStatement) {
+        throw new RuntimeException('failed to prepare durable insert statement');
+    }
+    return $statement;
+}
+
+/**
+ * @return list<array{0: int, 1: int}>
+ */
+function transaction_rows(int $firstId, int $writes): array
+{
+    $rows = [];
+    for ($offset = 0; $offset < $writes; ++$offset) {
+        $id = $firstId + $offset;
+        $rows[] = [$id, ($id * 3) + 7];
+    }
+    return $rows;
+}
+
+function execute_insert_transaction(
+    PDO $pdo,
+    PDOStatement $statement,
+    string $shape,
+    array $rows,
+    bool $measure
+): array {
+    $affectedRows = 0;
+    $usesExplicitTransaction = count($rows) > 1;
+    $start = 0;
+
+    try {
+        if ($measure) {
+            $start = hrtime(true);
+        }
+        if ($usesExplicitTransaction) {
+            $pdo->beginTransaction();
+        }
+        if ($shape === 'repeated') {
+            foreach ($rows as $row) {
+                $statement->execute($row);
+                $affectedRows += $statement->rowCount();
+                $statement->closeCursor();
+            }
+        } else {
+            $parameters = [];
+            foreach ($rows as $row) {
+                $parameters[] = $row[0];
+                $parameters[] = $row[1];
+            }
+            $statement->execute($parameters);
+            $affectedRows = $statement->rowCount();
+            $statement->closeCursor();
+        }
+        if ($usesExplicitTransaction) {
+            $pdo->commit();
+        }
+        $elapsed = $measure ? hrtime(true) - $start : 0;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
+
+    return ['affected_rows' => $affectedRows, 'elapsed_ns' => $elapsed];
+}
+
+function run_warmup(PDO $pdo, PDOStatement $statement, array $options): void
+{
+    $nextId = -($options['warmup'] * $options['writes_per_transaction']);
+    for ($index = 0; $index < $options['warmup']; ++$index) {
+        $rows = transaction_rows($nextId, $options['writes_per_transaction']);
+        execute_insert_transaction($pdo, $statement, $options['statement_shape'], $rows, false);
+        $nextId += $options['writes_per_transaction'];
+    }
+    if ($options['warmup'] > 0) {
+        $pdo->exec('DELETE FROM durable_rows');
+    }
+}
+
+function wait_for_trace_start(?string $readyPath, ?string $startPath): void
+{
+    if ($readyPath === null || $startPath === null) {
+        return;
+    }
+    $ready = exclusive_file_path($readyPath, 'ready file');
+    $start = exclusive_file_path($startPath, 'start file');
+    $handle = fopen($ready, 'x');
+    if ($handle === false) {
+        throw new RuntimeException('failed to create ready file');
+    }
+    fwrite($handle, "ready\n");
+    fclose($handle);
+
+    for ($attempt = 0; $attempt < TRACE_WAIT_ATTEMPTS; ++$attempt) {
+        if (is_file($start) && !is_link($start)) {
+            return;
+        }
+        usleep(TRACE_WAIT_MICROSECONDS);
+    }
+    throw new RuntimeException('timed out waiting for trace start file');
+}
+
+/**
+ * @return array{latencies: list<int>, affected_rows: int}
+ */
+function run_measurements(
+    PDO $pdo,
+    PDOStatement $statement,
+    array $options,
+    $output
+): array {
+    $latencies = [];
+    $cumulativeRows = 0;
+    $nextId = 1;
+    $marker = implode(' ', [
+        $options['run_id'],
+        'mysql',
+        $options['statement_shape'],
+        (string) $options['writes_per_transaction'],
+        (string) $options['sample'],
+    ]);
+
+    fwrite(STDERR, "MYLITE_DURABLE_TRACE_BEGIN {$marker}\n");
+    fflush(STDERR);
+    for ($transaction = 1; $transaction <= $options['transactions']; ++$transaction) {
+        $rows = transaction_rows($nextId, $options['writes_per_transaction']);
+        try {
+            $measurement = execute_insert_transaction(
+                $pdo,
+                $statement,
+                $options['statement_shape'],
+                $rows,
+                true
+            );
+            $cumulativeRows += $measurement['affected_rows'];
+            $latencies[] = $measurement['elapsed_ns'];
+            fputcsv($output, [
+                $options['run_id'],
+                $options['revision'],
+                'mysql',
+                $options['filesystem'],
+                $options['statement_shape'],
+                $options['writes_per_transaction'],
+                $options['sample'],
+                $transaction,
+                $measurement['elapsed_ns'],
+                $measurement['affected_rows'],
+                $cumulativeRows,
+                'ok',
+            ], escape: '');
+        } catch (Throwable $error) {
+            fputcsv($output, [
+                $options['run_id'],
+                $options['revision'],
+                'mysql',
+                $options['filesystem'],
+                $options['statement_shape'],
+                $options['writes_per_transaction'],
+                $options['sample'],
+                $transaction,
+                0,
+                0,
+                $cumulativeRows,
+                'error',
+            ], escape: '');
+            throw $error;
+        }
+        $nextId += $options['writes_per_transaction'];
+    }
+    fflush($output);
+    fwrite(STDERR, "MYLITE_DURABLE_TRACE_END {$marker}\n");
+    fflush(STDERR);
+
+    return ['latencies' => $latencies, 'affected_rows' => $cumulativeRows];
+}
+
+function percentile(array $sortedValues, int $percentile): int
+{
+    if ($sortedValues === []) {
+        throw new RuntimeException('cannot calculate a percentile without values');
+    }
+    $rank = (int) ceil(($percentile / 100) * count($sortedValues));
+    return $sortedValues[max(0, $rank - 1)];
+}
+
+/**
+ * @return array<string, int|float>
+ */
+function summarize_latencies(array $latencies, int $writes): array
+{
+    sort($latencies, SORT_NUMERIC);
+    $count = count($latencies);
+    $total = array_sum($latencies);
+    $median = percentile($latencies, 50);
+    $deviations = array_map(
+        static fn(int $value): int => abs($value - $median),
+        $latencies
+    );
+    sort($deviations, SORT_NUMERIC);
+    $seconds = $total / 1_000_000_000;
+
+    return [
+        'maximum_ns' => $latencies[$count - 1],
+        'median_absolute_deviation_ns' => percentile($deviations, 50),
+        'minimum_ns' => $latencies[0],
+        'p50_ns' => $median,
+        'p95_ns' => percentile($latencies, 95),
+        'p99_ns' => percentile($latencies, 99),
+        'transaction_count' => $count,
+        'transactions_per_second' => $seconds > 0 ? $count / $seconds : 0.0,
+        'writes_per_second' => $seconds > 0 ? ($count * $writes) / $seconds : 0.0,
+    ];
+}
+
+function verify_rows(PDO $pdo, int $expectedRows): array
+{
+    $row = $pdo->query(
+        'SELECT COUNT(*), COALESCE(SUM(id), 0), COALESCE(SUM(payload), 0) ' .
+        'FROM durable_rows'
+    )->fetch(PDO::FETCH_NUM);
+    if (!is_array($row) || count($row) !== 3) {
+        throw new RuntimeException('failed to read correctness totals');
+    }
+    $actualRows = (int) $row[0];
+    $actualIdSum = (int) $row[1];
+    $actualPayloadSum = (int) $row[2];
+    $expectedIdSum = intdiv($expectedRows * ($expectedRows + 1), 2);
+    $expectedPayloadSum = (3 * $expectedIdSum) + (7 * $expectedRows);
+    if (
+        $actualRows !== $expectedRows
+        || $actualIdSum !== $expectedIdSum
+        || $actualPayloadSum !== $expectedPayloadSum
+    ) {
+        throw new RuntimeException('durable row-count or checksum verification failed');
+    }
+    return [
+        'id_sum' => $actualIdSum,
+        'payload_sum' => $actualPayloadSum,
+        'row_count' => $actualRows,
+    ];
+}
+
+function write_json_exclusive(string $path, array $value): void
+{
+    $handle = fopen($path, 'x');
+    if ($handle === false) {
+        throw new RuntimeException("failed to create {$path}");
+    }
+    try {
+        $encoded = json_encode(
+            $value,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+        fwrite($handle, $encoded . "\n");
+    } finally {
+        fclose($handle);
+    }
+}
+
+function main(array $arguments): int
+{
+    try {
+        $parsed = parse_options($arguments);
+        if (($parsed['--help'] ?? false) === true) {
+            print_usage();
+            return 0;
+        }
+        $options = validate_options($parsed);
+        $outputPath = exclusive_file_path($options['output'], 'raw output');
+        $metadataPath = exclusive_file_path($options['metadata_output'], 'metadata output');
+        if ($options['ready_file'] !== null) {
+            exclusive_file_path($options['ready_file'], 'ready file');
+            exclusive_file_path($options['start_file'], 'start file');
+        }
+    } catch (Throwable $error) {
+        fwrite(STDERR, "durable-autocommit-mysql-benchmark: {$error->getMessage()}\n");
+        return 2;
+    }
+
+    $cleanup = null;
+    $output = null;
+    try {
+        $engine = open_mysql($options['database']);
+        $pdo = $engine['pdo'];
+        $cleanup = $engine['cleanup'];
+        $statement = prepare_insert(
+            $pdo,
+            $options['statement_shape'],
+            $options['writes_per_transaction']
+        );
+        run_warmup($pdo, $statement, $options);
+        wait_for_trace_start($options['ready_file'], $options['start_file']);
+
+        $output = fopen($outputPath, 'x');
+        if ($output === false) {
+            throw new RuntimeException('failed to create raw output');
+        }
+        fputcsv($output, [
+            'run_id',
+            'revision',
+            'engine',
+            'filesystem',
+            'statement_shape',
+            'writes_per_transaction',
+            'sample',
+            'transaction_index',
+            'elapsed_ns',
+            'affected_rows',
+            'cumulative_rows',
+            'status',
+        ], escape: '');
+
+        $statusBefore = mysql_status($pdo);
+        $measurements = run_measurements($pdo, $statement, $options, $output);
+        $statusAfter = mysql_status($pdo);
+        $expectedRows = $options['transactions'] * $options['writes_per_transaction'];
+        if ($measurements['affected_rows'] !== $expectedRows) {
+            throw new RuntimeException('affected-row total does not match the workload');
+        }
+        $correctness = verify_rows($pdo, $expectedRows);
+        $metadata = [
+            'configuration' => $engine['configuration'],
+            'correctness' => $correctness,
+            'engine' => 'mysql',
+            'filesystem' => $options['filesystem'],
+            'mysql_status_delta' => subtract_counters($statusBefore, $statusAfter),
+            'revision' => $options['revision'],
+            'run_id' => $options['run_id'],
+            'sample' => $options['sample'],
+            'statement_shape' => $options['statement_shape'],
+            'summary' => summarize_latencies(
+                $measurements['latencies'],
+                $options['writes_per_transaction']
+            ),
+            'transactions' => $options['transactions'],
+            'warmup_transactions' => $options['warmup'],
+            'writes_per_transaction' => $options['writes_per_transaction'],
+        ];
+        write_json_exclusive($metadataPath, $metadata);
+    } catch (Throwable $error) {
+        fwrite(STDERR, "durable-autocommit-mysql-benchmark: {$error->getMessage()}\n");
+        return 1;
+    } finally {
+        if (is_resource($output)) {
+            fclose($output);
+        }
+        if ($cleanup instanceof Closure) {
+            $cleanup();
+        }
+        if ($options['ready_file'] !== null) {
+            @unlink($options['ready_file']);
+        }
+    }
+
+    return 0;
+}
+
+exit(main($argv));

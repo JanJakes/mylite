@@ -65,6 +65,18 @@ target_include_directories(mylite_large_dataset_system_benchmark PRIVATE
 )
 mylite_configure_c_target(mylite_large_dataset_system_benchmark)
 
+add_executable(mylite_durable_autocommit_benchmark EXCLUDE_FROM_ALL
+  benchmarks/mylite_durable_autocommit_benchmark.c
+)
+target_link_libraries(mylite_durable_autocommit_benchmark PRIVATE
+  MyLite::mylite
+  MyLite::sqlite
+)
+target_include_directories(mylite_durable_autocommit_benchmark PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+mylite_configure_c_target(mylite_durable_autocommit_benchmark)
+
 add_custom_target(mylite_large_dataset_benchmark_check
   COMMAND "${CMAKE_COMMAND}"
     "-DBENCHMARK=$<TARGET_FILE:mylite_large_dataset_benchmark>"

@@ -800,23 +800,47 @@ metadata coupling in the value-semantics change.
 
 ### `SEM-03`: function- and argument-specific metadata
 
-- [ ] Replace broad family descriptors with function- and argument-specific
+- [x] Replace broad family descriptors with function- and argument-specific
   result descriptors where MySQL metadata differs.
-- [ ] Correct spatial text/binary/geometry, spatial predicates,
+- [x] Correct spatial text/binary/geometry, spatial predicates,
   `CONVERT_TZ()`, and aggregate/window metadata.
-- [ ] Differentially verify protocol type, collation, length, decimals,
+- [x] Differentially verify protocol type, collation, length, decimals,
   flags, signedness, nullability, table/origin, and precision.
-- [ ] Correct compatibility claims that currently promise metadata parity
+- [x] Correct compatibility claims that currently promise metadata parity
   without paired field-metadata evidence.
-- [ ] Reuse the same descriptors in native, mysqli, PDO, SHOW, and prepared
+- [x] Reuse the same descriptors in native, mysqli, PDO, SHOW, and prepared
   result paths.
 
 ### Phase 5 closure
 
-- [ ] Run temporal, spatial, aggregate/window, metadata, mysqli, PDO, ORM, and
+- [x] Run temporal, spatial, aggregate/window, metadata, mysqli, PDO, ORM, and
   MySQL expectation suites.
-- [ ] Review that value semantics and metadata semantics agree for every
+- [x] Review that value semantics and metadata semantics agree for every
   corrected function.
+
+`SEM-03` is closed by the independently authored specification and pinned
+MySQL 8.4.9 field-metadata fixture at `c71e670f2`; spatial and `CONVERT_TZ()`
+descriptors at `6463c151e`; aggregate, grouped, and window descriptors at
+`a6511e120`; typed PDO aggregate results at `da9d43748`; explicit metadata
+constants and a clean full static-analysis gate at `0ca95a44b`; reviewed
+additive ABI-0 type ids at `2e00f221d`; and the scoped compatibility claim and
+qualification record at `72806a59f`.
+
+Qualification covered all 706 Development tests; the 16 affected suites in
+Debug, Release, and ASan/UBSan with leak detection; all 53 governed MySQL
+fixtures for the affected surfaces; all 16 PHP tests; Doctrine DBAL 4.4.3 with
+two tests and 22 assertions; Doctrine ORM 3.6.7 with one test and eight
+assertions; LLVM 19 analysis across 931 first-party translation units;
+formatting, ABI, install, pkg-config, and compatibility-ledger gates; and the
+12,386,856-byte native production archive. The PHP-production archive and
+modules were also below their configured ceilings.
+
+Self-review confirmed that the corrected function result families agree with
+their existing value semantics and that native, mysqli, PDO, and prepared
+execution consume the stored descriptor. `SHOW` and other synthetic results
+retain that shared representation but are not claimed as corrected by this
+phase. The change adds no dependency, persistent state, file-format or catalog
+mutation, SQLite-fork patch, row scan, or second function evaluation.
 
 ## Phase 6: End-to-End Performance Qualification
 

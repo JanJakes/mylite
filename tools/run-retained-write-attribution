@@ -281,7 +281,7 @@ def main():
     parser.add_argument(
         "--timing-client",
         type=executable_path,
-        default=root / "build/dev/packages/libmylite/mylite_large_dataset_benchmark",
+        default=root / "build/ci/packages/libmylite/mylite_large_dataset_benchmark",
     )
     parser.add_argument(
         "--counter-client",

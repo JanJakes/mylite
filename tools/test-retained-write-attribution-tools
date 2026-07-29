@@ -226,6 +226,7 @@ artifact="$temporary_directory/artifact"
 grep -q '100[[:space:]]total[[:space:]]mylite[[:space:]]30.015000' \
   "$artifact/summary/summary.tsv"
 grep -q '"accounted_percent": 100.0' "$artifact/summary/summary.json"
+grep -q '"total_mad_percent"' "$artifact/summary/summary.json"
 grep -q '"sample_count": 2' "$artifact/profiles/mylite.json"
 
 if "$root/tools/run-retained-write-attribution" \
@@ -250,6 +251,31 @@ if "$root/tools/run-retained-write-attribution" \
   --samples 2 \
   --profile-rows 100 >/dev/null 2>&1; then
   echo "test-retained-write-attribution-tools: accepted smoke qualification counts" >&2
+  exit 1
+fi
+
+qualification_artifact="$temporary_directory/noisy-qualification"
+"$root/tools/run-retained-write-attribution" \
+  --artifact-dir "$qualification_artifact" \
+  --timing-client "$temporary_directory/fake-client" \
+  --counter-client "$temporary_directory/fake-client" \
+  --perf "$temporary_directory/fake-perf" \
+  --rows 100000,1000000 \
+  --samples 5 \
+  --profile-rows 100000 \
+  --allow-smoke
+sed -i 's/"dirty_worktree": true/"dirty_worktree": false/' \
+  "$qualification_artifact/environment.json"
+awk -F, 'BEGIN {OFS=","} \
+  $1 == "measurement" && $2 == 100000 && $4 == "sqlite" && $5 == "total" {$11 = $3 * 10} \
+  {print}' \
+  "$qualification_artifact/raw/timing-100000.csv" \
+  > "$qualification_artifact/raw/timing-100000.csv.new"
+mv "$qualification_artifact/raw/timing-100000.csv.new" \
+  "$qualification_artifact/raw/timing-100000.csv"
+if "$root/tools/summarize-retained-write-attribution" \
+  "$qualification_artifact" >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted a noisy qualification" >&2
   exit 1
 fi
 

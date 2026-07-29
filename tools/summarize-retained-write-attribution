@@ -24,6 +24,7 @@ PHASES = (
 PROGRAM_COUNT = 11
 QUALIFICATION_ROWS = (100000, 1000000)
 QUALIFICATION_SAMPLES = 5
+QUALIFICATION_MAX_MAD_PERCENT = 10.0
 ATTRIBUTION_COLUMNS = (
     "record",
     "rows",
@@ -336,6 +337,34 @@ def validate_counter_invariants(measurements, row_count, samples, selected_layer
                 raise RuntimeError("VM attribution layers are not ordered in {}".format(path))
 
 
+def median_absolute_deviation(values):
+    median = statistics.median(values)
+    return statistics.median(abs(value - median) for value in values)
+
+
+def validate_timing_noise(measurements, samples, path, allow_smoke):
+    if allow_smoke:
+        return
+    for layer in LAYERS:
+        values = [
+            measurements[(sample, layer, "total")]["total_ms"]
+            for sample in range(1, samples + 1)
+        ]
+        median = statistics.median(values)
+        if median <= 0:
+            raise RuntimeError("non-positive total timing for {} in {}".format(layer, path))
+        mad_percent = median_absolute_deviation(values) * 100.0 / median
+        if mad_percent > QUALIFICATION_MAX_MAD_PERCENT:
+            raise RuntimeError(
+                "{} total timing MAD {:.3f}% exceeds {:.1f}% in {}".format(
+                    layer,
+                    mad_percent,
+                    QUALIFICATION_MAX_MAD_PERCENT,
+                    path,
+                )
+            )
+
+
 def validate_profiles(artifact_dir, environment):
     profiles = {}
     for layer in LAYERS:
@@ -393,6 +422,15 @@ def summarize(environment, timing_by_rows, counters_by_rows, profiles):
             )
             for layer in LAYERS
         }
+        total_mads = {
+            layer: median_absolute_deviation(
+                [
+                    timing[(sample, layer, "total")]["total_ms"]
+                    for sample in range(1, environment["samples"] + 1)
+                ]
+            )
+            for layer in LAYERS
+        }
         residual = total_medians["mylite"] - total_medians["sqlite"]
         row_summary = {
             "full_to_sqlite_ratio": (
@@ -401,6 +439,15 @@ def summarize(environment, timing_by_rows, counters_by_rows, profiles):
                 else None
             ),
             "residual_ms": residual,
+            "total_mad_ms": total_mads,
+            "total_mad_percent": {
+                layer: (
+                    total_mads[layer] * 100.0 / total_medians[layer]
+                    if total_medians[layer] != 0
+                    else None
+                )
+                for layer in LAYERS
+            },
             "total_median_ms": total_medians,
         }
         layer_deltas = {}
@@ -424,6 +471,15 @@ def summarize(environment, timing_by_rows, counters_by_rows, profiles):
                 layer: statistics.median(
                     timing[(sample, layer, phase)]["total_ms"]
                     for sample in range(1, environment["samples"] + 1)
+                )
+                for layer in LAYERS
+            }
+            phase_mads = {
+                layer: median_absolute_deviation(
+                    [
+                        timing[(sample, layer, phase)]["total_ms"]
+                        for sample in range(1, environment["samples"] + 1)
+                    ]
                 )
                 for layer in LAYERS
             }
@@ -462,6 +518,12 @@ def summarize(environment, timing_by_rows, counters_by_rows, profiles):
                         "phase": phase,
                         "layer": layer,
                         "median_wall_ms": wall_ms,
+                        "median_absolute_deviation_ms": phase_mads[layer],
+                        "mad_percent": (
+                            phase_mads[layer] * 100.0 / wall_ms
+                            if wall_ms != 0
+                            else None
+                        ),
                         "median_cpu_ms": cpu_ms,
                         "delta_wall_ms": delta_ms,
                         "residual_share_percent": (
@@ -494,6 +556,8 @@ def write_summary(output_dir, rows, summary):
         "phase",
         "layer",
         "median_wall_ms",
+        "median_absolute_deviation_ms",
+        "mad_percent",
         "median_cpu_ms",
         "delta_wall_ms",
         "residual_share_percent",
@@ -516,6 +580,8 @@ def write_summary(output_dir, rows, summary):
             rendered = dict(row)
             for field in (
                 "median_wall_ms",
+                "median_absolute_deviation_ms",
+                "mad_percent",
                 "median_cpu_ms",
                 "delta_wall_ms",
                 "residual_share_percent",
@@ -569,6 +635,12 @@ def main():
             if timing_hash != counter_hash:
                 raise RuntimeError("timing/counter checksum drift at {} rows".format(row_count))
             hash_reference[row_count] = timing_hash
+            validate_timing_noise(
+                timing,
+                environment["samples"],
+                artifact_dir / "raw" / "timing-{}.csv".format(row_count),
+                options.allow_smoke,
+            )
             timing_by_rows[row_count] = timing
             counters_by_rows[row_count] = counters
         profiles = validate_profiles(artifact_dir, environment)

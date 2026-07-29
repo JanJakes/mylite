@@ -176,6 +176,7 @@ struct benchmark_options {
     const char *database_directory;
     const char *database_base;
     const char *output_path;
+    const char *attribution_layer_name;
     bool keep_databases;
     bool reuse_databases;
     bool seed_only;
@@ -351,6 +352,7 @@ static int run_attribution_sample(
     FILE *output,
     size_t sample
 );
+static bool attribution_layer_from_name(const char *name, enum benchmark_engine_kind *out_kind);
 static int discover_attribution_programs(
     const struct benchmark_options *options,
     const struct benchmark_dataset *dataset,
@@ -1224,6 +1226,7 @@ int main(int argc, char **argv) {
         .database_directory = NULL,
         .database_base = NULL,
         .output_path = NULL,
+        .attribution_layer_name = NULL,
         .keep_databases = false,
         .reuse_databases = false,
         .seed_only = false,
@@ -1252,6 +1255,11 @@ int main(int argc, char **argv) {
     }
     if (options.attribution_seed && options.attribution_timing) {
         fprintf(stderr, "--attribution-seed and --attribution-timing are mutually exclusive\n");
+        return 1;
+    }
+    if (options.attribution_layer_name != NULL && !options.attribution_seed &&
+        !options.attribution_timing) {
+        fprintf(stderr, "--attribution-layer requires an attribution mode\n");
         return 1;
     }
     if (options.attribution_seed) {
@@ -1334,7 +1342,8 @@ static bool option_takes_value(const char *argument) {
     return strcmp(argument, "--rows") == 0 || strcmp(argument, "--samples") == 0 ||
            strcmp(argument, "--warmup") == 0 || strcmp(argument, "--iterations") == 0 ||
            strcmp(argument, "--scenario") == 0 || strcmp(argument, "--database-dir") == 0 ||
-           strcmp(argument, "--database-base") == 0 || strcmp(argument, "--output") == 0;
+           strcmp(argument, "--database-base") == 0 || strcmp(argument, "--output") == 0 ||
+           strcmp(argument, "--attribution-layer") == 0;
 }
 
 static int parse_named_option(
@@ -1362,6 +1371,8 @@ static int parse_named_option(
         out_options->database_base = value;
     } else if (strcmp(argument, "--output") == 0) {
         out_options->output_path = value;
+    } else if (strcmp(argument, "--attribution-layer") == 0) {
+        out_options->attribution_layer_name = value;
     } else {
         return 1;
     }
@@ -1373,7 +1384,8 @@ static void print_usage(const char *program_name, FILE *stream) {
         stream,
         "usage: %s [--rows N] [--samples N] [--warmup N] [--iterations N]\n"
         "          [--scenario NAME] [--database-dir PATH] [--database-base PATH]\n"
-        "          [--output PATH] [--keep-databases] [--reuse-databases]\n"
+        "          [--output PATH] [--attribution-layer LAYER]\n"
+        "          [--keep-databases] [--reuse-databases]\n"
         "          [--seed-only] [--attribution-seed] [--attribution-timing]\n"
         "          [--analyze] [--list] [--help]\n",
         program_name
@@ -1503,6 +1515,8 @@ cleanup:
 }
 
 static bool attribution_options_are_valid(const struct benchmark_options *options) {
+    enum benchmark_engine_kind selected_layer = benchmark_engine_sqlite;
+
     if (options->reuse_databases || options->seed_only || options->analyze ||
         options->scenario_name != NULL || options->iteration_override != 0U ||
         options->warmup_iterations != 0U) {
@@ -1510,6 +1524,11 @@ static bool attribution_options_are_valid(const struct benchmark_options *option
             stderr,
             "attribution requires --warmup 0 and cannot use scenario/database reuse flags\n"
         );
+        return false;
+    }
+    if (options->attribution_layer_name != NULL &&
+        !attribution_layer_from_name(options->attribution_layer_name, &selected_layer)) {
+        fprintf(stderr, "unknown attribution layer: %s\n", options->attribution_layer_name);
         return false;
     }
     return true;
@@ -1594,6 +1613,32 @@ static int run_attribution_sample(
     size_t rotation = (sample / 2U) % attribution_layer_count;
     bool reverse = sample % 2U != 0U;
 
+    if (options->attribution_layer_name != NULL) {
+        enum benchmark_engine_kind kind = benchmark_engine_sqlite;
+        char suffix[generated_text_capacity];
+        char path[path_capacity];
+        int written = 0;
+
+        if (!attribution_layer_from_name(options->attribution_layer_name, &kind)) {
+            return 1;
+        }
+        written =
+            snprintf(suffix, sizeof(suffix), "attribution-%zu-%s", sample + 1U, engine_name(kind));
+        return written < 0 || (size_t)written >= sizeof(suffix) ||
+                       make_attribution_path(options, suffix, path, sizeof(path)) != 0 ||
+                       run_attribution_layer(
+                           options,
+                           dataset,
+                           programs,
+                           kind,
+                           path,
+                           output,
+                           sample + 1U,
+                           checksums[0]
+                       ) != 0
+                   ? 1
+                   : 0;
+    }
     for (size_t position = 0U; position < attribution_layer_count; ++position) {
         size_t layer_index = reverse ? ((attribution_layer_count - 1U) + rotation - position) %
                                            attribution_layer_count
@@ -1620,6 +1665,26 @@ static int run_attribution_sample(
         }
     }
     return verify_attribution_checksums(sample + 1U, checksums);
+}
+
+static bool attribution_layer_from_name(const char *name, enum benchmark_engine_kind *out_kind) {
+    static const enum benchmark_engine_kind layers[attribution_layer_count] = {
+        benchmark_engine_sqlite,
+        benchmark_engine_mylite_physical,
+        benchmark_engine_mylite_guarded,
+        benchmark_engine_mylite,
+    };
+
+    if (name == NULL || out_kind == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < attribution_layer_count; ++index) {
+        if (strcmp(name, engine_name(layers[index])) == 0) {
+            *out_kind = layers[index];
+            return true;
+        }
+    }
+    return false;
 }
 
 static int discover_attribution_programs(

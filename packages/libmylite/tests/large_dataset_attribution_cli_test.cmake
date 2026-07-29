@@ -143,6 +143,53 @@ foreach(sample 1 2)
   endif()
 endforeach()
 
+execute_process(
+  COMMAND "${BENCHMARK}"
+    "${attribution_flag}"
+    --attribution-layer mylite_guarded
+    --rows 100
+    --samples 1
+    --warmup 0
+    --database-base "${DATABASE_BASE}-selected"
+    --output "${OUTPUT}.selected"
+  RESULT_VARIABLE selected_result
+  ERROR_VARIABLE selected_error
+)
+if(NOT selected_result EQUAL 0)
+  message(FATAL_ERROR "selected attribution layer failed: ${selected_error}")
+endif()
+file(STRINGS "${OUTPUT}.selected" selected_lines)
+set(selected_measurements 0)
+foreach(selected_line IN LISTS selected_lines)
+  string(REPLACE "," ";" selected_fields "${selected_line}")
+  list(GET selected_fields 0 selected_record)
+  if(selected_record STREQUAL "measurement")
+    math(EXPR selected_measurements "${selected_measurements} + 1")
+    list(GET selected_fields 3 selected_layer)
+    if(NOT selected_layer STREQUAL "mylite_guarded")
+      message(FATAL_ERROR "selected attribution emitted ${selected_layer}")
+    endif()
+  endif()
+endforeach()
+if(NOT selected_measurements EQUAL 9)
+  message(FATAL_ERROR "selected attribution emitted ${selected_measurements} measurements")
+endif()
+
+execute_process(
+  COMMAND "${BENCHMARK}"
+    "${attribution_flag}"
+    --attribution-layer missing
+    --rows 100
+    --samples 1
+    --warmup 0
+  RESULT_VARIABLE missing_layer_result
+  OUTPUT_QUIET
+  ERROR_QUIET
+)
+if(missing_layer_result EQUAL 0)
+  message(FATAL_ERROR "unknown attribution layer unexpectedly succeeded")
+endif()
+
 if(MODE STREQUAL "profile")
   execute_process(
     COMMAND "${BENCHMARK}"

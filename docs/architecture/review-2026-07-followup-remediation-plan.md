@@ -873,7 +873,7 @@ mutation, SQLite-fork patch, row scan, or second function evaluation.
 
 ### `PERF-02`: retained-write attribution
 
-- [ ] Split each seed phase into native SQLite schema, MyLite physical
+- [x] Split each seed phase into native SQLite schema, MyLite physical
   schema/collations, generated guarded SQL executed directly, and full MyLite.
 - [ ] Record `sqlite3_stmt_status` VM counters, callback counts, collation
   costs, scalar-function costs, generated guard costs, allocation counts, and
@@ -883,6 +883,17 @@ mutation, SQLite-fork patch, row scan, or second function evaluation.
 - [ ] Optimize only the demonstrated dominant costs and rerun paired ABBA
   measurements at 100K and 1M rows.
 - [ ] Keep linear scaling and correctness checks for every load phase.
+
+Implementation now records the requested SQLite, metadata, callback, retained
+plan, statement-cache, and MyLite allocation counters, with separate
+uninstrumented timing. It validates exact generated programs, balanced layer
+order, complete phase matrices, checksums, counter isolation, and timing noise.
+A clean-revision five-sample 100K smoke attributed the residual by layer, but
+used a Development timing build and cannot replace qualification. The
+counter/profile checklist remains open because sampled call graphs are blocked:
+this host has no `/usr/bin/perf` and sets `kernel.perf_event_paranoid=3`.
+Release 100K/1M evidence, publication, and any profile-directed optimization
+remain pending.
 
 ### `PERF-03`: `LOAD DATA`
 

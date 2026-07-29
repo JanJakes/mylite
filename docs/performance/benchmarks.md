@@ -145,6 +145,56 @@ the expanded methodology and final 100K/500K/1M results are in
 The repeated-write implementation and final import measurements are in
 [repeated-write-import-qualification-2026-07.md](repeated-write-import-qualification-2026-07.md).
 
+### Retained-write attribution
+
+Build separate Release clients for wall-time and counter collection:
+
+```sh
+cmake --preset ci
+cmake --build --preset ci --target mylite_large_dataset_benchmark
+cmake --preset perf-profile
+cmake --build --preset perf-profile --target mylite_large_dataset_benchmark
+mkdir -p build/perf-data
+
+tools/run-retained-write-attribution \
+  --artifact-dir build/perf-data/retained-write-qualification
+```
+
+The runner requires a new artifact path and a clean worktree. Its qualification
+defaults pin one allowed CPU, run five balanced samples at 100K and 1M rows,
+collect a separate instrumented counter matrix, and sample each 100K layer with
+`perf`. It records the revision, client hashes, platform, cache policy, commands,
+raw CSV, profiles, and summary. A formal run fails if a layer is missing,
+correctness or programs drift, profiles are unavailable, or a layer's total
+timing has more than 10% median absolute deviation.
+
+For a quick non-qualifying client smoke:
+
+```sh
+build/ci/packages/libmylite/mylite_large_dataset_benchmark \
+  --attribution-timing \
+  --rows 1000 \
+  --samples 2 \
+  --warmup 0 \
+  --database-base build/perf-data/retained-write-timing-smoke \
+  --output build/perf-data/retained-write-timing-smoke.csv
+
+build/perf-profile/packages/libmylite/mylite_large_dataset_benchmark \
+  --attribution-seed \
+  --rows 1000 \
+  --samples 2 \
+  --warmup 0 \
+  --database-base build/perf-data/retained-write-counter-smoke \
+  --output build/perf-data/retained-write-counter-smoke.csv
+```
+
+Use `--attribution-layer sqlite`, `mylite_physical`, `mylite_guarded`, or
+`mylite` to isolate one layer for profiling. Counter-mode elapsed time includes
+instrumentation overhead and is not a substitute for the uninstrumented timing
+matrix. The current preliminary evidence and profiling blocker are documented
+in
+[retained-write-attribution-smoke-2026-07.md](retained-write-attribution-smoke-2026-07.md).
+
 `runtime.wp_frontend_request` executes six representative WordPress frontend
 reads per iteration. `runtime.wp_medium_frontend_request` uses nine WordPress
 tables and eleven queries, including pagination with `SQL_CALC_FOUND_ROWS`,

@@ -2,7 +2,7 @@
 
 ## Status
 
-Specified; implementation pending.
+Harness and instrumentation implemented; qualification blocked.
 
 ## Summary
 
@@ -243,3 +243,27 @@ Before qualification:
    install, compatibility, and production-size gates.
 5. Run five-sample ABBA timing, counter, and sampled-profile passes at 100K and
    1M, publish raw artifacts, and write the quantitative attribution report.
+
+## Implementation Status
+
+The four-layer client, separate uninstrumented timing and instrumented counter
+modes, per-layer sampled-profile mode, counter validation, deterministic
+artifact runner, summarizer, and negative tool tests are implemented. Formal
+runs require Release timing and profiling builds, a clean revision, 100K and
+1M rows, at least five samples, complete call-graph profiles, and at most 10%
+median absolute deviation for each layer's total time.
+
+Focused profile, CLI, attribution, static-analysis, and tool tests pass. A
+clean-revision, five-sample 100K smoke also matched all four layers at dataset
+hash `1948992273031130503`. Its preliminary medians assigned 2.7% of the
+18.70-second residual to the physical-schema layer, 53.2% to generated guarded
+programs, and 44.1% to the public MyLite layer. The run used a Development
+timing binary, did not include 1M rows, and produced no sampled profiles, so it
+is not qualification evidence and does not open the optimization gate. Details
+are recorded in
+[the preliminary attribution report](../../performance/retained-write-attribution-smoke-2026-07.md).
+
+Qualification is blocked on the current host: `/usr/bin/perf` is absent and
+`kernel.perf_event_paranoid` is `3`. The runner records a blocked profile for
+every layer and fails rather than treating timing deltas as a call-graph
+substitute.

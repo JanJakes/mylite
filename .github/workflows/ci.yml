@@ -41,6 +41,9 @@ jobs:
       - name: Test durable-autocommit qualification tooling
         run: tools/test-durable-autocommit-qualification-tools
 
+      - name: Test retained-write attribution tooling
+        run: tools/test-retained-write-attribution-tools
+
       - name: Test release tooling
         run: tools/test-release-tools
 

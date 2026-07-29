@@ -1,0 +1,299 @@
+#!/bin/sh
+
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/mylite-retained-attribution-tools.XXXXXX")
+trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
+
+cat > "$temporary_directory/fake-client" <<'PY'
+#!/usr/bin/env python3
+
+import argparse
+import csv
+
+
+LAYERS = ("sqlite", "mylite_physical", "mylite_guarded", "mylite")
+PHASES = (
+    "total",
+    "accounts",
+    "items",
+    "tags",
+    "support",
+    "support.upsert_composite",
+    "support.fanout",
+    "support.restrict",
+    "support.set_null",
+)
+PROGRAMS = (
+    "accounts",
+    "items",
+    "item_tags",
+    "upsert_targets",
+    "composite_parents",
+    "fanout_parents",
+    "fanout_children",
+    "restrict_parents",
+    "restrict_children",
+    "set_null_parents",
+    "set_null_children",
+)
+COLUMNS = (
+    "record",
+    "rows",
+    "sample",
+    "layer",
+    "phase",
+    "logical_table",
+    "physical_table",
+    "parameters",
+    "guarded",
+    "hash",
+    "total_ms",
+    "process_cpu_ms",
+    "sqlite_steps",
+    "vm_steps",
+    "fullscan_steps",
+    "sorts",
+    "autoindexes",
+    "reprepares",
+    "runs",
+    "filter_hits",
+    "filter_misses",
+    "metadata_vm_steps",
+    "scalar_callbacks",
+    "scalar_ms",
+    "collation_callbacks",
+    "collation_ms",
+    "mylite_allocations",
+    "mylite_allocation_bytes",
+    "dml_plans",
+    "dml_plan_hits",
+    "statement_cache_hits",
+    "statement_cache_misses",
+)
+
+
+parser = argparse.ArgumentParser()
+mode = parser.add_mutually_exclusive_group(required=True)
+mode.add_argument("--attribution-timing", action="store_true")
+mode.add_argument("--attribution-seed", action="store_true")
+parser.add_argument("--attribution-layer", choices=LAYERS)
+parser.add_argument("--rows", type=int, required=True)
+parser.add_argument("--samples", type=int, required=True)
+parser.add_argument("--warmup", required=True)
+parser.add_argument("--database-base", required=True)
+parser.add_argument("--output", required=True)
+options = parser.parse_args()
+dataset_hash = (options.rows * 17) + 5
+accounts = max(100, options.rows // 100)
+parents = min(options.rows, 100)
+plan_hits = (4 * options.rows) + (3 * accounts) + (4 * parents) - 12
+wall = {
+    "sqlite": 10.0,
+    "mylite_physical": 12.0,
+    "mylite_guarded": 15.0,
+    "mylite": 30.0,
+}
+vm_steps = {
+    "sqlite": 100,
+    "mylite_physical": 120,
+    "mylite_guarded": 160,
+    "mylite": 220,
+}
+
+with open(options.output, "w", encoding="utf-8", newline="") as output_file:
+    writer = csv.DictWriter(output_file, fieldnames=COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for index, logical in enumerate(PROGRAMS, 1):
+        writer.writerow(
+            {
+                "record": "program",
+                "rows": options.rows,
+                "sample": 0,
+                "layer": "discovery",
+                "phase": "program",
+                "logical_table": logical,
+                "physical_table": "_mylite_user_table_{}".format(index),
+                "parameters": index,
+                "guarded": 1,
+                "hash": 1000 + index,
+            }
+        )
+    for sample in range(1, options.samples + 1):
+        if options.attribution_layer:
+            sample_layers = (options.attribution_layer,)
+        else:
+            sample_index = sample - 1
+            rotation = (sample_index // 2) % len(LAYERS)
+            if sample_index % 2:
+                sample_layers = tuple(
+                    LAYERS[((len(LAYERS) - 1) + rotation - position) % len(LAYERS)]
+                    for position in range(len(LAYERS))
+                )
+            else:
+                sample_layers = tuple(
+                    LAYERS[(position + rotation) % len(LAYERS)]
+                    for position in range(len(LAYERS))
+                )
+        for layer in sample_layers:
+            for phase_index, phase in enumerate(PHASES):
+                row = {column: 0 for column in COLUMNS}
+                row.update(
+                    {
+                        "record": "measurement",
+                        "rows": options.rows,
+                        "sample": sample,
+                        "layer": layer,
+                        "phase": phase,
+                        "logical_table": "",
+                        "physical_table": "",
+                        "parameters": "",
+                        "guarded": "",
+                        "hash": dataset_hash,
+                        "total_ms": wall[layer] + (phase_index / 10) + (sample / 100),
+                        "process_cpu_ms": wall[layer] - 1 + (phase_index / 10),
+                    }
+                )
+                if options.attribution_seed:
+                    row.update(
+                        {
+                            "sqlite_steps": 100,
+                            "vm_steps": vm_steps[layer],
+                            "runs": 100,
+                            "metadata_vm_steps": 20 if layer == "mylite" else 0,
+                            "collation_callbacks": (
+                                10 if layer in ("mylite_physical", "mylite_guarded", "mylite") else 0
+                            ),
+                            "collation_ms": (
+                                0.5
+                                if layer in ("mylite_physical", "mylite_guarded", "mylite")
+                                else 0
+                            ),
+                            "mylite_allocations": 50 if layer == "mylite" else 0,
+                            "mylite_allocation_bytes": 500 if layer == "mylite" else 0,
+                            "dml_plans": 11 if layer == "mylite" else 0,
+                            "dml_plan_hits": plan_hits if layer == "mylite" else 0,
+                        }
+                    )
+                writer.writerow(row)
+PY
+chmod +x "$temporary_directory/fake-client"
+
+cat > "$temporary_directory/fake-perf" <<'PY'
+#!/usr/bin/env python3
+
+import os
+import subprocess
+import sys
+
+
+arguments = sys.argv[1:]
+if arguments == ["--version"]:
+    print("perf version fake-1")
+    raise SystemExit(0)
+if not arguments:
+    raise SystemExit(2)
+if arguments[0] == "record":
+    output = arguments[arguments.index("-o") + 1]
+    separator = arguments.index("--")
+    with open(output, "wb") as output_file:
+        output_file.write(b"fake perf data\n")
+    raise SystemExit(subprocess.run(arguments[separator + 1 :]).returncode)
+if arguments[0] == "report":
+    print("# fake sampled call graph")
+    print("100.00%  2  fake-client  known_symbol")
+    raise SystemExit(0)
+if arguments[0] == "script":
+    print("known_symbol")
+    print("known_caller")
+    raise SystemExit(0)
+raise SystemExit(2)
+PY
+chmod +x "$temporary_directory/fake-perf"
+
+artifact="$temporary_directory/artifact"
+"$root/tools/run-retained-write-attribution" \
+  --artifact-dir "$artifact" \
+  --timing-client "$temporary_directory/fake-client" \
+  --counter-client "$temporary_directory/fake-client" \
+  --perf "$temporary_directory/fake-perf" \
+  --rows 100 \
+  --samples 2 \
+  --profile-rows 100 \
+  --allow-smoke
+
+grep -q '100[[:space:]]total[[:space:]]mylite[[:space:]]30.015000' \
+  "$artifact/summary/summary.tsv"
+grep -q '"accounted_percent": 100.0' "$artifact/summary/summary.json"
+grep -q '"sample_count": 2' "$artifact/profiles/mylite.json"
+
+if "$root/tools/run-retained-write-attribution" \
+  --artifact-dir "$artifact" \
+  --timing-client "$temporary_directory/fake-client" \
+  --counter-client "$temporary_directory/fake-client" \
+  --perf "$temporary_directory/fake-perf" \
+  --rows 100 \
+  --samples 2 \
+  --profile-rows 100 \
+  --allow-smoke >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted an existing artifact directory" >&2
+  exit 1
+fi
+
+if "$root/tools/run-retained-write-attribution" \
+  --artifact-dir "$temporary_directory/qualification" \
+  --timing-client "$temporary_directory/fake-client" \
+  --counter-client "$temporary_directory/fake-client" \
+  --perf "$temporary_directory/fake-perf" \
+  --rows 100 \
+  --samples 2 \
+  --profile-rows 100 >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted smoke qualification counts" >&2
+  exit 1
+fi
+
+cp -R "$artifact" "$temporary_directory/incomplete"
+sed '$d' "$temporary_directory/incomplete/raw/timing-100.csv" \
+  > "$temporary_directory/incomplete/raw/timing-100.csv.new"
+mv "$temporary_directory/incomplete/raw/timing-100.csv.new" \
+  "$temporary_directory/incomplete/raw/timing-100.csv"
+if "$root/tools/summarize-retained-write-attribution" \
+  "$temporary_directory/incomplete" --allow-smoke >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted an incomplete layer matrix" >&2
+  exit 1
+fi
+
+cp -R "$artifact" "$temporary_directory/checksum"
+awk -F, 'BEGIN {OFS=","} $1 == "measurement" && $4 == "mylite" {$10 += 1} {print}' \
+  "$temporary_directory/checksum/raw/timing-100.csv" \
+  > "$temporary_directory/checksum/raw/timing-100.csv.new"
+mv "$temporary_directory/checksum/raw/timing-100.csv.new" \
+  "$temporary_directory/checksum/raw/timing-100.csv"
+if "$root/tools/summarize-retained-write-attribution" \
+  "$temporary_directory/checksum" --allow-smoke >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted checksum drift" >&2
+  exit 1
+fi
+
+cp -R "$artifact" "$temporary_directory/contaminated"
+awk -F, 'BEGIN {OFS=","} $1 == "measurement" && $4 == "sqlite" {$13 = 1} {print}' \
+  "$temporary_directory/contaminated/raw/timing-100.csv" \
+  > "$temporary_directory/contaminated/raw/timing-100.csv.new"
+mv "$temporary_directory/contaminated/raw/timing-100.csv.new" \
+  "$temporary_directory/contaminated/raw/timing-100.csv"
+if "$root/tools/summarize-retained-write-attribution" \
+  "$temporary_directory/contaminated" --allow-smoke >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted timing profile counters" >&2
+  exit 1
+fi
+
+cp -R "$artifact" "$temporary_directory/profile-blocked"
+rm "$temporary_directory/profile-blocked/profiles/sqlite.data"
+if "$root/tools/summarize-retained-write-attribution" \
+  "$temporary_directory/profile-blocked" --allow-smoke >/dev/null 2>&1; then
+  echo "test-retained-write-attribution-tools: accepted a missing sampled profile" >&2
+  exit 1
+fi
+
+printf '%s\n' 'test-retained-write-attribution-tools: passed'

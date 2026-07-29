@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import platform
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+
+LAYERS = ("sqlite", "mylite_physical", "mylite_guarded", "mylite")
+QUALIFICATION_ROWS = (100000, 1000000)
+QUALIFICATION_SAMPLES = 5
+
+
+def fail(message):
+    print("run-retained-write-attribution: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def utc_now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def parse_rows(value):
+    try:
+        rows = tuple(int(item) for item in value.split(","))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("rows must be comma-separated integers") from error
+    if not rows or any(item <= 0 for item in rows) or len(set(rows)) != len(rows):
+        raise argparse.ArgumentTypeError("rows must be distinct positive integers")
+    return rows
+
+
+def positive_integer(value):
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("value must be an integer") from error
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be positive")
+    return parsed
+
+
+def executable_path(value):
+    path = Path(value).resolve(strict=True)
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise argparse.ArgumentTypeError("{} is not executable".format(path))
+    return path
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as input_file:
+        for chunk in iter(lambda: input_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_output(root, arguments):
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def command_text(command):
+    return " ".join(shlex.quote(value) for value in command)
+
+
+def write_json(path, value):
+    with path.open("w", encoding="utf-8") as output_file:
+        json.dump(value, output_file, indent=2, sort_keys=True)
+        output_file.write("\n")
+
+
+def run_logged(command, stdout_path, stderr_path):
+    with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
+        "w", encoding="utf-8"
+    ) as stderr_file:
+        result = subprocess.run(command, stdout=stdout_file, stderr=stderr_file, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "command failed with status {}: {} (stderr: {})".format(
+                result.returncode,
+                command_text(command),
+                stderr_path,
+            )
+        )
+
+
+def client_command(prefix, client, mode, rows, samples, database_base, output, layer=None):
+    command = [
+        *prefix,
+        str(client),
+        mode,
+    ]
+    if layer is not None:
+        command.extend(("--attribution-layer", layer))
+    command.extend(
+        (
+            "--rows",
+            str(rows),
+            "--samples",
+            str(samples),
+            "--warmup",
+            "0",
+            "--database-base",
+            str(database_base),
+            "--output",
+            str(output),
+        )
+    )
+    return command
+
+
+def perf_sample_counts(perf, data_path, stderr_path):
+    command = [str(perf), "script", "-i", str(data_path), "-F", "symbol"]
+    sample_count = 0
+    unresolved_count = 0
+    with stderr_path.open("w", encoding="utf-8") as stderr_file:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+            text=True,
+        )
+        if process.stdout is None:
+            raise RuntimeError("perf script did not expose stdout")
+        for line in process.stdout:
+            symbol = line.strip()
+            if not symbol:
+                continue
+            sample_count += 1
+            if symbol in ("[unknown]", "unknown") or "[unknown]" in symbol:
+                unresolved_count += 1
+        return_code = process.wait()
+    if return_code != 0:
+        raise RuntimeError(
+            "perf script failed with status {} for {}".format(return_code, data_path)
+        )
+    if sample_count == 0:
+        raise RuntimeError("perf recorded no samples for {}".format(data_path))
+    return sample_count, unresolved_count
+
+
+def collect_profile(
+    options,
+    prefix,
+    artifact_dir,
+    layer,
+    perf_version,
+):
+    data_path = artifact_dir / "profiles" / "{}.data".format(layer)
+    report_path = artifact_dir / "profiles" / "{}.report.txt".format(layer)
+    metadata_path = artifact_dir / "profiles" / "{}.json".format(layer)
+    client_output = artifact_dir / "raw" / "profile-{}.csv".format(layer)
+    database_base = artifact_dir / "databases" / "profile-{}".format(layer)
+    record_stdout = artifact_dir / "logs" / "profile-{}.stdout".format(layer)
+    record_stderr = artifact_dir / "logs" / "profile-{}.stderr".format(layer)
+    client = client_command(
+        prefix,
+        options.timing_client,
+        "--attribution-timing",
+        options.profile_rows,
+        1,
+        database_base,
+        client_output,
+        layer=layer,
+    )
+    command = [
+        str(options.perf),
+        "record",
+        "-F",
+        str(options.profile_frequency),
+        "--call-graph",
+        "dwarf,16384",
+        "-o",
+        str(data_path),
+        "--",
+        *client,
+    ]
+    metadata = {
+        "command": command,
+        "layer": layer,
+        "perf_version": perf_version,
+        "rows": options.profile_rows,
+        "status": "blocked",
+    }
+    try:
+        run_logged(command, record_stdout, record_stderr)
+        if not data_path.is_file() or data_path.stat().st_size == 0:
+            raise RuntimeError("perf produced no data file")
+        report_command = [
+            str(options.perf),
+            "report",
+            "--stdio",
+            "--header",
+            "--show-nr-samples",
+            "--percent-limit",
+            "0",
+            "-i",
+            str(data_path),
+        ]
+        with report_path.open("w", encoding="utf-8") as output_file, (
+            artifact_dir / "logs" / "profile-{}.report.stderr".format(layer)
+        ).open("w", encoding="utf-8") as error_file:
+            report_result = subprocess.run(
+                report_command,
+                stdout=output_file,
+                stderr=error_file,
+                text=True,
+            )
+        if report_result.returncode != 0 or report_path.stat().st_size == 0:
+            raise RuntimeError("perf report failed for {}".format(layer))
+        sample_count, unresolved_count = perf_sample_counts(
+            options.perf,
+            data_path,
+            artifact_dir / "logs" / "profile-{}.script.stderr".format(layer),
+        )
+        metadata.update(
+            {
+                "sample_count": sample_count,
+                "status": "complete",
+                "unresolved_symbol_count": unresolved_count,
+            }
+        )
+    except (OSError, RuntimeError) as error:
+        metadata["reason"] = str(error)
+        write_json(metadata_path, metadata)
+        raise RuntimeError("{} sampled profile blocked: {}".format(layer, error)) from error
+    write_json(metadata_path, metadata)
+
+
+def build_environment(options, root, cpu):
+    revision = git_output(root, ["rev-parse", "HEAD"])
+    dirty = bool(git_output(root, ["status", "--porcelain"]))
+    return {
+        "cache_policy": (
+            "fresh database per layer; no cache dropping; executable, schema, and filesystem "
+            "metadata may remain warm; balanced forward/reverse measured order"
+        ),
+        "clients": {
+            "counter": {
+                "path": str(options.counter_client),
+                "sha256": sha256_file(options.counter_client),
+            },
+            "timing": {
+                "path": str(options.timing_client),
+                "sha256": sha256_file(options.timing_client),
+            },
+        },
+        "completed_at": "",
+        "cpu_affinity": cpu,
+        "dirty_worktree": dirty,
+        "machine": platform.machine(),
+        "platform": platform.platform(),
+        "profile_frequency": options.profile_frequency,
+        "profile_rows": options.profile_rows,
+        "python": platform.python_version(),
+        "revision": revision,
+        "rows": list(options.rows),
+        "samples": options.samples,
+        "schema_version": 1,
+        "started_at": utc_now(),
+    }
+
+
+def main():
+    root = Path(__file__).resolve().parent.parent
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--artifact-dir", type=Path, required=True)
+    parser.add_argument(
+        "--timing-client",
+        type=executable_path,
+        default=root / "build/dev/packages/libmylite/mylite_large_dataset_benchmark",
+    )
+    parser.add_argument(
+        "--counter-client",
+        type=executable_path,
+        default=root / "build/perf-profile/packages/libmylite/mylite_large_dataset_benchmark",
+    )
+    parser.add_argument(
+        "--summarizer",
+        type=executable_path,
+        default=root / "tools/summarize-retained-write-attribution",
+    )
+    parser.add_argument("--perf", type=executable_path, default=Path("/usr/bin/perf"))
+    parser.add_argument("--rows", type=parse_rows, default=QUALIFICATION_ROWS)
+    parser.add_argument("--samples", type=positive_integer, default=QUALIFICATION_SAMPLES)
+    parser.add_argument("--profile-rows", type=positive_integer, default=QUALIFICATION_ROWS[0])
+    parser.add_argument("--profile-frequency", type=positive_integer, default=99)
+    parser.add_argument("--cpu", type=int)
+    parser.add_argument("--allow-smoke", action="store_true")
+    options = parser.parse_args()
+
+    artifact_dir = options.artifact_dir.absolute()
+    environment = None
+    try:
+        if artifact_dir.exists() or artifact_dir.is_symlink():
+            raise RuntimeError("artifact directory already exists: {}".format(artifact_dir))
+        if not artifact_dir.parent.is_dir():
+            raise RuntimeError("artifact parent does not exist: {}".format(artifact_dir.parent))
+        if not options.allow_smoke:
+            if options.rows != QUALIFICATION_ROWS:
+                raise RuntimeError("qualification rows must be 100000,1000000")
+            if options.samples < QUALIFICATION_SAMPLES:
+                raise RuntimeError("qualification requires at least five samples")
+            if options.profile_rows != QUALIFICATION_ROWS[0]:
+                raise RuntimeError("qualification profiles must use 100000 rows")
+        if options.profile_rows not in options.rows:
+            raise RuntimeError("--profile-rows must be present in --rows")
+        allowed_cpus = os.sched_getaffinity(0)
+        cpu = min(allowed_cpus) if options.cpu is None else options.cpu
+        if cpu not in allowed_cpus:
+            raise RuntimeError("CPU {} is outside the process affinity mask".format(cpu))
+        prefix = ["taskset", "-c", str(cpu)]
+
+        environment = build_environment(options, root, cpu)
+        if not options.allow_smoke and environment["dirty_worktree"]:
+            raise RuntimeError("qualification requires a clean worktree")
+        artifact_dir.mkdir()
+        for name in ("databases", "logs", "profiles", "raw"):
+            (artifact_dir / name).mkdir()
+        write_json(artifact_dir / "environment.json", environment)
+
+        for row_count in options.rows:
+            timing_output = artifact_dir / "raw" / "timing-{}.csv".format(row_count)
+            counter_output = artifact_dir / "raw" / "counters-{}.csv".format(row_count)
+            run_logged(
+                client_command(
+                    prefix,
+                    options.timing_client,
+                    "--attribution-timing",
+                    row_count,
+                    options.samples,
+                    artifact_dir / "databases" / "timing-{}".format(row_count),
+                    timing_output,
+                ),
+                artifact_dir / "logs" / "timing-{}.stdout".format(row_count),
+                artifact_dir / "logs" / "timing-{}.stderr".format(row_count),
+            )
+            run_logged(
+                client_command(
+                    prefix,
+                    options.counter_client,
+                    "--attribution-seed",
+                    row_count,
+                    options.samples,
+                    artifact_dir / "databases" / "counters-{}".format(row_count),
+                    counter_output,
+                ),
+                artifact_dir / "logs" / "counters-{}.stdout".format(row_count),
+                artifact_dir / "logs" / "counters-{}.stderr".format(row_count),
+            )
+
+        try:
+            perf_version_result = subprocess.run(
+                [str(options.perf), "--version"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            perf_version = perf_version_result.stdout.strip() or perf_version_result.stderr.strip()
+        except (OSError, subprocess.CalledProcessError) as error:
+            reason = "perf executable is unavailable: {}".format(error)
+            for layer in LAYERS:
+                write_json(
+                    artifact_dir / "profiles" / "{}.json".format(layer),
+                    {
+                        "command": [str(options.perf), "record"],
+                        "layer": layer,
+                        "perf_version": "unavailable",
+                        "reason": reason,
+                        "rows": options.profile_rows,
+                        "status": "blocked",
+                    },
+                )
+            raise RuntimeError("sampled profiling blocked: {}".format(reason)) from error
+        for layer in LAYERS:
+            collect_profile(options, prefix, artifact_dir, layer, perf_version)
+
+        environment["completed_at"] = utc_now()
+        write_json(artifact_dir / "environment.json", environment)
+        summary_command = [
+            str(options.summarizer),
+            str(artifact_dir),
+            "--output-dir",
+            str(artifact_dir / "summary"),
+        ]
+        if options.allow_smoke:
+            summary_command.append("--allow-smoke")
+        subprocess.run(summary_command, check=True)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        if environment is not None:
+            environment["completed_at"] = utc_now()
+            write_json(artifact_dir / "environment.json", environment)
+            write_json(
+                artifact_dir / "failure.json",
+                {"failed_at": utc_now(), "reason": str(error)},
+            )
+        return fail(str(error))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

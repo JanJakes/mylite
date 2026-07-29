@@ -1,0 +1,594 @@
+#!/usr/bin/env python3
+
+import argparse
+import csv
+import json
+import math
+import statistics
+import sys
+from pathlib import Path
+
+
+LAYERS = ("sqlite", "mylite_physical", "mylite_guarded", "mylite")
+PHASES = (
+    "total",
+    "accounts",
+    "items",
+    "tags",
+    "support",
+    "support.upsert_composite",
+    "support.fanout",
+    "support.restrict",
+    "support.set_null",
+)
+PROGRAM_COUNT = 11
+QUALIFICATION_ROWS = (100000, 1000000)
+QUALIFICATION_SAMPLES = 5
+ATTRIBUTION_COLUMNS = (
+    "record",
+    "rows",
+    "sample",
+    "layer",
+    "phase",
+    "logical_table",
+    "physical_table",
+    "parameters",
+    "guarded",
+    "hash",
+    "total_ms",
+    "process_cpu_ms",
+    "sqlite_steps",
+    "vm_steps",
+    "fullscan_steps",
+    "sorts",
+    "autoindexes",
+    "reprepares",
+    "runs",
+    "filter_hits",
+    "filter_misses",
+    "metadata_vm_steps",
+    "scalar_callbacks",
+    "scalar_ms",
+    "collation_callbacks",
+    "collation_ms",
+    "mylite_allocations",
+    "mylite_allocation_bytes",
+    "dml_plans",
+    "dml_plan_hits",
+    "statement_cache_hits",
+    "statement_cache_misses",
+)
+INTEGER_COUNTERS = (
+    ATTRIBUTION_COLUMNS[12:23] + ATTRIBUTION_COLUMNS[24:25] + ATTRIBUTION_COLUMNS[26:]
+)
+FLOAT_COUNTERS = ("scalar_ms", "collation_ms")
+
+
+def fail(message):
+    print("summarize-retained-write-attribution: {}".format(message), file=sys.stderr)
+    return 1
+
+
+def read_json(path):
+    try:
+        with path.open(encoding="utf-8") as input_file:
+            value = json.load(input_file)
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("cannot read JSON {}: {}".format(path, error)) from error
+    if not isinstance(value, dict):
+        raise RuntimeError("{} must contain a JSON object".format(path))
+    return value
+
+
+def require_integer(value, field, path, minimum=0):
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return value
+
+
+def require_text(value, field, path):
+    if not isinstance(value, str) or not value:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return value
+
+
+def parse_integer(value, field, path, minimum=0):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("invalid {} in {}".format(field, path)) from error
+    if parsed < minimum:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return parsed
+
+
+def parse_number(value, field, path, minimum=0.0):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("invalid {} in {}".format(field, path)) from error
+    if not math.isfinite(parsed) or parsed < minimum:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return parsed
+
+
+def validate_environment(path, allow_smoke):
+    environment = read_json(path)
+    if environment.get("schema_version") != 1:
+        raise RuntimeError("unsupported environment schema in {}".format(path))
+    rows = environment.get("rows")
+    if (
+        not isinstance(rows, list)
+        or not rows
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            for value in rows
+        )
+        or len(set(rows)) != len(rows)
+    ):
+        raise RuntimeError("invalid rows in {}".format(path))
+    samples = require_integer(environment.get("samples"), "samples", path, 1)
+    profile_rows = require_integer(environment.get("profile_rows"), "profile_rows", path, 1)
+    if profile_rows not in rows:
+        raise RuntimeError("profile_rows is absent from rows in {}".format(path))
+    require_text(environment.get("revision"), "revision", path)
+    require_text(environment.get("started_at"), "started_at", path)
+    require_text(environment.get("completed_at"), "completed_at", path)
+    clients = environment.get("clients")
+    if not isinstance(clients, dict) or set(clients) != {"counter", "timing"}:
+        raise RuntimeError("invalid clients in {}".format(path))
+    for name, client in clients.items():
+        if not isinstance(client, dict):
+            raise RuntimeError("invalid {} client in {}".format(name, path))
+        require_text(client.get("path"), "{} client path".format(name), path)
+        digest = require_text(client.get("sha256"), "{} client sha256".format(name), path)
+        if len(digest) != 64:
+            raise RuntimeError("invalid {} client sha256 in {}".format(name, path))
+    if not allow_smoke:
+        if tuple(rows) != QUALIFICATION_ROWS:
+            raise RuntimeError("qualification rows must be 100000 and 1000000")
+        if samples < QUALIFICATION_SAMPLES:
+            raise RuntimeError("qualification requires at least five samples")
+        if profile_rows != QUALIFICATION_ROWS[0]:
+            raise RuntimeError("qualification profiles must use 100000 rows")
+        if environment.get("dirty_worktree") is not False:
+            raise RuntimeError("qualification requires a clean worktree")
+    return environment
+
+
+def expected_keys(samples, selected_layer=None):
+    layers = (selected_layer,) if selected_layer is not None else LAYERS
+    return {
+        (sample, layer, phase)
+        for sample in range(1, samples + 1)
+        for layer in layers
+        for phase in PHASES
+    }
+
+
+def expected_plan_hits(row_count):
+    accounts = max(100, row_count // 100)
+    parents = min(row_count, 100)
+    executions = (4 * row_count) + (3 * accounts) + (4 * parents) - 1
+    return executions - PROGRAM_COUNT
+
+
+def read_attribution_csv(path, mode, row_count, samples, selected_layer=None):
+    try:
+        with path.open(encoding="utf-8", newline="") as input_file:
+            reader = csv.DictReader(input_file)
+            if tuple(reader.fieldnames or ()) != ATTRIBUTION_COLUMNS:
+                raise RuntimeError("unexpected CSV header in {}".format(path))
+            rows = list(reader)
+    except OSError as error:
+        raise RuntimeError("cannot read {}: {}".format(path, error)) from error
+
+    programs = {}
+    measurements = {}
+    measurement_order = {sample: [] for sample in range(1, samples + 1)}
+    for row in rows:
+        if row["record"] == "program":
+            logical = require_csv_text(row["logical_table"], "logical_table", path)
+            if logical in programs:
+                raise RuntimeError("duplicate program {} in {}".format(logical, path))
+            physical = require_csv_text(row["physical_table"], "physical_table", path)
+            if (
+                parse_integer(row["rows"], "rows", path, 1) != row_count
+                or row["sample"] != "0"
+                or row["layer"] != "discovery"
+                or row["phase"] != "program"
+                or not physical.startswith("_mylite_user_table_")
+                or not physical.removeprefix("_mylite_user_table_").isdigit()
+            ):
+                raise RuntimeError("invalid program identity in {}".format(path))
+            guarded = parse_integer(row["guarded"], "guarded", path)
+            if guarded not in (0, 1):
+                raise RuntimeError("invalid guarded flag in {}".format(path))
+            programs[logical] = (
+                physical,
+                parse_integer(row["parameters"], "parameters", path, 1),
+                guarded,
+                parse_integer(row["hash"], "hash", path, 1),
+            )
+            continue
+        if row["record"] != "measurement":
+            raise RuntimeError("unknown record {} in {}".format(row["record"], path))
+        actual_rows = parse_integer(row["rows"], "rows", path, 1)
+        sample = parse_integer(row["sample"], "sample", path, 1)
+        layer = row["layer"]
+        phase = row["phase"]
+        if actual_rows != row_count or layer not in LAYERS or phase not in PHASES:
+            raise RuntimeError("invalid measurement identity in {}".format(path))
+        if selected_layer is not None and layer != selected_layer:
+            raise RuntimeError("unexpected selected layer {} in {}".format(layer, path))
+        if phase == "total" and sample in measurement_order:
+            measurement_order[sample].append(layer)
+        key = (sample, layer, phase)
+        if key in measurements:
+            raise RuntimeError("duplicate measurement {} in {}".format(key, path))
+        measurement = {
+            "hash": parse_integer(row["hash"], "hash", path, 1),
+            "total_ms": parse_number(row["total_ms"], "total_ms", path),
+            "process_cpu_ms": parse_number(row["process_cpu_ms"], "process_cpu_ms", path),
+        }
+        for field in INTEGER_COUNTERS:
+            measurement[field] = parse_integer(row[field], field, path)
+        for field in FLOAT_COUNTERS:
+            measurement[field] = parse_number(row[field], field, path)
+        if mode == "timing":
+            for field in INTEGER_COUNTERS + FLOAT_COUNTERS:
+                if measurement[field] != 0:
+                    raise RuntimeError("timing counter {} is nonzero in {}".format(field, path))
+        measurements[key] = measurement
+
+    if len(programs) != PROGRAM_COUNT:
+        raise RuntimeError("expected 11 programs in {}, found {}".format(path, len(programs)))
+    required = expected_keys(samples, selected_layer)
+    if set(measurements) != required:
+        missing = sorted(required - set(measurements))
+        extra = sorted(set(measurements) - required)
+        raise RuntimeError(
+            "measurement matrix mismatch in {} (missing={}, extra={})".format(path, missing, extra)
+        )
+    validate_hashes(measurements, samples, selected_layer, path)
+    validate_layer_order(measurement_order, samples, selected_layer, path)
+    if mode == "counter":
+        validate_counter_invariants(measurements, row_count, samples, selected_layer, path)
+    return programs, measurements
+
+
+def require_csv_text(value, field, path):
+    if not isinstance(value, str) or not value:
+        raise RuntimeError("invalid {} in {}".format(field, path))
+    return value
+
+
+def validate_hashes(measurements, samples, selected_layer, path):
+    for sample in range(1, samples + 1):
+        layers = (selected_layer,) if selected_layer is not None else LAYERS
+        hashes = {
+            measurements[(sample, layer, phase)]["hash"]
+            for layer in layers
+            for phase in PHASES
+        }
+        if len(hashes) != 1:
+            raise RuntimeError("checksum mismatch in sample {} of {}".format(sample, path))
+
+
+def validate_layer_order(measurement_order, samples, selected_layer, path):
+    if selected_layer is not None:
+        for sample in range(1, samples + 1):
+            if measurement_order[sample] != [selected_layer]:
+                raise RuntimeError("selected layer order mismatch in {}".format(path))
+        return
+    layer_count = len(LAYERS)
+    for sample in range(samples):
+        rotation = (sample // 2) % layer_count
+        if sample % 2:
+            expected = [
+                LAYERS[((layer_count - 1) + rotation - position) % layer_count]
+                for position in range(layer_count)
+            ]
+        else:
+            expected = [
+                LAYERS[(position + rotation) % layer_count]
+                for position in range(layer_count)
+            ]
+        if measurement_order[sample + 1] != expected:
+            raise RuntimeError(
+                "unbalanced layer order in sample {} of {}".format(sample + 1, path)
+            )
+
+
+def validate_counter_invariants(measurements, row_count, samples, selected_layer, path):
+    layers = (selected_layer,) if selected_layer is not None else LAYERS
+    for sample in range(1, samples + 1):
+        for layer in layers:
+            total = measurements[(sample, layer, "total")]
+            if total["sqlite_steps"] <= 0 or total["vm_steps"] <= 0:
+                raise RuntimeError("missing SQLite counters for {} in {}".format(layer, path))
+            if layer == "sqlite":
+                if (
+                    total["metadata_vm_steps"] != 0
+                    or total["scalar_callbacks"] != 0
+                    or total["collation_callbacks"] != 0
+                ):
+                    raise RuntimeError("native SQLite counters are contaminated in {}".format(path))
+            elif layer in ("mylite_physical", "mylite_guarded"):
+                if (
+                    total["metadata_vm_steps"] != 0
+                    or total["scalar_callbacks"] != 0
+                    or total["collation_callbacks"] <= 0
+                ):
+                    raise RuntimeError("direct MyLite counters are invalid in {}".format(path))
+            elif (
+                total["metadata_vm_steps"] <= 0
+                or total["collation_callbacks"] <= 0
+                or total["dml_plans"] != PROGRAM_COUNT
+                or total["dml_plan_hits"] != expected_plan_hits(row_count)
+            ):
+                raise RuntimeError("full MyLite counters are invalid in {}".format(path))
+        if selected_layer is None:
+            physical = measurements[(sample, "mylite_physical", "total")]["vm_steps"]
+            guarded = measurements[(sample, "mylite_guarded", "total")]["vm_steps"]
+            full = measurements[(sample, "mylite", "total")]["vm_steps"]
+            if not physical < guarded < full:
+                raise RuntimeError("VM attribution layers are not ordered in {}".format(path))
+
+
+def validate_profiles(artifact_dir, environment):
+    profiles = {}
+    for layer in LAYERS:
+        metadata_path = artifact_dir / "profiles" / "{}.json".format(layer)
+        metadata = read_json(metadata_path)
+        if metadata.get("status") != "complete":
+            reason = metadata.get("reason", "unknown blocker")
+            raise RuntimeError("{} profile is blocked: {}".format(layer, reason))
+        if metadata.get("layer") != layer or metadata.get("rows") != environment["profile_rows"]:
+            raise RuntimeError("invalid profile identity in {}".format(metadata_path))
+        samples = require_integer(metadata.get("sample_count"), "sample_count", metadata_path, 1)
+        unresolved = require_integer(
+            metadata.get("unresolved_symbol_count"),
+            "unresolved_symbol_count",
+            metadata_path,
+        )
+        command = metadata.get("command")
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(value, str) for value in command)
+        ):
+            raise RuntimeError("invalid profile command in {}".format(metadata_path))
+        perf_version = require_text(metadata.get("perf_version"), "perf_version", metadata_path)
+        data_path = artifact_dir / "profiles" / "{}.data".format(layer)
+        report_path = artifact_dir / "profiles" / "{}.report.txt".format(layer)
+        if data_path.stat().st_size <= 0 or report_path.stat().st_size <= 0:
+            raise RuntimeError("empty profile artifact for {}".format(layer))
+        _, selected = read_attribution_csv(
+            artifact_dir / "raw" / "profile-{}.csv".format(layer),
+            "timing",
+            environment["profile_rows"],
+            1,
+            selected_layer=layer,
+        )
+        profiles[layer] = {
+            "perf_version": perf_version,
+            "sample_count": samples,
+            "unresolved_symbol_count": unresolved,
+            "dataset_hash": selected[(1, layer, "total")]["hash"],
+        }
+    return profiles
+
+
+def summarize(environment, timing_by_rows, counters_by_rows, profiles):
+    output_rows = []
+    row_summaries = {}
+    for row_count in environment["rows"]:
+        timing = timing_by_rows[row_count]
+        counters = counters_by_rows[row_count]
+        total_medians = {
+            layer: statistics.median(
+                timing[(sample, layer, "total")]["total_ms"]
+                for sample in range(1, environment["samples"] + 1)
+            )
+            for layer in LAYERS
+        }
+        residual = total_medians["mylite"] - total_medians["sqlite"]
+        row_summary = {
+            "full_to_sqlite_ratio": (
+                total_medians["mylite"] / total_medians["sqlite"]
+                if total_medians["sqlite"] != 0
+                else None
+            ),
+            "residual_ms": residual,
+            "total_median_ms": total_medians,
+        }
+        layer_deltas = {}
+        previous_layer = None
+        for layer in LAYERS:
+            if previous_layer is None:
+                layer_deltas[layer] = 0.0
+            else:
+                layer_deltas[layer] = total_medians[layer] - total_medians[previous_layer]
+            previous_layer = layer
+        row_summary["layer_delta_ms"] = layer_deltas
+        row_summary["accounted_percent"] = (
+            sum(layer_deltas[layer] for layer in LAYERS[1:]) * 100.0 / residual
+            if residual != 0
+            else None
+        )
+        row_summaries[str(row_count)] = row_summary
+
+        for phase in PHASES:
+            phase_medians = {
+                layer: statistics.median(
+                    timing[(sample, layer, phase)]["total_ms"]
+                    for sample in range(1, environment["samples"] + 1)
+                )
+                for layer in LAYERS
+            }
+            phase_residual = phase_medians["mylite"] - phase_medians["sqlite"]
+            previous_layer = None
+            for layer in LAYERS:
+                wall_ms = phase_medians[layer]
+                cpu_ms = statistics.median(
+                    timing[(sample, layer, phase)]["process_cpu_ms"]
+                    for sample in range(1, environment["samples"] + 1)
+                )
+                delta_ms = (
+                    0.0 if previous_layer is None else wall_ms - phase_medians[previous_layer]
+                )
+                counter = {
+                    field: statistics.median(
+                        counters[(sample, layer, phase)][field]
+                        for sample in range(1, environment["samples"] + 1)
+                    )
+                    for field in (
+                        "vm_steps",
+                        "metadata_vm_steps",
+                        "scalar_callbacks",
+                        "scalar_ms",
+                        "collation_callbacks",
+                        "collation_ms",
+                        "mylite_allocations",
+                        "mylite_allocation_bytes",
+                        "dml_plans",
+                        "dml_plan_hits",
+                    )
+                }
+                output_rows.append(
+                    {
+                        "rows": row_count,
+                        "phase": phase,
+                        "layer": layer,
+                        "median_wall_ms": wall_ms,
+                        "median_cpu_ms": cpu_ms,
+                        "delta_wall_ms": delta_ms,
+                        "residual_share_percent": (
+                            delta_ms * 100.0 / phase_residual
+                            if previous_layer is not None and phase_residual != 0
+                            else 0.0
+                        ),
+                        "full_to_sqlite_ratio": (
+                            phase_medians["mylite"] / phase_medians["sqlite"]
+                            if phase_medians["sqlite"] != 0
+                            else None
+                        ),
+                        **counter,
+                    }
+                )
+                previous_layer = layer
+    return output_rows, {
+        "schema_version": 1,
+        "revision": environment["revision"],
+        "samples": environment["samples"],
+        "rows": row_summaries,
+        "profiles": profiles,
+    }
+
+
+def write_summary(output_dir, rows, summary):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fields = (
+        "rows",
+        "phase",
+        "layer",
+        "median_wall_ms",
+        "median_cpu_ms",
+        "delta_wall_ms",
+        "residual_share_percent",
+        "full_to_sqlite_ratio",
+        "vm_steps",
+        "metadata_vm_steps",
+        "scalar_callbacks",
+        "scalar_ms",
+        "collation_callbacks",
+        "collation_ms",
+        "mylite_allocations",
+        "mylite_allocation_bytes",
+        "dml_plans",
+        "dml_plan_hits",
+    )
+    with (output_dir / "summary.tsv").open("w", encoding="utf-8", newline="") as output_file:
+        writer = csv.DictWriter(output_file, fieldnames=fields, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            rendered = dict(row)
+            for field in (
+                "median_wall_ms",
+                "median_cpu_ms",
+                "delta_wall_ms",
+                "residual_share_percent",
+                "full_to_sqlite_ratio",
+                "scalar_ms",
+                "collation_ms",
+            ):
+                value = rendered[field]
+                rendered[field] = "" if value is None else "{:.6f}".format(value)
+            writer.writerow(rendered)
+    with (output_dir / "summary.json").open("w", encoding="utf-8") as output_file:
+        json.dump(summary, output_file, indent=2, sort_keys=True)
+        output_file.write("\n")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("artifact_dir", type=Path)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--allow-smoke", action="store_true")
+    options = parser.parse_args()
+
+    try:
+        artifact_dir = options.artifact_dir.resolve(strict=True)
+        environment = validate_environment(artifact_dir / "environment.json", options.allow_smoke)
+        timing_by_rows = {}
+        counters_by_rows = {}
+        program_reference = None
+        hash_reference = {}
+        for row_count in environment["rows"]:
+            timing_programs, timing = read_attribution_csv(
+                artifact_dir / "raw" / "timing-{}.csv".format(row_count),
+                "timing",
+                row_count,
+                environment["samples"],
+            )
+            counter_programs, counters = read_attribution_csv(
+                artifact_dir / "raw" / "counters-{}.csv".format(row_count),
+                "counter",
+                row_count,
+                environment["samples"],
+            )
+            if timing_programs != counter_programs:
+                raise RuntimeError("timing/counter program drift at {} rows".format(row_count))
+            if program_reference is None:
+                program_reference = timing_programs
+            elif program_reference != timing_programs:
+                raise RuntimeError("program drift between row counts")
+            timing_hash = timing[(1, "sqlite", "total")]["hash"]
+            counter_hash = counters[(1, "sqlite", "total")]["hash"]
+            if timing_hash != counter_hash:
+                raise RuntimeError("timing/counter checksum drift at {} rows".format(row_count))
+            hash_reference[row_count] = timing_hash
+            timing_by_rows[row_count] = timing
+            counters_by_rows[row_count] = counters
+        profiles = validate_profiles(artifact_dir, environment)
+        profile_hash = profiles["sqlite"]["dataset_hash"]
+        if profile_hash != hash_reference[environment["profile_rows"]]:
+            raise RuntimeError("profile workload checksum differs from qualification workload")
+        if any(profile["dataset_hash"] != profile_hash for profile in profiles.values()):
+            raise RuntimeError("profile layer checksum mismatch")
+        rows, summary = summarize(environment, timing_by_rows, counters_by_rows, profiles)
+        summary["programs"] = program_reference
+        output_dir = (
+            options.output_dir.resolve()
+            if options.output_dir is not None
+            else artifact_dir / "summary"
+        )
+        write_summary(output_dir, rows, summary)
+    except (OSError, RuntimeError) as error:
+        return fail(str(error))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

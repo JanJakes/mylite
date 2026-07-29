@@ -69,6 +69,7 @@ jobs:
           tools/test-performance-regression-tools
           tools/test-large-dataset-performance-tools
           tools/test-durable-autocommit-qualification-tools
+          tools/test-retained-write-attribution-tools
 
       - name: Build baseline and candidate benchmarks
         env:

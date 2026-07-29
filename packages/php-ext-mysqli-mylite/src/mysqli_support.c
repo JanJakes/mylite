@@ -2752,22 +2752,42 @@ void mylite_mysqli_result_fetch_field(
 }
 
 static int mylite_mysqli_result_next_row(mylite_mysqli_result *result, zval **out_row_values) {
-    if (result->unbuffered) {
-        int status = mylite_mysqli_result_read_cursor_row(result);
+#if PHP_VERSION_ID < 80400
+    zval retained_link;
+    bool report_retained_error =
+        result->connection_owner && !Z_ISUNDEF(result->link) && Z_TYPE(result->link) == IS_OBJECT;
 
+    ZVAL_UNDEF(&retained_link);
+    if (report_retained_error) {
+        ZVAL_COPY(&retained_link, &result->link);
+    }
+#endif
+    int status = MYLITE_DONE;
+
+    if (result->unbuffered) {
+        status = mylite_mysqli_result_read_cursor_row(result);
         if (status == MYLITE_ROW) {
             *out_row_values = result->values;
         }
-        return status;
-    }
-    if (result->cursor >= result->row_count) {
+    } else if (result->cursor >= result->row_count) {
         mylite_mysqli_result_release_connection(result);
-        return MYLITE_DONE;
+    } else {
+        *out_row_values = &result->values[(size_t)result->cursor * result->column_count];
+        result->cursor++;
+        status = MYLITE_ROW;
     }
 
-    *out_row_values = &result->values[(size_t)result->cursor * result->column_count];
-    result->cursor++;
-    return MYLITE_ROW;
+#if PHP_VERSION_ID < 80400
+    if (report_retained_error) {
+        mylite_mysqli_link *link = mylite_mysqli_link_from_obj(Z_OBJ(retained_link));
+
+        if (link->error_code != 0) {
+            mylite_mysqli_report_link_error(link);
+        }
+        zval_ptr_dtor(&retained_link);
+    }
+#endif
+    return status;
 }
 
 static int mylite_mysqli_stmt_copy_current_row(mylite_mysqli_stmt *stmt) {

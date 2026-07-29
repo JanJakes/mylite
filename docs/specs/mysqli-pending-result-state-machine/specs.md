@@ -40,8 +40,9 @@ MySQL 8.4.9 behavior, and MyLite's existing native statement API.
 
 ## MySQL 8.4.9 observations
 
-The pinned MySQL 8.4.9 runtime was probed through stock mysqli with mysqlnd.
-The exact busy-state diagnostic is error `2014`, SQLSTATE `HY000`, and message
+The pinned MySQL 8.4.9 runtime was probed through stock mysqli with mysqlnd on
+PHP 8.3 and PHP 8.4. The exact busy-state diagnostic is error `2014`, SQLSTATE
+`HY000`, and message
 `Commands out of sync; you can't run this command now`.
 
 Observed direct-query transitions:
@@ -62,6 +63,10 @@ Observed direct-query transitions:
   published the connection diagnostic;
 - the failed command did not destroy the pending result, which could still be
   buffered, fetched, or freed before a successful recovery command;
+- PHP 8.3 mysqlnd reported a retained strict-mode connection error after
+  consuming each subsequent direct unbuffered row, including end-of-data,
+  whereas PHP 8.4 returned the fetched row or end-of-data directly; with
+  reporting disabled, PHP 8.3 also returned the fetched row directly;
 - ordinary `query()` with its default buffered mode allowed a following
   command while its result object remained unread.
 
@@ -187,6 +192,13 @@ connection or statement error properties. With
 `MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT`, it throws
 `mysqli_sql_exception` carrying the same code, SQLSTATE, and message.
 
+On PHP 8.3, direct unbuffered fetches retain the connection while consuming a
+row. If a prior rejected command left a connection error, each fetch consumes
+its row and then reports that retained error according to the current mysqli
+report mode. The end-of-data fetch releases the owner before reporting the
+retained error. PHP 8.4 does not report the retained connection error from the
+result fetch. The adapter selects the matching behavior at build time.
+
 The rejected command does not:
 
 - execute any SQL;
@@ -245,6 +257,7 @@ No new dependency is permitted.
 - ping, stat, refresh, server debug-info, and kill attempts, including their
   strict-reporting return/exception distinction;
 - report-off return/error properties and strict exception fields;
+- PHP 8.3 retained-error reporting versus PHP 8.4 direct fetch behavior;
 - prepared unread and partial results;
 - prepared store/get, free, reset, close, same-owner re-execute, and
   different-owner rejection;

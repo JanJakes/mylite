@@ -92,13 +92,31 @@ expect_out_of_sync(
     static fn(): bool => $mysqli->autocommit(false),
     'unbuffered autocommit'
 );
-expect_same('2', $unbuffered->fetch_row()[0], 'second unbuffered row');
-expect_same('3', $unbuffered->fetch_row()[0], 'last unbuffered row');
-expect_out_of_sync(
-    static fn(): mysqli_result|bool => $mysqli->query('SELECT 15'),
-    'last row without end-of-data'
-);
-expect_same(null, $unbuffered->fetch_row(), 'unbuffered end-of-data');
+if (PHP_VERSION_ID < 80400) {
+    expect_out_of_sync(
+        static fn(): array|null|false => $unbuffered->fetch_row(),
+        'PHP 8.3 unbuffered fetch reports retained command error'
+    );
+    mysqli_report(MYSQLI_REPORT_OFF);
+    expect_same('3', $unbuffered->fetch_row()[0], 'PHP 8.3 last unbuffered row');
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    expect_out_of_sync(
+        static fn(): mysqli_result|bool => $mysqli->query('SELECT 15'),
+        'last row without end-of-data'
+    );
+    expect_out_of_sync(
+        static fn(): array|null|false => $unbuffered->fetch_row(),
+        'PHP 8.3 end-of-data fetch reports retained command error'
+    );
+} else {
+    expect_same('2', $unbuffered->fetch_row()[0], 'second unbuffered row');
+    expect_same('3', $unbuffered->fetch_row()[0], 'last unbuffered row');
+    expect_out_of_sync(
+        static fn(): mysqli_result|bool => $mysqli->query('SELECT 15'),
+        'last row without end-of-data'
+    );
+    expect_same(null, $unbuffered->fetch_row(), 'unbuffered end-of-data');
+}
 expect_same('16', $mysqli->query('SELECT 16')->fetch_row()[0], 'exhaustion recovery');
 
 $mysqli->real_query('SELECT id FROM pending_items ORDER BY id');
@@ -122,12 +140,29 @@ expect_out_of_sync(
     static fn(): mysqli_result|bool => $mysqli->query('SELECT 19'),
     'materialized utility unread result'
 );
-expect_same('pending_items', $unbuffered->fetch_row()[0], 'materialized utility row');
+if (PHP_VERSION_ID < 80400) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    expect_same(
+        'pending_items',
+        $unbuffered->fetch_row()[0],
+        'PHP 8.3 materialized utility row'
+    );
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+} else {
+    expect_same('pending_items', $unbuffered->fetch_row()[0], 'materialized utility row');
+}
 expect_out_of_sync(
     static fn(): mysqli_result|bool => $mysqli->query('SELECT 20'),
     'materialized utility last row'
 );
-expect_same(null, $unbuffered->fetch_row(), 'materialized utility end-of-data');
+if (PHP_VERSION_ID < 80400) {
+    expect_out_of_sync(
+        static fn(): array|null|false => $unbuffered->fetch_row(),
+        'PHP 8.3 materialized utility end-of-data reports retained command error'
+    );
+} else {
+    expect_same(null, $unbuffered->fetch_row(), 'materialized utility end-of-data');
+}
 expect_same(
     '21',
     $mysqli->query('SELECT 21')->fetch_row()[0],

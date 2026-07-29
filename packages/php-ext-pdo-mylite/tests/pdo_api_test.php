@@ -74,9 +74,17 @@ $nulInMiddlePrefix = mylite_pdo_test_path('nul-in-middle');
 expect_pdo_path_rejected(
     'mylite:' . $nulInMiddlePrefix . "\0.bypass",
     $nulInMiddlePrefix,
-    'PDO::connect path with embedded NUL',
-    true
+    'PDO path with embedded NUL'
 );
+if (method_exists(PDO::class, 'connect')) {
+    $staticConnectNulPrefix = mylite_pdo_test_path('static-connect-nul');
+    expect_pdo_path_rejected(
+        'mylite:' . $staticConnectNulPrefix . "\0.bypass",
+        $staticConnectNulPrefix,
+        'PDO::connect path with embedded NUL',
+        true
+    );
+}
 
 $nulAtEndPrefix = mylite_pdo_test_path('nul-at-end');
 expect_pdo_path_rejected(

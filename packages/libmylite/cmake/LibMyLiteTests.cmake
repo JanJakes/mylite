@@ -166,6 +166,10 @@ add_test(
   COMMAND mylite_runtime_table_rename_lifecycle_test
 )
 
+add_custom_target(mylite_benchmark_test_dependencies ALL
+  DEPENDS mylite_large_dataset_benchmark
+)
+
 if(MYLITE_ENABLE_PROFILING)
   add_dependencies(mylite_runtime_profile_test mylite_large_dataset_benchmark)
   add_test(

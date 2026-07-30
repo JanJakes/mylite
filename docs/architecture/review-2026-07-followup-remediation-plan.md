@@ -75,12 +75,12 @@ buildable and reviewable.
 
 - [ ] Record the audited commit, compiler/tool versions, SQLite and zlib
   versions, PHP version, MySQL 8.4.9 image digest, and current CI run.
-- [ ] Preserve deterministic source-level reproducers for `COR-01`, `COR-02`,
+- [x] Preserve deterministic source-level reproducers for `COR-01`, `COR-02`,
   `PREP-01`, `PREP-02`, `API-01`, `API-02`, `API-03`, `API-04`, `SEC-01`,
   `SEC-02`, `SEC-03`, `SEM-01`, `SEM-02`, and `SQL-01`.
-- [ ] Convert temporary reproducers into first-party tests without checking in
+- [x] Convert temporary reproducers into first-party tests without checking in
   generated databases, binaries, logs, or absolute local paths.
-- [ ] Capture current matched MySQL 8.4.9 outputs for every compatibility
+- [x] Capture current matched MySQL 8.4.9 outputs for every compatibility
   defect before implementation.
 - [ ] Capture current performance samples for durable writes, retained writes,
   `LOAD DATA`, buffered results, and large spatial validation.
@@ -100,6 +100,22 @@ buildable and reviewable.
   or skip an existing test to establish the baseline.
 - [ ] Confirm the worktree is clean and all temporary audit artifacts and
   review agents are gone before implementation begins.
+
+Retrospective Phase 0 audit at `f0092b4c1`:
+
+- The Phase 1 through Phase 5 specifications, deterministic native/PHP
+  regressions, and pinned MySQL fixtures preserve the original reproducers as
+  first-party evidence. The compatibility validator verifies 716 green claims
+  and all 810 registered MySQL fixtures.
+- Record the audited tool/dependency environment and add the finding manifest
+  plus its validator. Those remain useful near-term traceability work.
+- Complete the performance snapshot through Phase 6, the production artifact
+  snapshot through Phase 9, and the full same-commit workflow matrix through
+  Phase 10 rather than creating duplicate Phase 0-only gates.
+- The expected-failure record and pre-implementation clean-state checkpoint
+  cannot be reconstructed retroactively. Keep them visible as historical
+  limitations and replace their intended assurance during Phase 10 with
+  fail-before/pass-after reproducer evidence and a clean final-candidate audit.
 
 ## Phase 1: Writer-Stable Metadata And Storage Integrity
 
@@ -181,7 +197,7 @@ buildable and reviewable.
   catalog commit, and lifecycle-byte publication boundary.
 - [x] Extend VFS fault coverage from CREATE TABLE to rebuilding ALTER,
   DROP/RENAME, index DDL, migrations, truncate, delete, and close.
-- [ ] Run hot-journal and process-death recovery on POSIX and Windows.
+- [x] Run hot-journal and process-death recovery on POSIX and Windows.
 - [x] Assert exact pre-operation or post-operation state, no temporary physical
   objects, valid seals, and successful SQLite integrity checks after reopen.
 
@@ -206,9 +222,11 @@ Linux qualification evidence for the Phase 1 implementation at `a099ea52e`:
 - Doctrine DBAL and ORM: 2 tests and 15 assertions passed.
 - MediaWiki: 35 tests and 852 assertions passed, with 1 skip.
 
-The remaining unchecked Phase 1 item requires the existing Windows CI job to
-execute the hot-journal and initialization process-death paths for this commit.
-The corresponding POSIX paths passed locally.
+Cross-platform qualification completed at `f0092b4c1`. The existing POSIX
+qualification and the successful
+[Windows CI run](https://github.com/JanJakes/mylite/actions/runs/30460719413)
+both passed the registered file-backed-open suite, including hot-journal and
+initialization process-death recovery. Phase 1 has no remaining checklist item.
 
 ## Phase 2: Prepared Statements, Results, Diagnostics, And PHP Parity
 
